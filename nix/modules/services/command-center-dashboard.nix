@@ -192,6 +192,17 @@ in {
     # tightly scoped to specific commands.
     environment.systemPackages = [llamaSetActiveModel crowdsecDecisionDelete nftDashboard];
 
+    # Read-only view of the sudo boundary inputs so check-unattended-sudo-readiness
+    # can compare the evaluated sudoers against the module's own lists.
+    system.build.aqSudoBoundary = {
+      units = dashboardManagedUnits;
+      wrappers = {
+        aq-nft-dashboard = "${nftDashboard}/bin/aq-nft-dashboard";
+        aq-llama-set-active-model = "${llamaSetActiveModel}/bin/aq-llama-set-active-model";
+        aq-crowdsec-decision-delete = "${crowdsecDecisionDelete}/bin/aq-crowdsec-decision-delete";
+      };
+    };
+
     security.sudo.extraRules = [
       {
         users = [svcUser];

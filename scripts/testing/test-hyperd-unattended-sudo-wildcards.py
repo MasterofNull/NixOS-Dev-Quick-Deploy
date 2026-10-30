@@ -9,6 +9,7 @@ allowlist, the exact dashboard per-unit set, and the privileged wrappers reject
 hostile arguments.
 """
 
+import json
 import os
 import re
 import shutil
@@ -21,30 +22,8 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 HOST_CLASS_PATH = REPO_ROOT / "nix/modules/host-classes/p14s-amd-ai-workstation.nix"
 FLAKE_HOST = "hyperd-ai-dev"
 
-# Wrappers take arguments but validate them; sudoers lists only their path.
-VALIDATING_WRAPPERS = {
-    "aq-nft-dashboard",
-    "aq-llama-set-active-model",
-    "aq-crowdsec-decision-delete",
-}
-
-# Every other NOPASSWD rule must be an exact command (binary + fixed args).
-EXACT_ALLOWLIST = {
-    "systemctl start crowdsec-firewall-bouncer",
-    "systemctl stop crowdsec-firewall-bouncer",
-    "systemctl restart crowdsec-firewall-bouncer",
-    "systemctl is-active crowdsec-firewall-bouncer",
-    "systemctl restart firewall",
-    "systemctl is-active firewall",
-    "systemctl is-active nftables",
-    "cscli decisions list -o json",
-    "iptables -L -n -v",
-    "systemctl restart llama-cpp",
-    "systemctl is-active llama-cpp",
-    "systemctl start ai-local-training-loop.service",
-    "systemctl stop ai-local-training-loop.service",
-    "systemctl restart ai-local-training-loop.service",
-}
+sys.path.insert(0, str(REPO_ROOT / "scripts" / "governance" / "lib"))
+from sudoers_boundary import check_sudoers, parse_nopasswd  # noqa: E402
 
 EXPECTED_DASHBOARD_UNITS = {
     "ai-aidb", "ai-hybrid-coordinator", "ai-ralph-wiggum", "ai-auth-selftest",
@@ -53,9 +32,6 @@ EXPECTED_DASHBOARD_UNITS = {
     "ai-nixos-docs", "ai-switchboard", "ai-throttler",
     "command-center-dashboard-api",
 }
-
-STORE_RE = re.compile(r"^/nix/store/[a-z0-9]{32}-([^/]+)/bin/(\S+)(?: (.*))?$")
-
 
 def assert_true(condition: bool, message: str) -> None:
     if not condition:
@@ -88,18 +64,6 @@ def nix(*args: str) -> subprocess.CompletedProcess:
     return subprocess.run(
         ["nix", *args], cwd=REPO_ROOT, capture_output=True, text=True, check=False
     )
-
-
-def parse_nopasswd(sudoers: str) -> list[tuple[str, str]]:
-    """Return (principal, command) for every NOPASSWD entry of every user/group."""
-    entries = []
-    for line in sudoers.splitlines():
-        if line.lstrip().startswith("#") or "NOPASSWD" not in line:
-            continue
-        principal = line.split()[0]
-        for part in re.split(r"NOPASSWD:\s*", line)[1:]:
-            entries.append((principal, part.strip().rstrip(",").strip()))
-    return entries
 
 
 def build_wrapper(name: str) -> str:
@@ -151,50 +115,17 @@ def check_evaluated() -> None:
     print("PASS: effective sudoers has timestamp_timeout=0")
 
     entries = parse_nopasswd(sudoers)
-    assert_true(entries, "expected the dashboard NOPASSWD rules in the sudoers")
-    principals = {principal for principal, _ in entries}
-    assert_true(
-        principals == {"hyperd"}, f"NOPASSWD only expected for hyperd, got {principals}"
+    boundary = json.loads(
+        nix("eval", "--json", f".#nixosConfigurations.{FLAKE_HOST}.config.system.build.aqSudoBoundary").stdout
     )
-
-    units: set[str] = set()
-    unit_rules = 0
-    wrappers_seen: dict[str, str] = {}
-    for _, command in entries:
-        assert_true("*" not in command, f"wildcard in NOPASSWD rule: {command}")
-        match = STORE_RE.match(command)
-        assert_true(match is not None, f"NOPASSWD rule not an exact store path: {command}")
-        pkg, binary, args = match.group(1), match.group(2), match.group(3)
-        if args is None:
-            assert_true(
-                binary in VALIDATING_WRAPPERS,
-                f"bare binary with unbounded args is not an allowed wrapper: {command}",
-            )
-            wrappers_seen[binary] = command
-            continue
-        unit = re.fullmatch(r"--no-block (start|stop|restart) (\S+)\.service", args)
-        if binary == "systemctl" and unit:
-            units.add(unit.group(2))
-            unit_rules += 1
-            continue
-        assert_true(
-            f"{binary} {args}" in EXACT_ALLOWLIST,
-            f"NOPASSWD rule outside the explicit allowlist: {binary} {args}",
-        )
+    problems = check_sudoers(sudoers, boundary["units"], boundary["wrappers"])
+    assert_true(not problems, f"evaluated sudoers violates the allowlist: {problems}")
+    units = {u.removesuffix(".service") for u in boundary["units"]}
     assert_true(
         units == EXPECTED_DASHBOARD_UNITS,
-        f"dashboard unit set drifted: +{units - EXPECTED_DASHBOARD_UNITS} "
-        f"-{EXPECTED_DASHBOARD_UNITS - units}",
+        f"dashboard unit set drifted: +{units - EXPECTED_DASHBOARD_UNITS} -{EXPECTED_DASHBOARD_UNITS - units}",
     )
-    assert_true(unit_rules == 3 * len(units), "each dashboard unit needs exactly 3 verbs")
-    assert_true(
-        set(wrappers_seen) == VALIDATING_WRAPPERS,
-        f"wrapper set mismatch: {set(wrappers_seen)}",
-    )
-    print(
-        f"PASS: {len(entries)} NOPASSWD rules, all exact or validating wrappers; "
-        f"{len(units)} dashboard units x3 verbs"
-    )
+    print(f"PASS: {len(entries)} NOPASSWD rules all on the allowlist; {len(units)} dashboard units x3 verbs")
 
     llama = build_wrapper("aq-llama-set-active-model")
     for bad in (["../x"], ["-t", "/etc"], ["a/b.gguf"], ["active.gguf"], ["x.gguf", "y.gguf"], []):
@@ -222,7 +153,47 @@ def check_evaluated() -> None:
     print("PASS: wrappers reject hostile arguments (llama, crowdsec, nft)")
 
 
+def check_allowlist_logic() -> None:
+    """Fixture sudoers lines: the allowlist accepts the approved set and rejects drift."""
+    h = "0" * 32
+    sd = f"/nix/store/{h}-systemd-260.5/bin/systemctl"
+    w = {"aq-nft-dashboard": f"/nix/store/{h}-aq-nft-dashboard/bin/aq-nft-dashboard"}
+    units = ["ai-aidb.service"]
+    good_rules = [w["aq-nft-dashboard"], f"{sd} restart llama-cpp"] + [
+        f"{sd} --no-block {v} ai-aidb.service" for v in ("start", "stop", "restart")
+    ]
+    base = "Defaults timestamp_timeout=0\n"
+
+    def line(*cmds: str, who: str = "hyperd") -> str:
+        return f"{who}     ALL=(ALL:ALL)    " + ", ".join(f"NOPASSWD: {c}" for c in cmds) + "\n"
+
+    assert_true(
+        parse_nopasswd(line(*good_rules)) == [("hyperd", c) for c in good_rules],
+        "parse_nopasswd must split NOPASSWD entries",
+    )
+    assert_true(parse_nopasswd("# NOPASSWD: x\nroot ALL=(ALL) ALL\n") == [], "comments/non-NOPASSWD ignored")
+    assert_true(not check_sudoers(base + line(*good_rules), units, w), "good fixture must pass")
+    bad_cases = {
+        "store bash": line(*good_rules, f"/nix/store/{h}-bash-5/bin/bash"),
+        "bare nft": line(*good_rules, f"/nix/store/{h}-nftables-1/bin/nft"),
+        "other unit": line(*good_rules, f"{sd} --no-block start evil.service"),
+        "unlisted systemctl": line(*good_rules, f"{sd} start evil.service"),
+        "wildcard": line(*good_rules, f"{sd} *"),
+        "other principal": line(*good_rules) + line(f"{sd} restart llama-cpp", who="%wheel"),
+    }
+    for name, text in bad_cases.items():
+        assert_true(check_sudoers(base + text, units, w), f"{name} must be rejected")
+    assert_true(check_sudoers(line(*good_rules), units, w), "missing timestamp_timeout must be rejected")
+    assert_true(
+        check_sudoers(base + "Defaults:hyperd timestamp_timeout=5\n" + line(*good_rules), units, w),
+        "a later timestamp_timeout override must be rejected",
+    )
+    assert_true(check_sudoers(base + line(*good_rules[:-1]), units, w), "lost dashboard rule must be reported")
+    print("PASS: allowlist logic accepts the approved set and rejects drift (fixtures)")
+
+
 def main() -> None:
+    check_allowlist_logic()
     check_host_class()
     check_evaluated()
 

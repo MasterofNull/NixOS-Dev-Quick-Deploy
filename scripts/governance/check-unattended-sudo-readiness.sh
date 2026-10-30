@@ -34,70 +34,34 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 STRICT_LIVE=0
 live_problems=()
 
-forbidden_re='(nixos-rebuild|journalctl|flatpak|nixos-quick-deploy|aq-model-switch|/Documents/|/home/|\*)'
-
-# DECLARED: evaluated sudoers, else static scan of the Nix sources.
+# DECLARED: allowlist of the evaluated sudoers (fails if nix eval fails; no
+# static fallback, a HARD gate must not pass on an unevaluated config).
 check_declared() {
-  local sudoers="" bad="" line
-  if command -v nix >/dev/null 2>&1 && [[ -f "${REPO_ROOT}/flake.nix" ]]; then
-    sudoers="$(cd "$REPO_ROOT" && nix eval --raw '.#nixosConfigurations.hyperd-ai-dev.config.security.sudo.configFile' 2>/dev/null || true)"
-  fi
-  if [[ -n "$sudoers" ]]; then
-    while IFS= read -r line; do
-      [[ "$line" == \#* || "$line" != *NOPASSWD* ]] && continue
-      local cmds="${line#*NOPASSWD:}"
-      cmds="${cmds//NOPASSWD:/}"
-      IFS=',' read -ra parts <<<"$cmds"
-      for c in "${parts[@]}"; do
-        # bare systemctl (any args) is root-equivalent too
-        if grep -Eq "$forbidden_re" <<<"$c" || grep -Eq '/bin/systemctl[[:space:]]*$' <<<"$c"; then
-          bad+="${c# } ; "
-        fi
-      done
-    done <<<"$sudoers"
-    if ! grep -Eq '^[[:space:]]*Defaults[[:space:]]+timestamp_timeout=0[[:space:]]*$' <<<"$sudoers" \
-      || grep -Eq '^[[:space:]]*Defaults[^#]*timestamp_timeout=[1-9-]' <<<"$sudoers"; then
-      bad+="timestamp_timeout!=0 ; "
-    fi
-    if [[ -n "$bad" ]]; then
-      echo "[sudo-readiness] FAIL: declared sudoers violates the owner boundary: ${bad}" >&2
-      return 1
-    fi
-    echo "[sudo-readiness] PASS: declared (evaluated) sudoers has no passwordless root-equivalent rule; timestamp_timeout=0"
-    return 0
-  fi
-  # Static fallback
-  bad="$(grep -rnE 'command[[:space:]]*=[[:space:]]*"[^"]*(nixos-rebuild|journalctl|flatpak|nixos-quick-deploy|aq-model-switch|/Documents/|systemctl \*|\*")' "${REPO_ROOT}/nix" --include='*.nix' 2>/dev/null || true)"
-  if [[ -n "$bad" ]]; then
-    echo "[sudo-readiness] FAIL: Nix sources declare a forbidden NOPASSWD command pattern:" >&2
-    echo "$bad" >&2
-    return 1
-  fi
-  if ! grep -rqE 'timestamp_timeout=0' "${REPO_ROOT}/nix" --include='*.nix'; then
-    echo "[sudo-readiness] FAIL: Nix sources do not set timestamp_timeout=0" >&2
-    return 1
-  fi
-  echo "[sudo-readiness] PASS: declared check (static fallback; nix eval unavailable)"
+  python3 "${REPO_ROOT}/scripts/governance/lib/sudoers_boundary.py" declared
 }
 
 # LIVE: collect problems instead of failing.
 check_live() {
-  local probe_out probe_rc cmd actual
+  local cmd actual
   for path in /run/sudo /run/sudo/ts; do
     actual="$(stat -c '%U:%G' "$path" 2>/dev/null || echo missing)"
     [[ "$actual" == "root:root" ]] || live_problems+=("${path} owner is ${actual}, expected root:root")
   done
-  for cmd in "/run/current-system/sw/bin/systemctl is-system-running" \
-             "/run/current-system/sw/bin/nixos-rebuild switch"; do
-    probe_rc=0
-    # shellcheck disable=SC2086
-    probe_out="$(sudo -n -l $cmd 2>&1)" || probe_rc=$?
-    if [[ $probe_rc -eq 0 ]]; then
-      live_problems+=("sudo -n permits '${cmd}' without a password")
-    elif ! grep -qi "password is required" <<<"$probe_out"; then
-      live_problems+=("cannot establish sudo authorization for '${cmd}': ${probe_out}")
-    fi
-  done
+  # `sudo -n -l <cmd>` succeeds for password-required commands too (listpw), so
+  # read the full listing and require a NOPASSWD tag on the matching rule.
+  local listing listing_rc=0
+  listing="$(sudo -n -l 2>&1)" || listing_rc=$?
+  if [[ $listing_rc -eq 0 ]]; then
+    for cmd in "/run/current-system/sw/bin/systemctl is-system-running" \
+               "/run/current-system/sw/bin/nixos-rebuild switch"; do
+      # shellcheck disable=SC2086
+      if python3 "${REPO_ROOT}/scripts/governance/lib/sudoers_boundary.py" passwordless $cmd <<<"$listing"; then
+        live_problems+=("sudo -n permits '${cmd}' without a password")
+      fi
+    done
+  elif ! grep -qi "password is required" <<<"$listing"; then
+    live_problems+=("cannot read the sudo listing: ${listing}")
+  fi
   if [[ -r /etc/sudoers ]]; then
     grep -Eq '^[[:space:]]*Defaults[[:space:]]+timestamp_timeout=0[[:space:]]*$' /etc/sudoers \
       || live_problems+=("/etc/sudoers lacks Defaults timestamp_timeout=0")

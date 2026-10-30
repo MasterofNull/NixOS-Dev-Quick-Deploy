@@ -1,4 +1,5 @@
 """Service management."""
+import fnmatch
 import logging
 import os
 import shutil
@@ -17,6 +18,37 @@ SYSTEMCTL_BIN = os.environ.get("SYSTEMCTL_BIN") or (
     else (shutil.which("systemctl") or "/run/current-system/sw/bin/systemctl")
 )
 SUDO_BIN = shutil.which("sudo") or "/run/wrappers/bin/sudo"
+
+
+def listing_allows_nopasswd(listing: str, command: List[str]) -> bool:
+    """Parse `sudo -n -l` output; True if the last matching rule is NOPASSWD.
+
+    Tags (NOPASSWD:/PASSWD:) persist within one rule line and reset at each
+    `(runas)` prefix. A rule with no args matches any args; the last matching
+    rule wins, as in sudoers.
+    """
+    wanted = " ".join(command)
+    result = False
+    for line in listing.splitlines():
+        stripped = line.strip()
+        if not stripped.startswith("("):
+            continue
+        rest = stripped.split(")", 1)[1].strip()
+        nopasswd = False
+        for item in rest.split(", "):
+            item = item.strip()
+            while True:
+                if item.startswith("NOPASSWD:"):
+                    nopasswd, item = True, item[len("NOPASSWD:"):].strip()
+                elif item.startswith("PASSWD:"):
+                    nopasswd, item = False, item[len("PASSWD:"):].strip()
+                elif item.split(":", 1)[0] in {"SETENV", "NOSETENV", "EXEC", "NOEXEC", "LOG_INPUT", "NOLOG_INPUT", "LOG_OUTPUT", "NOLOG_OUTPUT", "MAIL", "NOMAIL"} and ":" in item:
+                    item = item.split(":", 1)[1].strip()
+                else:
+                    break
+            if item == "ALL" or fnmatch.fnmatchcase(wanted, item) or (" " not in item and item == command[0]):
+                result = nopasswd
+    return result
 
 
 class ServiceManager:
@@ -124,16 +156,22 @@ class ServiceManager:
 
     @staticmethod
     def _sudo_allows(command: List[str]) -> bool:
-        """True when sudoers permits this exact command without a password."""
+        """True when sudo runs this exact command without a password.
+
+        `sudo -n -l <cmd>` succeeds for password-required commands too
+        (listpw=any), so read the full listing and require a NOPASSWD tag.
+        """
         if not SUDO_BIN:
             return False
         probe = subprocess.run(
-            [SUDO_BIN, "-n", "-l", *command],
+            [SUDO_BIN, "-n", "-l"],
             capture_output=True,
             text=True,
             check=False,
         )
-        return probe.returncode == 0
+        if probe.returncode != 0:
+            return False
+        return listing_allows_nopasswd(probe.stdout, command)
 
     def _systemctl_action_command(self, action: str, unit: str) -> List[str]:
         base = [SYSTEMCTL_BIN, "--no-block", action, unit]
