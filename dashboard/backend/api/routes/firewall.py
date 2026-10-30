@@ -45,6 +45,7 @@ AUDIT_LOG_PATH = os.getenv(
 SUDO_BIN = os.getenv("SUDO_BIN") or "/run/wrappers/bin/sudo"
 SYSTEMCTL_BIN = os.getenv("SYSTEMCTL_BIN") or shutil.which("systemctl") or "/run/current-system/sw/bin/systemctl"
 NFT_BIN = os.getenv("NFT_BIN") or shutil.which("nft") or "/run/current-system/sw/bin/nft"
+NFT_PRIVILEGED_BIN = os.getenv("NFT_PRIVILEGED_BIN") or "/run/current-system/sw/bin/aq-nft-dashboard"
 CSCLI_BIN = os.getenv("CSCLI_BIN") or shutil.which("cscli") or "cscli"
 CSCLI_DECISION_DELETE_BIN = os.getenv("CSCLI_DECISION_DELETE_BIN") or "/run/current-system/sw/bin/aq-crowdsec-decision-delete"
 IPTABLES_BIN = os.getenv("IPTABLES_BIN") or shutil.which("iptables") or "/run/current-system/sw/bin/iptables"
@@ -186,8 +187,9 @@ async def run_sudo_command(cmd: List[str], timeout: int = 10) -> tuple[int, str,
     """Run a command with sudo -n (non-interactive, requires NOPASSWD sudoers entry)"""
     if not cmd:
         return -1, "", "Empty command"
-    resolved = [_resolve_binary(cmd[0]), *cmd[1:]]
-    return await run_command([SUDO_BIN, "-n", *resolved], timeout)
+    # sudoers allows only the validating nft wrapper, never bare nft.
+    binary = NFT_PRIVILEGED_BIN if cmd[0] == "nft" else _resolve_binary(cmd[0])
+    return await run_command([SUDO_BIN, "-n", binary, *cmd[1:]], timeout)
 
 
 async def run_privileged_read_command(cmd: List[str], timeout: int = 10) -> tuple[int, str, str]:

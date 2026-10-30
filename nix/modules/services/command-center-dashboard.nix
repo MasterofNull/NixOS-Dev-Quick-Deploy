@@ -87,6 +87,62 @@
     '';
   };
 
+  # nft takes `-f <file>`, `-i`, `include`, etc.; sudoers cannot constrain those,
+  # so the sole NOPASSWD target is this wrapper. It accepts only the exact nft
+  # forms firewall.py issues (list ruleset / list chain, optional -a; delete
+  # rule ... handle N; add rule ... accept comment X) and execs the store nft.
+  nftDashboard = pkgs.writeShellApplication {
+    name = "aq-nft-dashboard";
+    text = ''
+      nft_bin=${pkgs.nftables}/bin/nft
+      fam_re='^(inet|ip|ip6)$'
+      name_re='^[A-Za-z_][A-Za-z0-9_-]{0,31}$'
+      tok_re='^[A-Za-z0-9_./:,{} "-]+$'
+      cmt_re='^"?[A-Za-z0-9_-]+"?$'
+      num_re='^[0-9]+$'
+      reject() {
+        echo "aq-nft-dashboard: rejected arguments" >&2
+        exit 2
+      }
+      flag=()
+      if [ "''${1:-}" = "-a" ]; then
+        flag=(-a)
+        shift
+      fi
+      verb="''${1:-}"
+      obj="''${2:-}"
+      case "$verb $obj" in
+        "list ruleset")
+          [ "$#" -eq 2 ] || reject
+          exec "$nft_bin" "''${flag[@]}" list ruleset
+          ;;
+        "list chain")
+          [ "$#" -eq 5 ] || reject
+          [[ "$3" =~ $fam_re && "$4" =~ $name_re && "$5" =~ $name_re ]] || reject
+          exec "$nft_bin" "''${flag[@]}" list chain "$3" "$4" "$5"
+          ;;
+        "delete rule")
+          [ "$#" -eq 7 ] && [ "''${#flag[@]}" -eq 0 ] && [ "$6" = handle ] || reject
+          [[ "$3" =~ $fam_re && "$4" =~ $name_re && "$5" =~ $name_re && "$7" =~ $num_re ]] || reject
+          exec "$nft_bin" delete rule "$3" "$4" "$5" handle "$7"
+          ;;
+        "add rule")
+          [ "$#" -ge 8 ] && [ "''${#flag[@]}" -eq 0 ] || reject
+          [[ "$3" =~ $fam_re && "$4" =~ $name_re && "$5" =~ $name_re ]] || reject
+          rest=("''${@:6}")
+          n=''${#rest[@]}
+          [ "''${rest[n-3]}" = accept ] && [ "''${rest[n-2]}" = comment ] || reject
+          [[ "''${rest[n-1]}" =~ $cmt_re ]] || reject
+          for tok in "''${rest[@]:0:n-3}"; do
+            [[ "$tok" =~ $tok_re && "$tok" != -* ]] || reject
+          done
+          exec "$nft_bin" add rule "$3" "$4" "$5" "''${rest[@]}"
+          ;;
+        *) reject ;;
+      esac
+    '';
+  };
+
   dashboardPython = pkgs.python3.withPackages (ps:
     with ps; [
       fastapi
@@ -134,15 +190,16 @@ in {
     # The dashboard provides operator controls for captive portal bypass and
     # CrowdSec bouncer management. These require elevated privileges but are
     # tightly scoped to specific commands.
-    environment.systemPackages = [llamaSetActiveModel crowdsecDecisionDelete];
+    environment.systemPackages = [llamaSetActiveModel crowdsecDecisionDelete nftDashboard];
 
     security.sudo.extraRules = [
       {
         users = [svcUser];
         commands = [
           # nftables: list and modify firewall rules (captive portal bypass)
+          # via the validating wrapper only (never bare nft: -f/-i/include)
           {
-            command = "${pkgs.nftables}/bin/nft";
+            command = "${nftDashboard}/bin/aq-nft-dashboard";
             options = ["NOPASSWD"];
           }
           # CrowdSec bouncer control (pause/resume for portal login)
@@ -414,6 +471,7 @@ in {
           SUDO_BIN = "/run/wrappers/bin/sudo";
           SYSTEMCTL_BIN = "${pkgs.systemd}/bin/systemctl";
           NFT_BIN = "${pkgs.nftables}/bin/nft";
+          NFT_PRIVILEGED_BIN = "${nftDashboard}/bin/aq-nft-dashboard";
           CSCLI_BIN = "${pkgs.crowdsec}/bin/cscli";
           CSCLI_DECISION_DELETE_BIN = "${crowdsecDecisionDelete}/bin/aq-crowdsec-decision-delete";
           IPTABLES_BIN = "${pkgs.iptables}/bin/iptables";

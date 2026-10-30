@@ -136,7 +136,7 @@ class ServiceManager:
         return probe.returncode == 0
 
     def _systemctl_action_command(self, action: str, unit: str) -> List[str]:
-        base = self._systemctl_batch_command(action, [unit])
+        base = [SYSTEMCTL_BIN, "--no-block", action, unit]
         if self._sudo_allows(base):
             return [SUDO_BIN, "-n", *base]
         return base

@@ -375,6 +375,19 @@
       "ci_workflow": ".github/workflows/test.yml#syntax"
     },
     {
+      "id": "service-manager-sudo-commands-test",
+      "cmd": "scripts/testing/test-service-manager-sudo-commands.py",
+      "paths": [
+        "scripts/testing/test-service-manager-sudo-commands.py",
+        "dashboard/backend/api/services/service_manager.py",
+        "config/ci-checks.json"
+      ],
+      "needs": [
+        "python3"
+      ],
+      "ci_workflow": ".github/workflows/test.yml#syntax"
+    },
+    {
       "id": "tier0-qa-admission-test",
       "cmd": "scripts/testing/test-tier0-qa-admission.sh",
       "paths": [
