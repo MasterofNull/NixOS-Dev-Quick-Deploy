@@ -2,6 +2,24 @@
 
 Branch `fix/false-green-health-checks`. Uncommitted at time of writing.
 
+## Objective
+Stop svc-security-audit and svc-mcp-integrity from reporting green when they verified nothing (zero pip-audit coverage; missing MCP integrity baseline).
+
+## Workflow/Session IDs
+- Branch: `fix/false-green-health-checks`
+- No review run id recorded in this doc at time of writing.
+
+## Delegation Decision
+Implemented by Claude Sonnet (Rule 17 cheapest eligible), orchestrated by Claude Opus; review by local Qwen.
+
+## Commands Executed
+- `bash scripts/testing/test-security-audit-gate.sh`
+- `bash scripts/testing/test-mcp-integrity-baseline.sh`
+- `shellcheck -S warning` on the four scripts
+- `nix-instantiate --parse` on `nix/modules/services/mcp-servers.nix`
+- `pip-audit -r ai-stack/mcp-servers/nixos-docs/requirements.txt` with `PIPAPI_PYTHON_LOCATION` set to a python with pip
+- Post-rebuild commands for the owner are listed under Activation after rebuild.
+
 ## Symptoms (live journal)
 
 ai-security-audit.service (21:31 boot, same at 16:26, 16:45):
@@ -52,7 +70,7 @@ Alert path: failed units are already surfaced by `aq-health-spider` (`_failed_sy
 --failed) and `_aq-qa-bash` check 0.1.2 (failed `ai-*` units). The dashboard `/security/audit` route
 returns `status` and now `degraded_reasons`.
 
-## Tests
+## Validation Evidence
 
     $ bash scripts/testing/test-security-audit-gate.sh
     PASS: security-audit gate blocks on seeded finding, passes clean, flags no-coverage as degraded
@@ -79,3 +97,15 @@ Live fix verification of the pip fix: pip-audit with PIPAPI_PYTHON_LOCATION=pyth
 
 Note: if the repo-structure lint requires registering the new test file, add
 scripts/testing/test-mcp-integrity-baseline.sh to config/repo-structure-allowlist.txt.
+
+## Rollback Plan
+Revert the commit and rebuild. Emergency: unset `SECURITY_AUDIT_FAIL_ON_DEGRADED` so a degraded audit exits 0 again.
+
+## Residual Risk
+- Not verified live: the rebuild, the one-time MCP baseline creation and the post-rebuild audit run are owner acts (sudo) and have not been done.
+- Until the baseline is created, the hourly ai-mcp-integrity-check unit fails by design.
+- A degraded audit now fails the unit; pip-audit coverage after rebuild is expected to be 3 files but is unconfirmed.
+- The new test file may need registering in `config/repo-structure-allowlist.txt`.
+
+## Hint Feedback
+No aq-hints used for this slice.
