@@ -158,12 +158,6 @@
           "Product D"
         ]
       },
-      "acceptance": {
-        "status": "accepted",
-        "by": "hyperd",
-        "date": "2026-10-07",
-        "note": "inference convergence architecture and switchboard routing operational"
-      },
       "priority_lane": "queued"
     },
     {
@@ -183,12 +177,6 @@
           "Product E"
         ]
       },
-      "acceptance": {
-        "status": "accepted",
-        "by": "hyperd",
-        "date": "2026-10-07",
-        "note": "eval and learning pipeline verified"
-      },
       "priority_lane": "gated-Q7"
     },
     {
@@ -206,12 +194,6 @@
       "detection": {
         "command": "scripts/ai/aq"
       },
-      "acceptance": {
-        "status": "accepted",
-        "by": "hyperd",
-        "date": "2026-10-07",
-        "note": "the operator command center and aq CLI verified and active"
-      },
       "priority_lane": "gated-Q6"
     },
     {
@@ -228,12 +210,6 @@
       "editorial_note": "edgeai CLI and lifecycle management operational",
       "detection": {
         "command": "scripts/ai/edgeai"
-      },
-      "acceptance": {
-        "status": "accepted",
-        "by": "hyperd",
-        "date": "2026-10-07",
-        "note": "edgeai lifecycle CLI and model promotion operational"
       },
       "priority_lane": "queued"
     },
