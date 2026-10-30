@@ -375,6 +375,21 @@
       "ci_workflow": ".github/workflows/test.yml#syntax"
     },
     {
+      "id": "tier0-qa-admission-test",
+      "cmd": "scripts/testing/test-tier0-qa-admission.sh",
+      "paths": [
+        "scripts/testing/test-tier0-qa-admission.sh",
+        "scripts/governance/lib/qa-admission.sh",
+        "scripts/governance/tier0-validation-gate.sh",
+        "config/ci-checks.json"
+      ],
+      "needs": [
+        "bash",
+        "flock"
+      ],
+      "ci_workflow": ".github/workflows/test.yml#syntax"
+    },
+    {
       "id": "tests-agent",
       "cmd": "scripts/testing/run-test-group.py tests-agent",
       "paths": [

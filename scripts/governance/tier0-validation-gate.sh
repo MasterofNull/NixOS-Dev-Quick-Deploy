@@ -9,6 +9,8 @@ REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 cd "${REPO_ROOT}"
 # shellcheck source=lib/clean-git-env.sh
 source "${SCRIPT_DIR}/lib/clean-git-env.sh"
+# shellcheck source=lib/qa-admission.sh
+source "${SCRIPT_DIR}/lib/qa-admission.sh"
 
 # Parse args: --pre-commit | --pre-deploy set MODE; --tap enables TAP output;
 # --staged-isolated opts into validating the STAGED INDEX in a clean temp
@@ -909,6 +911,12 @@ gate_qa_phase0() {
   local continue_local_timeout="${TIER0_AQ_QA_CONTINUE_LOCAL_MAX_TIME_SECONDS:-45}"
   local flagship_help_timeout="${TIER0_AQ_QA_FLAGSHIP_HELP_TIMEOUT_SECONDS:-45}"
   local status=0
+  # Admission control: queue behind other gate runs machine-wide instead of
+  # timing out under parallel load (an admission timeout is not a QA failure).
+  if ! qa_admission_acquire; then
+    fail "QA phase 0 admission timeout/unavailable (see [tier0] message above); QA did not run"
+    return 1
+  fi
   output=$(
     # Tier0 already runs focused CI-sensitive checks separately; skip the
     # aq-report-backed subchecks here so phase-0 remains a bounded health gate
@@ -918,6 +926,7 @@ gate_qa_phase0() {
     AQ_FLAGSHIP_HELP_TIMEOUT_SECONDS="${flagship_help_timeout}" \
     clean_git_env_run timeout --foreground "${qa_timeout}" "${REPO_ROOT}/scripts/ai/aq-qa" 0 2>&1
   ) || status=$?
+  qa_admission_release
   if [[ "${status}" -eq 124 ]]; then
     log_failed_qa_rows "$output" 30
     fail "QA phase 0 timed out after ${qa_timeout}s (continue-local=${continue_local_timeout}s, flagship-help=${flagship_help_timeout}s)"
