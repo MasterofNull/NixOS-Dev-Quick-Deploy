@@ -35,7 +35,7 @@ ALLOWED_QUICK_ACTIONS = frozenset({"open-http", "close-http", "allow-lan", "rese
 # Allowed CrowdSec control actions
 ALLOWED_CROWDSEC_ACTIONS = frozenset({"pause", "resume", "status"})
 # Valid decision ID pattern (alphanumeric, dashes)
-DECISION_ID_PATTERN = re.compile(r'^[a-zA-Z0-9\-]+$')
+DECISION_ID_PATTERN = re.compile(r'^[0-9]+$')
 
 # ── Audit Logging ───────────────────────────────────────────────────────────────
 AUDIT_LOG_PATH = os.getenv(
@@ -46,6 +46,7 @@ SUDO_BIN = os.getenv("SUDO_BIN") or "/run/wrappers/bin/sudo"
 SYSTEMCTL_BIN = os.getenv("SYSTEMCTL_BIN") or shutil.which("systemctl") or "/run/current-system/sw/bin/systemctl"
 NFT_BIN = os.getenv("NFT_BIN") or shutil.which("nft") or "/run/current-system/sw/bin/nft"
 CSCLI_BIN = os.getenv("CSCLI_BIN") or shutil.which("cscli") or "cscli"
+CSCLI_DECISION_DELETE_BIN = os.getenv("CSCLI_DECISION_DELETE_BIN") or "/run/current-system/sw/bin/aq-crowdsec-decision-delete"
 IPTABLES_BIN = os.getenv("IPTABLES_BIN") or shutil.which("iptables") or "/run/current-system/sw/bin/iptables"
 NFT_FAMILY = os.getenv("FIREWALL_NFT_FAMILY", "inet")
 NFT_TABLE = os.getenv("FIREWALL_NFT_TABLE", "filter")
@@ -61,6 +62,7 @@ def _resolve_binary(command: str) -> str:
         "systemctl": SYSTEMCTL_BIN,
         "nft": NFT_BIN,
         "cscli": CSCLI_BIN,
+        "cscli-decision-delete": CSCLI_DECISION_DELETE_BIN,
         "iptables": IPTABLES_BIN,
     }.get(command, command)
 
@@ -650,7 +652,7 @@ async def remove_crowdsec_decision(
 
     try:
         code, stdout, stderr = await run_sudo_command([
-            "cscli", "decisions", "delete", "--id", decision_id
+            "cscli-decision-delete", decision_id
         ])
 
         if code != 0:

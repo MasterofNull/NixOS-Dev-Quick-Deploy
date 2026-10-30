@@ -24,27 +24,20 @@ check_dir_owner() {
   echo "[sudo-readiness] PASS: ${path} owner ${actual}"
 }
 
-check_sudo_command() {
-  local label="$1"
-  shift
-
-  if sudo -n "$@" >/dev/null 2>&1; then
-    echo "[sudo-readiness] PASS: ${label}"
-    return 0
-  fi
-
-  echo "[sudo-readiness] FAIL: ${label}" >&2
-  return 1
-}
-
 main() {
   local failed=0
 
   check_dir_owner "/run/sudo" "root" "root" || failed=1
   check_dir_owner "/run/sudo/ts" "root" "root" || failed=1
 
-  check_sudo_command "sudo -n nixos-rebuild is usable" /run/current-system/sw/bin/nixos-rebuild --help || failed=1
-  check_sudo_command "sudo -n systemctl is usable" /run/current-system/sw/bin/systemctl is-system-running || failed=1
+  # Owner boundary (2026-10-29): the primary user must NOT have passwordless
+  # root via nixos-rebuild/systemctl, so these now FAIL the check if usable.
+  if sudo -n /run/current-system/sw/bin/systemctl is-system-running >/dev/null 2>&1; then
+    echo "[sudo-readiness] FAIL: sudo -n systemctl is passwordless (owner boundary violated)" >&2
+    failed=1
+  else
+    echo "[sudo-readiness] PASS: sudo -n systemctl requires the owner password"
+  fi
 
   if [[ $failed -ne 0 ]]; then
     exit 1

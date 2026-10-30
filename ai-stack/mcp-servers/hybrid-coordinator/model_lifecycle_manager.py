@@ -79,9 +79,9 @@ def _atomic_symlink(target: Path, link: Path) -> None:
 
     Tries direct os.symlink first; falls back to `sudo -n ln -sf` when the
     model dir is owned by another user (e.g. llama:llama on NixOS).
-    The sudo NOPASSWD rule for `systemctl restart llama-cpp` is deployed by the
-    dashboard nix module — a companion rule for `ln -sf` on the models dir
-    should be added to the same module for full automation.
+    The privileged fallback goes through aq-llama-set-active-model, the only
+    NOPASSWD sudo target for this write (dashboard nix module); it accepts a
+    bare model filename in the models dir, never an arbitrary path.
     """
     tmp_link = link.with_suffix(".swap.tmp")
     try:
@@ -93,16 +93,16 @@ def _atomic_symlink(target: Path, link: Path) -> None:
     except PermissionError:
         pass  # fall through to sudo approach
 
-    # Privileged fallback: sudo -n ln -sf <target> <link>
+    # Privileged fallback: sudo -n aq-llama-set-active-model <model>.gguf
     import subprocess
     result = subprocess.run(
-        ["sudo", "-n", "ln", "-sf", str(target), str(link)],
+        ["sudo", "-n", "/run/current-system/sw/bin/aq-llama-set-active-model", target.name],
         capture_output=True, timeout=10,
     )
     if result.returncode != 0:
         raise PermissionError(
             f"Cannot update symlink {link} → {target}. "
-            f"sudo ln failed: {result.stderr.decode().strip()}. "
+            f"sudo helper failed: {result.stderr.decode().strip()}. "
             f"Run manually: sudo ln -sf {target} {link}"
         )
 

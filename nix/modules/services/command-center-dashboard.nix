@@ -29,6 +29,64 @@
     (name: ["--declared-name" name])
     (builtins.attrNames config.sops.secrets);
 
+  # Root-run helper for the only privileged model-hot-swap write. Sudoers
+  # cannot constrain `ln -sf` arguments safely (a `*` matches `-t /etc ...`),
+  # so the sole NOPASSWD target is this fixed wrapper that validates its input.
+  llamaSetActiveModel = pkgs.writeShellApplication {
+    name = "aq-llama-set-active-model";
+    runtimeInputs = [pkgs.coreutils];
+    text = ''
+      models_dir=/var/lib/llama-cpp/models
+      name="''${1:-}"
+      if [ "$#" -ne 1 ] || ! [[ "$name" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*\.gguf$ ]] \
+        || [ "$name" = "active.gguf" ] || [ ! -f "$models_dir/$name" ] \
+        || [ -L "$models_dir/$name" ]; then
+        echo "usage: aq-llama-set-active-model <model>.gguf (regular file in $models_dir)" >&2
+        exit 2
+      fi
+      ln -sfn "$models_dir/$name" "$models_dir/active.gguf"
+    '';
+  };
+
+  # Units the dashboard may start/stop/restart: what service_manager.py
+  # discovers (`systemctl show ai-stack.target` Wants = target `wants` plus
+  # services that are wantedBy/requiredBy it) plus the dashboard itself.
+  # Rules are generated for units whose serviceConfig.User is a non-root user,
+  # so a restart never runs agent-editable checkout code as root. Root units
+  # (ai-pgvector-bootstrap, ai-mutable-path-bootstrap: oneshots) are excluded;
+  # qdrant is the one allowed root unit (store binary + store config only).
+  rootAllowedUnits = ["qdrant.service"];
+  aiStackTarget = "ai-stack.target";
+  aiStackUnits = lib.unique (
+    (lib.filter (u: lib.hasSuffix ".service" u) (config.systemd.targets.ai-stack.wants or []))
+    ++ (lib.mapAttrsToList (n: _: "${n}.service")
+      (lib.filterAttrs (_: u: lib.any (t: lib.elem t (u.wantedBy ++ u.requiredBy)) [aiStackTarget])
+        config.systemd.services))
+  );
+  unitRunsAsRoot = unit: let
+    name = lib.removeSuffix ".service" unit;
+    user = config.systemd.services.${name}.serviceConfig.User or "root";
+  in
+    user == "root";
+  dashboardManagedUnits =
+    lib.filter (u: !(unitRunsAsRoot u) || lib.elem u rootAllowedUnits) aiStackUnits
+    ++ ["command-center-dashboard-api.service"];
+
+  # cscli decision removal takes a caller-chosen ID; sudoers cannot constrain
+  # the argument safely, so the sole NOPASSWD target is this validating wrapper.
+  crowdsecDecisionDelete = pkgs.writeShellApplication {
+    name = "aq-crowdsec-decision-delete";
+    runtimeInputs = [pkgs.crowdsec];
+    text = ''
+      id="''${1:-}"
+      if [ "$#" -ne 1 ] || ! [[ "$id" =~ ^[0-9]+$ ]]; then
+        echo "usage: aq-crowdsec-decision-delete <numeric-decision-id>" >&2
+        exit 2
+      fi
+      exec cscli decisions delete --id "$id"
+    '';
+  };
+
   dashboardPython = pkgs.python3.withPackages (ps:
     with ps; [
       fastapi
@@ -76,6 +134,8 @@ in {
     # The dashboard provides operator controls for captive portal bypass and
     # CrowdSec bouncer management. These require elevated privileges but are
     # tightly scoped to specific commands.
+    environment.systemPackages = [llamaSetActiveModel crowdsecDecisionDelete];
+
     security.sudo.extraRules = [
       {
         users = [svcUser];
@@ -117,12 +177,17 @@ in {
           }
           # CrowdSec CLI for decision management (view/remove blocked IPs)
           {
-            command = "${pkgs.crowdsec}/bin/cscli";
+            command = "${pkgs.crowdsec}/bin/cscli decisions list -o json";
             options = ["NOPASSWD"];
           }
-          # iptables fallback (read-only listing)
           {
-            command = "${pkgs.iptables}/bin/iptables -L *";
+            command = "${crowdsecDecisionDelete}/bin/aq-crowdsec-decision-delete";
+            options = ["NOPASSWD"];
+          }
+          # iptables fallback (read-only listing; fixed args — a trailing `*`
+          # would also permit `-L x -A ...` rule changes)
+          {
+            command = "${pkgs.iptables}/bin/iptables -L -n -v";
             options = ["NOPASSWD"];
           }
           # llama-cpp model hot-swap (restart service to load new model)
@@ -134,6 +199,16 @@ in {
             command = "${pkgs.systemd}/bin/systemctl is-active llama-cpp";
             options = ["NOPASSWD"];
           }
+          # Dashboard service controls: exact per-unit commands matching
+          # service_manager.py (`systemctl --no-block <verb> <unit>.service`).
+        ]
+        ++ lib.concatMap (unit:
+          map (verb: {
+            command = "${pkgs.systemd}/bin/systemctl --no-block ${verb} ${unit}";
+            options = ["NOPASSWD"];
+          }) ["start" "stop" "restart"])
+        dashboardManagedUnits
+        ++ [
           # Local improvement loop operator controls
           {
             command = "${pkgs.systemd}/bin/systemctl start ai-local-training-loop.service";
@@ -149,7 +224,7 @@ in {
           }
           # llama-cpp model symlink update (swap active model without rebuild)
           {
-            command = "${pkgs.coreutils}/bin/ln -sf /var/lib/llama-cpp/models/* /var/lib/llama-cpp/models/active.gguf";
+            command = "${llamaSetActiveModel}/bin/aq-llama-set-active-model";
             options = ["NOPASSWD"];
           }
         ];
@@ -340,6 +415,7 @@ in {
           SYSTEMCTL_BIN = "${pkgs.systemd}/bin/systemctl";
           NFT_BIN = "${pkgs.nftables}/bin/nft";
           CSCLI_BIN = "${pkgs.crowdsec}/bin/cscli";
+          CSCLI_DECISION_DELETE_BIN = "${crowdsecDecisionDelete}/bin/aq-crowdsec-decision-delete";
           IPTABLES_BIN = "${pkgs.iptables}/bin/iptables";
         }
         // lib.optionalAttrs sec.enable {
