@@ -88,15 +88,17 @@ validate_scanner_report() {
   invalid_reasons+=("${name} report invalid: ${REPORT_WHY}")
   return 1
 }
+# Every scanner-provided number is bounded (<= 1000000) so bash arithmetic on it can never wrap; blocking
+# decisions use per-report booleans computed in jq, not sums.
 # Schemas demand explicit coverage evidence, never defaults: an audited dependency carries a vulns
 # array (or a skip_reason); npm carries every severity counter as a number; the dashboard report
 # carries a status for each of its three checks; the secrets plan carries core_ready and a non-zero
 # managed-secret count.
 PIP_SCHEMA='(has("error") | not) and ((.dependencies | type) == "array") and all(.dependencies[]; type == "object" and has("name") and (has("skip_reason") or ((.vulns | type) == "array")))'
-NPM_SCHEMA='(has("error") | not) and ((.metadata.vulnerabilities | type) == "object") and all(.metadata.vulnerabilities.info, .metadata.vulnerabilities.low, .metadata.vulnerabilities.moderate, .metadata.vulnerabilities.high, .metadata.vulnerabilities.critical; type == "number" and . >= 0 and . == floor)'
+NPM_SCHEMA='(has("error") | not) and ((.metadata.vulnerabilities | type) == "object") and all(.metadata.vulnerabilities.info, .metadata.vulnerabilities.low, .metadata.vulnerabilities.moderate, .metadata.vulnerabilities.high, .metadata.vulnerabilities.critical; type == "number" and . >= 0 and . <= 1000000 and . == floor)'
 DASHBOARD_SCHEMA='has("generated_at") and ((.status | type) == "string") and all(.checks.root.status, .checks.compliance.status, .checks.integrity.status; type == "string")'
 DASHBOARD_STATUS='if .status == "ok" and ([.checks.root.status, .checks.compliance.status, .checks.integrity.status] | all(. == "ok")) then "ok" elif .status == "degraded" then "degraded" else "inconsistent" end'
-SECRETS_SCHEMA='has("generated_at") and ((.rotation_ready | type) == "boolean") and ((.core_ready | type) == "boolean") and ((.summary.total_managed_secrets | type) == "number") and (.summary.total_managed_secrets >= 1) and (.summary.total_managed_secrets == (.summary.total_managed_secrets | floor))'
+SECRETS_SCHEMA='has("generated_at") and ((.rotation_ready | type) == "boolean") and ((.core_ready | type) == "boolean") and ((.summary.total_managed_secrets | type) == "number") and (.summary.total_managed_secrets >= 1) and (.summary.total_managed_secrets <= 1000000) and (.summary.total_managed_secrets == (.summary.total_managed_secrets | floor))'
 
 pip_audit_available=false
 npm_available=false
@@ -273,6 +275,7 @@ npm_total_critical=0
 npm_files_scanned=0
 npm_errors=0
 npm_unscanned=0
+npm_hc_files=0
 
 # A package.json without package-lock.json cannot be audited. That is a coverage gap unless the
 # project is on the reviewed allowlist (entries need a repo-relative "path" and a concrete "reason").
@@ -315,6 +318,7 @@ if [[ "${npm_available}" == true ]]; then
     if validate_scanner_report "npm audit" "${out_json}" "${NPM_SCHEMA}" '"ok"' 'ok'; then
       high="$(jq '.metadata.vulnerabilities.high // 0' "${out_json}")"
       critical="$(jq '.metadata.vulnerabilities.critical // 0' "${out_json}")"
+      [[ "$(jq '(.metadata.vulnerabilities.high > 0) or (.metadata.vulnerabilities.critical > 0)' "${out_json}")" == "true" ]] && npm_hc_files=$((npm_hc_files + 1))
     else
       npm_errors=$((npm_errors + 1))
     fi
@@ -402,7 +406,7 @@ fi
 
 high_or_critical=$((npm_total_high + npm_total_critical))
 overall_status="ok"
-if [[ ${pip_total_vulns} -gt 0 || ${high_or_critical} -gt 0 || "${dashboard_scan_status}" == "error" || "${secrets_rotation_status}" == "error" ]]; then
+if [[ ${pip_total_vulns} -gt 0 || ${npm_hc_files} -gt 0 || "${dashboard_scan_status}" == "error" || "${secrets_rotation_status}" == "error" ]]; then
   overall_status="findings"
 fi
 # "Could not scan" is distinct from "scanned and clean" and from "found vulns".
@@ -501,7 +505,7 @@ cp "${report_file}" "${latest_file}"
 echo "Security audit report written: ${report_file}"
 echo "Latest report: ${latest_file}"
 
-if [[ ${high_or_critical} -gt 0 ]]; then
+if [[ ${npm_hc_files} -gt 0 ]]; then
   alert_file="${OUTPUT_DIR}/latest-high-cve-alert.json"
   jq -n \
     --arg generated_at "${timestamp}" \
@@ -556,7 +560,7 @@ if [[ ${pip_total_vulns} -gt 0 ]]; then
   fi
   echo "------------------------------------------------"
 fi
-if [[ ${high_or_critical} -gt 0 ]]; then
+if [[ ${npm_hc_files} -gt 0 ]]; then
   echo "BLOCKING: npm audit reported ${npm_total_critical} critical / ${npm_total_high} high vulnerabilities"; blocking=$((blocking + 1))
   echo "--- Gate-Triggered Dependency Hygiene Ladder ---"
   echo "Trigger: Blocking npm vulnerability detected."

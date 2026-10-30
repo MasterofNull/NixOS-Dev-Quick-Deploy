@@ -153,6 +153,13 @@ report invalid (degraded, exit 3), so `high:-1,critical:1` can no longer cancel 
 only from a validated report, so no sum of unvalidated values reaches the blocking decision. Table cases `nocov4`
 (negative) and `nocov5` (fractional) run for every scanner.
 
+Eighth review follow-up (integer overflow). Every scanner-provided number is bounded to <= 1000000 (npm counters,
+`summary.total_managed_secrets`); a larger value makes the report invalid (degraded, exit 3), so bash sums cannot wrap
+(`high=critical=4611686018427387904` was summing to INT64_MIN). Blocking decisions for npm now use a per-report boolean
+computed in jq (`high > 0 or critical > 0`) counted in `npm_hc_files`, not a bash sum. Remaining bash arithmetic on
+scanner-derived values is on bounded values or file/line counts only (`pip_total_vulns` adds jq `length` of arrays;
+exception expiry epochs come from `date -d` on validated config). Table case `nocov6` covers the overflow input.
+
 Former residual (npm project without `package-lock.json` skipped silently) is closed by the sixth follow-up above.
 
 Dashboard and secrets scanner execution errors keep the presentation status `findings` (existing behavior) but
