@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+. "${BASH_SOURCE[0]%/*}/lib/aq-shim.sh" 2>/dev/null || true  # aq-usage-hook
 # Health-gated llama-cpp resume: after suspend, restart llama-cpp only if it is not
 # actually serving. Ports come from the environment (set by the Nix module).
 set -u
