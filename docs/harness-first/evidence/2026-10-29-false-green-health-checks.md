@@ -64,6 +64,13 @@ created (`/var/lib/nixos-ai-stack` is root:root 711), so the hourly check has ve
   exits 3, so the unit shows as failed. Without it (local/dev) exit stays 0, matching the existing tests.
 - scripts/testing/check-mcp-integrity.sh: missing baseline -> writes
   `$ALERT_DIR/mcp-integrity-baseline-missing.json`, prints ERROR, exits 2. Never creates the baseline.
+  An empty or malformed baseline (no valid record actually verified, or any malformed record) writes
+  `mcp-integrity-baseline-invalid.json` and exits 2 as well; tamper (exit 1) keeps precedence.
+- scripts/security/security-audit.sh (review follow-up): npm absent with npm projects needing a scan now
+  counts them as npm errors and adds the degraded reason "npm scanner missing (N npm projects unscanned)".
+  The exit-3 decision uses a `coverage_incomplete` flag (any degraded reason, including dashboard or secrets
+  scan errors) instead of `status=degraded`, so dashboard/secrets errors (status `findings`) cannot bypass
+  it; real findings still exit 1 first.
 - dashboard/backend/api/routes/aistack.py: docstring lists `degraded` (route passes status through unchanged).
 
 Alert path: failed units are already surfaced by `aq-health-spider` (`_failed_systemd_units`, systemctl
@@ -76,6 +83,10 @@ returns `status` and now `degraded_reasons`.
     PASS: security-audit gate blocks on seeded finding, passes clean, flags no-coverage as degraded
     $ bash scripts/testing/test-mcp-integrity-baseline.sh
     PASS: mcp-integrity missing baseline is non-ok, tamper alerts, baseline never auto-created
+
+Review follow-up cases: empty, malformed and blank baselines => exit 2 with the invalid alert; npm missing
+with an npm project and clean pip => degraded and exit 3 under the flag; pip error plus dashboard error with
+no vulns => exit 3 under the flag (exit 0 without it).
 
 Covers: pip-audit failing => degraded + exit 3 under FAIL_ON_DEGRADED; zero coverage => degraded;
 pip-audit absent from PATH => non-ok with "scanner missing"; covered clean scan => ok; missing baseline =>

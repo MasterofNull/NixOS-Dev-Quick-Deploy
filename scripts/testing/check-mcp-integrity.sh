@@ -27,9 +27,15 @@ fi
 
 changed_files=()
 missing_files=()
+verified=0
+malformed=0
 
-while IFS=" " read -r expected_hash filepath; do
-  [[ -z "$expected_hash" || -z "$filepath" ]] && continue
+while IFS=" " read -r expected_hash filepath || [[ -n "${expected_hash:-}" ]]; do
+  [[ -z "$expected_hash" && -z "${filepath:-}" ]] && continue
+  if [[ ! "$expected_hash" =~ ^[0-9a-f]{64}$ || -z "${filepath:-}" ]]; then
+    malformed=$((malformed + 1))
+    continue
+  fi
   if [[ ! -f "$filepath" ]]; then
     missing_files+=("$filepath")
     continue
@@ -38,10 +44,20 @@ while IFS=" " read -r expected_hash filepath; do
   if [[ "$actual_hash" != "$expected_hash" ]]; then
     changed_files+=("$filepath")
   fi
+  verified=$((verified + 1))
 done < "$BASELINE_FILE"
 
 if [[ "${#changed_files[@]}" -eq 0 && "${#missing_files[@]}" -eq 0 ]]; then
-  echo "[mcp-integrity] PASS — all $(wc -l < "$BASELINE_FILE") source files match baseline"
+  if [[ "$verified" -eq 0 || "$malformed" -gt 0 ]]; then
+    # An empty/malformed baseline verified nothing (or not everything): never a pass.
+    mkdir -p "$ALERT_DIR" 2>/dev/null || true
+    alert_file="$ALERT_DIR/mcp-integrity-baseline-invalid.json"
+    printf '{"timestamp":"%s","alert":"mcp_integrity_baseline_invalid","baseline_file":"%s","verified":%s,"malformed":%s}\n' \
+      "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$BASELINE_FILE" "$verified" "$malformed" > "$alert_file" 2>/dev/null || true
+    echo "[mcp-integrity] ERROR: baseline $BASELINE_FILE is empty or malformed (verified=$verified malformed=$malformed) - integrity NOT verified (regenerate with scripts/security/update-mcp-integrity-baseline.sh as root)" >&2
+    exit 2
+  fi
+  echo "[mcp-integrity] PASS — all $verified source files match baseline"
   exit 0
 fi
 

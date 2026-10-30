@@ -5,8 +5,8 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 OUTPUT_DIR="${AI_SECURITY_AUDIT_DIR:-${HOME}/.local/share/nixos-ai-stack/security}"
 HIGH_CVSS_THRESHOLD="${AI_SECURITY_AUDIT_HIGH_CVSS_THRESHOLD:-7.0}"
 NOTIFY_USER="${AI_SECURITY_AUDIT_NOTIFY_USER:-}"
-DASHBOARD_SCAN_SCRIPT="${REPO_ROOT}/scripts/security/dashboard-security-scan.sh"
-SECRETS_ROTATION_PLAN_SCRIPT="${REPO_ROOT}/scripts/security/secrets-rotation-plan.sh"
+DASHBOARD_SCAN_SCRIPT="${DASHBOARD_SCAN_SCRIPT:-${REPO_ROOT}/scripts/security/dashboard-security-scan.sh}"
+SECRETS_ROTATION_PLAN_SCRIPT="${SECRETS_ROTATION_PLAN_SCRIPT:-${REPO_ROOT}/scripts/security/secrets-rotation-plan.sh}"
 
 usage() {
   cat <<'EOF'
@@ -180,6 +180,7 @@ npm_total_high=0
 npm_total_critical=0
 npm_files_scanned=0
 npm_errors=0
+npm_unscanned=0
 
 if [[ "${npm_available}" == true ]]; then
   for package_file in "${package_files[@]}"; do
@@ -207,6 +208,12 @@ if [[ "${npm_available}" == true ]]; then
     npm_files_scanned=$((npm_files_scanned + 1))
   done
 else
+  # Scanner unavailable: every npm project that needs scanning is unscanned, which is a
+  # coverage gap (counted as an error so CI fails closed and status cannot be ok).
+  for package_file in "${package_files[@]}"; do
+    [[ -f "$(dirname "${package_file}")/package-lock.json" ]] && npm_unscanned=$((npm_unscanned + 1))
+  done
+  npm_errors=$((npm_errors + npm_unscanned))
   jq -n --arg error "npm not installed" '{metadata: {vulnerabilities: {info: 0, low: 0, moderate: 0, high: 0, critical: 0, total: 0}}, error: $error}' > "${npm_results_dir}/scanner-unavailable.json"
 fi
 
@@ -282,7 +289,14 @@ elif [[ ${pip_files_scanned} -eq 0 ]]; then
   degraded_reasons+=("zero pip-audit coverage (0 requirements files scanned)")
 fi
 [[ ${pip_errors} -gt 0 ]] && degraded_reasons+=("pip-audit failed on ${pip_errors} requirements files")
-[[ ${npm_errors} -gt 0 ]] && degraded_reasons+=("npm audit errored on ${npm_errors} projects")
+[[ ${npm_unscanned} -gt 0 ]] && degraded_reasons+=("npm scanner missing (${npm_unscanned} npm projects unscanned)")
+[[ $((npm_errors - npm_unscanned)) -gt 0 ]] && degraded_reasons+=("npm audit errored on $((npm_errors - npm_unscanned)) projects")
+[[ "${dashboard_scan_status}" == "error" ]] && degraded_reasons+=("dashboard security scan errored")
+[[ "${secrets_rotation_status}" == "error" ]] && degraded_reasons+=("secrets rotation plan errored")
+# Exit-code decision is independent of the presentation status: any scanner error,
+# missing scanner or zero coverage means the audit is incomplete.
+coverage_incomplete=false
+[[ ${#degraded_reasons[@]} -gt 0 ]] && coverage_incomplete=true
 if [[ "${overall_status}" == "ok" && ${#degraded_reasons[@]} -gt 0 ]]; then
   overall_status="degraded"
 fi
@@ -455,7 +469,7 @@ echo "Security audit summary: blocking=${blocking} status=${overall_status}"
 [[ ${blocking} -eq 0 ]] || exit 1
 # Scheduled runs set SECURITY_AUDIT_FAIL_ON_DEGRADED=1 so a scan that checked
 # nothing fails the unit (picked up by systemctl --failed / aq-health-spider).
-if [[ "${overall_status}" == "degraded" && "${SECURITY_AUDIT_FAIL_ON_DEGRADED:-0}" == "1" ]]; then
+if [[ "${coverage_incomplete}" == true && "${SECURITY_AUDIT_FAIL_ON_DEGRADED:-0}" == "1" ]]; then
   echo "DEGRADED: audit could not fully scan: $(IFS='; '; echo "${degraded_reasons[*]}")" >&2
   exit 3
 fi

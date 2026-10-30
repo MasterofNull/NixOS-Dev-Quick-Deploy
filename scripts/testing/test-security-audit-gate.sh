@@ -96,6 +96,34 @@ mkdir -p "$T/nobin"; for c in bash jq python3 date find mktemp mkdir cat tr sort
 rc=0; out="$(PATH="$T/nobin" env -u CI "$(command -v bash)" "$ROOT/scripts/security/security-audit.sh" --repo-root "$T/cov" --output-dir "$T/o16" 2>&1)" || rc=$?
 [[ "$(jq -r .status "$T/o16/latest-security-audit.json")" != "ok" ]] && jq -e '.degraded_reasons | map(test("scanner missing")) | any' "$T/o16/latest-security-audit.json" >/dev/null \
   || { echo "FAIL: missing pip-audit not degraded rc=$rc"; echo "$out"; exit 1; }
+cat > "$T/bin/pip-audit" <<'N'
+#!/usr/bin/env bash
+echo '{"dependencies":[{"name":"x","version":"1","vulns":[]}]}'
+N
+# npm project needing a scan + clean pip coverage + no npm on PATH => degraded (and exit 3 in unit mode).
+mkdir -p "$T/nonpm/ai-stack/mcp-servers/svc" "$T/nonpmbin"
+echo "x==1" > "$T/nonpm/ai-stack/mcp-servers/svc/requirements.txt"
+echo '{"name":"x","lockfileVersion":3}' | tee "$T/nonpm/package.json" "$T/nonpm/package-lock.json" >/dev/null
+for c in bash jq python3 date find mktemp mkdir cat tr sort dirname rm cp mv git env wc sed head cut pip-audit; do p="$(command -v "$c" 2>/dev/null || true)"; [[ -n "$p" ]] && ln -sf "$p" "$T/nonpmbin/$c"; done
+ln -sf "$T/bin/pip-audit" "$T/nonpmbin/pip-audit"
+export DASHBOARD_SCAN_SCRIPT=/nonexistent SECRETS_ROTATION_PLAN_SCRIPT=/nonexistent
+rc=0; out="$(PATH="$T/nonpmbin" env -u CI "$(command -v bash)" "$ROOT/scripts/security/security-audit.sh" --repo-root "$T/nonpm" --output-dir "$T/o18" 2>&1)" || rc=$?
+[[ "$(jq -r .status "$T/o18/latest-security-audit.json")" == "degraded" ]] && jq -e '.degraded_reasons | map(test("npm scanner missing")) | any' "$T/o18/latest-security-audit.json" >/dev/null \
+  || { echo "FAIL: missing npm with npm project not degraded rc=$rc"; echo "$out"; exit 1; }
+rc=0; out="$(PATH="$T/nonpmbin" env -u CI SECURITY_AUDIT_FAIL_ON_DEGRADED=1 "$(command -v bash)" "$ROOT/scripts/security/security-audit.sh" --repo-root "$T/nonpm" --output-dir "$T/o19" 2>&1)" || rc=$?
+[[ $rc -eq 3 ]] && grep -q "DEGRADED:.*npm scanner missing" <<<"$out" || { echo "FAIL: missing npm did not exit 3 rc=$rc"; echo "$out"; exit 1; }
+# pip error + dashboard error, no vulns: status=findings (presentation) but unit mode must still exit 3.
+cat > "$T/bin/pip-audit" <<'N'
+#!/usr/bin/env bash
+echo boom >&2; exit 3
+N
+printf '#!/usr/bin/env bash\nexit 1\n' > "$T/bad-dashboard.sh"; chmod +x "$T/bad-dashboard.sh"
+rc=0; out="$(PATH="$T/bin:$PATH" env -u CI SECURITY_AUDIT_FAIL_ON_DEGRADED=1 DASHBOARD_SCAN_SCRIPT="$T/bad-dashboard.sh" bash "$ROOT/scripts/security/security-audit.sh" --repo-root "$T/cov2" --output-dir "$T/o20" 2>&1)" || rc=$?
+[[ $rc -eq 3 ]] && [[ "$(jq -r .status "$T/o20/latest-security-audit.json")" == "findings" ]] && grep -q "blocking=0" <<<"$out" \
+  || { echo "FAIL: pip+dashboard error did not exit 3 rc=$rc"; echo "$out"; exit 1; }
+rc=0; out="$(PATH="$T/bin:$PATH" env -u CI bash "$ROOT/scripts/security/security-audit.sh" --repo-root "$T/cov2" --output-dir "$T/o21" 2>&1)" || rc=$?
+[[ $rc -eq 0 ]] || { echo "FAIL: incomplete scan without the unit flag must stay exit 0 rc=$rc"; echo "$out"; exit 1; }
+unset DASHBOARD_SCAN_SCRIPT SECRETS_ROTATION_PLAN_SCRIPT
 # A clean scan with real coverage stays ok.
 cat > "$T/bin/pip-audit" <<'N'
 #!/usr/bin/env bash

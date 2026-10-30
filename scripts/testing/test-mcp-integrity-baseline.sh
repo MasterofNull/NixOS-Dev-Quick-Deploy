@@ -18,4 +18,15 @@ rc=0; out="$(bash "$ROOT/scripts/testing/check-mcp-integrity.sh" 2>&1)" || rc=$?
 echo 'print(2)' > "$T/src/a.py"
 rc=0; out="$(bash "$ROOT/scripts/testing/check-mcp-integrity.sh" 2>&1)" || rc=$?
 [[ $rc -eq 1 ]] && grep -q ALERT <<<"$out" || { echo "FAIL: tamper not alerted rc=$rc"; exit 1; }
-echo "PASS: mcp-integrity missing baseline is non-ok, tamper alerts, baseline never auto-created"
+# Empty and malformed baselines verify nothing: exit 2, distinct alert, never auto-created/rewritten.
+for kind in empty malformed blank; do
+  case "$kind" in
+    empty) : > "$T/baseline.sha256" ;;
+    malformed) printf 'not-a-hash /nonexistent\ngarbage\n' > "$T/baseline.sha256" ;;
+    blank) printf '\n\n' > "$T/baseline.sha256" ;;
+  esac
+  rc=0; out="$(MCP_INTEGRITY_ALERT_DIR="$T/alerts-$kind" bash "$ROOT/scripts/testing/check-mcp-integrity.sh" 2>&1)" || rc=$?
+  [[ $rc -eq 2 ]] && grep -q "integrity NOT verified" <<<"$out" || { echo "FAIL: $kind baseline rc=$rc"; echo "$out"; exit 1; }
+  jq -e '.alert == "mcp_integrity_baseline_invalid"' "$T/alerts-$kind/mcp-integrity-baseline-invalid.json" >/dev/null || { echo "FAIL: $kind baseline: no invalid alert"; exit 1; }
+done
+echo "PASS: mcp-integrity missing/empty/malformed baseline is non-ok, tamper alerts, baseline never auto-created"
