@@ -235,8 +235,8 @@ class ProjectorStatusBranches(unittest.TestCase):
         t = result["tracks"][0]
         self.assertEqual(t["status"], "blocked")
 
-    def test_precedence_activation_outranks_freeze_and_commit(self) -> None:
-        """Both a freeze record AND a matching owner activation event -> DONE.
+    def test_owner_activation_event_is_not_read(self) -> None:
+        """A matching agent=owner activation.grant event is unsigned and no longer counts (freeze record -> active).
 
         Activation is the final gate; once granted, a track should read as
         fully done even though its freeze record file is still present.
@@ -261,7 +261,7 @@ class ProjectorStatusBranches(unittest.TestCase):
                 "name": "Activated track",
                 "order": 1,
                 "detection": {
-                    "commit_match": ["ship the done thing"],
+                    "commit_match": ["never-matches"],
                     "freeze_record": "FREEZE-ACTIVATED.md",
                     "activation_subject": "test-track-activation-subject",
                 },
@@ -269,7 +269,8 @@ class ProjectorStatusBranches(unittest.TestCase):
         ]
         result = self._project(tracks)
         t = result["tracks"][0]
-        self.assertEqual(t["status"], "done")
+        # unsigned owner-agent event is forgeable: it must not produce done/ACTIVATED
+        self.assertEqual(t["status"], "active")
 
     def test_activation_event_from_non_owner_agent_does_not_count(self) -> None:
         freeze_path = self.tmp / "FREEZE-NOTOWNER.md"
