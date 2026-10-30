@@ -1069,13 +1069,35 @@ memory; that is why another lane committed straight into the main checkout. They
 - Do not start a rebuild while a database job (backfill, reconcile, migration) is running; a rebuild
   restarts AIDB/Postgres mid-job.
 
-### 6. MVP honesty
+### 6. Close the loop: enable, rebuild, validate, review
+Owner directive 2026-10-29: the dev loop is prompt -> PRD -> plan -> code -> review -> implement -> enable ->
+rebuild -> validate -> review, with commit, review and improvement loops throughout. Code review before merge
+checks the diff; it cannot show that a feature works, because a feature that was never turned on was never
+tested. A slice is finished only after these four steps, in this order:
+1. Enable: the slice (or an immediate follow-up PR) turns the feature on for its target host in tracked Nix.
+   A feature merged default-off is not finished until its enable lands. A feature that stays off by design
+   (opt-in) needs a recorded owner decision with the reason, e.g. `enable: null` in
+   `config/activation-manifest.json`.
+2. Rebuild: the owner runs `scripts/maintenance/aq-deploy-current` (fetch, ff-only pull, deploy guard, system
+   and home-manager switch, then verifies the running revision equals `origin/main`). Flake lock refreshes
+   arrive only as flake-refresh PRs; never run `nix flake update` in the main checkout. Runtime jobs never
+   write tracked files.
+3. Validate: on the enabled, rebuilt system, record a Definition-of-Done attestation with real commands and
+   output for "turned on" and "validated", plus the observable and intervenable surfaces. A dimension without
+   evidence is `MISSING:` or a dated deferral, never a pass.
+4. Review: a lane other than the author reviews the attestation against the live system, not the diff, and its
+   verdict is stored with the attestation. Then only the owner grants activation (owner-signed grant,
+   `.agents/plans/system-integrity-recovery/ACTIVATION-PIPELINE.md`); agents never write grants.
+- Run tools and delegations from code at `origin/main`. A stale checkout silently runs old code and old
+  guards (2026-10-29: the main checkout was 16 merged PRs behind and enforced an older Codex budget).
+
+### 7. MVP honesty
 - Enabled is not done: turning a feature on starts its validation, it does not finish it.
 - No derelict capabilities: every tool/script/service is wired into a live path, discoverable, and used,
   or carries a written reason.
 - Archive only when a parity equivalent exists; unused-but-intended work gets wired, not discarded.
 
-### 7. Discover before building
+### 8. Discover before building
 - `docs/agent-guides/CAPABILITY-INDEX.md` / `scripts/ai/aq-capability-index` (what exists, by tag),
   `scripts/ai/aq-graph-query search|symbol|impact <x>` (whole-system knowledge graph),
   `scripts/ai/aq-wiki --section <name>` (subsystem wiki), `aq-hints` (coordinator hints).

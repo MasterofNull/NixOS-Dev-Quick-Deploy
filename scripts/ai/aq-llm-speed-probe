@@ -12,6 +12,12 @@ AQ_SPEED_MIN_TOKPS (3.2), AQ_SPEED_MODEL_GB (22.5), AQ_SPEED_MAJFAULT_RISE (2000
 Test overrides: AQ_PROBE_SYSFS_ROOT, AQ_PROBE_CPUINFO, AQ_PROBE_MEMINFO, AQ_PROBE_VMSTAT,
 AQ_PROBE_POWER_PROFILE, AQ_PROBE_NO_PGREP=1.
 """
+try:  # aq-usage-hook
+    import importlib.util as _aqu, os as _aqo
+    _aqs = _aqu.spec_from_file_location("aq_usage", _aqo.path.join(_aqo.path.dirname(_aqo.path.realpath(__file__)), "lib", "aq_usage.py"))
+    _aqm = _aqu.module_from_spec(_aqs); _aqs.loader.exec_module(_aqm); _aqm.record(__file__, __name__)
+except Exception:
+    pass
 import json
 import os
 import subprocess

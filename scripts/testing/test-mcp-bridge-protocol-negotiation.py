@@ -25,12 +25,25 @@ def init(version):
 
 class TestNegotiation(unittest.TestCase):
     def test_echoes_supported_versions(self):
-        for v in ("2025-06-18", "2025-03-26", "2024-11-05", "2026-07-28"):
+        for v in ("2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05", "2026-07-28"):
             self.assertEqual(init(v)["protocolVersion"], v)
 
-    def test_unknown_versions_get_newest(self):
+    def test_unknown_versions_get_client_safe_fallback(self):
         for v in ("2099-01-01", "2023-01-01", "garbage", None):
-            self.assertEqual(init(v)["protocolVersion"], "2026-07-28")
+            self.assertEqual(init(v)["protocolVersion"], "2025-06-18")
+
+    def test_no_hardcoded_version_in_responses(self):
+        # discover must reflect the negotiated version, never a literal.
+        for v, want in (("2025-06-18", "2025-06-18"), ("2099-01-01", "2025-06-18"),
+                        ("2026-07-28", "2026-07-28")):
+            r = rpc([{"jsonrpc": "2.0", "id": 1, "method": "initialize",
+                      "params": {"protocolVersion": v}},
+                     {"jsonrpc": "2.0", "id": 2, "method": "server/discover",
+                      "params": {}}])
+            self.assertEqual(r[0]["result"]["protocolVersion"], want)
+            self.assertEqual(r[1]["result"]["protocolVersion"], want)
+        src = BRIDGE.read_text()
+        self.assertEqual(src.count('"protocolVersion": "'), 0)
 
     def test_cache_hints_only_for_2026(self):
         self.assertIn("cacheScope", init("2026-07-28")["capabilities"]["tools"])
