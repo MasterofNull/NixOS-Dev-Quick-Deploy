@@ -1706,8 +1706,12 @@ def _error(req_id, code: int, message: str):
 
 
 # Newest first. Per the MCP lifecycle spec the server echoes the client's
-# requested version when supported, else answers with its newest version.
-SUPPORTED_PROTOCOL_VERSIONS = ("2026-07-28", "2025-06-18", "2025-03-26", "2024-11-05")
+# requested version when supported; otherwise it answers with another version
+# it supports. The fallback must be a version shipping clients accept: answering
+# with 2026-07-28 made Claude Code drop the connection ("Server's protocol
+# version is not supported"). 2026-07-28 is only ever echoed on explicit request.
+SUPPORTED_PROTOCOL_VERSIONS = ("2026-07-28", "2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05")
+FALLBACK_PROTOCOL_VERSION = "2025-06-18"
 _STRUCTURED_CONTENT_MIN = "2025-06-18"  # structuredContent introduced in this revision
 _CACHE_HINTS_VERSION = "2026-07-28"  # cacheScope/ttlMs capability hints
 
@@ -1716,11 +1720,11 @@ def _negotiate_protocol_version(params) -> str:
     requested = params.get("protocolVersion") if isinstance(params, dict) else None
     if isinstance(requested, str) and requested in SUPPORTED_PROTOCOL_VERSIONS:
         return requested
-    return SUPPORTED_PROTOCOL_VERSIONS[0]
+    return FALLBACK_PROTOCOL_VERSION
 
 
 def main():
-    negotiated = SUPPORTED_PROTOCOL_VERSIONS[0]
+    negotiated = FALLBACK_PROTOCOL_VERSION
     for line in sys.stdin:
         line = line.strip()
         if not line:
@@ -1746,9 +1750,12 @@ def main():
             })
         elif method in ("server/discover", "tools/discover"):
             _respond(req_id, {
-                "protocolVersion": "2026-07-28",
+                "protocolVersion": negotiated,
                 "server": {"name": "hybrid-coordinator-bridge", "version": "2.0"},
-                "capabilities": {"tools": {"cacheScope": "session", "ttlMs": 300000}},
+                "capabilities": {"tools": (
+                    {"cacheScope": "session", "ttlMs": 300000}
+                    if negotiated >= _CACHE_HINTS_VERSION else {}
+                )},
                 "tools": sorted(TOOLS, key=lambda t: t.get("name", "")),
             })
         elif method == "tools/list":
