@@ -201,11 +201,15 @@ async def get_feedback_variant_stats(tag: str, days: Optional[int] = None) -> Di
 # PRSI Gap Sync
 # ---------------------------------------------------------------------------
 
+_gap_sync_last_error: Optional[str] = None
+
+
 async def sync_query_gaps_to_jsonl(
     jsonl_path: str = "/var/log/nixos-ai-stack/query-gaps.jsonl",
     limit: int = 200,
 ) -> int:
     """Export top recurring query gaps from PostgreSQL to JSONL consumed by hints_engine."""
+    global _gap_sync_last_error
     if _postgres is None:
         return 0
     try:
@@ -230,10 +234,16 @@ async def sync_query_gaps_to_jsonl(
                     "avg_score": float(row.get("avg_score") or 0),
                 }) + "\n")
         tmp.replace(path)
+        if _gap_sync_last_error is not None:
+            logger.info("gap_sync_recovered after=%s", _gap_sync_last_error)
+            _gap_sync_last_error = None
         logger.info("gap_sync_complete written=%d path=%s", len(rows), jsonl_path)
         return len(rows)
     except Exception as exc:
-        logger.warning("sync_query_gaps_failed error=%s", exc)
+        # 5-minute loop: warn on first occurrence of an error, then stay quiet until it changes or clears.
+        if _gap_sync_last_error != str(exc):
+            logger.warning("sync_query_gaps_failed error=%s", exc)
+            _gap_sync_last_error = str(exc)
         return 0
 
 

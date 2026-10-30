@@ -179,11 +179,18 @@
     cfg.deployment.mutableSpaces.programWritablePaths
     ++ [mutableStateDir mutableOptimizerDir mutableLogDir]
   );
-  mutableUserServicePaths = lib.unique [mutableOptimizerDir mutableLogDir];
+  # The AI-stack role (nix/modules/services/mcp-servers.nix) owns mutableLogDir as
+  # root:ai-stack 0770 so service UIDs can write; declaring it here too yields duplicate
+  # tmpfiles lines where the first one wins by ordering luck (Rule 19).
+  mutableUserServicePaths = lib.unique (
+    [mutableOptimizerDir]
+    ++ lib.optional (!cfg.roles.aiStack.enable) mutableLogDir
+  );
   mutableRootProgramPaths =
     builtins.filter (
       path:
         !(builtins.elem path mutableUserServicePaths)
+        && !(cfg.roles.aiStack.enable && path == mutableLogDir)
         && !(builtins.elem path mutableSharedTraversePaths)
     )
     mutableProgramPaths;
