@@ -42,10 +42,35 @@ VERBS = ("start", "stop", "restart")
 TIMESTAMP_RE = re.compile(r'(?<![\w])(!?)timestamp_timeout(?![\w])(?:\s*([+-]?=)\s*"?([^\s,"]*)"?)?')
 
 
+def logical_lines(sudoers: str) -> list[str]:
+    """Join backslash-continued lines (odd trailing backslashes) into logical lines.
+
+    A comment line that absorbed continuation lines also yields each continued
+    piece as its own line, so nothing hidden behind a `#...\\` can escape the
+    scanners (conservative: false rejects are acceptable, false passes are not).
+    """
+    out: list[str] = []
+    pieces: list[str] = []
+    for raw in sudoers.splitlines():
+        trailing = len(raw) - len(raw.rstrip("\\"))
+        pieces.append(raw[:-1] if trailing % 2 == 1 else raw)
+        if trailing % 2 == 1:
+            continue
+        out.append("".join(pieces))
+        if len(pieces) > 1 and pieces[0].lstrip().startswith("#"):
+            out.extend(pieces[1:])
+        pieces = []
+    if pieces:
+        out.append("".join(pieces))
+        if len(pieces) > 1 and pieces[0].lstrip().startswith("#"):
+            out.extend(pieces[1:])
+    return out
+
+
 def parse_nopasswd(sudoers: str) -> list[tuple[str, str]]:
     """(principal, command) for every NOPASSWD entry in every non-comment line."""
     entries = []
-    for line in sudoers.splitlines():
+    for line in logical_lines(sudoers):
         if line.lstrip().startswith("#") or "NOPASSWD" not in line:
             continue
         principal = line.split()[0]
@@ -61,7 +86,7 @@ def timestamp_values(sudoers: str) -> list[str]:
     flag yield a marker string that is never "0".
     """
     values = []
-    for line in sudoers.splitlines():
+    for line in logical_lines(sudoers):
         if not line.lstrip().startswith("Defaults"):
             continue
         for neg, op, val in TIMESTAMP_RE.findall(line):

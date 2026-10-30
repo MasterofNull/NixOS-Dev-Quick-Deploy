@@ -207,6 +207,34 @@ def check_allowlist_logic() -> None:
             check_sudoers(base + override + "\n" + line(*good_rules), units, w),
             f"override must be rejected: {override}",
         )
+    bs = chr(92)
+    continued = {
+        "continued override": f"Defaults timestamp_timeout=0,{bs}\n    timestamp_timeout=5\n",
+        "continued scoped override": f"Defaults:hyperd {bs}\ntimestamp_timeout=5\n",
+        "continued negation": f"Defaults env_reset, {bs}\n  !timestamp_timeout\n",
+        "split token": f"Defaults time{bs}\nstamp_timeout=5\n",
+        "hidden behind comment continuation": f"# note {bs}\nDefaults timestamp_timeout=5\n",
+    }
+    for name, text in continued.items():
+        assert_true(
+            check_sudoers(base + text + line(*good_rules), units, w), f"{name} must be rejected"
+        )
+    split_rule = (
+        f"hyperd     ALL=(ALL:ALL)    NOPASSWD: {good_rules[0]},{bs}\n"
+        f"    NOPASSWD: /nix/store/{h}-bash-5/bin/bash\n"
+    )
+    assert_true(
+        check_sudoers(base + split_rule + line(*good_rules[1:]), units, w),
+        "an unlisted command on a continuation line must fail the allowlist",
+    )
+    assert_true(
+        not check_sudoers(
+            base + f"hyperd     ALL=(ALL:ALL)    NOPASSWD: {good_rules[0]},{bs}\n    NOPASSWD: {good_rules[1]}\n"
+            + line(*good_rules[2:]),
+            units, w,
+        ),
+        "a legitimately continued allowlisted rule still passes",
+    )
     assert_true(
         not check_sudoers("Defaults env_reset, timestamp_timeout = 0\n" + line(*good_rules), units, w),
         "spaced `= 0` is still zero",
