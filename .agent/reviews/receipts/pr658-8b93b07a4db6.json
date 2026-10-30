@@ -1,0 +1,12 @@
+{
+  "schema": 1,
+  "pr": 658,
+  "reviewed_head_sha": "8b93b07a4db68a88667e47338fdb8b7a9f5d8ceb",
+  "run_id": "local-20261029-225753-nvsssa",
+  "reviewer_lane": "local-direct",
+  "author_lane": "claude",
+  "verdict": "PASS",
+  "output_file": ".agents/delegation/outputs/local-20261029-225753-nvsssa.log",
+  "output_sha256": "d6838dfacce468fc326a30dea94390f1ece7f6216e8d8fae394056cffd3c294c",
+  "created_at": "2026-10-30T06:08:24Z"
+}
