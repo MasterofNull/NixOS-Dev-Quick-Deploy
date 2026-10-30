@@ -1,5 +1,23 @@
 # Sudo owner boundary: remove root-equivalent NOPASSWD rules (2026-10-29)
 
+## Objective
+Remove the root-equivalent NOPASSWD sudo rules that let agents running as the owner (`hyperd`) obtain root, so an owner-only signing/activation boundary can exist (details under Problem and Before / after below).
+
+## Workflow/Session IDs
+- Branch: `fix/sudo-owner-boundary`
+- No review run id recorded in this doc at time of writing.
+
+## Delegation Decision
+Implemented by Claude Sonnet (Rule 17 cheapest eligible), orchestrated by Claude Opus; review by local Qwen.
+
+## Commands Executed
+- `sudo -n -l` (to enumerate the NOPASSWD rules, before the change)
+- `nix eval --raw .#nixosConfigurations.hyperd-ai-dev.config.security.sudo.configFile` (11 s)
+- Build of the `aq-llama-set-active-model` wrapper derivation (shellcheck passes)
+- `rg` for `timestamp_type` / `!tty_tickets` (none set anywhere)
+- Scans of Exec{Start,Stop,Reload}{,Pre,Post} hooks of the first 11 dashboard units for `/home` / `Documents`
+- No rebuild or sudo run was performed.
+
 ## Problem
 Agents run as the owner's user (`hyperd`). `sudo -n -l` showed NOPASSWD for six broad rules, each root-equivalent for a same-user process: the checkout's `nixos-quick-deploy.sh *` and `scripts/ai/aq-model-switch *` (agent-editable files run as root), `nixos-rebuild *` (builds an agent-editable flake), `systemctl *` (can link and start arbitrary units), `journalctl *` (pager shell-out), `flatpak *` (system installs run arbitrary code as root). A second rule set in `command-center-dashboard.nix` also applies to `hyperd` (`svcUser = primaryUser`) and contained `ln -sf /var/lib/llama-cpp/models/* .../active.gguf` and `iptables -L *`, both exploitable through the `*` (e.g. `ln -sf <model> -t /etc ...`, `iptables -L x -A ...`). `Defaults timestamp_timeout=60` gave any same-user process a long-lived root ticket. No owner-only signing boundary could exist while this held.
 
@@ -42,7 +60,7 @@ Root cause note: `base.nix` set `extraConfig = lib.mkDefault "Defaults timestamp
 | Interactive `sudo nixos-rebuild/journalctl` in `nix/home/base.nix` aliases (`nrs`, `nrb`, `nrd`), `lib/l1-infra/deploy/commands/*.sh`, `recover.sh`, `manage-dashboard-collectors.sh --sudo`, `agent-driver.py:43` | broad rules (convenience only) | now prompt |
 | `ai-stack/deployment/auto_deployer.py:322,474` `sudo nixos-rebuild switch [--rollback]` (no `-n`) | nixos-rebuild | now requires a password; unattended auto-deploy cannot run (intended) |
 
-## Evaluation
+## Validation Evidence
 `nix eval --raw .#nixosConfigurations.hyperd-ai-dev.config.security.sudo.configFile` (11 s) now contains `Defaults timestamp_timeout=0` (no credential caching: agents launched from the owner's terminal share its tty ticket), `Defaults timestamp_type=tty` and, for `hyperd`, only these NOPASSWD commands: nft, `systemctl {start,stop,restart,is-active} crowdsec-firewall-bouncer`, `systemctl {restart,is-active} firewall`, `systemctl is-active nftables`, cscli, `iptables -L -n -v`, `systemctl {restart,is-active} llama-cpp`, `systemctl {start,stop,restart} ai-local-training-loop.service`, `aq-llama-set-active-model`, plus the per-unit dashboard rules below (all `/nix/store/...`). No nixos-rebuild, journalctl, flatpak, nixos-quick-deploy, aq-model-switch, or `systemctl *`. The wrapper derivation builds (shellcheck passes). Not tested live (no rebuild/sudo run).
 
 ## Dashboard per-unit rules
@@ -84,5 +102,13 @@ Net: nothing remaining can write the Nix store/sudoers or run checkout code as r
 5. Dashboard `NoNewPrivileges = false` and `/run/sudo/ts` write access remain; revisit once dashboard needs no sudo.
 6. Verify on the host that sudo matches `/run/current-system/sw/bin/aq-llama-set-active-model` against the store-path rule (sudo compares dev/inode for symlinked paths); if not, call the store path via env.
 
-## Rollback
+## Rollback Plan
 Revert the commit and `nrs`. Emergency: the `wheel` password sudo remains available throughout.
+
+## Residual Risk
+- Not tested live: no rebuild or sudo run was performed; evidence is a Nix eval of the generated sudoers plus a wrapper build.
+- The remaining open items are the numbered Follow-ups above: `nft` / `cscli` args, the sops age key readable by agents, dashboard `NoNewPrivileges = false`, and the sudo store-path inode match for `aq-llama-set-active-model` (item 6).
+- Unattended flows that relied on the broad rules (auto-deploy, model fetch trigger, previous-boot journal diagnostics) now degrade or prompt, as listed in the call-site inventory.
+
+## Hint Feedback
+No aq-hints used for this slice.
