@@ -39,7 +39,7 @@ EXACT = [
     ("iptables-", "iptables", "-L -n -v"),
 ]
 VERBS = ("start", "stop", "restart")
-TIMESTAMP_RE = re.compile(r"^\s*Defaults\S*\s+(?:[^#\n]*,)?\s*timestamp_timeout=(\S+)", re.M)
+TIMESTAMP_RE = re.compile(r'(?<![\w])(!?)timestamp_timeout(?![\w])(?:\s*([+-]?=)\s*"?([^\s,"]*)"?)?')
 
 
 def parse_nopasswd(sudoers: str) -> list[tuple[str, str]]:
@@ -54,10 +54,30 @@ def parse_nopasswd(sudoers: str) -> list[tuple[str, str]]:
     return entries
 
 
+def timestamp_values(sudoers: str) -> list[str]:
+    """Every timestamp_timeout setting on any Defaults line (any scope), as text.
+
+    Plain `=` assignments yield the value; negation (`!`), `+=`/`-=` and a bare
+    flag yield a marker string that is never "0".
+    """
+    values = []
+    for line in sudoers.splitlines():
+        if not line.lstrip().startswith("Defaults"):
+            continue
+        for neg, op, val in TIMESTAMP_RE.findall(line):
+            if neg:
+                values.append("!negated")
+            elif op != "=":
+                values.append(f"bare-or-{op or 'flag'}")
+            else:
+                values.append(val)
+    return values
+
+
 def check_sudoers(sudoers: str, units: list[str], wrappers: dict[str, str]) -> list[str]:
     """Return the list of violations (empty means the boundary holds)."""
     problems: list[str] = []
-    values = TIMESTAMP_RE.findall(sudoers)
+    values = timestamp_values(sudoers)
     if not values or any(v != "0" for v in values):
         problems.append(f"timestamp_timeout must be exactly 0 everywhere, got {values or 'unset'}")
 

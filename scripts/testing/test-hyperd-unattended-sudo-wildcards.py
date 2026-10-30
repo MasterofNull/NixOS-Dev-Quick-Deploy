@@ -189,6 +189,28 @@ def check_allowlist_logic() -> None:
         "a later timestamp_timeout override must be rejected",
     )
     assert_true(check_sudoers(base + line(*good_rules[:-1]), units, w), "lost dashboard rule must be reported")
+    ts_bad = [
+        "Defaults:hyperd timestamp_timeout = 5",
+        "Defaults timestamp_timeout =5",
+        "Defaults@host timestamp_timeout=5",
+        "Defaults>root timestamp_timeout = 5",
+        "Defaults!/bin/ls timestamp_timeout=5",
+        "Defaults env_reset, timestamp_timeout = 5",
+        "Defaults timestamp_timeout=-1",
+        "Defaults timestamp_timeout=0.5",
+        "Defaults !timestamp_timeout",
+        "Defaults timestamp_timeout",
+        'Defaults timestamp_timeout="5"',
+    ]
+    for override in ts_bad:
+        assert_true(
+            check_sudoers(base + override + "\n" + line(*good_rules), units, w),
+            f"override must be rejected: {override}",
+        )
+    assert_true(
+        not check_sudoers("Defaults env_reset, timestamp_timeout = 0\n" + line(*good_rules), units, w),
+        "spaced `= 0` is still zero",
+    )
     print("PASS: allowlist logic accepts the approved set and rejects drift (fixtures)")
 
 
