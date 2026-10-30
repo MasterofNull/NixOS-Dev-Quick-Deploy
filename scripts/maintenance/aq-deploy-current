@@ -1,0 +1,112 @@
+#!/usr/bin/env bash
+# aq-deploy-current — one owner-run command: bring this machine to exactly origin/main
+# (NixOS system + home-manager), then prove it. Closes the "system rebuild" stage of the dev loop.
+# Incident 2026-10: primary checkout sat 3 days / 16 merged PRs behind origin/main, the running
+# system was `eb2f97db-dirty`, and an in-place `nix flake update` left an uncommitted flake.lock.
+#
+# Steps: primary-checkout + branch-main check -> fetch -> dirty build-affecting files STOP (never
+# auto-discarded; prints archive + restore commands) -> ff-only pull -> check-deploy-source.sh +
+# pre-rebuild-preflight.sh (as `nrs`) -> [--dry-run stops after dry-build/build] ->
+# sudo nixos-rebuild switch -> guarded home-manager switch (as `hms`) -> verify configuration
+# revision == HEAD and not -dirty, and list working-tree-backed units not restarted by the switch.
+#
+# Usage: scripts/maintenance/aq-deploy-current [--dry-run] [--help]
+# Run as the owner (not root); sudo is invoked only for nixos-rebuild switch.
+set -euo pipefail
+
+TAG="[aq-deploy-current]"
+DRY=0
+usage() { sed -n '2,13p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; echo; echo "Flags: --dry-run  build only, print what a real run would switch;  --help"; }
+die() { echo "$TAG STOP: $*" >&2; exit 1; }
+
+for a in "$@"; do
+  case "$a" in
+    --dry-run) DRY=1 ;;
+    --help|-h) usage; exit 0 ;;
+    *) echo "$TAG unknown option: $a" >&2; usage >&2; exit 2 ;;
+  esac
+done
+
+SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO="$(git -C "$SELF_DIR" rev-parse --show-toplevel)" || die "not inside a git checkout"
+cd "$REPO"
+
+# 1. primary checkout only
+if [[ "$(git rev-parse --absolute-git-dir)" != "$(cd "$(git rev-parse --git-common-dir)" && pwd)" ]]; then
+  die "$REPO is a linked worktree; run this from the primary checkout the flake is deployed from"
+fi
+
+# 2. fetch + branch
+git fetch origin || die "git fetch origin failed; currency cannot be proven"
+branch="$(git symbolic-ref -q --short HEAD || echo DETACHED)"
+[[ "$branch" == "main" ]] || die "on '$branch', not main (git switch main)"
+
+# 3. dirty tracked files; inert-path rule is read from check-deploy-source.sh (single source)
+inert_re="$(sed -n "s/^inert_re='\(.*\)'\$/\1/p" scripts/governance/check-deploy-source.sh)"
+[[ -n "$inert_re" ]] || die "could not read inert_re from scripts/governance/check-deploy-source.sh"
+build_dirty=()
+while IFS= read -r -d '' f; do
+  if [[ "$f" != nix/* && "$f" =~ $inert_re ]]; then continue; fi
+  build_dirty+=("$f")
+done < <(git diff --name-only -z HEAD)
+if ((${#build_dirty[@]})); then
+  stamp="$(date +%Y%m%d)"
+  echo "$TAG STOP: build-affecting tracked files are dirty. Nothing was discarded. For each, run:" >&2
+  echo "mkdir -p .agents/archive" >&2
+  for f in "${build_dirty[@]}"; do
+    printf 'cp -p %q .agents/archive/%s-%q && git restore %q\n' "$f" "$stamp" "$(basename "$f")" "$f" >&2
+  done
+  echo "Then re-run scripts/maintenance/aq-deploy-current. (Lock updates belong in a flake-refresh PR.)" >&2
+  exit 1
+fi
+
+# 4. fast-forward
+git pull --ff-only origin main || die "git pull --ff-only origin main failed (local main has diverged?)"
+
+# 5. guards exactly as nrs
+scripts/governance/check-deploy-source.sh || die "check-deploy-source.sh failed"
+scripts/governance/pre-rebuild-preflight.sh || die "pre-rebuild-preflight.sh failed"
+
+# 6. dry run
+if ((DRY)); then
+  nixos-rebuild dry-build --flake .#hyperd-ai-dev
+  nix build --no-link --print-out-paths ".#homeConfigurations.hyperd.activationPackage"
+  echo "$TAG DRY RUN OK. A real run would: sudo nixos-rebuild switch --flake .#hyperd-ai-dev;"
+  echo "$TAG   home-manager switch --flake .#hyperd; then verify revision == $(git rev-parse --short=8 HEAD)."
+  exit 0
+fi
+
+# 7. real switch
+started="$(date +%s)"
+sudo nixos-rebuild switch --flake .#hyperd-ai-dev
+bash scripts/governance/check-deploy-source.sh "$REPO"
+bash scripts/governance/check-checkout-fresh.sh
+home-manager switch --flake .#hyperd
+
+# 8. verify
+rc=0
+want="$(git rev-parse HEAD)"
+got="$(nixos-version --configuration-revision 2>/dev/null || true)"
+if [[ -n "$got" && "$got" == "$want" && "$got" != *-dirty ]]; then
+  echo "$TAG PASS: configuration revision $got == HEAD $want"
+else
+  echo "$TAG FAIL: configuration revision '${got:-<empty>}' != HEAD '$want' (or -dirty)" >&2
+  rc=1
+fi
+
+stale=()
+while read -r unit _; do
+  [[ -n "$unit" ]] || continue
+  wd="$(systemctl show -p WorkingDirectory --value "$unit" 2>/dev/null || true)"
+  es="$(systemctl show -p ExecStart --value "$unit" 2>/dev/null || true)"
+  [[ "$wd" == "$REPO"* || "$es" == *"$REPO"* ]] || continue
+  since="$(systemctl show -p ActiveEnterTimestamp --value "$unit" 2>/dev/null || true)"
+  since_s="$(date -d "$since" +%s 2>/dev/null || echo 0)"
+  ((since_s < started)) && stale+=("$unit")
+done < <({ echo command-center-dashboard-api.service; systemctl list-units --type=service --state=running --plain --no-legend 2>/dev/null; } | sort -u)
+if ((${#stale[@]})); then
+  echo "$TAG These units run code from the working tree and were not restarted by the switch:"
+  echo "sudo systemctl restart ${stale[*]}"
+fi
+
+((rc == 0)) || exit 1
