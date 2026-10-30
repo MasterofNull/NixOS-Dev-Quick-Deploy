@@ -3143,9 +3143,10 @@ def _check_factory_readiness_preflight(ctx: RunContext) -> list[CheckResult]:
     if not checker.is_file():
         return [failed(5, "0.10.50", description, "focused test missing")]
     try:
+        # ~120 s wall when llama.cpp is generating (2026-10-29); idle runtime unprofiled.
         probe = subprocess.run(
             ["python3", str(checker)], cwd=ctx.repo_root,
-            capture_output=True, text=True, timeout=120,
+            capture_output=True, text=True, timeout=300,
         )
         if probe.returncode:
             return [failed(5, "0.10.50", description, f"fixture exit {probe.returncode}")]
