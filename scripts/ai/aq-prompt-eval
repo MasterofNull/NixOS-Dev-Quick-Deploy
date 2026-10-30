@@ -2,13 +2,14 @@
 """
 aq-prompt-eval — Phase 18.3.2
 Evaluates each prompt in ai-stack/prompts/registry.yaml against a fixed set of
-canonical test cases, then updates mean_score + last_evaluated in-place.
+canonical test cases, then records mean_score + last_evaluated in a gitignored
+state file (registry.yaml stays static; readers merge the state file).
 
 Design:
   - Renders each template with typed test variables (Jinja2 {{ var }} syntax)
   - Calls the llama.cpp chat completions API for each rendered prompt
   - Scores responses against keyword assertions (any / all / forbidden)
-  - Writes mean_score + last_evaluated back to registry.yaml (preserves comments)
+  - Writes mean_score + last_evaluated to eval-state.json beside registry.yaml
   - Prompts tagged 'code_generation' are sent a meta-quality probe (no aider needed)
 
 Usage:
@@ -17,6 +18,7 @@ Usage:
 Environment:
   LLAMA_URL        llama.cpp base URL (default from service-endpoints.sh conventions)
   REGISTRY_PATH    Override path to registry.yaml
+  AQ_PROMPT_EVAL_STATE  Override path to eval-state.json (default: beside registry.yaml)
 """
 try:  # aq-usage-hook
     import importlib.util as _aqu, os as _aqo
@@ -494,41 +496,27 @@ def score_response(test: TestCase, response: str) -> Tuple[bool, List[str]]:
 
 
 # ---------------------------------------------------------------------------
-# YAML in-place update (preserves comments and formatting)
+# Eval state (runtime-mutable scores live outside the tracked registry)
 # ---------------------------------------------------------------------------
 
 
-def update_registry_entry(registry_text: str, prompt_id: str, mean_score: float, eval_date: str) -> str:
-    """
-    Find the entry block for prompt_id and update mean_score + last_evaluated.
-    Uses regex to avoid full YAML reformat (preserving comments and ordering).
-    """
-    # Locate the entry block: starts at "  - id: <prompt_id>" and ends before the next "  - id:"
-    pattern = re.compile(
-        r"(  - id: " + re.escape(prompt_id) + r"\b.*?)"
-        r"(  - id:|\Z)",
-        re.DOTALL,
-    )
-    match = pattern.search(registry_text)
-    if not match:
-        return registry_text  # entry not found — no-op
+def eval_state_path(registry_path: Path) -> Path:
+    override = os.getenv("AQ_PROMPT_EVAL_STATE")
+    return Path(override) if override else registry_path.with_name("eval-state.json")
 
-    block = match.group(1)
 
-    # Replace mean_score
-    block = re.sub(
-        r"(mean_score:\s*)[\d.]+\b",
-        lambda m: f"{m.group(1)}{mean_score:.3f}",
-        block,
-    )
-    # Replace last_evaluated (null or a date string)
-    block = re.sub(
-        r"(last_evaluated:\s*)(?:null|\d{4}-\d{2}-\d{2})",
-        lambda m: f"{m.group(1)}{eval_date}",
-        block,
-    )
+def load_eval_state(state_path: Path) -> dict:
+    try:
+        data = json.loads(state_path.read_text(encoding="utf-8"))
+        return data if isinstance(data, dict) else {}
+    except (OSError, ValueError):
+        return {}
 
-    return registry_text[: match.start(1)] + block + registry_text[match.start(2):]
+
+def write_eval_state(state_path: Path, state: dict) -> None:
+    tmp = state_path.with_name(state_path.name + ".tmp")
+    tmp.write_text(json.dumps(state, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    os.replace(tmp, state_path)
 
 
 # ---------------------------------------------------------------------------
@@ -563,6 +551,9 @@ def run_eval(
         return 1
 
     today = date.today().isoformat()
+    state_path = eval_state_path(registry_path)
+    eval_state = load_eval_state(state_path)
+    state_dirty = False
     results_summary: List[dict] = []
     exit_code = 0
 
@@ -656,14 +647,15 @@ def run_eval(
         })
 
         if not dry_run and mean_score is not None:
-            registry_text = update_registry_entry(registry_text, pid, mean_score, today)
+            eval_state[pid] = {"mean_score": round(mean_score, 3), "last_evaluated": today}
+            state_dirty = True
         elif transport_error:
             print(f"  SKIP  {pid:<40} registry update skipped due to runtime/transport errors")
 
     # Write back if not dry-run
-    if not dry_run and (not target_id or any(r["id"] == target_id for r in results_summary)):
-        registry_path.write_text(registry_text, encoding="utf-8")
-        print(f"\n  Registry updated: {registry_path}")
+    if not dry_run and state_dirty:
+        write_eval_state(state_path, eval_state)
+        print(f"\n  Eval state updated: {state_path}")
 
     # Summary table
     print(f"\n{'─'*60}")
@@ -680,7 +672,7 @@ def run_eval(
     overall = sum(completed_scores) / max(len(completed_scores), 1)
     print(f"\n  Overall: {overall:.1%} across {len(completed_scores)} completed prompts evaluated")
     if dry_run:
-        print("  [dry-run] registry.yaml NOT updated")
+        print("  [dry-run] eval state NOT updated")
 
     # Determine exit code holistically:
     # - transport_only: all errors were transport (e.g., switchboard restart), not logic failures

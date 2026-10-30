@@ -2162,14 +2162,29 @@ def read_prompt_registry() -> List[dict]:
             prompts.append(current)
         return prompts
 
+    def _merge_eval_state(prompts: List[dict]) -> List[dict]:
+        # Runtime scores live in eval-state.json (aq-prompt-eval); state wins over the static registry.
+        state_path = Path(os.getenv("AQ_PROMPT_EVAL_STATE", str(registry_path.with_name("eval-state.json"))))
+        try:
+            state = json.loads(state_path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return prompts
+        if not isinstance(state, dict):
+            return prompts
+        for entry in prompts:
+            override = state.get(entry.get("id"))
+            if isinstance(override, dict):
+                entry.update({k: v for k, v in override.items() if k in ("mean_score", "last_evaluated")})
+        return prompts
+
     try:
         import yaml  # type: ignore[import-untyped]
         with registry_path.open(encoding="utf-8") as fh:
             data = yaml.safe_load(fh)
-        return data.get("prompts", []) if data else []
+        return _merge_eval_state(data.get("prompts", []) if data else [])
     except Exception:
         try:
-            return _minimal_prompt_registry_fallback(registry_path)
+            return _merge_eval_state(_minimal_prompt_registry_fallback(registry_path))
         except Exception:
             return []
 

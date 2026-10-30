@@ -487,7 +487,8 @@
 
       # P1.7 (system-integrity-recovery): battery/AC-aware power policy + local-model
       # speed probe. Both default OFF (host-specific: only meaningful on a laptop running
-      # power-profiles-daemon); enable per host in deploy-options.local.nix.
+      # power-profiles-daemon); enable per host in the tracked nix/hosts/<host>/deploy-options.nix
+      # (deploy-options.local.nix is gitignored, so pure flake eval never sees it).
       powerPolicy = {
         acAwareProfile.enable = lib.mkOption {
           type = lib.types.bool;

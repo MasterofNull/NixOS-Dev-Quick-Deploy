@@ -43,7 +43,9 @@ in {
         description = "Apply AC-aware power profile (performance on AC, balanced on battery)";
         after = ["power-profiles-daemon.service"];
         wants = ["power-profiles-daemon.service"];
-        wantedBy = ["multi-user.target" "post-resume.target"];
+        # graphical.target, not multi-user.target: power-profiles-daemon is After=multi-user.target, and a
+        # target is implicitly After= every unit it wants, so multi-user -> apply -> ppd -> multi-user cycled.
+        wantedBy = ["graphical.target" "post-resume.target"];
         serviceConfig = {
           Type = "oneshot";
           ExecStart = "${applyProfile}";

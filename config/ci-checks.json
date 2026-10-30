@@ -229,6 +229,7 @@
       ],
       "ci_workflow": ".github/workflows/test.yml#syntax"
     },
+    {"id": "activation-manifest-tests", "cmd": "scripts/testing/test-activation-manifest.py", "paths": ["scripts/governance/check-activation-manifest.py", "scripts/governance/tier0.d/check-activation-manifest.sh", "config/activation-manifest.json", "scripts/testing/test-activation-manifest.py"], "needs": ["python3"], "ci_workflow": ".github/workflows/test.yml#syntax"},
     {
       "id": "rea-sandbox-tests",
       "cmd": "scripts/testing/test-rea-sandbox.py",
@@ -370,6 +371,21 @@
       "needs": [
         "python3",
         "bash"
+      ],
+      "ci_workflow": ".github/workflows/test.yml#syntax"
+    },
+    {
+      "id": "tier0-qa-admission-test",
+      "cmd": "scripts/testing/test-tier0-qa-admission.sh",
+      "paths": [
+        "scripts/testing/test-tier0-qa-admission.sh",
+        "scripts/governance/lib/qa-admission.sh",
+        "scripts/governance/tier0-validation-gate.sh",
+        "config/ci-checks.json"
+      ],
+      "needs": [
+        "bash",
+        "flock"
       ],
       "ci_workflow": ".github/workflows/test.yml#syntax"
     },
@@ -1426,6 +1442,8 @@
         "scripts/testing/test-prm-steering.py",
         "scripts/testing/test-progressive-disclosure-implementation.py",
         "scripts/testing/test-prompt-eval-transport-guard.py",
+        "scripts/testing/test-radar-ingest.py",
+        "scripts/testing/test-runtime-state-out-of-tracked-config.py",
         "scripts/testing/test-provider-projection.py",
         "scripts/testing/test-prsi-budget-reservation.py",
         "scripts/testing/test-prsi-queue-fail-closed.py",
@@ -1523,6 +1541,8 @@
         "scripts/testing/test-prm-steering.py",
         "scripts/testing/test-progressive-disclosure-implementation.py",
         "scripts/testing/test-prompt-eval-transport-guard.py",
+        "scripts/testing/test-radar-ingest.py",
+        "scripts/testing/test-runtime-state-out-of-tracked-config.py",
         "scripts/testing/test-provider-projection.py",
         "scripts/testing/test-prsi-budget-reservation.py",
         "scripts/testing/test-prsi-queue-fail-closed.py",
@@ -2382,10 +2402,6 @@
     {
       "script": "scripts/testing/test-query-performance.py",
       "reason": "fails on main: ModuleNotFoundError 'lib.search' (sys.path/dependency not available), tracked in backlog"
-    },
-    {
-      "script": "scripts/testing/test-radar-ingest.py",
-      "reason": "mutates tracked repo state when run in-tree (writes .agent/*, config/*, or sqlite files); needs tmpdir isolation before it can be a gate, tracked in backlog"
     },
     {
       "script": "scripts/testing/test-real-time-learning-integration.py",
