@@ -258,6 +258,33 @@ echo "case pip/cyclic-include-empty-report: exit=$PIPC_RC"
 pip_case constraint-only req_constraint_only "$PIP_EMPTY"
 [[ $PIPC_RC -eq 0 && "$PIPC_STATUS" == "ok" ]] || { echo "FAIL: constraint-only file needs no audited dep rc=$PIPC_RC"; echo "$PIPC_OUT"; exit 1; }
 echo "case pip/constraint-only-no-requirements: status=$PIPC_STATUS exit=$PIPC_RC"
+# Editable requirements count as requirements.
+req_editable() { printf -- '-e .\n--editable ./pkg\n-e git+https://example.invalid/x.git#egg=x\n' > "$1/requirements.txt"; }
+pip_case editable-empty req_editable "$PIP_EMPTY"
+[[ $PIPC_RC -eq 3 && "$PIPC_STATUS" != "ok" ]] || { echo "FAIL: editable-only file with empty report rc=$PIPC_RC"; echo "$PIPC_OUT"; exit 1; }
+echo "case pip/editable-only-empty-report: status=$PIPC_STATUS exit=$PIPC_RC"
+# npm project without a lockfile: incomplete unless on the reviewed allowlist.
+nl="$T/tc-nolock"; mkdir -p "$nl/repo/ai-stack/mcp-servers/svc" "$nl/repo/tools/ext"
+echo "x==1" > "$nl/repo/ai-stack/mcp-servers/svc/requirements.txt"
+echo '{"name":"ext"}' > "$nl/repo/tools/ext/package.json"
+nolock_run() { # <outdir> [allowlist-file]
+  NL_RC=0
+  NL_OUT="$(PATH="$T/tc-none-healthy/bin" env -u CI SECURITY_AUDIT_FAIL_ON_DEGRADED=1 PIP_BODY="$PIP_OK" NPM_BODY="$NPM_OK" DASH_BODY="$DASH_OK" SEC_BODY="$SEC_OK" \
+    DASHBOARD_SCAN_SCRIPT="$T/tc-none-healthy/dash.sh" SECRETS_ROTATION_PLAN_SCRIPT="$T/tc-none-healthy/sec.sh" ${2:+SECURITY_AUDIT_NPM_UNSCANNED_ALLOWLIST="$2"} \
+    "$(command -v bash)" "$ROOT/scripts/security/security-audit.sh" --repo-root "$nl/repo" --output-dir "$nl/$1" 2>&1)" || NL_RC=$?
+  NL_STATUS="$(jq -r .status "$nl/$1/latest-security-audit.json")"
+}
+nolock_run o1
+[[ $NL_RC -eq 3 && "$NL_STATUS" != "ok" ]] && jq -e '.degraded_reasons | map(test("tools/ext")) | any' "$nl/o1/latest-security-audit.json" >/dev/null || { echo "FAIL: npm project without lockfile rc=$NL_RC"; echo "$NL_OUT"; exit 1; }
+echo "case npm/no-lockfile-not-allowlisted: status=$NL_STATUS exit=$NL_RC"
+printf '{"allowed_unscanned":[{"path":"tools/ext","reason":"vendored template, lockfile not applicable"}]}' > "$nl/allow.json"
+nolock_run o2 "$nl/allow.json"
+[[ $NL_RC -eq 0 && "$NL_STATUS" == "ok" ]] || { echo "FAIL: allowlisted no-lockfile project rc=$NL_RC status=$NL_STATUS"; echo "$NL_OUT"; exit 1; }
+echo "case npm/no-lockfile-allowlisted: status=$NL_STATUS exit=$NL_RC"
+printf '{"allowed_unscanned":[{"path":"tools/ext"}]}' > "$nl/allow-noreason.json"
+nolock_run o3 "$nl/allow-noreason.json"
+[[ $NL_RC -eq 3 ]] || { echo "FAIL: allowlist entry without reason must not allow rc=$NL_RC"; echo "$NL_OUT"; exit 1; }
+echo "case npm/no-lockfile-entry-without-reason: exit=$NL_RC"
 # Stale report: scanners exit 0 writing nothing while a valid report from a previous run sits in the output dir.
 d="$T/tc-stale"; mkdir -p "$d/out"
 cp "$T/tc-none-healthy/out/latest-dashboard-security-scan.json" "$T/tc-none-healthy/out/latest-secrets-rotation-plan.json" "$d/out/"

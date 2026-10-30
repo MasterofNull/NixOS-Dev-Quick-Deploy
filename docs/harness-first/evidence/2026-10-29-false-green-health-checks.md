@@ -137,8 +137,17 @@ A file whose resolved count is >0 needs >=1 audited dependency. Regression cases
 allowlisted -> ok; allowlist entry without reason -> 3; `-r`-only file with empty report -> 3; `-r` with audited
 deps -> ok; cyclic includes with empty report -> 3; constraint-only file -> ok.
 
-Known residual, not changed: an npm project with `package.json` but no `package-lock.json` is skipped silently (it
-cannot be audited); degrading on it could permanently fail the live unit and needs an owner decision.
+Sixth review follow-up (npm without lockfile, editable requirements). Inventory of the package.json files the audit
+selects (git-tracked or untracked-unignored; saved in .agents/delegation/outputs/false-green-calib/npm-projects.txt):
+ai-stack/mcp-servers/hybrid-coordinator and templates/vscode/max-ss.cyberpunk-1.2.14-universal, both with a
+package-lock.json, so no project lacks a lockfile and the reviewed allowlist
+config/security-audit-npm-unscanned-allowlist.json ships empty (entries need a repo-relative `path` and a concrete
+`reason`). A package.json without a lockfile that is not on the list is a degraded reason naming the projects
+(blocking with CI=true), independent of whether npm is installed. This closes the residual noted below. Editable
+requirements (`-e`, `--editable`, `-e git+...`) now count as requirements. Cases: no-lockfile not allowlisted -> 3;
+allowlisted -> ok; allowlist entry without reason -> 3; editable-only file with empty report -> 3.
+
+Former residual (npm project without `package-lock.json` skipped silently) is closed by the sixth follow-up above.
 
 Dashboard and secrets scanner execution errors keep the presentation status `findings` (existing behavior) but
 still fail the unit via `coverage_incomplete`. A healthy baseline (all four scanners valid) stays `ok`, exit 0.

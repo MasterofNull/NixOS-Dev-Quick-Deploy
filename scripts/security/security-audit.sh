@@ -205,6 +205,8 @@ count_requirements() {
       inc="${inc%"${inc##*[![:space:]]}"}"
       [[ "${inc}" == /* ]] || inc="$(dirname "${file}")/${inc}"
       total=$((total + $(count_requirements "${inc}")))
+    elif [[ "${line}" =~ ^(-e|--editable)([[:space:]=]|$) || "${line}" =~ ^-e. ]]; then
+      total=$((total + 1))
     elif [[ "${line}" == -* ]]; then
       continue
     else
@@ -271,6 +273,26 @@ npm_total_critical=0
 npm_files_scanned=0
 npm_errors=0
 npm_unscanned=0
+
+# A package.json without package-lock.json cannot be audited. That is a coverage gap unless the
+# project is on the reviewed allowlist (entries need a repo-relative "path" and a concrete "reason").
+NPM_UNSCANNED_ALLOWLIST="${SECURITY_AUDIT_NPM_UNSCANNED_ALLOWLIST:-${REPO_ROOT}/config/security-audit-npm-unscanned-allowlist.json}"
+npm_unscanned_allow='[]'
+if [[ -f "${NPM_UNSCANNED_ALLOWLIST}" ]]; then
+  npm_unscanned_allow="$(jq -c '[.allowed_unscanned[]? | select((.path | type) == "string" and (.path | length) > 0 and (.reason | type) == "string" and (.reason | length) > 0) | .path]' "${NPM_UNSCANNED_ALLOWLIST}" 2>/dev/null || echo '[]')"
+  [[ -n "${npm_unscanned_allow}" ]] || npm_unscanned_allow='[]'
+fi
+npm_nolock=()
+for package_file in "${package_files[@]}"; do
+  dir="$(dirname "${package_file}")"
+  [[ -f "${dir}/package-lock.json" ]] && continue
+  rel_dir="${dir#"${REPO_ROOT}"}"
+  rel_dir="${rel_dir#/}"
+  [[ -n "${rel_dir}" ]] || rel_dir="."
+  if [[ "$(jq -n --argjson a "${npm_unscanned_allow}" --arg p "${rel_dir}" '$a | index($p) | not')" == "true" ]]; then
+    npm_nolock+=("${rel_dir}")
+  fi
+done
 
 if [[ "${npm_available}" == true ]]; then
   for package_file in "${package_files[@]}"; do
@@ -400,6 +422,7 @@ for r in "${invalid_reasons[@]+"${invalid_reasons[@]}"}"; do degraded_reasons+=(
 # dashboard "degraded" means one of its checks failed: the scan is incomplete. secrets
 # "planning_required" means the plan ran and rotation prerequisites are not met: a state finding,
 # not a coverage gap, so it stays informational.
+[[ ${#npm_nolock[@]} -gt 0 ]] && degraded_reasons+=("npm projects without package-lock.json not on the reviewed allowlist: $(IFS=', '; echo "${npm_nolock[*]}")")
 [[ "${dashboard_scan_status}" == "degraded" ]] && degraded_reasons+=("dashboard scan reported degraded (a check failed)")
 [[ "${dashboard_scan_status}" == "unavailable" ]] && degraded_reasons+=("dashboard scanner unavailable")
 [[ "${secrets_rotation_status}" == "unavailable" ]] && degraded_reasons+=("secrets rotation scanner unavailable")
@@ -559,6 +582,13 @@ if [[ ${pip_files_scanned} -eq 0 ]]; then
   fi
 fi
 for mm in "${mismatch_warnings[@]}"; do echo "WARNING: security exception package mismatch, not applied: ${mm}"; done
+if [[ ${#npm_nolock[@]} -gt 0 ]]; then
+  if [[ "${ci}" == "true" ]]; then
+    echo "BLOCKING: ${#npm_nolock[@]} npm projects without package-lock.json in CI"; blocking=$((blocking + 1))
+  else
+    echo "WARNING: ${#npm_nolock[@]} npm projects without package-lock.json (unscanned)"
+  fi
+fi
 if [[ ${pip_skip_files} -gt 0 ]]; then
   if [[ "${ci}" == "true" ]]; then
     echo "BLOCKING: pip-audit skipped unallowlisted dependencies in ${pip_skip_files} requirements files in CI"; blocking=$((blocking + 1))
