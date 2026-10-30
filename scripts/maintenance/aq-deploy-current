@@ -63,25 +63,30 @@ fi
 # 4. fast-forward
 git pull --ff-only origin main || die "git pull --ff-only origin main failed (local main has diverged?)"
 
+# Build from the committed HEAD, not the working tree: agent appends to tracked inert files
+# (issues-backlog.md, rsi-incidents.json, ...) would otherwise make the flake record `<rev>-dirty`.
+# Build-affecting dirt already STOPped above, so the pinned tree equals what the working tree builds.
+FLAKE="git+file://$REPO?rev=$(git rev-parse HEAD)"
+
 # 5. guards exactly as nrs
 scripts/governance/check-deploy-source.sh || die "check-deploy-source.sh failed"
 scripts/governance/pre-rebuild-preflight.sh || die "pre-rebuild-preflight.sh failed"
 
 # 6. dry run
 if ((DRY)); then
-  nixos-rebuild dry-build --flake .#hyperd-ai-dev
-  nix build --no-link --print-out-paths ".#homeConfigurations.hyperd.activationPackage"
-  echo "$TAG DRY RUN OK. A real run would: sudo nixos-rebuild switch --flake .#hyperd-ai-dev;"
+  nixos-rebuild dry-build --flake "$FLAKE#hyperd-ai-dev"
+  nix build --no-link --print-out-paths "$FLAKE#homeConfigurations.hyperd.activationPackage"
+  echo "$TAG DRY RUN OK. A real run would: sudo nixos-rebuild switch --flake <HEAD-pinned>#hyperd-ai-dev;"
   echo "$TAG   home-manager switch --flake .#hyperd; then verify revision == $(git rev-parse --short=8 HEAD)."
   exit 0
 fi
 
 # 7. real switch
 started="$(date +%s)"
-sudo nixos-rebuild switch --flake .#hyperd-ai-dev
+sudo nixos-rebuild switch --flake "$FLAKE#hyperd-ai-dev"
 bash scripts/governance/check-deploy-source.sh "$REPO"
 bash scripts/governance/check-checkout-fresh.sh
-home-manager switch --flake .#hyperd
+home-manager switch --flake "$FLAKE#hyperd"
 
 # 8. verify
 rc=0
