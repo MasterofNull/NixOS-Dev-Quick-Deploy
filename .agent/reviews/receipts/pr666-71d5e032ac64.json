@@ -1,0 +1,12 @@
+{
+  "schema": 1,
+  "pr": 666,
+  "reviewed_head_sha": "71d5e032ac646a9514edded4a959769c4ce89b71",
+  "run_id": "local-20261030-045103-rce5iq",
+  "reviewer_lane": "local-direct",
+  "author_lane": "claude",
+  "verdict": "PASS",
+  "output_file": ".agents/delegation/outputs/local-20261030-045103-rce5iq.log",
+  "output_sha256": "ee50573b6f6d3a93f11f4eb6e7056029bf3bbb7ea78ee577ca7a273223d6229e",
+  "created_at": "2026-10-30T12:22:13Z"
+}

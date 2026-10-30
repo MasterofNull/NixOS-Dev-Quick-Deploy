@@ -1,5 +1,7 @@
 """Service management."""
+import fnmatch
 import logging
+import os
 import shutil
 import subprocess
 from typing import Any, Dict, List
@@ -8,12 +10,45 @@ from api.services.systemd_units import get_monitored_units
 
 logger = logging.getLogger(__name__)
 
-SYSTEMCTL_BIN = (
+# The NixOS module sets SYSTEMCTL_BIN to the exact store path that the
+# per-unit sudoers rules (command-center-dashboard.nix) are written against.
+SYSTEMCTL_BIN = os.environ.get("SYSTEMCTL_BIN") or (
     "/run/current-system/sw/bin/systemctl"
     if shutil.which("/run/current-system/sw/bin/systemctl")
     else (shutil.which("systemctl") or "/run/current-system/sw/bin/systemctl")
 )
 SUDO_BIN = shutil.which("sudo") or "/run/wrappers/bin/sudo"
+
+
+def listing_allows_nopasswd(listing: str, command: List[str]) -> bool:
+    """Parse `sudo -n -l` output; True if the last matching rule is NOPASSWD.
+
+    Tags (NOPASSWD:/PASSWD:) persist within one rule line and reset at each
+    `(runas)` prefix. A rule with no args matches any args; the last matching
+    rule wins, as in sudoers.
+    """
+    wanted = " ".join(command)
+    result = False
+    for line in listing.splitlines():
+        stripped = line.strip()
+        if not stripped.startswith("("):
+            continue
+        rest = stripped.split(")", 1)[1].strip()
+        nopasswd = False
+        for item in rest.split(", "):
+            item = item.strip()
+            while True:
+                if item.startswith("NOPASSWD:"):
+                    nopasswd, item = True, item[len("NOPASSWD:"):].strip()
+                elif item.startswith("PASSWD:"):
+                    nopasswd, item = False, item[len("PASSWD:"):].strip()
+                elif item.split(":", 1)[0] in {"SETENV", "NOSETENV", "EXEC", "NOEXEC", "LOG_INPUT", "NOLOG_INPUT", "LOG_OUTPUT", "NOLOG_OUTPUT", "MAIL", "NOMAIL"} and ":" in item:
+                    item = item.split(":", 1)[1].strip()
+                else:
+                    break
+            if item == "ALL" or fnmatch.fnmatchcase(wanted, item) or (" " not in item and item == command[0]):
+                result = nopasswd
+    return result
 
 
 class ServiceManager:
@@ -53,38 +88,18 @@ class ServiceManager:
         return await self._run_batch("restart")
 
     async def _run_batch(self, action: str) -> Dict[str, Any]:
+        # One systemctl call per unit: sudoers rules are exact per-unit commands.
         monitored_services = get_monitored_units(include_dashboard=False)
-        units = [self._to_unit(service_id) for service_id in monitored_services]
-        command = self._systemctl_batch_command(action, units)
-        if self._sudo_ready():
-            command = [SUDO_BIN, "-n", *command]
-        result = subprocess.run(
-            command,
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-        success = result.returncode == 0
-        message = (result.stdout or result.stderr).strip()
-        if success and not message:
-            message = f"{action} submitted for {len(units)} services"
         results: List[Dict[str, Any]] = [
-            {
-                "service": service_id,
-                "action": action,
-                "success": success,
-                "unit": self._to_unit(service_id),
-                "message": message,
-                "returncode": result.returncode,
-            }
-            for service_id in monitored_services
+            await self._run_unit_action(service_id, action) for service_id in monitored_services
         ]
+        failed = sum(1 for r in results if not r["success"])
         return {
             "action": f"{action}_all",
-            "success": success,
-            "succeeded": len(results) if success else 0,
-            "failed": 0 if success else len(results),
-            "message": message,
+            "success": failed == 0,
+            "succeeded": len(results) - failed,
+            "failed": failed,
+            "message": f"{action} submitted for {len(results) - failed}/{len(results)} services",
             "results": results,
         }
 
@@ -140,31 +155,29 @@ class ServiceManager:
         return {"status": "stopped"}
 
     @staticmethod
-    def _sudo_ready() -> bool:
+    def _sudo_allows(command: List[str]) -> bool:
+        """True when sudo runs this exact command without a password.
+
+        `sudo -n -l <cmd>` succeeds for password-required commands too
+        (listpw=any), so read the full listing and require a NOPASSWD tag.
+        """
         if not SUDO_BIN:
             return False
         probe = subprocess.run(
-            [SUDO_BIN, "-n", SYSTEMCTL_BIN, "--version"],
+            [SUDO_BIN, "-n", "-l"],
             capture_output=True,
             text=True,
             check=False,
         )
-        return probe.returncode == 0
+        if probe.returncode != 0:
+            return False
+        return listing_allows_nopasswd(probe.stdout, command)
 
     def _systemctl_action_command(self, action: str, unit: str) -> List[str]:
-        base = self._systemctl_batch_command(action, [unit])
-        if self._sudo_ready():
+        base = [SYSTEMCTL_BIN, "--no-block", action, unit]
+        if self._sudo_allows(base):
             return [SUDO_BIN, "-n", *base]
         return base
-
-    @staticmethod
-    def _systemctl_batch_command(action: str, units: List[str]) -> List[str]:
-        command = [SYSTEMCTL_BIN]
-        if action in {"start", "stop", "restart"}:
-            command.append("--no-block")
-        command.append(action)
-        command.extend(units)
-        return command
 
     @staticmethod
     def _to_unit(service_id: str) -> str:

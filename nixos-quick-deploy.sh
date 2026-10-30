@@ -80,8 +80,10 @@ ANALYZE_ONLY=false
 SKIP_ROADMAP_VERIFICATION=false
 RECOVERY_MODE=false
 ALLOW_PREVIOUS_BOOT_FSCK_FAILURE=false
-PRIME_SUDO_EARLY="${PRIME_SUDO_EARLY:-true}"
-KEEP_SUDO_ALIVE="${KEEP_SUDO_ALIVE:-true}"
+# sudo credential caching is disabled (timestamp_timeout=0): priming/keep-alive
+# cannot hold a ticket, so every privileged step prompts on its own.
+PRIME_SUDO_EARLY="${PRIME_SUDO_EARLY:-false}"
+KEEP_SUDO_ALIVE="${KEEP_SUDO_ALIVE:-false}"
 PRE_DEPLOY_PARALLEL_VALIDATION="${PRE_DEPLOY_PARALLEL_VALIDATION:-true}"
 DISCOVERY_CACHE_TTL_SECONDS="${DISCOVERY_CACHE_TTL_SECONDS:-1800}"
 PRECHECK_SHADOW_WITH_SUDO_PROMPT="${PRECHECK_SHADOW_WITH_SUDO_PROMPT:-false}"
@@ -224,9 +226,8 @@ Environment overrides:
                             Sleep seconds between failed preflight passes
   ENABLE_PREFLIGHT_AUTO_REMEDIATION=false
                             Run scripts/governance/preflight-auto-remediate.sh between passes
-  PRIME_SUDO_EARLY=true
-                            Prompt for sudo once early to avoid mid-run stalls
-  KEEP_SUDO_ALIVE=true      Keep sudo ticket alive during long preflight/build
+  PRIME_SUDO_EARLY=false    No effect while sudo caching is disabled (timestamp_timeout=0)
+  KEEP_SUDO_ALIVE=false     No effect while sudo caching is disabled (timestamp_timeout=0)
   PRE_DEPLOY_PARALLEL_VALIDATION=true
                             Run system + Home Manager preflight builds in parallel
   DISCOVERY_CACHE_TTL_SECONDS=1800

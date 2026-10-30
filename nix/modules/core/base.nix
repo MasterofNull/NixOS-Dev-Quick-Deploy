@@ -370,11 +370,14 @@ in {
       execWheelOnly = lib.mkDefault true; # wheel group only — no free sudo
       wheelNeedsPassword = lib.mkDefault true; # no passwordless sudo by default
 
-      # Extend credential cache to 60 minutes so a single deploy run (nixos-rebuild
-      # → home-manager → flatpak sync) does not prompt for password multiple times.
-      # The default 5-minute timeout expires mid-deploy when operations take >5 min.
-      extraConfig = lib.mkDefault ''
-        Defaults timestamp_timeout=60
+      # No credential caching (owner decision 2026-10-29): agents launched from
+      # the owner's terminal share its tty ticket, so every sudo must prompt.
+      # timestamp_type stays tty. Deliberately NOT mkDefault: the nixpkgs sudo
+      # module defines extraConfig at normal priority, which silently discarded
+      # the previous mkDefault (the old 60-minute value never applied).
+      extraConfig = ''
+        Defaults timestamp_timeout=0
+        Defaults timestamp_type=tty
       '';
 
       # Allow wheel members to run bootctl status without a password.

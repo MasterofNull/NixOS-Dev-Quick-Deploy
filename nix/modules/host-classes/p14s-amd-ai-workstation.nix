@@ -110,39 +110,13 @@ in {
     # remaining DMCUB diagnostics to core display/firmware behavior.
     hardware.amdgpu.overdrive.enable = lib.mkForce false;
 
-    security.sudo.extraRules = lib.mkAfter [
-      {
-        users = [cfg.primaryUser];
-        commands = [
-          {
-            command = "/home/${cfg.primaryUser}/Documents/NixOS-Dev-Quick-Deploy/nixos-quick-deploy.sh *";
-            options = ["NOPASSWD"];
-          }
-          {
-            command = "/run/current-system/sw/bin/nixos-rebuild *";
-            options = ["NOPASSWD"];
-          }
-          {
-            command = "/run/current-system/sw/bin/systemctl *";
-            options = ["NOPASSWD"];
-          }
-          {
-            command = "/run/current-system/sw/bin/journalctl *";
-            options = ["NOPASSWD"];
-          }
-          {
-            command = "/run/current-system/sw/bin/flatpak *";
-            options = ["NOPASSWD"];
-          }
-          # Model-switch CLI: allows aq-coder / aq-architect without password prompt.
-          # Script is repo-local, executable, Python shebang — sudo resolves interpreter.
-          {
-            command = "${cfg.mcpServers.repoPath}/scripts/ai/aq-model-switch *";
-            options = ["NOPASSWD"];
-          }
-        ];
-      }
-    ];
+    # No NOPASSWD sudo rules for the primary user (owner decision 2026-10-29).
+    # nixos-rebuild, systemctl, journalctl, flatpak, the checkout's
+    # nixos-quick-deploy.sh and scripts/ai/aq-model-switch are each
+    # root-equivalent for a same-user process (agent-editable flake/scripts,
+    # arbitrary unit files, pager shell-out), so they require the owner's
+    # password. Unattended privilege goes through exact store-path rules only
+    # (see command-center-dashboard.nix).
 
     boot.kernelParams = lib.mkAfter [
       # This platform repeatedly marks TSC unstable during boot; telling the
