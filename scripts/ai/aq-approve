@@ -202,7 +202,9 @@ def _nix_scan(text: str):
             if text.startswith("${", i):
                 stack.append(["code", 0])
                 i += 2
-            elif text.startswith("'''", i) or text.startswith("''$", i) or text.startswith("''\\", i):
+            elif text.startswith("''\\", i):
+                i += 4  # ''\<char> escape is 4 chars; the escaped char must not pair with a following quote
+            elif text.startswith("'''", i) or text.startswith("''$", i):
                 i += 3
             elif text.startswith("''", i):
                 if len(stack) == 2:

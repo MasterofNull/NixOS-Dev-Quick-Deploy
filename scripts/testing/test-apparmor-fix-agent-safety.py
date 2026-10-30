@@ -231,6 +231,16 @@ class T(unittest.TestCase):
         decoy = "doc = ''\n" + real + "'';\n"
         self.assertFalse(self._present(decoy, "x", ["/ok r,"]))
 
+    def test_present_escaped_quote_escape_is_four_chars(self):
+        # ''\' is a 4-char escape; the following ' must not pair with it into a closing ''.
+        real = "security.apparmor.policies.\"x\" = {\n  profile = ''\n    /ok r,\n  '';\n};\n"
+        nix = "doc = ''\n  a ''\\''\n" + real.replace("''\n    /ok r,\n  ''", "\"/ok r,\"") + "'';\n" \
+            + "security.apparmor.policies.\"y\" = {\n  profile = ''\n    /other r,\n  '';\n};\n"
+        self.assertFalse(self._present(nix, "x", ["/ok r,"]))
+        nix2 = "doc = ''\n  a ''\\''\n" + real + "'';\n"
+        self.assertFalse(self._present(nix2, "x", ["/ok r,"]))
+        self.assertTrue(self._present(nix2 + real.replace('"x"', '"z"'), "z", ["/ok r,"]))
+
 
 if __name__ == "__main__":
     unittest.main()

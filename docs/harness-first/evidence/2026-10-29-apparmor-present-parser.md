@@ -31,3 +31,7 @@ Revert the commit; `aq-approve` returns to the line-based parser. The executor p
 
 ## Hint Feedback
 Facts only: implementer Claude Sonnet; finding by Codex; Codex was over budget so the fix was routed to Claude. The old extraConfig probe alone did not fail on the old code when extraConfig preceded the profile; the red case that does fail is a profile closed inline (`... wx, '';`) followed by extraConfig.
+
+## Follow-up: indented-string escape (second commit)
+
+Independent review `local-20261029-124405-1dbfjv` (REQUEST_CHANGES) led to an off-by-one: `''\x` is a 4-character escape in Nix indented strings, and `_nix_scan` consumed 3. In `''\''` the escaped quote and the next quote then read as a closing `''`. Every decoy shape tried still failed safe, but the rest of the file was mis-lexed and legitimate matches were lost. Now 4 characters are consumed. New test `test_present_escaped_quote_escape_is_four_chars` fails on the first commit and passes now; safety suite 14/14, generalization 6/6. Backslash is not an escape inside indented strings, so no handling was added for it.
