@@ -273,12 +273,27 @@ overall_status="ok"
 if [[ ${pip_total_vulns} -gt 0 || ${high_or_critical} -gt 0 || "${dashboard_scan_status}" == "error" || "${secrets_rotation_status}" == "error" ]]; then
   overall_status="findings"
 fi
+# "Could not scan" is distinct from "scanned and clean" and from "found vulns".
+# A genuine finding keeps status=findings; otherwise any coverage gap is degraded.
+degraded_reasons=()
+if [[ "${pip_audit_available}" != true ]]; then
+  degraded_reasons+=("pip-audit scanner missing")
+elif [[ ${pip_files_scanned} -eq 0 ]]; then
+  degraded_reasons+=("zero pip-audit coverage (0 requirements files scanned)")
+fi
+[[ ${pip_errors} -gt 0 ]] && degraded_reasons+=("pip-audit failed on ${pip_errors} requirements files")
+[[ ${npm_errors} -gt 0 ]] && degraded_reasons+=("npm audit errored on ${npm_errors} projects")
+if [[ "${overall_status}" == "ok" && ${#degraded_reasons[@]} -gt 0 ]]; then
+  overall_status="degraded"
+fi
+degraded_reasons_json="$(printf '%s\n' "${degraded_reasons[@]+"${degraded_reasons[@]}"}" | jq -R . | jq -s 'map(select(length > 0))')"
 
 jq -n \
   --arg generated_at "${timestamp}" \
   --arg repo_root "${REPO_ROOT}" \
   --arg threshold "${HIGH_CVSS_THRESHOLD}" \
   --arg status "${overall_status}" \
+  --argjson degraded_reasons "${degraded_reasons_json}" \
   --argjson pip_total_vulns "${pip_total_vulns}" \
   --argjson pip_files_scanned "${pip_files_scanned}" \
   --argjson lock_integrity_scanned "${lock_integrity_scanned}" \
@@ -300,6 +315,7 @@ jq -n \
     repo_root: $repo_root,
     high_cvss_threshold: ($threshold | tonumber),
     status: $status,
+    degraded_reasons: $degraded_reasons,
     summary: {
       pip: {
         scanner_available: $pip_audit_available,
@@ -437,4 +453,10 @@ fi
 [[ "${secrets_rotation_status}" == "error" ]] && echo "WARNING: secrets rotation plan errored (non-blocking)"
 echo "Security audit summary: blocking=${blocking} status=${overall_status}"
 [[ ${blocking} -eq 0 ]] || exit 1
+# Scheduled runs set SECURITY_AUDIT_FAIL_ON_DEGRADED=1 so a scan that checked
+# nothing fails the unit (picked up by systemctl --failed / aq-health-spider).
+if [[ "${overall_status}" == "degraded" && "${SECURITY_AUDIT_FAIL_ON_DEGRADED:-0}" == "1" ]]; then
+  echo "DEGRADED: audit could not fully scan: $(IFS='; '; echo "${degraded_reasons[*]}")" >&2
+  exit 3
+fi
 exit 0

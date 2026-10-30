@@ -1755,6 +1755,13 @@ in {
           # Pass configuration from options (Phase 11.5.2)
           AI_SECURITY_AUDIT_HIGH_CVSS_THRESHOLD = toString cfg.deployment.securityAuditHighCvssThreshold;
           AI_SECURITY_AUDIT_NOTIFY_USER = svcUser;
+          # A scan that checked nothing must fail the unit, not report ok.
+          SECURITY_AUDIT_FAIL_ON_DEGRADED = "1";
+          # pip-audit resolves requirements via `python -m pip` on its own
+          # interpreter, which has no pip module; point it at one that does.
+          PIPAPI_PYTHON_LOCATION = "${pkgs.python3.withPackages (ps: [ps.pip])}/bin/python";
+          # ProtectSystem=strict: HOME is unwritable; PrivateTmp gives a writable /tmp.
+          XDG_CACHE_HOME = "/tmp/pip-audit-cache";
         };
       };
 

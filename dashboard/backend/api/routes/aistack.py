@@ -5538,7 +5538,7 @@ async def get_security_audit() -> Dict[str, Any]:
     The audit runs weekly via systemd timer (ai-security-audit.timer).
 
     Response fields:
-    - status: "ok" | "findings" | "no_report"
+    - status: "ok" | "findings" | "degraded" (could not fully scan; see degraded_reasons) | "no_report"
     - generated_at: ISO timestamp of last audit run
     - summary: pip and npm vulnerability counts
     - high_severity_alert: present if CVSS >= threshold found

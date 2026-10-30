@@ -80,4 +80,27 @@ rc=0; out="$(PATH="$T/bin:$PATH" CI=true bash "$ROOT/scripts/security/security-a
 [[ $rc -ne 0 ]] && grep -q "BLOCKING: pip-audit failed" <<<"$out" || { echo "FAIL: pip failure not blocking in CI rc=$rc"; echo "$out"; exit 1; }
 rc=0; out="$(PATH="$T/bin:$PATH" env -u CI bash "$ROOT/scripts/security/security-audit.sh" --repo-root "$T/cov2" --output-dir "$T/o12" 2>&1)" || rc=$?
 [[ $rc -eq 0 ]] && grep -q "WARNING: pip-audit failed" <<<"$out" || { echo "FAIL: pip failure local rc=$rc"; echo "$out"; exit 1; }
-echo "PASS: security-audit gate blocks on seeded finding, passes clean"
+# Zero coverage / tool failure must not report status=ok (false-green regression).
+# $T/bin/pip-audit currently fails (exit 2) from the block above.
+rc=0; out="$(PATH="$T/bin:$PATH" env -u CI bash "$ROOT/scripts/security/security-audit.sh" --repo-root "$T/cov2" --output-dir "$T/o13" 2>&1)" || rc=$?
+[[ "$(jq -r .status "$T/o13/latest-security-audit.json")" == "degraded" ]] && grep -q "status=degraded" <<<"$out" \
+  && jq -e '.degraded_reasons | map(test("pip-audit failed")) | any' "$T/o13/latest-security-audit.json" >/dev/null \
+  || { echo "FAIL: pip-audit tool failure not degraded"; echo "$out"; exit 1; }
+rc=0; out="$(PATH="$T/bin:$PATH" env -u CI SECURITY_AUDIT_FAIL_ON_DEGRADED=1 bash "$ROOT/scripts/security/security-audit.sh" --repo-root "$T/cov2" --output-dir "$T/o14" 2>&1)" || rc=$?
+[[ $rc -eq 3 ]] && grep -q "DEGRADED:" <<<"$out" || { echo "FAIL: degraded did not fail unit-mode run rc=$rc"; echo "$out"; exit 1; }
+# Zero coverage (no requirements at all) => degraded, not ok.
+rc=0; out="$(env -u CI bash "$ROOT/scripts/security/security-audit.sh" --repo-root "$T/clean" --output-dir "$T/o15" 2>&1)" || rc=$?
+[[ "$(jq -r .status "$T/o15/latest-security-audit.json")" == "degraded" ]] || { echo "FAIL: zero coverage reported ok"; echo "$out"; exit 1; }
+# Tool missing (no pip-audit, no nix on PATH) => degraded.
+mkdir -p "$T/nobin"; for c in bash jq python3 date find mktemp mkdir cat tr sort dirname rm cp mv git env wc sed head cut; do p="$(command -v "$c" 2>/dev/null || true)"; [[ -n "$p" ]] && ln -sf "$p" "$T/nobin/$c"; done
+rc=0; out="$(PATH="$T/nobin" env -u CI "$(command -v bash)" "$ROOT/scripts/security/security-audit.sh" --repo-root "$T/cov" --output-dir "$T/o16" 2>&1)" || rc=$?
+[[ "$(jq -r .status "$T/o16/latest-security-audit.json")" != "ok" ]] && jq -e '.degraded_reasons | map(test("scanner missing")) | any' "$T/o16/latest-security-audit.json" >/dev/null \
+  || { echo "FAIL: missing pip-audit not degraded rc=$rc"; echo "$out"; exit 1; }
+# A clean scan with real coverage stays ok.
+cat > "$T/bin/pip-audit" <<'N'
+#!/usr/bin/env bash
+echo '{"dependencies":[{"name":"x","version":"1","vulns":[]}]}'
+N
+rc=0; out="$(PATH="$T/bin:$PATH" env -u CI bash "$ROOT/scripts/security/security-audit.sh" --repo-root "$T/cov" --output-dir "$T/o17" 2>&1)" || rc=$?
+[[ "$(jq -r .status "$T/o17/latest-security-audit.json")" == "ok" ]] || { echo "FAIL: covered clean scan not ok"; echo "$out"; exit 1; }
+echo "PASS: security-audit gate blocks on seeded finding, passes clean, flags no-coverage as degraded"

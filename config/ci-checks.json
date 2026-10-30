@@ -390,6 +390,21 @@
       "ci_workflow": ".github/workflows/test.yml#syntax"
     },
     {
+      "id": "mcp-integrity-baseline-test",
+      "cmd": "scripts/testing/test-mcp-integrity-baseline.sh",
+      "paths": [
+        "scripts/testing/test-mcp-integrity-baseline.sh",
+        "scripts/testing/check-mcp-integrity.sh",
+        "scripts/security/update-mcp-integrity-baseline.sh",
+        "config/ci-checks.json"
+      ],
+      "needs": [
+        "bash",
+        "jq"
+      ],
+      "ci_workflow": ".github/workflows/test.yml#syntax"
+    },
+    {
       "id": "tests-agent",
       "cmd": "scripts/testing/run-test-group.py tests-agent",
       "paths": [

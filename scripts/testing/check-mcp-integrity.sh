@@ -15,8 +15,14 @@ BASELINE_FILE="${MCP_INTEGRITY_BASELINE:-/var/lib/nixos-ai-stack/mcp-source-base
 ALERT_DIR="${MCP_INTEGRITY_ALERT_DIR:-/var/lib/nixos-ai-stack/alerts}"
 
 if [[ ! -f "$BASELINE_FILE" ]]; then
-  echo "[mcp-integrity] No baseline at $BASELINE_FILE — skipping check (run scripts/security/update-mcp-integrity-baseline.sh first)" >&2
-  exit 0
+  # No baseline means nothing was verified. Fail loudly (never exit 0) and never
+  # auto-create it here: that would bless whatever is currently installed.
+  mkdir -p "$ALERT_DIR" 2>/dev/null || true
+  alert_file="$ALERT_DIR/mcp-integrity-baseline-missing.json"
+  printf '{"timestamp":"%s","alert":"mcp_integrity_baseline_missing","baseline_file":"%s"}\n' \
+    "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$BASELINE_FILE" > "$alert_file" 2>/dev/null || true
+  echo "[mcp-integrity] ERROR: no baseline at $BASELINE_FILE - integrity NOT verified (run scripts/security/update-mcp-integrity-baseline.sh as root once)" >&2
+  exit 2
 fi
 
 changed_files=()
