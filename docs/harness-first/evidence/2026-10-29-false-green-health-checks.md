@@ -123,6 +123,20 @@ Extended table, result under the flag (columns are the modes above plus valid-bu
 | dashboard | no `checks`; status ok with a non-ok check; status `degraded`; stale prior report with no-op scanner |
 | secrets | no `core_ready`/summary; 0 managed secrets; empty summary; stale prior report with no-op scanner |
 
+Fifth review follow-up (pip skips and includes). Calibration: pip-audit (PIPAPI_PYTHON_LOCATION = python3 with pip,
+as in the Nix unit) was run on ai-stack/mcp-servers/aidb/requirements.txt (184 dependencies),
+ai-stack/mcp-servers/hybrid-coordinator/requirements.txt (104) and ai-stack/mcp-servers/nixos-docs/requirements.txt
+(150): exit 0, "No known vulnerabilities found", and zero `skip_reason` entries; none of the three files uses `-r` or
+`-c`. Raw JSON is under .agents/delegation/outputs/false-green-calib/. Result: config/security-audit-pip-skip-allowlist.json
+ships with an empty `allowed_skips` list (nothing is legitimately unauditable today), so the live unit stays `ok`.
+A skipped dependency not on that reviewed list (entries need `package` and a concrete `reason`) is a degraded
+reason naming the packages and, with CI=true, blocking; vulnerabilities found in the audited dependencies of the same
+file are still counted. Requirement counting now follows `-r`/`--requirement` includes (relative to the including
+file, cycle-safe, unreadable include counts as one requirement); `-c` and other option lines are not requirements.
+A file whose resolved count is >0 needs >=1 audited dependency. Regression cases: partial skip not allowlisted -> 3;
+allowlisted -> ok; allowlist entry without reason -> 3; `-r`-only file with empty report -> 3; `-r` with audited
+deps -> ok; cyclic includes with empty report -> 3; constraint-only file -> ok.
+
 Known residual, not changed: an npm project with `package.json` but no `package-lock.json` is skipped silently (it
 cannot be audited); degrading on it could permanently fail the live unit and needs an owner decision.
 

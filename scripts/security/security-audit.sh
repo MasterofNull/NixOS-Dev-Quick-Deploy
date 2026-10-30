@@ -177,15 +177,50 @@ if [[ -f "${EXCEPTIONS_FILE}" ]]; then
 fi
 mismatch_warnings=()
 
+# Reviewed list of dependencies pip-audit legitimately cannot audit. Any other skip_reason is a
+# coverage gap. A malformed file or an entry without package+reason allowlists nothing.
+PIP_SKIP_ALLOWLIST="${SECURITY_AUDIT_PIP_SKIP_ALLOWLIST:-${REPO_ROOT}/config/security-audit-pip-skip-allowlist.json}"
+pip_skip_allow='[]'
+if [[ -f "${PIP_SKIP_ALLOWLIST}" ]]; then
+  pip_skip_allow="$(jq -c '[.allowed_skips[]? | select((.package | type) == "string" and (.package | length) > 0 and (.reason | type) == "string" and (.reason | length) > 0) | .package | ascii_downcase | gsub("_"; "-")]' "${PIP_SKIP_ALLOWLIST}" 2>/dev/null || echo '[]')"
+  [[ -n "${pip_skip_allow}" ]] || pip_skip_allow='[]'
+fi
+pip_skip_files=0
+
+# Count requirement lines, following -r/--requirement includes (relative to the including file,
+# cycle-safe). -c/--constraint and other option lines are not requirements. An unreadable include
+# counts as one requirement so it can never reduce the evidence demanded.
+count_requirements() {
+  local file="$1" line inc total=0 key
+  key="$(readlink -f "${file}" 2>/dev/null || echo "${file}")"
+  case " ${count_requirements_seen} " in *" ${key} "*) echo 0; return ;; esac
+  count_requirements_seen="${count_requirements_seen} ${key}"
+  if [[ ! -r "${file}" ]]; then echo 1; return; fi
+  while IFS= read -r line || [[ -n "${line}" ]]; do
+    line="${line%%#*}"
+    line="${line#"${line%%[![:space:]]*}"}"
+    [[ -z "${line}" ]] && continue
+    if [[ "${line}" =~ ^(-r|--requirement)([[:space:]=]+|$)(.*)$ || "${line}" =~ ^-r(.+)$ ]]; then
+      inc="${BASH_REMATCH[3]:-${BASH_REMATCH[1]}}"
+      inc="${inc%"${inc##*[![:space:]]}"}"
+      [[ "${inc}" == /* ]] || inc="$(dirname "${file}")/${inc}"
+      total=$((total + $(count_requirements "${inc}")))
+    elif [[ "${line}" == -* ]]; then
+      continue
+    else
+      total=$((total + 1))
+    fi
+  done < "${file}"
+  echo "${total}"
+}
+
 if [[ "${pip_audit_available}" == true ]]; then
   for req in "${requirements_files[@]}"; do
     base="$(echo "${req#"${REPO_ROOT}/"}" | tr '/' '_')"
     out_json="${pip_results_dir}/${base}.json"
     # A requirements file with >=1 requirement line must yield >=1 actually audited (non-skipped) dependency.
-    req_lines=0
-    while IFS= read -r req_line || [[ -n "${req_line}" ]]; do
-      [[ "${req_line}" =~ ^[[:space:]]*(#|-|$) ]] || req_lines=$((req_lines + 1))
-    done < "${req}"
+    count_requirements_seen=""
+    req_lines="$(count_requirements "${req}")"
     pip_schema="${PIP_SCHEMA}"
     [[ "${req_lines:-0}" -ge 1 ]] && pip_schema="${PIP_SCHEMA} and ([.dependencies[] | select(has(\"skip_reason\") | not)] | length) >= 1"
     set +e
@@ -197,6 +232,13 @@ if [[ "${pip_audit_available}" == true ]]; then
         '{dependencies: [], error: $err, requirements: $req}' > "${out_json}"
       pip_errors=$((pip_errors + 1))
       continue
+    fi
+    unknown_skips="$(jq -r --argjson allow "${pip_skip_allow}" '
+      def norm: ascii_downcase | gsub("_"; "-");
+      [.dependencies[] | select(has("skip_reason")) | .name | select((norm) as $n | ($allow | index($n)) == null)] | join(", ")' "${out_json}")"
+    if [[ -n "${unknown_skips}" ]]; then
+      pip_skip_files=$((pip_skip_files + 1))
+      invalid_reasons+=("pip-audit skipped unaudited dependencies not on the reviewed allowlist: ${unknown_skips}")
     fi
     while IFS= read -r mm; do
       [[ -n "${mm}" ]] && mismatch_warnings+=("${mm}")
@@ -517,6 +559,13 @@ if [[ ${pip_files_scanned} -eq 0 ]]; then
   fi
 fi
 for mm in "${mismatch_warnings[@]}"; do echo "WARNING: security exception package mismatch, not applied: ${mm}"; done
+if [[ ${pip_skip_files} -gt 0 ]]; then
+  if [[ "${ci}" == "true" ]]; then
+    echo "BLOCKING: pip-audit skipped unallowlisted dependencies in ${pip_skip_files} requirements files in CI"; blocking=$((blocking + 1))
+  else
+    echo "WARNING: pip-audit skipped unallowlisted dependencies in ${pip_skip_files} requirements files"
+  fi
+fi
 if [[ ${pip_errors} -gt 0 ]]; then
   if [[ "${ci}" == "true" ]]; then
     echo "BLOCKING: pip-audit failed on ${pip_errors} requirements files in CI"; blocking=$((blocking + 1))

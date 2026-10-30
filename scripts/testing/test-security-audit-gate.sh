@@ -219,6 +219,45 @@ for sc in pip npm dashboard secrets; do
     echo "case $sc/$mode: status=$st exit=$CASE_RC"
   done
 done
+# pip skip handling and -r includes (healthy dashboard/secrets/npm from the table fixtures).
+pip_case() { # <name> <requirements-setup-fn> <pip-body> [allowlist-json]
+  local body="$3" al="${4:-}" d="$T/tc-pip-$1" rd="$T/tc-pip-$1/repo"
+  mkdir -p "$rd/ai-stack/mcp-servers/svc"; : > "$d/.keep"
+  "$2" "$rd/ai-stack/mcp-servers/svc"
+  [[ -n "$al" ]] && printf '%s' "$al" > "$d/allow.json"
+  PIPC_RC=0
+  PIPC_OUT="$(PATH="$T/tc-none-healthy/bin" env -u CI SECURITY_AUDIT_FAIL_ON_DEGRADED=1 PIP_BODY="$body" NPM_BODY="$NPM_OK" DASH_BODY="$DASH_OK" SEC_BODY="$SEC_OK" \
+    DASHBOARD_SCAN_SCRIPT="$T/tc-none-healthy/dash.sh" SECRETS_ROTATION_PLAN_SCRIPT="$T/tc-none-healthy/sec.sh" ${al:+SECURITY_AUDIT_PIP_SKIP_ALLOWLIST="$d/allow.json"} \
+    "$(command -v bash)" "$ROOT/scripts/security/security-audit.sh" --repo-root "$rd" --output-dir "$d/out" 2>&1)" || PIPC_RC=$?
+  PIPC_STATUS="$(jq -r .status "$d/out/latest-security-audit.json")"
+}
+req_plain() { echo "x==1" > "$1/requirements.txt"; }
+req_only_r() { echo "x==1" > "$1/base.txt"; printf -- '-r base.txt\n-c constraints.txt\n' > "$1/requirements.txt"; }
+req_cycle() { printf -- '-r b.txt\ny==1\n' > "$1/requirements.txt"; printf -- '-r requirements.txt\n' > "$1/b.txt"; }
+req_constraint_only() { printf -- '-c constraints.txt\n# nothing\n' > "$1/requirements.txt"; }
+PIP_MIXED='{"dependencies":[{"name":"x","version":"1","vulns":[]},{"name":"Weird_Pkg","version":"2","skip_reason":"not on PyPI"}]}'
+PIP_EMPTY='{"dependencies":[]}'
+pip_case skip-unlisted req_plain "$PIP_MIXED"
+[[ $PIPC_RC -eq 3 && "$PIPC_STATUS" != "ok" ]] && grep -q "Weird_Pkg" <<<"$PIPC_OUT" || { echo "FAIL: unallowlisted partial skip rc=$PIPC_RC"; echo "$PIPC_OUT"; exit 1; }
+echo "case pip/partial-skip-not-allowlisted: status=$PIPC_STATUS exit=$PIPC_RC"
+pip_case skip-listed req_plain "$PIP_MIXED" '{"allowed_skips":[{"package":"weird-pkg","reason":"internal wheel, not on PyPI"}]}'
+[[ $PIPC_RC -eq 0 && "$PIPC_STATUS" == "ok" ]] || { echo "FAIL: allowlisted partial skip rc=$PIPC_RC status=$PIPC_STATUS"; echo "$PIPC_OUT"; exit 1; }
+echo "case pip/partial-skip-allowlisted: status=$PIPC_STATUS exit=$PIPC_RC"
+pip_case skip-noreason req_plain "$PIP_MIXED" '{"allowed_skips":[{"package":"weird-pkg"}]}'
+[[ $PIPC_RC -eq 3 ]] || { echo "FAIL: allowlist entry without reason must not allow rc=$PIPC_RC"; echo "$PIPC_OUT"; exit 1; }
+echo "case pip/allowlist-entry-without-reason: exit=$PIPC_RC"
+pip_case r-empty req_only_r "$PIP_EMPTY"
+[[ $PIPC_RC -eq 3 && "$PIPC_STATUS" != "ok" ]] || { echo "FAIL: -r-only file with empty report rc=$PIPC_RC"; echo "$PIPC_OUT"; exit 1; }
+echo "case pip/-r-only-empty-report: status=$PIPC_STATUS exit=$PIPC_RC"
+pip_case r-audited req_only_r "$PIP_OK"
+[[ $PIPC_RC -eq 0 && "$PIPC_STATUS" == "ok" ]] || { echo "FAIL: -r with audited deps rc=$PIPC_RC status=$PIPC_STATUS"; echo "$PIPC_OUT"; exit 1; }
+echo "case pip/-r-with-audited-deps: status=$PIPC_STATUS exit=$PIPC_RC"
+pip_case cycle req_cycle "$PIP_EMPTY"
+[[ $PIPC_RC -eq 3 ]] || { echo "FAIL: cyclic includes with empty report rc=$PIPC_RC"; echo "$PIPC_OUT"; exit 1; }
+echo "case pip/cyclic-include-empty-report: exit=$PIPC_RC"
+pip_case constraint-only req_constraint_only "$PIP_EMPTY"
+[[ $PIPC_RC -eq 0 && "$PIPC_STATUS" == "ok" ]] || { echo "FAIL: constraint-only file needs no audited dep rc=$PIPC_RC"; echo "$PIPC_OUT"; exit 1; }
+echo "case pip/constraint-only-no-requirements: status=$PIPC_STATUS exit=$PIPC_RC"
 # Stale report: scanners exit 0 writing nothing while a valid report from a previous run sits in the output dir.
 d="$T/tc-stale"; mkdir -p "$d/out"
 cp "$T/tc-none-healthy/out/latest-dashboard-security-scan.json" "$T/tc-none-healthy/out/latest-secrets-rotation-plan.json" "$d/out/"
