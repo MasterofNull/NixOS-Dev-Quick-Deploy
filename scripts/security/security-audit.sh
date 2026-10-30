@@ -198,11 +198,16 @@ if [[ "${npm_available}" == true ]]; then
       jq -n --arg project_dir "${dir}" --arg err "$(cat "${out_json}.stderr")" \
         '{metadata: {vulnerabilities: {info: 0, low: 0, moderate: 0, high: 0, critical: 0, total: 0}}, error: $err, project_dir: $project_dir}' > "${out_json}"
     fi
-    if jq -e 'has("error") or (.metadata.vulnerabilities == null)' "${out_json}" >/dev/null 2>&1; then
+    # Explicit structure check: empty/unparseable output or a missing metadata.vulnerabilities
+    # object is a scanner error (jq -e on empty input must not read as "no error").
+    high=0
+    critical=0
+    if jq -e 'type == "object" and (has("error") | not) and ((.metadata.vulnerabilities | type) == "object")' "${out_json}" >/dev/null 2>&1; then
+      high="$(jq '.metadata.vulnerabilities.high // 0' "${out_json}")"
+      critical="$(jq '.metadata.vulnerabilities.critical // 0' "${out_json}")"
+    else
       npm_errors=$((npm_errors + 1))
     fi
-    high="$(jq '.metadata.vulnerabilities.high // 0' "${out_json}")"
-    critical="$(jq '.metadata.vulnerabilities.critical // 0' "${out_json}")"
     npm_total_high=$((npm_total_high + high))
     npm_total_critical=$((npm_total_critical + critical))
     npm_files_scanned=$((npm_files_scanned + 1))
@@ -293,6 +298,8 @@ fi
 [[ $((npm_errors - npm_unscanned)) -gt 0 ]] && degraded_reasons+=("npm audit errored on $((npm_errors - npm_unscanned)) projects")
 [[ "${dashboard_scan_status}" == "error" ]] && degraded_reasons+=("dashboard security scan errored")
 [[ "${secrets_rotation_status}" == "error" ]] && degraded_reasons+=("secrets rotation plan errored")
+[[ "${dashboard_scan_status}" == "unavailable" ]] && degraded_reasons+=("dashboard scanner unavailable")
+[[ "${secrets_rotation_status}" == "unavailable" ]] && degraded_reasons+=("secrets rotation scanner unavailable")
 # Exit-code decision is independent of the presentation status: any scanner error,
 # missing scanner or zero coverage means the audit is incomplete.
 coverage_incomplete=false

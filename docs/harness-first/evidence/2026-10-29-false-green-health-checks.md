@@ -84,6 +84,11 @@ returns `status` and now `degraded_reasons`.
     $ bash scripts/testing/test-mcp-integrity-baseline.sh
     PASS: mcp-integrity missing baseline is non-ok, tamper alerts, baseline never auto-created
 
+Second review follow-up: npm output that is empty or lacks a `metadata.vulnerabilities` object (even with exit 0) is
+counted as an npm audit error; a missing or non-executable dashboard or secrets scan script is a degraded reason
+("<check> scanner unavailable") and sets `coverage_incomplete`. Tests: empty-output npm => degraded, exit 3 under
+the flag; nonexistent dashboard scanner with clean pip/npm => degraded, exit 3 under the flag.
+
 Review follow-up cases: empty, malformed and blank baselines => exit 2 with the invalid alert; npm missing
 with an npm project and clean pip => degraded and exit 3 under the flag; pip error plus dashboard error with
 no vulns => exit 3 under the flag (exit 0 without it).

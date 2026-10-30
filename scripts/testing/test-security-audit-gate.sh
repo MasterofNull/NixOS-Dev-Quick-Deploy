@@ -123,6 +123,31 @@ rc=0; out="$(PATH="$T/bin:$PATH" env -u CI SECURITY_AUDIT_FAIL_ON_DEGRADED=1 DAS
   || { echo "FAIL: pip+dashboard error did not exit 3 rc=$rc"; echo "$out"; exit 1; }
 rc=0; out="$(PATH="$T/bin:$PATH" env -u CI bash "$ROOT/scripts/security/security-audit.sh" --repo-root "$T/cov2" --output-dir "$T/o21" 2>&1)" || rc=$?
 [[ $rc -eq 0 ]] || { echo "FAIL: incomplete scan without the unit flag must stay exit 0 rc=$rc"; echo "$out"; exit 1; }
+# npm exits 0 with EMPTY output: scanner error, not clean (dashboard/secrets fakes healthy so only npm is at fault).
+cat > "$T/ok-dashboard.sh" <<'N'
+#!/usr/bin/env bash
+printf '{"status":"ok"}' > "$2"
+N
+cat > "$T/ok-secrets.sh" <<'N'
+#!/usr/bin/env bash
+printf '{"rotation_ready":true}' > "$2"
+N
+chmod +x "$T/ok-dashboard.sh" "$T/ok-secrets.sh"
+cat > "$T/bin/npm" <<'N'
+#!/usr/bin/env bash
+exit 0
+N
+rc=0; out="$(PATH="$T/bin:$PATH" env -u CI SECURITY_AUDIT_FAIL_ON_DEGRADED=1 DASHBOARD_SCAN_SCRIPT="$T/ok-dashboard.sh" SECRETS_ROTATION_PLAN_SCRIPT="$T/ok-secrets.sh" bash "$ROOT/scripts/security/security-audit.sh" --repo-root "$T/nonpm" --output-dir "$T/o22" 2>&1)" || rc=$?
+[[ $rc -eq 3 ]] && [[ "$(jq -r .status "$T/o22/latest-security-audit.json")" == "degraded" ]] && jq -e '.degraded_reasons | map(test("npm audit errored")) | any' "$T/o22/latest-security-audit.json" >/dev/null \
+  || { echo "FAIL: empty npm output not degraded/exit 3 rc=$rc"; echo "$out"; exit 1; }
+# Missing dashboard scanner with clean pip + clean npm: unavailable counts as incomplete.
+cat > "$T/bin/npm" <<'N'
+#!/usr/bin/env bash
+echo '{"metadata":{"vulnerabilities":{"high":0,"critical":0}}}'
+N
+rc=0; out="$(PATH="$T/bin:$PATH" env -u CI SECURITY_AUDIT_FAIL_ON_DEGRADED=1 DASHBOARD_SCAN_SCRIPT=/nonexistent SECRETS_ROTATION_PLAN_SCRIPT="$T/ok-secrets.sh" bash "$ROOT/scripts/security/security-audit.sh" --repo-root "$T/nonpm" --output-dir "$T/o23" 2>&1)" || rc=$?
+[[ $rc -eq 3 ]] && [[ "$(jq -r .status "$T/o23/latest-security-audit.json")" == "degraded" ]] && jq -e '.degraded_reasons | map(test("dashboard scanner unavailable")) | any' "$T/o23/latest-security-audit.json" >/dev/null \
+  || { echo "FAIL: unavailable dashboard scanner not degraded/exit 3 rc=$rc"; echo "$out"; exit 1; }
 unset DASHBOARD_SCAN_SCRIPT SECRETS_ROTATION_PLAN_SCRIPT
 # A clean scan with real coverage stays ok.
 cat > "$T/bin/pip-audit" <<'N'
