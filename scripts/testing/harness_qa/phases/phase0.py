@@ -1566,8 +1566,13 @@ def _check_aq_confine_behavioral(ctx: RunContext) -> list[CheckResult]:
     except (OSError, subprocess.TimeoutExpired) as error:
         return [failed(5, "0.10.66", desc, str(error)[:240])]
     if proc.returncode != 0 or " 0 failed" not in proc.stdout:
-        tail = [ln for ln in proc.stdout.splitlines() if ln.startswith("FAIL")] or (proc.stderr or proc.stdout).splitlines()
-        return [failed(5, "0.10.66", desc, "; ".join(tail[-3:])[-240:])]
+        fails = [ln[6:].strip() for ln in proc.stdout.splitlines() if ln.startswith("FAIL:")]
+        summary = next((ln for ln in reversed(proc.stdout.splitlines()) if ln.startswith("SUMMARY:")), "")
+        if fails:  # name every failing assertion (truncated each), not just the tail, so load flakes are diagnosable
+            detail = f"rc={proc.returncode} {len(fails)} FAIL: " + " | ".join(f[:70] for f in fails)
+        else:
+            detail = f"rc={proc.returncode} {summary} " + " ".join((proc.stderr or proc.stdout).splitlines()[-3:])
+        return [failed(5, "0.10.66", desc, detail[:240])]
     if "SKIP-WARN:" in proc.stdout:
         return [skipped(5, "0.10.66", desc, "pure checks pass; behavioral groups skipped (confinement unavailable, CI mode)")]
     return [passed(5, "0.10.66", desc)]
