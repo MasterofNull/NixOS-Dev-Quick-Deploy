@@ -382,3 +382,8 @@ config/aqos/approval-signer-credentials.json
 # a 22MB artifact rebuilt locally would dirty the checkout after every merge and block nrs fast-forward.
 .understand-anything/knowledge-graph.json
 .understand-anything/wiki/
+
+# Runtime-mutable state split out of tracked build-affecting config (deploy guard needs a clean tree)
+ai-stack/prompts/eval-state.json
+ai-stack/prompts/eval-state.json.tmp
+config/frontier-radar-state.json
