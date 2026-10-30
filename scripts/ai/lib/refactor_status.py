@@ -9,9 +9,7 @@ carries only EDITORIAL content (name/sub/note/decision/unblocks/issues); the
 ``status``/``resolved``/``pct`` fields below are always computed here from:
 
   - git log commit subjects matched against each track's ``commit_match`` regexes
-  - ``.agents/events/*.jsonl`` activation.grant events (agent=owner) naming a
-    track's ``activation_subject``
-  - presence of a ``freeze_record`` file with no matching activation event
+  - presence of a ``freeze_record`` file (activation.grant events are NOT read: unsigned, forgeable)
   - an open claim file under ``.agent/collaboration/slice-claims/``
   - a ``blocker_note`` field in the manifest (issues-backlog lives outside the
     repo, so the manifest carries the blocker text directly)
@@ -76,37 +74,6 @@ def _matches_any(subjects: list[str], patterns: list[str]) -> bool:
     return False
 
 
-def _activation_events(repo_root: Path) -> set[str]:
-    """Return the set of ``subject`` values granted by an owner activation.grant."""
-    granted: set[str] = set()
-    events_dir = repo_root / ".agents" / "events"
-    if not events_dir.is_dir():
-        return granted
-    for path in sorted(events_dir.glob("*.jsonl")):
-        try:
-            with open(path, encoding="utf-8", errors="replace") as fh:
-                for line in fh:
-                    line = line.strip()
-                    if not line:
-                        continue
-                    try:
-                        evt = json.loads(line)
-                    except Exception:
-                        continue
-                    if not isinstance(evt, dict):
-                        continue
-                    if evt.get("type") != "activation.grant":
-                        continue
-                    if evt.get("agent") != "owner":
-                        continue
-                    subj = evt.get("subject")
-                    if subj:
-                        granted.add(subj)
-        except Exception:
-            continue
-    return granted
-
-
 def _open_slice_claim(repo_root: Path, code: str) -> bool:
     """True if an open (non-lock) claim file exists whose name references ``code``.
 
@@ -158,7 +125,6 @@ OWNER_ATTENTION_STATES = ("owner_decision", "exact_activation")
 def _track_status_and_pct(
     track: dict[str, Any],
     subjects: list[str],
-    activated_subjects: set[str],
     repo_root: Path,
 ) -> tuple[str, int]:
     """Derive (status, pct) for one track.
@@ -168,7 +134,8 @@ def _track_status_and_pct(
     with one deliberate deviation:
 
       1. blocker_note present                                -> blocked
-      2. activation_subject matched by an owner activation    -> done   (ACTIVATED)
+      2. (removed) activation events no longer count: ACTIVATED is projected only by
+         aq-pm-tracker via activation_chain.activation_verified (signed chain)
       3. a commit matches commit_match, track NOT ongoing     -> done   (SHIPPED)
       4. freeze_record file exists (no activation)            -> active (FROZEN)
       5. a commit matches commit_match, track IS ongoing      -> active (partial SHIPPED)
@@ -195,10 +162,6 @@ def _track_status_and_pct(
         pct = manifest_pct if isinstance(manifest_pct, int) else 100
         return "blocked", pct
 
-    activation_subject = detection.get("activation_subject")
-    if activation_subject and activation_subject in activated_subjects:
-        return "done", 100
-
     commit_hit = _matches_any(subjects, detection.get("commit_match", []) or [])
     if commit_hit and not ongoing:
         return "done", 100
@@ -221,7 +184,6 @@ def _track_status_and_pct(
 def _gate_state(
     gate: dict[str, Any],
     subjects: list[str],
-    activated_subjects: set[str],
 ) -> str:
     """Classify a gate without collapsing owner and dependency work.
 
@@ -238,8 +200,6 @@ def _gate_state(
         return "dependency_blocked"
     activation_subject = detection.get("activation_subject")
     if activation_subject:
-        if activation_subject in activated_subjects:
-            return "resolved"
         return "exact_activation"
     return "owner_decision"
 
@@ -314,11 +274,10 @@ def project(manifest_path: str | Path, repo_root: str | Path) -> dict[str, Any]:
     issues_in = manifest.get("issues", []) or []
 
     subjects = _git_log_subjects(repo_root)
-    activated_subjects = _activation_events(repo_root)
 
     tracks_out: list[dict[str, Any]] = []
     for track in sorted(tracks_in, key=lambda t: t.get("order", 0)):
-        status, pct = _track_status_and_pct(track, subjects, activated_subjects, repo_root)
+        status, pct = _track_status_and_pct(track, subjects, repo_root)
         tracks_out.append(
             {
                 "code": track.get("code"),
@@ -334,7 +293,7 @@ def project(manifest_path: str | Path, repo_root: str | Path) -> dict[str, Any]:
 
     gate_out: list[dict[str, Any]] = []
     for gate in gate_in:
-        state = _gate_state(gate, subjects, activated_subjects)
+        state = _gate_state(gate, subjects)
         gate_out.append(
             {
                 "id": gate.get("id"),
