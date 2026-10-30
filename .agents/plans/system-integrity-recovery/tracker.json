@@ -413,6 +413,48 @@
       }
     },
     {
+      "id": "P1.9",
+      "name": "Security update lane (lock refresh via PR, deterministic fast-track)",
+      "phase": "p1",
+      "kind": "slice",
+      "goal": "Daily and CVE-triggered flake lock refresh built in a worktree, opened as a lock-only PR with a deterministic review receipt, deployed by aq-deploy-current; aq-auto-update never edits the checkout lock",
+      "validation_goal": "one real cycle: lock-only PR produced without typing, deterministic receipt minted, owner merge, aq-deploy-current deploys, running revision == origin/main with no -dirty; a non-lock or backwards-input PR gets no fast-track receipt",
+      "deps": [
+        "P1.10"
+      ],
+      "detection": {
+        "commit_match": [
+          "feat\\(update-lane\\):"
+        ]
+      },
+      "acceptance": {
+        "status": "pending",
+        "by": null,
+        "date": null,
+        "note": ""
+      }
+    },
+    {
+      "id": "P1.10",
+      "name": "Rebuild-path friction fixed at the producer",
+      "phase": "p1",
+      "kind": "slice",
+      "goal": "Home Manager extension installs time out instead of hanging; runtime jobs stop writing tracked config files; QA 0.10.66 either fixed or reclassified as live-service with evidence",
+      "validation_goal": "home-manager switch completes within 5 min with the extension CDN blocked; two daily cycles leave the owner checkout clean; tier0 phase 0 stable across a system switch",
+      "deps": [],
+      "detection": {
+        "commit_match": [
+          "fix\\(rebuild-path\\):"
+        ]
+      },
+      "acceptance": {
+        "status": "pending",
+        "by": null,
+        "date": null,
+        "note": ""
+      }
+    },
+    {
       "id": "P2.1",
       "name": "Sweep: every test file",
       "phase": "p2",
