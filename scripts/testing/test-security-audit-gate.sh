@@ -126,11 +126,11 @@ rc=0; out="$(PATH="$T/bin:$PATH" env -u CI bash "$ROOT/scripts/security/security
 # npm exits 0 with EMPTY output: scanner error, not clean (dashboard/secrets fakes healthy so only npm is at fault).
 cat > "$T/ok-dashboard.sh" <<'N'
 #!/usr/bin/env bash
-printf '{"generated_at":"t","status":"ok"}' > "$2"
+printf '{"generated_at":"t","status":"ok","checks":{"root":{"status":"ok"},"compliance":{"status":"ok"},"integrity":{"status":"ok"}}}' > "$2"
 N
 cat > "$T/ok-secrets.sh" <<'N'
 #!/usr/bin/env bash
-printf '{"generated_at":"t","rotation_ready":true}' > "$2"
+printf '{"generated_at":"t","rotation_ready":true,"core_ready":true,"summary":{"total_managed_secrets":3}}' > "$2"
 N
 chmod +x "$T/ok-dashboard.sh" "$T/ok-secrets.sh"
 cat > "$T/bin/npm" <<'N'
@@ -143,7 +143,7 @@ rc=0; out="$(PATH="$T/bin:$PATH" env -u CI SECURITY_AUDIT_FAIL_ON_DEGRADED=1 DAS
 # Missing dashboard scanner with clean pip + clean npm: unavailable counts as incomplete.
 cat > "$T/bin/npm" <<'N'
 #!/usr/bin/env bash
-echo '{"metadata":{"vulnerabilities":{"high":0,"critical":0}}}'
+echo '{"metadata":{"vulnerabilities":{"info":0,"low":0,"moderate":0,"high":0,"critical":0,"total":0}}}'
 N
 rc=0; out="$(PATH="$T/bin:$PATH" env -u CI SECURITY_AUDIT_FAIL_ON_DEGRADED=1 DASHBOARD_SCAN_SCRIPT=/nonexistent SECRETS_ROTATION_PLAN_SCRIPT="$T/ok-secrets.sh" bash "$ROOT/scripts/security/security-audit.sh" --repo-root "$T/nonpm" --output-dir "$T/o23" 2>&1)" || rc=$?
 [[ $rc -eq 3 ]] && [[ "$(jq -r .status "$T/o23/latest-security-audit.json")" == "degraded" ]] && jq -e '.degraded_reasons | map(test("dashboard scanner unavailable")) | any' "$T/o23/latest-security-audit.json" >/dev/null \
@@ -152,9 +152,9 @@ unset DASHBOARD_SCAN_SCRIPT SECRETS_ROTATION_PLAN_SCRIPT
 
 # Table-driven: every scanner x failure mode must be non-ok, carry a degraded reason, and exit 3 under the flag.
 PIP_OK='{"dependencies":[{"name":"x","version":"1","vulns":[]}]}'
-NPM_OK='{"metadata":{"vulnerabilities":{"high":0,"critical":0}}}'
-DASH_OK='{"generated_at":"t","status":"ok"}'
-SEC_OK='{"generated_at":"t","rotation_ready":true}'
+NPM_OK='{"metadata":{"vulnerabilities":{"info":0,"low":0,"moderate":0,"high":0,"critical":0,"total":0}}}'
+DASH_OK='{"generated_at":"t","status":"ok","checks":{"root":{"status":"ok"},"compliance":{"status":"ok"},"integrity":{"status":"ok"}}}'
+SEC_OK='{"generated_at":"t","rotation_ready":true,"core_ready":true,"summary":{"total_managed_secrets":3}}'
 run_case() { # <scanner> <mode> ; echoes nothing, sets CASE_RC CASE_OUT CASE_DIR
   local sc="$1" mode="$2" d="$T/tc-$1-$2" c p
   mkdir -p "$d/bin"
@@ -173,7 +173,17 @@ run_case() { # <scanner> <mode> ; echoes nothing, sets CASE_RC CASE_OUT CASE_DIR
     dashboard) unknown='{"generated_at":"t","status":"weird"}' ;;
     secrets) unknown='{"generated_at":"t","rotation_ready":"maybe"}' ;;
   esac
+  local nocov nocov2 nocov3
+  case "$sc" in
+    pip) nocov='{"dependencies":[]}'; nocov2='{"dependencies":[{"name":"x","version":"1","skip_reason":"not on index"}]}'; nocov3='{"dependencies":[{"name":"x","version":"1"}]}' ;;
+    npm) nocov='{"metadata":{"vulnerabilities":{}}}'; nocov2='{"metadata":{"vulnerabilities":{"info":0,"low":0,"moderate":0,"high":"0","critical":0}}}'; nocov3='{"metadata":{"vulnerabilities":{"high":0,"critical":0,"total":0}}}' ;;
+    dashboard) nocov='{"generated_at":"t","status":"ok"}'; nocov2='{"generated_at":"t","status":"ok","checks":{"root":{"status":"ok"},"compliance":{"status":"unavailable"},"integrity":{"status":"ok"}}}'; nocov3='{"generated_at":"t","status":"degraded","checks":{"root":{"status":"ok"},"compliance":{"status":"unavailable"},"integrity":{"status":"ok"}}}' ;;
+    secrets) nocov='{"generated_at":"t","rotation_ready":true}'; nocov2='{"generated_at":"t","rotation_ready":true,"core_ready":true,"summary":{"total_managed_secrets":0}}'; nocov3='{"generated_at":"t","rotation_ready":true,"core_ready":true,"summary":{}}' ;;
+  esac
   case "$mode" in
+    nocov) body="$nocov" ;;
+    nocov2) body="$nocov2" ;;
+    nocov3) body="$nocov3" ;;
     nonzero) rc=2; body="" ;;
     empty) body="" ;;
     malformed) body='{not json' ;;
@@ -200,7 +210,7 @@ run_case() { # <scanner> <mode> ; echoes nothing, sets CASE_RC CASE_OUT CASE_DIR
 run_case none healthy
 [[ $CASE_RC -eq 0 && "$(jq -r .status "$CASE_DIR/latest-security-audit.json")" == "ok" ]] || { echo "FAIL: healthy baseline not ok rc=$CASE_RC"; echo "$CASE_OUT"; exit 1; }
 for sc in pip npm dashboard secrets; do
-  for mode in missing nonzero empty malformed emptyobj unknown; do
+  for mode in missing nonzero empty malformed emptyobj unknown nocov nocov2 nocov3; do
     run_case "$sc" "$mode"
     st="$(jq -r .status "$CASE_DIR/latest-security-audit.json")"
     if [[ $CASE_RC -ne 3 || "$st" == "ok" ]] || ! jq -e '.degraded_reasons | length > 0' "$CASE_DIR/latest-security-audit.json" >/dev/null; then
@@ -209,6 +219,20 @@ for sc in pip npm dashboard secrets; do
     echo "case $sc/$mode: status=$st exit=$CASE_RC"
   done
 done
+# Stale report: scanners exit 0 writing nothing while a valid report from a previous run sits in the output dir.
+d="$T/tc-stale"; mkdir -p "$d/out"
+cp "$T/tc-none-healthy/out/latest-dashboard-security-scan.json" "$T/tc-none-healthy/out/latest-secrets-rotation-plan.json" "$d/out/"
+printf '#!/usr/bin/env bash\nexit 0\n' > "$d/noop.sh"; chmod +x "$d/noop.sh"
+rc=0; out="$(PATH="$T/tc-none-healthy/bin" env -u CI SECURITY_AUDIT_FAIL_ON_DEGRADED=1 PIP_BODY="$PIP_OK" NPM_BODY="$NPM_OK" DASHBOARD_SCAN_SCRIPT="$d/noop.sh" SECRETS_ROTATION_PLAN_SCRIPT="$d/noop.sh" "$(command -v bash)" "$ROOT/scripts/security/security-audit.sh" --repo-root "$T/nonpm" --output-dir "$d/out" 2>&1)" || rc=$?
+[[ $rc -eq 3 ]] && [[ "$(jq -r .status "$d/out/latest-security-audit.json")" != "ok" ]] || { echo "FAIL: stale prior report satisfied a no-op scanner rc=$rc"; echo "$out"; exit 1; }
+echo "case dashboard+secrets/stale-prior-report: exit=$rc"
+# secrets "planning_required" with full evidence is a state finding, not a coverage gap: ok, exit 0.
+PLAN_BODY='{"generated_at":"t","rotation_ready":false,"core_ready":false,"summary":{"total_managed_secrets":3}}'
+d="$T/tc-plan"; mkdir -p "$d"
+printf '#!/usr/bin/env bash\nprintf "%%s" "$PLAN_BODY" > "$2"\n' > "$d/sec.sh"; chmod +x "$d/sec.sh"
+rc=0; out="$(PLAN_BODY="$PLAN_BODY" PATH="$T/tc-none-healthy/bin" env -u CI SECURITY_AUDIT_FAIL_ON_DEGRADED=1 PIP_BODY="$PIP_OK" NPM_BODY="$NPM_OK" DASHBOARD_SCAN_SCRIPT="$T/tc-none-healthy/dash.sh" DASH_BODY="$DASH_OK" SECRETS_ROTATION_PLAN_SCRIPT="$d/sec.sh" "$(command -v bash)" "$ROOT/scripts/security/security-audit.sh" --repo-root "$T/nonpm" --output-dir "$d/out" 2>&1)" || rc=$?
+[[ $rc -eq 0 && "$(jq -r .summary.secrets_rotation.status "$d/out/latest-security-audit.json")" == "planning_required" && "$(jq -r .status "$d/out/latest-security-audit.json")" == "ok" ]] || { echo "FAIL: planning_required should stay informational rc=$rc"; echo "$out"; exit 1; }
+echo "case secrets/planning_required (valid, informational): status=ok exit=$rc"
 # A clean scan with real coverage stays ok.
 cat > "$T/bin/pip-audit" <<'N'
 #!/usr/bin/env bash

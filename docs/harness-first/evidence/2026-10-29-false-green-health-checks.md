@@ -99,6 +99,33 @@ is `coverage_incomplete`. Scanner x failure mode, with the resulting status and 
 | dashboard scan | degraded, 3 | findings, 3 | degraded, 3 | degraded, 3 | degraded, 3 | degraded, 3 |
 | secrets rotation | degraded, 3 | findings, 3 | degraded, 3 | degraded, 3 | degraded, 3 | degraded, 3 |
 
+Fourth review follow-up (valid-but-no-coverage). A report that passes the helper must also carry explicit coverage
+evidence; nothing is defaulted:
+
+- pip: every dependency has a `vulns` array or a `skip_reason`; a requirements file with >=1 requirement line must
+  list >=1 non-skipped dependency (`{"dependencies":[]}` and all-skipped reports are incomplete).
+- npm: numeric `info,low,moderate,high,critical` must all be present (`{"metadata":{"vulnerabilities":{}}}`, string or
+  missing counters are incomplete).
+- dashboard: all three check statuses are present, and `ok` requires every check `ok`; `degraded` is itself a
+  degraded reason ("dashboard scan reported degraded"). A bare `{"status":"ok"}` is invalid.
+- secrets: `core_ready` boolean and `summary.total_managed_secrets` >= 1 are required. `planning_required` with full
+  evidence means the plan ran and rotation prerequisites are unmet: a state finding, deliberately informational
+  (status ok, exit 0), not a coverage gap.
+- Dashboard and secrets report files are truncated before each run, so a stale report from a previous run cannot
+  satisfy a scanner that exits 0 without writing.
+
+Extended table, result under the flag (columns are the modes above plus valid-but-no-coverage; all fail with exit 3):
+
+| Scanner | valid-but-no-coverage inputs (all degraded, 3) |
+|---|---|
+| pip-audit | `{"dependencies":[]}`; all deps skipped; dep with neither `vulns` nor `skip_reason` |
+| npm audit | `{}` counters; string counter; only high/critical/total |
+| dashboard | no `checks`; status ok with a non-ok check; status `degraded`; stale prior report with no-op scanner |
+| secrets | no `core_ready`/summary; 0 managed secrets; empty summary; stale prior report with no-op scanner |
+
+Known residual, not changed: an npm project with `package.json` but no `package-lock.json` is skipped silently (it
+cannot be audited); degrading on it could permanently fail the live unit and needs an owner decision.
+
 Dashboard and secrets scanner execution errors keep the presentation status `findings` (existing behavior) but
 still fail the unit via `coverage_incomplete`. A healthy baseline (all four scanners valid) stays `ok`, exit 0.
 

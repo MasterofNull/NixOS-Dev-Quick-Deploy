@@ -88,10 +88,15 @@ validate_scanner_report() {
   invalid_reasons+=("${name} report invalid: ${REPORT_WHY}")
   return 1
 }
-PIP_SCHEMA='(has("error") | not) and ((.dependencies | type) == "array") and all(.dependencies[]; type == "object" and has("name"))'
-NPM_SCHEMA='(has("error") | not) and ((.metadata.vulnerabilities | type) == "object") and (((.metadata.vulnerabilities.high // 0) | type) == "number") and (((.metadata.vulnerabilities.critical // 0) | type) == "number")'
-DASHBOARD_SCHEMA='has("generated_at") and ((.status | type) == "string")'
-SECRETS_SCHEMA='has("generated_at") and ((.rotation_ready | type) == "boolean")'
+# Schemas demand explicit coverage evidence, never defaults: an audited dependency carries a vulns
+# array (or a skip_reason); npm carries every severity counter as a number; the dashboard report
+# carries a status for each of its three checks; the secrets plan carries core_ready and a non-zero
+# managed-secret count.
+PIP_SCHEMA='(has("error") | not) and ((.dependencies | type) == "array") and all(.dependencies[]; type == "object" and has("name") and (has("skip_reason") or ((.vulns | type) == "array")))'
+NPM_SCHEMA='(has("error") | not) and ((.metadata.vulnerabilities | type) == "object") and all(.metadata.vulnerabilities.info, .metadata.vulnerabilities.low, .metadata.vulnerabilities.moderate, .metadata.vulnerabilities.high, .metadata.vulnerabilities.critical; type == "number")'
+DASHBOARD_SCHEMA='has("generated_at") and ((.status | type) == "string") and all(.checks.root.status, .checks.compliance.status, .checks.integrity.status; type == "string")'
+DASHBOARD_STATUS='if .status == "ok" and ([.checks.root.status, .checks.compliance.status, .checks.integrity.status] | all(. == "ok")) then "ok" elif .status == "degraded" then "degraded" else "inconsistent" end'
+SECRETS_SCHEMA='has("generated_at") and ((.rotation_ready | type) == "boolean") and ((.core_ready | type) == "boolean") and ((.summary.total_managed_secrets | type) == "number") and (.summary.total_managed_secrets >= 1)'
 
 pip_audit_available=false
 npm_available=false
@@ -176,11 +181,18 @@ if [[ "${pip_audit_available}" == true ]]; then
   for req in "${requirements_files[@]}"; do
     base="$(echo "${req#"${REPO_ROOT}/"}" | tr '/' '_')"
     out_json="${pip_results_dir}/${base}.json"
+    # A requirements file with >=1 requirement line must yield >=1 actually audited (non-skipped) dependency.
+    req_lines=0
+    while IFS= read -r req_line || [[ -n "${req_line}" ]]; do
+      [[ "${req_line}" =~ ^[[:space:]]*(#|-|$) ]] || req_lines=$((req_lines + 1))
+    done < "${req}"
+    pip_schema="${PIP_SCHEMA}"
+    [[ "${req_lines:-0}" -ge 1 ]] && pip_schema="${PIP_SCHEMA} and ([.dependencies[] | select(has(\"skip_reason\") | not)] | length) >= 1"
     set +e
     "${pip_audit_cmd[@]}" -r "${req}" --format json > "${out_json}" 2>"${out_json}.stderr"
     rc=$?
     set -e
-    if [[ ${rc} -ne 0 && ${rc} -ne 1 ]] || ! validate_scanner_report "pip-audit" "${out_json}" "${PIP_SCHEMA}" '"ok"' 'ok'; then
+    if [[ ${rc} -ne 0 && ${rc} -ne 1 ]] || ! validate_scanner_report "pip-audit" "${out_json}" "${pip_schema}" '"ok"' 'ok'; then
       jq -n --arg req "${req}" --arg err "$(cat "${out_json}.stderr")" \
         '{dependencies: [], error: $err, requirements: $req}' > "${out_json}"
       pip_errors=$((pip_errors + 1))
@@ -276,12 +288,13 @@ persisted_npm_dir="$(persist_results_dir "${npm_results_dir}" "${OUTPUT_DIR}/npm
 dashboard_scan_report="${OUTPUT_DIR}/latest-dashboard-security-scan.json"
 dashboard_scan_status="unavailable"
 if [[ -x "${DASHBOARD_SCAN_SCRIPT}" ]]; then
+  : > "${dashboard_scan_report}"  # a prior run's report must never satisfy this run
   set +e
   "${DASHBOARD_SCAN_SCRIPT}" --output "${dashboard_scan_report}" >"${tmp_root}/dashboard-scan.stdout" 2>"${tmp_root}/dashboard-scan.stderr"
   dashboard_rc=$?
   set -e
   if [[ ${dashboard_rc} -eq 0 ]]; then
-    if validate_scanner_report "dashboard scan" "${dashboard_scan_report}" "${DASHBOARD_SCHEMA}" '.status' 'ok|degraded'; then
+    if validate_scanner_report "dashboard scan" "${dashboard_scan_report}" "${DASHBOARD_SCHEMA}" "${DASHBOARD_STATUS}" 'ok|degraded'; then
       dashboard_scan_status="${REPORT_STATUS}"
     else
       dashboard_scan_status="invalid"
@@ -301,6 +314,7 @@ fi
 secrets_rotation_report="${OUTPUT_DIR}/latest-secrets-rotation-plan.json"
 secrets_rotation_status="unavailable"
 if [[ -x "${SECRETS_ROTATION_PLAN_SCRIPT}" ]]; then
+  : > "${secrets_rotation_report}"  # a prior run's report must never satisfy this run
   set +e
   "${SECRETS_ROTATION_PLAN_SCRIPT}" --output "${secrets_rotation_report}" >"${tmp_root}/secrets-plan.stdout" 2>"${tmp_root}/secrets-plan.stderr"
   secrets_plan_rc=$?
@@ -341,6 +355,10 @@ fi
 [[ "${dashboard_scan_status}" == "error" ]] && degraded_reasons+=("dashboard security scan errored")
 [[ "${secrets_rotation_status}" == "error" ]] && degraded_reasons+=("secrets rotation plan errored")
 for r in "${invalid_reasons[@]+"${invalid_reasons[@]}"}"; do degraded_reasons+=("${r}"); done
+# dashboard "degraded" means one of its checks failed: the scan is incomplete. secrets
+# "planning_required" means the plan ran and rotation prerequisites are not met: a state finding,
+# not a coverage gap, so it stays informational.
+[[ "${dashboard_scan_status}" == "degraded" ]] && degraded_reasons+=("dashboard scan reported degraded (a check failed)")
 [[ "${dashboard_scan_status}" == "unavailable" ]] && degraded_reasons+=("dashboard scanner unavailable")
 [[ "${secrets_rotation_status}" == "unavailable" ]] && degraded_reasons+=("secrets rotation scanner unavailable")
 # Exit-code decision is independent of the presentation status: any scanner error,
