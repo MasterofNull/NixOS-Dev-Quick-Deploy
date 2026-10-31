@@ -402,6 +402,20 @@
       "ci_workflow": ".github/workflows/test.yml#syntax"
     },
     {
+      "id": "activation-signer-test",
+      "cmd": "scripts/testing/test-activation-signer.py",
+      "paths": [
+        "scripts/testing/test-activation-signer.py",
+        "scripts/ai/lib/activation_signer.py",
+        "scripts/ai/lib/activation_chain.py",
+        "config/ci-checks.json"
+      ],
+      "needs": [
+        "python3"
+      ],
+      "ci_workflow": ".github/workflows/test.yml#syntax"
+    },
+    {
       "id": "tier0-qa-admission-test",
       "cmd": "scripts/testing/test-tier0-qa-admission.sh",
       "paths": [
