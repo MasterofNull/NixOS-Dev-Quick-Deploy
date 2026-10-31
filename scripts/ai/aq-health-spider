@@ -918,6 +918,57 @@ def _deployed_revision_check(rev: Optional[str] = None, repo: Optional[Path] = N
     return []
 
 
+_OWNER_ACCEPTANCE_STATE = REPO_ROOT / ".agents" / "telemetry" / "owner-acceptance-unbacked.json"
+_OWNER_ACCEPTANCE_KEYS = ("shipped_unverified", "shipped_recorded", "unbacked_owner_acceptances", "owner_verified_signed")
+
+
+def _owner_acceptance_check(runner=None, state_path: Optional[Path] = None) -> List[Dict[str, Any]]:
+    """Owner-acceptance assurance probe (verified acceptance slice 1). Publishes shipped_unverified / shipped_recorded /
+    unbacked_owner_acceptances / owner_verified_signed (always 0 until the signed path ships) as a telemetry event every
+    cycle, and alerts when the unbacked count RISES above the lowest value previously seen (the grandfathered set may
+    only shrink). A probe that could not read the projection is itself an anomaly: a check that measured nothing must
+    not look healthy. `runner` returns (returncode, stdout) and is a test seam."""
+    state_path = state_path or _OWNER_ACCEPTANCE_STATE
+    now = time.time()
+
+    def failed(detail: str) -> List[Dict[str, Any]]:
+        return [{"type": "owner_acceptance_probe_failed", "zone": "owner-acceptance", "severity": "warning",
+                 "detail": detail, "timestamp": now}]
+
+    try:
+        if runner is None:
+            r = subprocess.run([sys.executable, str(REPO_ROOT / "scripts" / "ai" / "aq-pm-tracker"), "--all-json"],
+                               capture_output=True, text=True, timeout=120, cwd=str(REPO_ROOT))
+            rc, text = r.returncode, r.stdout
+        else:
+            rc, text = runner()
+        if rc != 0:
+            return failed(f"aq-pm-tracker --all-json exited {rc}; owner-acceptance counts unavailable")
+        data = json.loads(text)
+        counts = {k: int(data[k]) for k in _OWNER_ACCEPTANCE_KEYS}
+    except (OSError, subprocess.TimeoutExpired, ValueError, KeyError, TypeError) as exc:
+        return failed(f"owner-acceptance counts unavailable: {exc}")
+    _emit_event("owner_acceptance_assurance", counts)
+    unbacked = counts["unbacked_owner_acceptances"]
+    prev: Optional[int] = None
+    try:
+        prev = int(json.loads(state_path.read_text())["unbacked"])
+    except (OSError, ValueError, KeyError, TypeError):
+        pass
+    if prev is None or unbacked < prev:
+        try:
+            state_path.parent.mkdir(parents=True, exist_ok=True)
+            state_path.write_text(json.dumps({"unbacked": unbacked, "updated": now}), encoding="utf-8")
+        except OSError as exc:
+            logger.debug(f"owner-acceptance state not persisted: {exc}")
+    if prev is not None and unbacked > prev:
+        return [{"type": "owner_acceptance_unbacked_rising", "zone": "owner-acceptance", "severity": "high",
+                 "detail": f"unbacked owner acceptances rose {prev} -> {unbacked}: an owner acceptance was added "
+                           "without an approval_ref (the allowlist is remove-only)",
+                 "previous": prev, "current": unbacked, "timestamp": now}]
+    return []
+
+
 # ── HealthSpider ───────────────────────────────────────────────────────────────
 
 class HealthSpider:
@@ -1284,6 +1335,25 @@ class HealthSpider:
         elif atype == "aq_confine_alert":
             logger.warning(f"[aq-confine] pending high alert {anomaly.get('alert_id', '')}: {anomaly.get('title', '')}")
             return True
+        elif atype in ("owner_acceptance_unbacked_rising", "owner_acceptance_probe_failed"):
+            logger.warning(f"[owner-acceptance] {anomaly.get('detail')}")
+            if atype == "owner_acceptance_unbacked_rising":
+                try:
+                    push(
+                        source="health-spider",
+                        severity="high",
+                        autonomy_boundary="human_gate",
+                        title="Unbacked owner acceptances increased",
+                        detail=anomaly.get("detail", atype),
+                        proposed_action="Find the tracker.json acceptance block added without an approval_ref (aq-pm-tracker --check-owner-acceptance names it); revert it or obtain an approval record through aq-approve.",
+                        payload=anomaly,
+                        dedup_key="owner-acceptance-unbacked-rising",
+                        why="Owner acceptance is self-asserted text unless backed by an approval record; a rising count means unverified work is being reported as accepted.",
+                        next_step="Run: scripts/ai/aq-pm-tracker --check-owner-acceptance --baseline-sha256 <pinned in tier0.d/check-pm-tracker.sh>",
+                    )
+                except Exception:
+                    pass
+            return True
         elif atype == "deployed_revision_stale":
             logger.warning(f"[deploy-source] {anomaly.get('detail')}")
             return False  # advisory warning: event emitted above, not an unresolved failure
@@ -1458,6 +1528,13 @@ class HealthSpider:
                     total += 1
         except Exception as e:
             logger.error(f"[aq-confine] error: {e}")
+        # Harness-level: owner-acceptance assurance counters + unbacked-count rise alert.
+        try:
+            for a in await asyncio.to_thread(_owner_acceptance_check):
+                if await self.handle_anomaly(a):
+                    total += 1
+        except Exception as e:
+            logger.error(f"[owner-acceptance] error: {e}")
         # Harness-level: deployed git revision vs origin/main (deploy-source drift).
         try:
             for a in await asyncio.to_thread(_deployed_revision_check):

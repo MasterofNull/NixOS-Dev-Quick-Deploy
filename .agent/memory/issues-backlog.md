@@ -6218,3 +6218,8 @@ File: scripts/ai/lib/worktree-isolation.sh; scripts/automation/prsi-orchestrator
 [DONE] rsi-b14a56f02e72228dea7c852b — resolved 2026-10-26: phase-0 check 0.10.2 passing in health-monitor JSON run 2026-10-26T06:44:01Z — ledger status=resolved
 
 [DONE] rsi-6e45c88de3ad4e164a6da6cb — resolved 2026-10-26: fixed timestamp parsing in ContinuousLearningPipeline._parse_event_timestamp to handle +00:00Z and trailing Z ISO variants — ledger status=resolved
+
+[OPEN] pm-tracker acceptance — 131 owner acceptances (`by: hyperd`) carry no approval_ref (design said 135; #670 revoked 4 req-product acceptances) — root cause: `_is_owner_acceptor` trusted the self-asserted literal. Slice 1 (2026-10-31): frozen baseline + remove-only allowlist + `check-pm-tracker --check-owner-acceptance` gate; items project `SHIPPED (unverified)`; health-spider alerts when the count rises.
+  Severity: high
+  Action: slice 2 (frozen waves + aq-approve queue + reconcile), slice 3 (signed path); templates deferred to 2026-11-30 (WR-PM-ACCEPT-1).
+  File: scripts/ai/aq-pm-tracker ~L915 (check_owner_acceptance), config/pm-tracker-unbacked-owner-acceptances*.json

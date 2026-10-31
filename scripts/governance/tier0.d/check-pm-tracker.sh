@@ -14,17 +14,26 @@ cd "${REPO_ROOT}"
 
 TRACKER="scripts/ai/aq-pm-tracker"
 REFACTOR_STATUS="scripts/ai/aq-refactor-status"
-if [[ ! -x "${TRACKER}" ]] && ! python3 -c "import sys" 2>/dev/null; then
-  echo "[tier0.d/check-pm-tracker] SKIP: projector unavailable"
-  exit 0
+# Owner-acceptance gate (verified acceptance): UNCONDITIONAL, no SKIP. A missing projector or interpreter is a FAIL,
+# not a pass: a check that could not run must never read green. BASELINE_SHA256 pins config/
+# pm-tracker-unbacked-owner-acceptances.baseline.json; changing the baseline means editing this line (review-visible).
+BASELINE_SHA256="20ef02f7295a7bd592db49af36c016f16c42240417a57f3f4e414df1d56c6f27"
+if [[ ! -f "${TRACKER}" ]] || ! command -v python3 >/dev/null 2>&1; then
+  echo "[tier0.d/check-pm-tracker] FAIL: projector or python3 unavailable; the owner-acceptance gate cannot run (no SKIP)"
+  exit 1
 fi
 
 fail=0
+if ! owner_out="$(python3 "${TRACKER}" --check-owner-acceptance --baseline-sha256 "${BASELINE_SHA256}" 2>&1)"; then
+  echo "[tier0.d/check-pm-tracker] FAIL: owner acceptances must be backed by an approval_ref or the frozen remove-only allowlist:"
+  echo "${owner_out}" | sed 's/^/    /'
+  fail=1
+fi
 shopt -s nullglob
 manifests=(.agents/plans/*/tracker.json)
 if [[ ${#manifests[@]} -eq 0 ]]; then
-  echo "[tier0.d/check-pm-tracker] PASS: no plan trackers yet (nothing to project)"
-  exit 0
+  echo "[tier0.d/check-pm-tracker] no plan trackers yet (nothing to project)"
+  exit "${fail}"
 fi
 
 for m in "${manifests[@]}"; do

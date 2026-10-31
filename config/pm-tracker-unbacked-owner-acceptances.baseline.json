@@ -1,0 +1,662 @@
+{
+  "schema": 1,
+  "frozen": "2026-10-31",
+  "note": "Frozen baseline of owner acceptances that had no approval_ref when verified acceptance slice 1 landed (2026-10-31). Its sha256 is pinned as BASELINE_SHA256 in scripts/governance/tier0.d/check-pm-tracker.sh; never edit.",
+  "entries": [
+    {
+      "plan": "approval-control-plane",
+      "item": "deploy-ui",
+      "acceptance_sha256": "f1f74e878c965e6e039c24eecb76f2f1b880ebe3024cc8982c5661ebbafcc1b2"
+    },
+    {
+      "plan": "approval-control-plane",
+      "item": "designs",
+      "acceptance_sha256": "9f6a5d612320eff1f5b20f607a954a8b8db0dd1edb1f34373fe5eac29476fda8"
+    },
+    {
+      "plan": "approval-control-plane",
+      "item": "p0",
+      "acceptance_sha256": "3cfc4b665a72d8a5b606f577911eebda057af3bb0eef7fa91916c5ec11577ab7"
+    },
+    {
+      "plan": "approval-control-plane",
+      "item": "p1",
+      "acceptance_sha256": "516d38aa099f4c0360eaacce4a2330bdc5719a96837ff71475a6d4cad6dc09e8"
+    },
+    {
+      "plan": "approval-control-plane",
+      "item": "p1b",
+      "acceptance_sha256": "f5107a4d18240798af32d401216d251b47933f886f4220da5adafc0f5826b16f"
+    },
+    {
+      "plan": "approval-control-plane",
+      "item": "p2",
+      "acceptance_sha256": "fd72fdddb5f56b59866a6aff0b6710657c8a30d2bf006df539c27ae98b52fe6e"
+    },
+    {
+      "plan": "approval-control-plane",
+      "item": "p3",
+      "acceptance_sha256": "6082fc84322e858c45a2ec1ff64982df1d7fd0fb374f13fd023bef23551b0390"
+    },
+    {
+      "plan": "approval-control-plane",
+      "item": "p4",
+      "acceptance_sha256": "943127466f3270803666bc2897f4fd0e1a5a5efa0c45a548680790361641f82f"
+    },
+    {
+      "plan": "approval-control-plane",
+      "item": "prd",
+      "acceptance_sha256": "9c166e5cd4cc501834fa1fbc572406c2c915b84ad94050d047a1652b6003d8c3"
+    },
+    {
+      "plan": "approval-inbox-20261002",
+      "item": "s1",
+      "acceptance_sha256": "ab1a190e5695a72724006eb38b72d663e9d9c0afc8cf80c3fe20fd4bf71ca295"
+    },
+    {
+      "plan": "approval-inbox-20261002",
+      "item": "s2",
+      "acceptance_sha256": "955fffaeb2e388e7df75be4383af0ae70f8ff1bb672bc85237cab6d69ff98396"
+    },
+    {
+      "plan": "approval-inbox-20261002",
+      "item": "s3",
+      "acceptance_sha256": "6d165fe3ec18b012d0208aeaee996ccfb5845f2e8504b04f63fd2ec8c3ffd3e6"
+    },
+    {
+      "plan": "aqos-capabilities-inventory",
+      "item": "cap-commands",
+      "acceptance_sha256": "218bc584f2f66e64f61c105a9c037f493ca96a5c84bc841b71aa05cce2746186"
+    },
+    {
+      "plan": "aqos-capabilities-inventory",
+      "item": "cap-role-implementer",
+      "acceptance_sha256": "86821caa6b0ae1dc0cfdc42a5309f0e822c54419cbe8d052ea05c5b9c29e49d6"
+    },
+    {
+      "plan": "aqos-capabilities-inventory",
+      "item": "cap-role-orchestrator",
+      "acceptance_sha256": "54be63269d020701dba6e90733f2fd080493f7d7f03b3bc4d0be43e90b1eda87"
+    },
+    {
+      "plan": "aqos-capabilities-inventory",
+      "item": "cap-role-reviewer",
+      "acceptance_sha256": "0c14c5e25339aca806ba5e1d7ed19f61f335d3b15eb22548c1432cdc8b1dd0b7"
+    },
+    {
+      "plan": "aqos-capabilities-inventory",
+      "item": "cap-workflow-canon",
+      "acceptance_sha256": "0e6288aa793eef66d45415a852d747233df8a5272353e7954148b6d9a1582309"
+    },
+    {
+      "plan": "aqos-capabilities-inventory",
+      "item": "cap-workflows-engine",
+      "acceptance_sha256": "ee4a7604923be442c5c08dd6a01f6e05d4270233fc60676b3843958085b843e5"
+    },
+    {
+      "plan": "aqos-installer-experience",
+      "item": "p0-ai-fit-policy",
+      "acceptance_sha256": "a5e33407d1d1fdf5c3bf961adc188030a8ec60f1abb078c9574ba3bc77677a26"
+    },
+    {
+      "plan": "aqos-installer-experience",
+      "item": "p0-execution-verifier",
+      "acceptance_sha256": "7a569835e77aff2293389dd05b3b039380726e9ec195a365ff1ed1177e315d8b"
+    },
+    {
+      "plan": "aqos-installer-experience",
+      "item": "p0-hardware-detector",
+      "acceptance_sha256": "27b6fc7a6cbf6db331449a3d521ce160df4f83e4a1fe66a3e48acaea608ed359"
+    },
+    {
+      "plan": "aqos-installer-experience",
+      "item": "p0-module-catalog",
+      "acceptance_sha256": "1a09c5e1f8e422f7736b891c7289ef2c74d3f858445809affc748a021a58547f"
+    },
+    {
+      "plan": "aqos-installer-experience",
+      "item": "p0-mysystem-fieldset",
+      "acceptance_sha256": "b6d7e5b245f98d876384741cd3eea1dd66a936e734e59255dbb569cd04299479"
+    },
+    {
+      "plan": "aqos-installer-experience",
+      "item": "p0-resolver",
+      "acceptance_sha256": "a6a94092330eb195e61f88a3e40bd6b4c8f4a5b69d81e29df2c2c878817c77f2"
+    },
+    {
+      "plan": "aqos-installer-experience",
+      "item": "p0-schema",
+      "acceptance_sha256": "535ea558dc9b8247833a4f4221bee143bcd85e7fe9120b7fb764ae6a23538f10"
+    },
+    {
+      "plan": "aqos-installer-experience",
+      "item": "p1-golden-profile",
+      "acceptance_sha256": "262374372b4ca29e63617cf464ae8c1b75e075093680e791426552eeff3c8c67"
+    },
+    {
+      "plan": "aqos-installer-experience",
+      "item": "p1-guided-tui",
+      "acceptance_sha256": "9f5d766ad72f5a39f09a72539235ca2975cf4022f1bb200725971b1a33228890"
+    },
+    {
+      "plan": "aqos-installer-experience",
+      "item": "p1-parity-suite",
+      "acceptance_sha256": "f4884168109b92671c35bf5a0247b7ede9577eae745d873f26d2b1024f0872d8"
+    },
+    {
+      "plan": "aqos-installer-experience",
+      "item": "p2-ai-adapter",
+      "acceptance_sha256": "a5ba46268569a22f5a7ec117be7309816bcf59d0b57cf1033750e70c312179ae"
+    },
+    {
+      "plan": "aqos-requirements-inventory",
+      "item": "req-agent-parity",
+      "acceptance_sha256": "ad3d815c080984e8479d0c21fe2e0d94a5f78a8299b24924419aa09a523244e5"
+    },
+    {
+      "plan": "aqos-requirements-inventory",
+      "item": "req-approval-control-plane",
+      "acceptance_sha256": "87c13007e7ce4d1d4ec87131e79945505e718fd7f7599441d02cc4d06d41d6e6"
+    },
+    {
+      "plan": "aqos-requirements-inventory",
+      "item": "req-flat-factory",
+      "acceptance_sha256": "267daee3d850b58724ad57401ce5ec394361f3a378a5d45800e1302f1a62da4f"
+    },
+    {
+      "plan": "aqos-requirements-inventory",
+      "item": "req-foundation-a",
+      "acceptance_sha256": "283df5b5cc7dd2f47da8e0efcdae903d59b51ced9c6f1b2133f62676a6e280be"
+    },
+    {
+      "plan": "aqos-requirements-inventory",
+      "item": "req-foundation-b",
+      "acceptance_sha256": "b8c6e905f2a2ce0596dde0b5698cb2888cd4420010bbd50dbcba984788d7f2f2"
+    },
+    {
+      "plan": "aqos-requirements-inventory",
+      "item": "req-foundation-c",
+      "acceptance_sha256": "affcabc8c57d76c95e5534a40e1560f0b985240d0426b161e1b5b9f8b4705e0b"
+    },
+    {
+      "plan": "aqos-requirements-inventory",
+      "item": "req-guest-init-evaluation",
+      "acceptance_sha256": "6266ebb1ad21e136bb0e07c9c8b69156156cc74b8ff9909c45f6d94de48a4425"
+    },
+    {
+      "plan": "aqos-requirements-inventory",
+      "item": "req-hard-rules",
+      "acceptance_sha256": "2cc7be4b73547eedce6626f1283a84e4d32aca294181b0325253f73befb31638"
+    },
+    {
+      "plan": "aqos-requirements-inventory",
+      "item": "req-herdr",
+      "acceptance_sha256": "052e8269fc36dce5db8889af043f18c0219b93ccc9da462492f131c35ecde456"
+    },
+    {
+      "plan": "aqos-requirements-inventory",
+      "item": "req-observability-parity",
+      "acceptance_sha256": "3aa1fed00454e4bc512423e2af41956c9749a98839f74e4478bbce97bd2f8969"
+    },
+    {
+      "plan": "aqos-requirements-inventory",
+      "item": "req-track-s",
+      "acceptance_sha256": "53b297c2583c453ffb49332c51dcb85f660f365bbeb8e82ecc3ad9f2923b4d72"
+    },
+    {
+      "plan": "aqos-requirements-inventory",
+      "item": "req-track-v",
+      "acceptance_sha256": "af218ff1a3c8651afee92db3d5cdd51d2195ae9013ed3da8b2967ee48c8f5331"
+    },
+    {
+      "plan": "aqos-services-inventory",
+      "item": "svc-aidb",
+      "acceptance_sha256": "d4945c3bfd1b1245d005eae9d2b1c4b8e66e7db5cb644de9fdbf8c2a7c8a0d2a"
+    },
+    {
+      "plan": "aqos-services-inventory",
+      "item": "svc-aidb-reindex",
+      "acceptance_sha256": "657d86f607a1f9baddbb235d138d8803ff736475c987d3ab0aca761b4d706431"
+    },
+    {
+      "plan": "aqos-services-inventory",
+      "item": "svc-audit-sidecar",
+      "acceptance_sha256": "c4593cd34f813f3ceb51e62994a20aee3c8e106742928cc36b3608f5fd0b4e47"
+    },
+    {
+      "plan": "aqos-services-inventory",
+      "item": "svc-autonomous-improvement",
+      "acceptance_sha256": "26899f25bedf4d8a3f418e940f0d12770cb6ad00036be2bb487cd00c2f1d621e"
+    },
+    {
+      "plan": "aqos-services-inventory",
+      "item": "svc-coordinator",
+      "acceptance_sha256": "c9f55efe1254dd52e38fa01d7568f0c2f3f5913829e97edebd8e659e08f594e5"
+    },
+    {
+      "plan": "aqos-services-inventory",
+      "item": "svc-crystallize",
+      "acceptance_sha256": "707975f9b1521d6b8d396ca9e84be40eed3429326feda91d47c12627d6f49a2c"
+    },
+    {
+      "plan": "aqos-services-inventory",
+      "item": "svc-drop-daemon",
+      "acceptance_sha256": "f3ac3f8eadadfe80557cee4a21c8dcca1815154d98066407a276015c1adf70c1"
+    },
+    {
+      "plan": "aqos-services-inventory",
+      "item": "svc-health-spider",
+      "acceptance_sha256": "0cb5522969d7153ced259b207aa742102eecfe781cf0b5c3bc438148ef797dbe"
+    },
+    {
+      "plan": "aqos-services-inventory",
+      "item": "svc-knowledge-sync",
+      "acceptance_sha256": "78399bf2f77de0dc7b4ab7b845681721507d88e6c259fc0fa3eac2b21ef506aa"
+    },
+    {
+      "plan": "aqos-services-inventory",
+      "item": "svc-local-training-loop",
+      "acceptance_sha256": "98228a84d9ffc2a696fa781b561562e96dabb7322c69fc69766ddedc36899f2e"
+    },
+    {
+      "plan": "aqos-services-inventory",
+      "item": "svc-lore-sync",
+      "acceptance_sha256": "e07ca15509237ba2600c3ac94a2dc1db99741486ee5bdafe5bb6960ef2b3742f"
+    },
+    {
+      "plan": "aqos-services-inventory",
+      "item": "svc-mcp-integrity",
+      "acceptance_sha256": "2f798fdfb6f8cd77807c7629cddf21b1eaa07b99ed3af35a89026e4c5daa12f1"
+    },
+    {
+      "plan": "aqos-services-inventory",
+      "item": "svc-mcp-process-watch",
+      "acceptance_sha256": "81e0517f14e33f6d98f0b73bd70acaabe51646e9d122961febf47f79ef86cbd9"
+    },
+    {
+      "plan": "aqos-services-inventory",
+      "item": "svc-npm-monitor",
+      "acceptance_sha256": "320116b22e6663c4a8fc883d88b4a7ed8c9a8c3e0165e60e56f2a55bcba751b9"
+    },
+    {
+      "plan": "aqos-services-inventory",
+      "item": "svc-nvd-sync",
+      "acceptance_sha256": "4d3b7baf865a9bb993bfde9d70e59d4f262ee343723d36b193942f152706d590"
+    },
+    {
+      "plan": "aqos-services-inventory",
+      "item": "svc-otel-tempo",
+      "acceptance_sha256": "a7a5a753d840e0855ea7e064c81f4bcef04b1867b984adb17df0e6fc50b5b5bd"
+    },
+    {
+      "plan": "aqos-services-inventory",
+      "item": "svc-pgvector",
+      "acceptance_sha256": "84dc24cc77a2e32562577faa352ec4c23f2296dc64c83c3f3a5eca1f142bfc2f"
+    },
+    {
+      "plan": "aqos-services-inventory",
+      "item": "svc-prompt-eval",
+      "acceptance_sha256": "8cdc787f05a77bfd674075dacc336e34138e558e249e10c05435dc44c01344e1"
+    },
+    {
+      "plan": "aqos-services-inventory",
+      "item": "svc-qa-pipeline",
+      "acceptance_sha256": "742e02ac24409c6b224987fa7e24fce5a0da85772f420f98f898961c8efc91ad"
+    },
+    {
+      "plan": "aqos-services-inventory",
+      "item": "svc-security-audit",
+      "acceptance_sha256": "096be00c08a25db0bdcb657180b1b8eca633c6df923cd6ab4010b129b03b725c"
+    },
+    {
+      "plan": "aqos-services-inventory",
+      "item": "svc-stack-health",
+      "acceptance_sha256": "0909f0257cb9d5c7a2ae807dcb5741a93c0c34e0d3ab2506ebf10d6273abe6c2"
+    },
+    {
+      "plan": "aqos-services-inventory",
+      "item": "svc-switchboard",
+      "acceptance_sha256": "8c4f2d924fb09b8c7b18798f62d9416393c7ecb71ef27a10cec4ebaf0de58f2e"
+    },
+    {
+      "plan": "aqos-services-inventory",
+      "item": "svc-training-ingest",
+      "acceptance_sha256": "30e78ade4f6754bd961788852d1a18920397e71941380a40347da9e1aeb4180e"
+    },
+    {
+      "plan": "aqos-tools-inventory",
+      "item": "tool-aq-event",
+      "acceptance_sha256": "870471c95ba5f9eb88a9b80665707d10ec39d518917182d05c8e397859d56aba"
+    },
+    {
+      "plan": "aqos-tools-inventory",
+      "item": "tool-aq-loop",
+      "acceptance_sha256": "0e9c1bfb20e0c5f56f9f9ede2782c9892629909ea793c2b5583d81672c9e4761"
+    },
+    {
+      "plan": "aqos-tools-inventory",
+      "item": "tool-aq-pm-tracker",
+      "acceptance_sha256": "4c5c1dcf75fe31b5a033044642c71450c21bab3f2576b64ff352f63aac22ef52"
+    },
+    {
+      "plan": "aqos-tools-inventory",
+      "item": "tool-delegate-antigravity",
+      "acceptance_sha256": "97b474f1a67db1353718bfe1af53dd387b1b1a224f24ce7bdae18de3a7d75043"
+    },
+    {
+      "plan": "aqos-tools-inventory",
+      "item": "tool-delegate-codex",
+      "acceptance_sha256": "d71d4f4baa17968e11e72998e143fef3c0fc308a570011b9568cd2d5a884f7be"
+    },
+    {
+      "plan": "aqos-tools-inventory",
+      "item": "tool-delegate-local",
+      "acceptance_sha256": "0448a855d5ef0681b1f7335eac135a481ed7786f8b8e6dab6aa392f881e0813d"
+    },
+    {
+      "plan": "aqos-tools-inventory",
+      "item": "tool-headroom",
+      "acceptance_sha256": "eb3a59eb357cfde4dbbdc799297e8f88e7d898040e06b7d0a40930b9738447e5"
+    },
+    {
+      "plan": "aqos-tools-inventory",
+      "item": "tool-lean-ctx",
+      "acceptance_sha256": "f69ac3e82743fbb91db2efd088fa1079740091f9b590829cbba955b56f88f538"
+    },
+    {
+      "plan": "aqos-tools-inventory",
+      "item": "tool-mcp-aidb",
+      "acceptance_sha256": "23c934fee1b04b394e5a06ba78d60e3e3f4db222507347064cc8b3b634e08456"
+    },
+    {
+      "plan": "aqos-tools-inventory",
+      "item": "tool-mcp-coordinator",
+      "acceptance_sha256": "83497de6511f4ffc660e54824876c45e883488775bff023d618444b61019b674"
+    },
+    {
+      "plan": "aqos-tools-inventory",
+      "item": "tool-mcp-github",
+      "acceptance_sha256": "d6c36ee5701d62c9d84fd793e89d6fcc293d9db2991f87101630934fa10f9ed2"
+    },
+    {
+      "plan": "aqos-tools-inventory",
+      "item": "tool-osint-bbot",
+      "acceptance_sha256": "97e2f098b61fae68b06585832b272c60a5181f57372d1ebad2864e9f7fbcfb9b"
+    },
+    {
+      "plan": "aqos-tools-inventory",
+      "item": "tool-osint-maigret",
+      "acceptance_sha256": "cfdc4a5785f64be37b17245ed95081ce944acbd9680ac25a6ed86a157a68538b"
+    },
+    {
+      "plan": "aqos-tools-inventory",
+      "item": "tool-osint-mosaic",
+      "acceptance_sha256": "cede14dcb1a61bf1532a87cd9275e9e14bc63fbaf99297e55f9cd1891a99d0c0"
+    },
+    {
+      "plan": "aqos-tools-inventory",
+      "item": "tool-rtk",
+      "acceptance_sha256": "f412848f7d129c5014ecb41da601f31a0d78710442f9014aa56d1ef0af2fd884"
+    },
+    {
+      "plan": "capability-integration",
+      "item": "ci-1",
+      "acceptance_sha256": "c96f9e4530d83c739ddf0bb331f710e371a9c9f936266acfa13e75d77d62dc71"
+    },
+    {
+      "plan": "capability-integration",
+      "item": "ci-10",
+      "acceptance_sha256": "203f488c0f9f481921acf7ac2b68f0d992740277aeb93f2509941c0c92cf03f8"
+    },
+    {
+      "plan": "capability-integration",
+      "item": "ci-2",
+      "acceptance_sha256": "76842f42233fda4f548ad5abb2a9e2a18ee23ae1ca50446afe0db423902fa056"
+    },
+    {
+      "plan": "capability-integration",
+      "item": "ci-3",
+      "acceptance_sha256": "ffcc12a678e382e7b5f700cdd5cfdb9391b7be1f4d97ed81de33b576af22e7a6"
+    },
+    {
+      "plan": "capability-integration",
+      "item": "ci-4",
+      "acceptance_sha256": "39627beaffdf2a9cda2f2c9d517786e9ffefcae8d0719793dc7f9eb8673f9346"
+    },
+    {
+      "plan": "capability-integration",
+      "item": "ci-5",
+      "acceptance_sha256": "cec4e955ddcaf17f4462d93a426f738e5b279d2051c018fd973a8b35b757f87a"
+    },
+    {
+      "plan": "capability-integration",
+      "item": "ci-6",
+      "acceptance_sha256": "624fd785b39a4efd6e3f0af06a7498423f708d270a01c10e72249f9f57b6dea0"
+    },
+    {
+      "plan": "capability-integration",
+      "item": "ci-7",
+      "acceptance_sha256": "f5c51d14ee1f51567a40df1121a1ea2bf678c1a0f9519e89e44301ed75286ebe"
+    },
+    {
+      "plan": "capability-integration",
+      "item": "ci-8",
+      "acceptance_sha256": "d5a6f9893aa860f60bf9fb3e4b097e6a7fd07dc9f06fa101f617d0bd86c92d85"
+    },
+    {
+      "plan": "capability-integration",
+      "item": "ci-9",
+      "acceptance_sha256": "cf69e063e5afca6a4cd2b573ae7d4eb40aecbcd2e9bc31985656ca0ffa7c780e"
+    },
+    {
+      "plan": "coordination-safety-worktree-isolation",
+      "item": "cs-1",
+      "acceptance_sha256": "eb1b5e1ea19deaeec3149bb948d2efe3519e64377853f1b374696a7b194020ed"
+    },
+    {
+      "plan": "coordination-safety-worktree-isolation",
+      "item": "cs-2",
+      "acceptance_sha256": "00652729ebee1fdae9d7ebebee9d9641bee359917d17d0d8d49994bd068b7cf6"
+    },
+    {
+      "plan": "coordination-safety-worktree-isolation",
+      "item": "cs-4",
+      "acceptance_sha256": "3171ce6b0d7946b0c9dbb9fc7db93de3b8ff2b1a0e9c52ae33230312ff599f45"
+    },
+    {
+      "plan": "ecc-parity-integration",
+      "item": "p0-b",
+      "acceptance_sha256": "13e58bd3606d29d2f27c823e43d1a3809219bed314face388b02bf7bcdb912e4"
+    },
+    {
+      "plan": "ecc-parity-integration",
+      "item": "p0-c",
+      "acceptance_sha256": "d74e4454c201e63101aaf3e1c099e5754271c83f7096d9c91f6412284c25c8b5"
+    },
+    {
+      "plan": "ecc-parity-integration",
+      "item": "p0-e",
+      "acceptance_sha256": "5d15a8233e46fa9e22c0262366098344854f0dc04c0ed23b501c794015b274ba"
+    },
+    {
+      "plan": "ecc-parity-integration",
+      "item": "p1",
+      "acceptance_sha256": "9185ff75b2a4eacd6750dd680a43bd6ea86b2cd60454ae2da5a96be09f86bc9d"
+    },
+    {
+      "plan": "factory-gate-templates",
+      "item": "ft-4",
+      "acceptance_sha256": "af1491433fcc29e32d5bf8d023e3087f557a551e6b4ad533461444ce930d390e"
+    },
+    {
+      "plan": "factory-gate-templates",
+      "item": "ft-5",
+      "acceptance_sha256": "942f623875722dd86824a5a3e905694e1ac0f145538e3175026f8324cfc099d0"
+    },
+    {
+      "plan": "factory-gate-templates",
+      "item": "ft-6",
+      "acceptance_sha256": "c86b65686b3fd005765436a5741a53a242ba9a7f81c070b9f9ab463a4bac718c"
+    },
+    {
+      "plan": "factory-gate-templates",
+      "item": "ft-7",
+      "acceptance_sha256": "91a2e56a9f5afeb050127c0814bfadbd9de05168cbc6590c1a84f026564936b8"
+    },
+    {
+      "plan": "factory-shared-toolchain",
+      "item": "st1-owner-activation",
+      "acceptance_sha256": "d50b20f3be35850b65be967a56cfd5d5d3da5b416d2d85648333ce2382dd1065"
+    },
+    {
+      "plan": "frontier-evidence-intake",
+      "item": "fa-1-backlog",
+      "acceptance_sha256": "e4ec440e876bf6b54301cf8b9b4df79146f0244abcf7ab0e13c5ddb86736be5b"
+    },
+    {
+      "plan": "frontier-evidence-intake",
+      "item": "fa-1b-sources",
+      "acceptance_sha256": "33e2b0dc90494531c27798e2f3572ab326ae8206cadad71519e61d833f2c73b0"
+    },
+    {
+      "plan": "frontier-evidence-intake",
+      "item": "fa-1c-relevance",
+      "acceptance_sha256": "5d5bbe31b1768ec934936489c86c95977b2c79760d80430ece8739a5420edac8"
+    },
+    {
+      "plan": "frontier-evidence-intake",
+      "item": "fa-2-context-seams",
+      "acceptance_sha256": "b0fe1f2fa7f992279c53aecd5b28bd9497faf68ef3ce8683f681fd0cd7650550"
+    },
+    {
+      "plan": "frontier-evidence-intake",
+      "item": "fa-3-autofold",
+      "acceptance_sha256": "a9eac9277e0fc249baff4de0e8caa1f57bdb8747712a7433f54ba22db53b8f9a"
+    },
+    {
+      "plan": "frontier-evidence-intake",
+      "item": "fa-4-scan-refresh",
+      "acceptance_sha256": "f80845890e26a47ae1072b46e73b64430d98d9c02402de256a6ff47e9eb9d0e0"
+    },
+    {
+      "plan": "frontier-evidence-intake",
+      "item": "fa-5-parity-backstop",
+      "acceptance_sha256": "6d12fd9f9bbc6d698f996e634188015583b6f1f6670ecfa1d596af11bca6590b"
+    },
+    {
+      "plan": "herdr-agent-operations",
+      "item": "h0-intake",
+      "acceptance_sha256": "b2bc62711d011761eba1bfdbfd9c59d01524b261e2c3d7b76ad6914cde453bea"
+    },
+    {
+      "plan": "herdr-agent-operations",
+      "item": "h1-package",
+      "acceptance_sha256": "a5a6842ea5dd0b5d5a033fe62fe5df1c01715eddc13cd01fbd6bb380d553c4e4"
+    },
+    {
+      "plan": "local-context-supply-chain",
+      "item": "csc-assembler",
+      "acceptance_sha256": "0a932451ea2365ccc3d654c81ae5b1c04fabd29ccc757756c81873a0bf1d4778"
+    },
+    {
+      "plan": "local-context-supply-chain",
+      "item": "csc-nocommit-structural",
+      "acceptance_sha256": "a7f9fd3c288eef71d52dfe189e4a66f56704ca36891c98f9aef6daeb70045edd"
+    },
+    {
+      "plan": "local-context-supply-chain",
+      "item": "csc-readfile-gate",
+      "acceptance_sha256": "0fa29c1f194b2117e5fc05b36461844ae34d75b68d2c4e901357681f6876d167"
+    },
+    {
+      "plan": "network-profile-interoperability",
+      "item": "n0",
+      "acceptance_sha256": "dc53156bff48ec328e7a426d107d21a2c0bad0d36babbb4a89998aa0b43d0236"
+    },
+    {
+      "plan": "network-profile-interoperability",
+      "item": "n1",
+      "acceptance_sha256": "b0ec55733dcd5f20b0fd67b0c2fdc085dd9e5cfe6a9fd2caafda0bbf244ffaed"
+    },
+    {
+      "plan": "network-profile-interoperability",
+      "item": "n2",
+      "acceptance_sha256": "126c7155bde44d7cfefcb91e853c208f24ba6efca39ff45475c986247bf35f57"
+    },
+    {
+      "plan": "network-profile-interoperability",
+      "item": "n2-gate",
+      "acceptance_sha256": "2047f69aa65914a8ddb407256c1882d187619d4123b5a18ad3e58de7fc9328c6"
+    },
+    {
+      "plan": "portfolio-classification",
+      "item": "coverage-dashboard",
+      "acceptance_sha256": "594664291931a49373d1503fb2740e08ff5717093799e9b42c156a6d60456f97"
+    },
+    {
+      "plan": "portfolio-classification",
+      "item": "reconcile-plan-classifications",
+      "acceptance_sha256": "4365944e4e551ffc92e1f85020c4fd7fb6a7d165a7523a7b1107d098ec354992"
+    },
+    {
+      "plan": "portfolio-classification",
+      "item": "route-child-work",
+      "acceptance_sha256": "c8db9ce3061033e8c9b07d01209a0c5c20b38508ffcfe1bb9f4c7550631c845f"
+    },
+    {
+      "plan": "prsi-rsi-merge-20261002",
+      "item": "m1",
+      "acceptance_sha256": "fa4493874695b1256b7614c398949781326dd3169f566d199582a27062ee82b9"
+    },
+    {
+      "plan": "prsi-rsi-merge-20261002",
+      "item": "m2",
+      "acceptance_sha256": "22bf18d6f3a37e8be249b522c1a9adb40313f2d3b81a0524cd8f3da5da18b07d"
+    },
+    {
+      "plan": "prsi-rsi-merge-20261002",
+      "item": "m3",
+      "acceptance_sha256": "2c62873c5084f3039f358fd070c5a67a9ce93d21eda2b377db472e4329a4527a"
+    },
+    {
+      "plan": "prsi-rsi-merge-20261002",
+      "item": "m4",
+      "acceptance_sha256": "4d9863d843336db4650419761016730a874a11ebc5917472e868b72bb90b4e6c"
+    },
+    {
+      "plan": "prsi-rsi-merge-20261002",
+      "item": "m5",
+      "acceptance_sha256": "42d86a9333c9fbc69523d594affb387316755cbbd0167e796632526d2ed2f125"
+    },
+    {
+      "plan": "prsi-rsi-merge-20261002",
+      "item": "m6",
+      "acceptance_sha256": "ab8f652456a0a203a920e4727993c3a6208e443c1e5e0791f08a8676a00eb0c2"
+    },
+    {
+      "plan": "prsi-rsi-merge-20261002",
+      "item": "m7",
+      "acceptance_sha256": "45a3b4fcc1009280c554eaa79a16c4a9ea99ca909eb066a1c9cad8c6773e87b2"
+    },
+    {
+      "plan": "rsi-takeover-20261002",
+      "item": "r1",
+      "acceptance_sha256": "863c44a0338ff387cb3e3a7f40acd326dd19a909e36c5ce71f03ba39ab252c21"
+    },
+    {
+      "plan": "rsi-takeover-20261002",
+      "item": "r2",
+      "acceptance_sha256": "11ebfcf59457c98f958de49810db938451de9dee9394c4994a7b10fab80d1f0b"
+    },
+    {
+      "plan": "rsi-takeover-20261002",
+      "item": "r3",
+      "acceptance_sha256": "3b585e17696a8193c34257809706cbd1bab618095701376ebb86149d623e1902"
+    },
+    {
+      "plan": "rsi-takeover-20261002",
+      "item": "resume-ttl",
+      "acceptance_sha256": "b312aff87c352977aa0518fdce0a8554025af1a338f48a0310adc8d246965ffb"
+    }
+  ]
+}
