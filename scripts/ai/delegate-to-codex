@@ -188,13 +188,13 @@ task_id() {
 }
 
 registry_append() {
-    local id="$1" description="$2" output_file="$3"
+    local id="$1" description="$2" output_file="$3" model="${4:-}" effort="${5:-}"
     local ts; ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
     # Row built in python from argv (no shell re-parse); written via the shared-lock +
     # atomic-replace TaskRegistry path.
     local row
-    row="$(python3 -c 'import json,sys; print(json.dumps({"id":sys.argv[1],"agent":"codex","role":sys.argv[5],"description":sys.argv[2],"output_file":sys.argv[3],"pid":None,"status":"running","created":sys.argv[4]}))' \
-        "$id" "$description" "$output_file" "$ts" "$ROLE")"
+    row="$(python3 -c 'import json,sys; print(json.dumps({"id":sys.argv[1],"agent":"codex","role":sys.argv[5],"description":sys.argv[2],"output_file":sys.argv[3],"pid":None,"status":"running","created":sys.argv[4],"model_requested":sys.argv[6] or "unknown","model_effective":sys.argv[6] or "unknown","effort":sys.argv[7] or "n/a"}))' \
+        "$id" "$description" "$output_file" "$ts" "$ROLE" "$model" "$effort")"
     python3 "$SCRIPT_DIR/lib/registry-update.py" append "$REGISTRY" "$row"
 }
 
@@ -553,7 +553,7 @@ ${prompt}"
     # Last argument: full prompt with harness constraints prepended
     cmd+=("$full_prompt")
 
-    registry_append "$id" "$prompt" "$rel_output"
+    registry_append "$id" "$prompt" "$rel_output" "$model_flag" "$effort"
     audit_event_start "codex" "$id" "${prompt:0:200}"
 
     if [[ "$wait_mode" == "true" ]]; then

@@ -8913,6 +8913,19 @@ async function loadLocalAgentMonitor() {
       delegatedWorktreeCount === 0 ? "none active" : `${delegatedWorktreeCount} active`,
       delegatedWorktreeCount > 0 ? "info" : ""
     ),
+    fwRow(
+      "Local Preflight Refusals",
+      (d.dispatch_evidence || {}).local_refusals ?? "unavailable",
+      ((d.dispatch_evidence || {}).local_refusals || 0) > 0 ? "warn" : "ok"
+    ),
+    fwRow(
+      "Dispatch Coverage (source)",
+      d.dispatch_evidence
+        ? `${d.dispatch_evidence.with_normalized_evidence}/${d.dispatch_evidence.total} normalized; ` +
+          Object.entries(d.dispatch_evidence.by_source || {}).map(([k, v]) => `${k}=${v}`).join(" ")
+        : "unavailable",
+      "info"
+    ),
     fwRow("Latest Task", latestId),
     fwRow("Artifact Age", latestAge, latestAge === "--" ? "info" : ""),
     fwRow("Pipeline Elapsed", pipelineElapsed, pipelineElapsed === "--" ? "info" : ""),
