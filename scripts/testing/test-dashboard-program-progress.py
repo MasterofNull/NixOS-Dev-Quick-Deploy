@@ -151,16 +151,16 @@ class ProjectionProvenanceTests(unittest.TestCase):
         tracker = load_pm_tracker_module()
         item = {"detection": {"commit_match": ["ship PM provenance"]}}
         self.assertEqual(
-            tracker.project_item(item, "", "", "shallow_incomplete"), ("UNKNOWN", None)
+            tracker.project_item(item, "", "shallow_incomplete"), ("UNKNOWN", None)
         )
         # Explicit positive evidence is still truthful when history is partial.
         self.assertEqual(
-            tracker.project_item({"acceptance": {"status": "accepted"}, **item}, "", "", "shallow_incomplete"),
+            tracker.project_item({"acceptance": {"status": "accepted"}, **item}, "", "shallow_incomplete"),
             ("SHIPPED", 100),
         )
         self.assertEqual(
             tracker.project_item({"kind": "task", "detection": {"activation_subject": "vf", "blocker_note": "owner acts"}},
-                                 "", "activation.grant vf", "shallow_incomplete"),
+                                 "", "shallow_incomplete", verified=True),
             ("ACTIVATED", 100),
         )
 
@@ -178,7 +178,7 @@ class ProjectionProvenanceTests(unittest.TestCase):
         )
         self.assertEqual(tracker._git_log(), ("", "unavailable"))
         self.assertEqual(
-            tracker.project_item({"detection": {"commit_match": ["slice"]}}, "", "", "unavailable"),
+            tracker.project_item({"detection": {"commit_match": ["slice"]}}, "", "unavailable"),
             ("UNKNOWN", None),
         )
 
