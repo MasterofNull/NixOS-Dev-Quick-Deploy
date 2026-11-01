@@ -4,7 +4,8 @@
 #
 # Reads the top recurring gaps from /var/log/nixos-ai-stack/query-gaps.jsonl
 # (written by hybrid-coordinator's PRSI gap-sync loop), filters those that
-# exceed a minimum occurrence threshold, generates content via Gemini CLI,
+# exceed a minimum occurrence threshold, generates content via delegate-to-antigravity
+# (invoked by aq-knowledge-import.sh; no gemini binary is used here),
 # imports each into AIDB, then rebuilds Qdrant embeddings for the new docs.
 #
 # Designed to run unattended as a systemd timer (ai-gap-import.timer).
@@ -21,7 +22,6 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
-export PATH="$HOME/.npm-global/bin:$PATH"
 
 GAPS_JSONL="${GAPS_JSONL:-/var/log/nixos-ai-stack/query-gaps.jsonl}"
 MIN_OCCURRENCES="${MIN_OCCURRENCES:-3}"
@@ -34,8 +34,10 @@ if [[ ! -r "$GAPS_JSONL" ]]; then
   exit 0
 fi
 
-if ! command -v gemini &>/dev/null; then
-  printf 'ERROR gemini CLI not found in PATH (%s)\n' "$PATH" >&2
+# The generator is delegate-to-antigravity (called by aq-knowledge-import.sh), not a
+# gemini binary on PATH; the retired npm gemini CLI is not a dependency of this job.
+if [[ ! -x "${SCRIPT_DIR}/delegate-to-antigravity" ]]; then
+  printf 'ERROR delegate-to-antigravity not executable at %s\n' "${SCRIPT_DIR}/delegate-to-antigravity" >&2
   exit 1
 fi
 
@@ -92,6 +94,12 @@ for TOPIC in "${TOP_GAPS[@]}"; do
 done
 
 printf '\nINFO  Import complete: %d imported, %d failed\n' "$IMPORTED" "$FAILED"
+
+# Every selected gap failed: fail the unit so the failed-unit alert fires instead of a green no-op.
+if [[ "$IMPORTED" -eq 0 && "$FAILED" -gt 0 ]]; then
+  printf 'ERROR all %d gap import(s) failed\n' "$FAILED" >&2
+  exit 1
+fi
 
 # ── Rebuild Qdrant embeddings if anything was imported ─────────────────────────
 if [[ "$IMPORTED" -gt 0 && "$SKIP_QDRANT_REBUILD" != "1" ]]; then
