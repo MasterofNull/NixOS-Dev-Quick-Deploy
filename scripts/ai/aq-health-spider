@@ -919,16 +919,17 @@ def _deployed_revision_check(rev: Optional[str] = None, repo: Optional[Path] = N
 
 
 _OWNER_ACCEPTANCE_STATE = REPO_ROOT / ".agents" / "telemetry" / "owner-acceptance-unbacked.json"
-_OWNER_ALLOWLIST_FILE = REPO_ROOT / "config" / "pm-tracker-unbacked-owner-acceptances.json"
+_OWNER_ALLOWLIST_REL = "config/pm-tracker-unbacked-owner-acceptances.json"
 _OWNER_ACCEPTANCE_KEYS = ("shipped_unverified", "shipped_recorded", "unbacked_owner_acceptances", "owner_verified_signed")
 
 
-def _owner_acceptance_check(runner=None, state_path: Optional[Path] = None) -> List[Dict[str, Any]]:
+def _owner_acceptance_check(runner=None, state_path: Optional[Path] = None, repo: Optional[Path] = None) -> List[Dict[str, Any]]:
     """Owner-acceptance assurance probe (verified acceptance slice 1). Publishes shipped_unverified / shipped_recorded /
     unbacked_owner_acceptances / owner_verified_signed (always 0 until the signed path ships) as a telemetry event every
     cycle, and alerts when any unbacked acceptance is absent from the committed remove-only allowlist. A probe that could not read the projection is itself an anomaly: a check that measured nothing must
     not look healthy. `runner` returns (returncode, stdout) and is a test seam."""
     state_path = state_path or _OWNER_ACCEPTANCE_STATE
+    repo = repo or REPO_ROOT
     now = time.time()
 
     def failed(detail: str) -> List[Dict[str, Any]]:
@@ -949,14 +950,24 @@ def _owner_acceptance_check(runner=None, state_path: Optional[Path] = None) -> L
     except (OSError, subprocess.TimeoutExpired, ValueError, KeyError, TypeError) as exc:
         return failed(f"owner-acceptance counts unavailable: {exc}")
     _emit_event("owner_acceptance_assurance", counts)
-    # Decision = set membership of each live unbacked acceptance against the committed remove-only allowlist. The
-    # state file is display/trend only and never influences the alert (any agent-writable floor is gameable).
+    # Decision = set membership of each live unbacked acceptance against the allowlist blob on the protected trunk
+    # (origin/main), never the working tree and never mutable state (both are agent-writable).
+    def entry_set(text: str) -> set:
+        return {tuple(e.get(k) for k in ("plan", "item", "acceptance_sha256")) for e in json.loads(text)["entries"]}
+
     try:
-        allowed = {tuple(e.get(k) for k in ("plan", "item", "acceptance_sha256"))
-                   for e in json.loads(_OWNER_ALLOWLIST_FILE.read_text())["entries"]}
+        r = subprocess.run(["git", "-c", f"safe.directory={repo}", "-C", str(repo), "show", f"origin/main:{_OWNER_ALLOWLIST_REL}"],
+                           capture_output=True, text=True, timeout=10)
+        if r.returncode != 0:
+            return failed(f"trusted allowlist origin/main:{_OWNER_ALLOWLIST_REL} unreadable: {r.stderr.strip()[:200]}")
+        allowed = entry_set(r.stdout)
         live = [tuple(i["unbacked_key"]) for p in data["plans"] for i in p["items"] if "unbacked_key" in i]
-    except (OSError, ValueError, KeyError, TypeError, AttributeError) as exc:
-        return failed(f"owner-acceptance allowlist/keys unreadable ({_OWNER_ALLOWLIST_FILE}): {exc}")
+    except (OSError, subprocess.TimeoutExpired, ValueError, KeyError, TypeError, AttributeError) as exc:
+        return failed(f"owner-acceptance trusted allowlist/keys unreadable: {exc}")
+    try:
+        added = sorted(entry_set((repo / _OWNER_ALLOWLIST_REL).read_text()) - allowed)   # removals are stricter: fine
+    except (OSError, ValueError, KeyError, TypeError, AttributeError):
+        added = []   # an unreadable working copy cannot widen the trusted set
     unlisted = sorted(k for k in live if k not in allowed)
     if len(live) != counts["unbacked_owner_acceptances"]:
         unlisted = unlisted or [("?", "?", "count/keys mismatch")]
@@ -969,9 +980,14 @@ def _owner_acceptance_check(runner=None, state_path: Optional[Path] = None) -> L
                     "detail": f"trend state not persisted ({state_path}): {exc}", "timestamp": now})
     if unlisted:
         out.append({"type": "owner_acceptance_unbacked_rising", "zone": "owner-acceptance", "severity": "high",
-                    "detail": f"{len(unlisted)} unbacked owner acceptance(s) not in {_OWNER_ALLOWLIST_FILE.name} "
+                    "detail": f"{len(unlisted)} unbacked owner acceptance(s) not in origin/main:{_OWNER_ALLOWLIST_REL} "
                               f"(add an approval_ref; the allowlist is remove-only): {unlisted[:5]}",
                     "unlisted": [list(k) for k in unlisted], "current": counts["unbacked_owner_acceptances"], "timestamp": now})
+    if added:
+        out.append({"type": "owner_acceptance_allowlist_unauthorized", "zone": "owner-acceptance", "severity": "high",
+                    "detail": f"{len(added)} allowlist entr(ies) in the working tree are absent from origin/main (the allowlist "
+                              f"is remove-only; ignored for the decision): {added[:5]}",
+                    "added": [list(k) for k in added], "timestamp": now})
     return out
 
 
@@ -1341,8 +1357,24 @@ class HealthSpider:
         elif atype == "aq_confine_alert":
             logger.warning(f"[aq-confine] pending high alert {anomaly.get('alert_id', '')}: {anomaly.get('title', '')}")
             return True
-        elif atype in ("owner_acceptance_unbacked_rising", "owner_acceptance_probe_failed", "owner_acceptance_state_unwritable"):
+        elif atype in ("owner_acceptance_unbacked_rising", "owner_acceptance_allowlist_unauthorized", "owner_acceptance_probe_failed", "owner_acceptance_state_unwritable"):
             logger.warning(f"[owner-acceptance] {anomaly.get('detail')}")
+            if atype == "owner_acceptance_allowlist_unauthorized":
+                try:
+                    push(
+                        source="health-spider",
+                        severity="high",
+                        autonomy_boundary="human_gate",
+                        title="Owner-acceptance allowlist edited outside the protected trunk",
+                        detail=anomaly.get("detail", atype),
+                        proposed_action="Revert the working-tree additions to config/pm-tracker-unbacked-owner-acceptances.json; the allowlist is remove-only and trusted only from origin/main.",
+                        payload=anomaly,
+                        dedup_key="owner-acceptance-allowlist-unauthorized",
+                        why="An entry that is not on origin/main would silence the unbacked-acceptance alert if the working tree were trusted.",
+                        next_step="git diff origin/main -- config/pm-tracker-unbacked-owner-acceptances.json",
+                    )
+                except Exception:
+                    pass
             if atype == "owner_acceptance_unbacked_rising":
                 try:
                     push(

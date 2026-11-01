@@ -764,13 +764,25 @@ class HealthSpiderProbe(unittest.TestCase):
                 "plans": [{"items": [{"id": f"I{i}", "unbacked_key": self.key(i)} for i in live] + [{"id": "ok"}]}]}
         return lambda: (rc, json.dumps(body))
 
-    def allow(self, listed):
-        f = Path(self._td.name) / "allow.json"
-        f.write_text(json.dumps({"entries": [dict(zip(("plan", "item", "acceptance_sha256"), self.key(i))) for i in listed]}))
-        self.hs._OWNER_ALLOWLIST_FILE = f
+    def _entries(self, listed):
+        return json.dumps({"entries": [dict(zip(("plan", "item", "acceptance_sha256"), self.key(i))) for i in listed]})
+
+    def allow(self, listed, working=None):
+        """Trusted blob = origin/main in a temp repo; working-tree file defaults to the same entries."""
+        repo = Path(self._td.name) / "repo"
+        if not repo.exists():
+            subprocess.run(["git", "init", "-q", str(repo)], check=True)
+        g = lambda *a: subprocess.run(["git", "-C", str(repo), "-c", "user.name=t", "-c", "user.email=t@t", *a], check=True, capture_output=True)
+        f = repo / "config" / "pm-tracker-unbacked-owner-acceptances.json"
+        f.parent.mkdir(exist_ok=True)
+        f.write_text(self._entries(listed))
+        g("add", "-A"); g("commit", "-q", "-m", "allow")
+        g("update-ref", "refs/remotes/origin/main", "HEAD")
+        f.write_text(self._entries(listed if working is None else working))
+        self.repo = repo
 
     def types(self, runner):
-        return sorted(x["type"] for x in self.hs._owner_acceptance_check(runner, self.state))
+        return sorted(x["type"] for x in self.hs._owner_acceptance_check(runner, self.state, getattr(self, "repo", Path(self._td.name) / "norepo")))
 
     def test_counters_published_and_listed_is_quiet(self):
         self.allow([1, 2, 3])
@@ -817,8 +829,20 @@ class HealthSpiderProbe(unittest.TestCase):
         self.assertEqual(self.events, [])    # nothing measured, nothing published as a count
 
     def test_unreadable_allowlist_is_probe_failed(self):
-        self.hs._OWNER_ALLOWLIST_FILE = Path(self._td.name) / "missing.json"
-        self.assertEqual(self.types(self.runner([1])), ["owner_acceptance_probe_failed"])
+        self.assertEqual(self.types(self.runner([1])), ["owner_acceptance_probe_failed"])     # no repo at all
+        self.allow([1])
+        subprocess.run(["git", "-C", str(self.repo), "update-ref", "-d", "refs/remotes/origin/main"], check=True)
+        self.assertEqual(self.types(self.runner([1])), ["owner_acceptance_probe_failed"])     # no origin/main
+
+    def test_codex_repro_working_tree_addition_cannot_silence(self):
+        self.allow([1, 2], working=[1, 2, 9])
+        self.assertEqual(self.types(self.runner([1, 2, 9])),
+                         ["owner_acceptance_allowlist_unauthorized", "owner_acceptance_unbacked_rising"])
+        self.assertEqual(self.types(self.runner([1, 2])), ["owner_acceptance_allowlist_unauthorized"])
+
+    def test_working_tree_removal_is_quiet(self):
+        self.allow([1, 2, 3], working=[1])
+        self.assertEqual(self.types(self.runner([1])), [])
 
     def test_state_write_failure_is_reported(self):
         self.allow([1])
@@ -828,11 +852,17 @@ class HealthSpiderProbe(unittest.TestCase):
         self.addCleanup(ro.chmod, 0o700)
         if os.access(ro, os.W_OK):
             self.skipTest("cannot make a directory unwritable (running as root)")
-        a = sorted(x["type"] for x in self.hs._owner_acceptance_check(self.runner([1]), ro / "state.json"))
+        a = sorted(x["type"] for x in self.hs._owner_acceptance_check(self.runner([1]), ro / "state.json", self.repo))
         self.assertEqual(a, ["owner_acceptance_state_unwritable"])
 
     def test_real_projection_keys_are_all_in_real_allowlist(self):
-        self.hs._OWNER_ALLOWLIST_FILE = REAL / "config" / "pm-tracker-unbacked-owner-acceptances.json"
+        real = json.loads((REAL / "config" / "pm-tracker-unbacked-owner-acceptances.json").read_text())["entries"]
+        self.allow([])
+        repo = self.repo
+        f = repo / "config" / "pm-tracker-unbacked-owner-acceptances.json"
+        f.write_text(json.dumps({"entries": real}))
+        subprocess.run(["git", "-C", str(repo), "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qam", "real"], check=True)
+        subprocess.run(["git", "-C", str(repo), "update-ref", "refs/remotes/origin/main", "HEAD"], check=True)
         r = subprocess.run([sys.executable, str(TRACKER), "--all-json"], capture_output=True, text=True, cwd=str(REAL))
         self.assertEqual(self.types(lambda: (r.returncode, r.stdout)), [])
 
