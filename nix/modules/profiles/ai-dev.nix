@@ -71,6 +71,9 @@ in {
     # explicit act — this line arms nothing. See
     # nix/modules/services/activation-auto-revert-guard.nix.
     mySystem.aiStack.activationAutoRevert.enable = lib.mkDefault false;
+    # Activation signing MVP (owner-bound grants): provisions signer, key bootstrap and verifier inputs.
+    # Nothing verifies until the owner pins the generated public key in mySystem.activation.signing.signerPublicKeys.
+    mySystem.activation.signing.enable = lib.mkDefault true;
     mySystem.profileData.flatpakApps = lib.mkDefault flatpakProfiles.ai_workstation;
     mySystem.profileData.systemPackageNames = lib.mkDefault profilePackages.ai-dev;
 
