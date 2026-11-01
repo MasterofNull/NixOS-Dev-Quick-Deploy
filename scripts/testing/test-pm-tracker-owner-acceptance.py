@@ -754,77 +754,87 @@ class HealthSpiderProbe(unittest.TestCase):
         self.addCleanup(self._td.cleanup)
         self.state = Path(self._td.name) / "state.json"
 
-    @staticmethod
-    def runner(unbacked, rc=0, **extra):
-        body = {"shipped_unverified": unbacked, "shipped_recorded": 0, "unbacked_owner_acceptances": unbacked,
-                "owner_verified_signed": 0, **extra}
+    def key(self, n):
+        return ["plan-x", f"I{n}", f"{n:064x}"]
+
+    def runner(self, live, count=None, rc=0):
+        """live: list of item numbers whose unbacked key is projected."""
+        n = len(live) if count is None else count
+        body = {"shipped_unverified": n, "shipped_recorded": 0, "unbacked_owner_acceptances": n, "owner_verified_signed": 0,
+                "plans": [{"items": [{"id": f"I{i}", "unbacked_key": self.key(i)} for i in live] + [{"id": "ok"}]}]}
         return lambda: (rc, json.dumps(body))
 
-    def test_counters_published_and_alert_only_on_rise(self):
-        self.state.write_text(json.dumps({"unbacked": 5}))
-        self.assertEqual(self.hs._owner_acceptance_check(self.runner(5), self.state, 5), [])
+    def allow(self, listed):
+        f = Path(self._td.name) / "allow.json"
+        f.write_text(json.dumps({"entries": [dict(zip(("plan", "item", "acceptance_sha256"), self.key(i))) for i in listed]}))
+        self.hs._OWNER_ALLOWLIST_FILE = f
+
+    def types(self, runner):
+        return sorted(x["type"] for x in self.hs._owner_acceptance_check(runner, self.state))
+
+    def test_counters_published_and_listed_is_quiet(self):
+        self.allow([1, 2, 3])
+        self.assertEqual(self.types(self.runner([1, 2, 3])), [])
         t, payload = self.events[-1]
         self.assertEqual(t, "owner_acceptance_assurance")
-        self.assertEqual((payload["shipped_unverified"], payload["owner_verified_signed"]), (5, 0))
-        self.assertEqual(self.hs._owner_acceptance_check(self.runner(4), self.state, 5), [])
-        self.assertEqual(self.hs._owner_acceptance_check(self.runner(4), self.state, 5), [])
-        rise = self.hs._owner_acceptance_check(self.runner(5), self.state, 5)
-        self.assertEqual([a["type"] for a in rise], ["owner_acceptance_unbacked_rising"])
-        self.assertEqual((rise[0]["previous"], rise[0]["current"]), (4, 5))
-        # a rise does not raise the ratchet: it keeps alerting until the count falls back
-        self.assertEqual(len(self.hs._owner_acceptance_check(self.runner(5), self.state, 5)), 1)
-        self.assertEqual(self.hs._owner_acceptance_check(self.runner(3), self.state, 5), [])
+        self.assertEqual((payload["shipped_unverified"], payload["owner_verified_signed"]), (3, 0))
+
+    def test_new_unlisted_acceptance_alerts_even_when_count_falls(self):
+        self.allow([1, 2, 3])
+        self.assertEqual(self.types(self.runner([1, 2, 4])), ["owner_acceptance_unbacked_rising"])   # swap: same count
+
+    def test_removing_entry_from_allowlist_and_reality_is_quiet(self):
+        self.allow([1, 2])
+        self.assertEqual(self.types(self.runner([1, 2])), [])
+        self.allow([1])
+        self.assertEqual(self.types(self.runner([1])), [])
+        self.assertEqual(self.types(self.runner([1, 2])), ["owner_acceptance_unbacked_rising"])   # not re-addable
+
+    def test_state_file_content_never_changes_the_decision(self):
+        self.allow([1, 2])
+        for content in (None, "not json", "{}", '{"unbacked": 0}', '{"unbacked": 131}', '{"unbacked": 99999}', '{"unbacked": -1}'):
+            for live, want in (([1, 2], []), ([1, 2, 9], ["owner_acceptance_unbacked_rising"])):
+                if content is None:
+                    self.state.unlink(missing_ok=True)
+                else:
+                    self.state.write_text(content)
+                self.assertEqual(self.types(self.runner(live)), want, (content, live))
+
+    def test_upward_overwrite_within_range_cannot_suppress(self):
+        self.allow(range(1, 132))
+        self.state.write_text(json.dumps({"unbacked": 131}))
+        self.assertEqual(self.types(self.runner(list(range(1, 121)) + [500])), ["owner_acceptance_unbacked_rising"])
+
+    def test_count_key_mismatch_alerts(self):
+        self.allow([1])
+        self.assertEqual(self.types(self.runner([1], count=2)), ["owner_acceptance_unbacked_rising"])
 
     def test_unreadable_projection_is_an_anomaly_not_green(self):
+        self.allow([1])
         for runner in (lambda: (1, ""), lambda: (0, "not json"), lambda: (0, json.dumps({"shipped_unverified": 1})),
-                       lambda: (0, json.dumps({k: "x" for k in self.hs._OWNER_ACCEPTANCE_KEYS}))):
-            a = self.hs._owner_acceptance_check(runner, self.state)
-            self.assertEqual([x["type"] for x in a], ["owner_acceptance_probe_failed"])
+                       lambda: (0, json.dumps({k: "x" for k in ("shipped_unverified", "shipped_recorded", "unbacked_owner_acceptances", "owner_verified_signed")}))):
+            self.assertEqual(self.types(runner), ["owner_acceptance_probe_failed"])
         self.assertEqual(self.events, [])    # nothing measured, nothing published as a count
 
-    def test_corrupt_state_is_integrity_anomaly_and_alert_still_fires(self):
-        for bad in ("{}", "not json", '{"unbacked": -1}', '{"unbacked": 99}'):
-            self.state.write_text(bad)
-            a = self.hs._owner_acceptance_check(self.runner(5), self.state, 4)
-            self.assertEqual(sorted(x["type"] for x in a), ["owner_acceptance_state_integrity", "owner_acceptance_unbacked_rising"], bad)
-            self.state.write_text(bad)
-            a = self.hs._owner_acceptance_check(self.runner(4), self.state, 4)
-            self.assertEqual([x["type"] for x in a], ["owner_acceptance_state_integrity"], bad)
-            self.assertEqual(json.loads(self.state.read_text())["unbacked"], 4)   # healed, never raised above pinned
-        self.state.unlink()
-        a = self.hs._owner_acceptance_check(self.runner(4), self.state, 4)
-        self.assertEqual([x["type"] for x in a], ["owner_acceptance_state_integrity"])
-
-    def test_upward_state_replacement_cannot_suppress_alert(self):
-        self.hs._owner_acceptance_check(self.runner(3), self.state, 5)
-        self.state.write_text(json.dumps({"unbacked": 9}))
-        a = self.hs._owner_acceptance_check(self.runner(6), self.state, 5)
-        self.assertIn("owner_acceptance_unbacked_rising", [x["type"] for x in a])
-
-    def test_restart_preserves_floor(self):
-        self.hs._owner_acceptance_check(self.runner(2), self.state, 5)
-        hs2 = importlib.machinery.SourceFileLoader("aq_health_spider_oa2", str(REAL / "scripts" / "ai" / "aq-health-spider")).load_module()
-        hs2._emit_event = lambda t, p: None
-        a = hs2._owner_acceptance_check(self.runner(3), self.state, 5)
-        self.assertEqual([x["type"] for x in a], ["owner_acceptance_unbacked_rising"])
-        self.assertEqual((a[0]["previous"], a[0]["current"]), (2, 3))
+    def test_unreadable_allowlist_is_probe_failed(self):
+        self.hs._OWNER_ALLOWLIST_FILE = Path(self._td.name) / "missing.json"
+        self.assertEqual(self.types(self.runner([1])), ["owner_acceptance_probe_failed"])
 
     def test_state_write_failure_is_reported(self):
+        self.allow([1])
         ro = Path(self._td.name) / "ro"
         ro.mkdir()
         ro.chmod(0o500)
         self.addCleanup(ro.chmod, 0o700)
         if os.access(ro, os.W_OK):
             self.skipTest("cannot make a directory unwritable (running as root)")
-        a = self.hs._owner_acceptance_check(self.runner(4), ro / "state.json", 4)
-        self.assertEqual(sorted(x["type"] for x in a), ["owner_acceptance_state_integrity", "owner_acceptance_state_unwritable"])
+        a = sorted(x["type"] for x in self.hs._owner_acceptance_check(self.runner([1]), ro / "state.json"))
+        self.assertEqual(a, ["owner_acceptance_state_unwritable"])
 
-    def test_default_floor_comes_from_tracked_allowlist(self):
-        n = len(json.loads((REAL / "config" / "pm-tracker-unbacked-owner-acceptances.json").read_text())["entries"])
+    def test_real_projection_keys_are_all_in_real_allowlist(self):
         self.hs._OWNER_ALLOWLIST_FILE = REAL / "config" / "pm-tracker-unbacked-owner-acceptances.json"
-        self.state.write_text(json.dumps({"unbacked": n}))
-        self.assertEqual(self.hs._owner_acceptance_check(self.runner(n), self.state), [])
-        self.assertEqual([x["type"] for x in self.hs._owner_acceptance_check(self.runner(n + 1), self.state)], ["owner_acceptance_unbacked_rising"])
+        r = subprocess.run([sys.executable, str(TRACKER), "--all-json"], capture_output=True, text=True, cwd=str(REAL))
+        self.assertEqual(self.types(lambda: (r.returncode, r.stdout)), [])
 
 
 if __name__ == "__main__":

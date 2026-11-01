@@ -689,6 +689,9 @@ def project_all() -> dict:
                           "status": status, "pct": pct, "hold": hold,
                           **_assurance_fields(it, plan_dir.name, status),
                           **_activation_flags(it, plan_dir.name, activation_ctx)})
+            if items[-1]["acceptance_assurance"] == "unverified":
+                # identity of each unbacked owner acceptance, for set-membership against the committed allowlist
+                items[-1]["unbacked_key"] = [plan_dir.name, it["id"], acceptance_sha256(plan_dir.name, it["id"], it["acceptance"])]
         rollup, known_items, unknown_items = _rollup(items)
         shipped = sum(1 for i in items if i["status"] in ("SHIPPED", "ACTIVATED"))
         plan_meta = manifest.get("plan", {})
