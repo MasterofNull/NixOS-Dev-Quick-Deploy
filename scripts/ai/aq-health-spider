@@ -919,10 +919,11 @@ def _deployed_revision_check(rev: Optional[str] = None, repo: Optional[Path] = N
 
 
 _OWNER_ACCEPTANCE_STATE = REPO_ROOT / ".agents" / "telemetry" / "owner-acceptance-unbacked.json"
+_OWNER_ALLOWLIST_FILE = REPO_ROOT / "config" / "pm-tracker-unbacked-owner-acceptances.json"
 _OWNER_ACCEPTANCE_KEYS = ("shipped_unverified", "shipped_recorded", "unbacked_owner_acceptances", "owner_verified_signed")
 
 
-def _owner_acceptance_check(runner=None, state_path: Optional[Path] = None) -> List[Dict[str, Any]]:
+def _owner_acceptance_check(runner=None, state_path: Optional[Path] = None, pinned: Optional[int] = None) -> List[Dict[str, Any]]:
     """Owner-acceptance assurance probe (verified acceptance slice 1). Publishes shipped_unverified / shipped_recorded /
     unbacked_owner_acceptances / owner_verified_signed (always 0 until the signed path ships) as a telemetry event every
     cycle, and alerts when the unbacked count RISES above the lowest value previously seen (the grandfathered set may
@@ -950,23 +951,48 @@ def _owner_acceptance_check(runner=None, state_path: Optional[Path] = None) -> L
         return failed(f"owner-acceptance counts unavailable: {exc}")
     _emit_event("owner_acceptance_assurance", counts)
     unbacked = counts["unbacked_owner_acceptances"]
-    prev: Optional[int] = None
+    out: List[Dict[str, Any]] = []
+
+    def integrity(kind: str, detail: str) -> None:
+        out.append({"type": kind, "zone": "owner-acceptance", "severity": "high", "detail": detail, "timestamp": now})
+
+    # The floor is anchored in the tracked remove-only allowlist; the mutable state file may only LOWER it (progress).
+    if pinned is None:
+        try:
+            pinned = len(json.loads(_OWNER_ALLOWLIST_FILE.read_text())["entries"])
+        except (OSError, ValueError, KeyError, TypeError) as exc:
+            return failed(f"pinned owner-acceptance allowlist unreadable ({_OWNER_ALLOWLIST_FILE}): {exc}")
+    floor = pinned
+    needs_write = False
     try:
-        prev = int(json.loads(state_path.read_text())["unbacked"])
-    except (OSError, ValueError, KeyError, TypeError):
-        pass
-    if prev is None or unbacked < prev:
+        stored = int(json.loads(state_path.read_text())["unbacked"])
+        if stored < 0 or stored > pinned:
+            integrity("owner_acceptance_state_integrity",
+                      f"state floor {stored} outside [0, pinned {pinned}]; ignored, pinned floor applies")
+            needs_write = True
+        else:
+            floor = stored
+    except FileNotFoundError:
+        integrity("owner_acceptance_state_integrity", "ratchet state missing; pinned floor applies and state is rewritten")
+        needs_write = True
+    except (OSError, ValueError, KeyError, TypeError) as exc:
+        integrity("owner_acceptance_state_integrity",
+                  f"ratchet state unreadable/malformed ({exc!r}); pinned floor applies and state is rewritten")
+        needs_write = True
+    ref = floor
+    if unbacked < floor or needs_write:
+        floor = min(floor, unbacked)
         try:
             state_path.parent.mkdir(parents=True, exist_ok=True)
-            state_path.write_text(json.dumps({"unbacked": unbacked, "updated": now}), encoding="utf-8")
+            state_path.write_text(json.dumps({"unbacked": floor, "updated": now}), encoding="utf-8")
         except OSError as exc:
-            logger.debug(f"owner-acceptance state not persisted: {exc}")
-    if prev is not None and unbacked > prev:
-        return [{"type": "owner_acceptance_unbacked_rising", "zone": "owner-acceptance", "severity": "high",
-                 "detail": f"unbacked owner acceptances rose {prev} -> {unbacked}: an owner acceptance was added "
-                           "without an approval_ref (the allowlist is remove-only)",
-                 "previous": prev, "current": unbacked, "timestamp": now}]
-    return []
+            integrity("owner_acceptance_state_unwritable", f"ratchet state not persisted ({state_path}): {exc}")
+    if unbacked > ref:
+        out.append({"type": "owner_acceptance_unbacked_rising", "zone": "owner-acceptance", "severity": "high",
+                    "detail": f"unbacked owner acceptances rose {ref} -> {unbacked}: an owner acceptance was added "
+                              "without an approval_ref (the allowlist is remove-only)",
+                    "previous": ref, "current": unbacked, "timestamp": now})
+    return out
 
 
 # ── HealthSpider ───────────────────────────────────────────────────────────────

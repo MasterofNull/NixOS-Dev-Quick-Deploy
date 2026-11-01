@@ -6223,3 +6223,8 @@ File: scripts/ai/lib/worktree-isolation.sh; scripts/automation/prsi-orchestrator
   Severity: high
   Action: slice 2 (frozen waves + aq-approve queue + reconcile), slice 3 (signed path); templates deferred to 2026-11-30 (WR-PM-ACCEPT-1).
   File: scripts/ai/aq-pm-tracker ~L915 (check_owner_acceptance), config/pm-tracker-unbacked-owner-acceptances*.json
+
+[DONE] pm-tracker acceptance record items shape — `_recorded_problem` iterated a correctly hashed record's non-list `items` value and could crash validation/projection; now returns a structural error and projection remains unverified. Regression covers integer, object, string, and null values. Evidence: `docs/harness-first/evidence/2026-10-31-verified-acceptance-items-shape-fix.md`.
+  Severity: medium
+  Action: fixed in verified-acceptance follow-up; focused owner acceptance and authority suites passed.
+  File: scripts/ai/aq-pm-tracker ~L1083; scripts/testing/test-pm-tracker-owner-acceptance.py

@@ -146,6 +146,21 @@ class RefValidation(unittest.TestCase):
         # approval_ref never changes the binding hash
         self.assertEqual(self.t.mod.acceptance_sha256("plan-x", "I1", a), self.h)
 
+    def test_malformed_record_items_fail_validation_and_project_unverified(self):
+        for malformed_items in (1, {"id": "I1"}, "I1", None):
+            with self.subTest(items=malformed_items):
+                ref = self.t.record("bad-items", "plan-x", "I1", self.h, items=malformed_items)
+                a = self.with_ref(ref)
+                errors = self.check(a)
+                self.assertEqual(len(errors), 1)
+                self.assertIn("items must be a list", errors[0])
+                pd = self.t.plan("plan-x", {"I1": a})
+                projected = self.t.mod.project(pd)["items"][0]
+                self.assertEqual(
+                    (projected["status"], projected["acceptance_assurance"], projected["status_label"]),
+                    ("SHIPPED", "unverified", "SHIPPED (unverified)"),
+                )
+
     def test_tamper_matrix_each_is_an_error(self):
         good = self.t.record("good", "plan-x", "I1", self.h)
         cases = {
@@ -746,18 +761,19 @@ class HealthSpiderProbe(unittest.TestCase):
         return lambda: (rc, json.dumps(body))
 
     def test_counters_published_and_alert_only_on_rise(self):
-        self.assertEqual(self.hs._owner_acceptance_check(self.runner(5), self.state), [])
+        self.state.write_text(json.dumps({"unbacked": 5}))
+        self.assertEqual(self.hs._owner_acceptance_check(self.runner(5), self.state, 5), [])
         t, payload = self.events[-1]
         self.assertEqual(t, "owner_acceptance_assurance")
         self.assertEqual((payload["shipped_unverified"], payload["owner_verified_signed"]), (5, 0))
-        self.assertEqual(self.hs._owner_acceptance_check(self.runner(4), self.state), [])
-        self.assertEqual(self.hs._owner_acceptance_check(self.runner(4), self.state), [])
-        rise = self.hs._owner_acceptance_check(self.runner(5), self.state)
+        self.assertEqual(self.hs._owner_acceptance_check(self.runner(4), self.state, 5), [])
+        self.assertEqual(self.hs._owner_acceptance_check(self.runner(4), self.state, 5), [])
+        rise = self.hs._owner_acceptance_check(self.runner(5), self.state, 5)
         self.assertEqual([a["type"] for a in rise], ["owner_acceptance_unbacked_rising"])
         self.assertEqual((rise[0]["previous"], rise[0]["current"]), (4, 5))
         # a rise does not raise the ratchet: it keeps alerting until the count falls back
-        self.assertEqual(len(self.hs._owner_acceptance_check(self.runner(5), self.state)), 1)
-        self.assertEqual(self.hs._owner_acceptance_check(self.runner(3), self.state), [])
+        self.assertEqual(len(self.hs._owner_acceptance_check(self.runner(5), self.state, 5)), 1)
+        self.assertEqual(self.hs._owner_acceptance_check(self.runner(3), self.state, 5), [])
 
     def test_unreadable_projection_is_an_anomaly_not_green(self):
         for runner in (lambda: (1, ""), lambda: (0, "not json"), lambda: (0, json.dumps({"shipped_unverified": 1})),
@@ -765,6 +781,50 @@ class HealthSpiderProbe(unittest.TestCase):
             a = self.hs._owner_acceptance_check(runner, self.state)
             self.assertEqual([x["type"] for x in a], ["owner_acceptance_probe_failed"])
         self.assertEqual(self.events, [])    # nothing measured, nothing published as a count
+
+    def test_corrupt_state_is_integrity_anomaly_and_alert_still_fires(self):
+        for bad in ("{}", "not json", '{"unbacked": -1}', '{"unbacked": 99}'):
+            self.state.write_text(bad)
+            a = self.hs._owner_acceptance_check(self.runner(5), self.state, 4)
+            self.assertEqual(sorted(x["type"] for x in a), ["owner_acceptance_state_integrity", "owner_acceptance_unbacked_rising"], bad)
+            self.state.write_text(bad)
+            a = self.hs._owner_acceptance_check(self.runner(4), self.state, 4)
+            self.assertEqual([x["type"] for x in a], ["owner_acceptance_state_integrity"], bad)
+            self.assertEqual(json.loads(self.state.read_text())["unbacked"], 4)   # healed, never raised above pinned
+        self.state.unlink()
+        a = self.hs._owner_acceptance_check(self.runner(4), self.state, 4)
+        self.assertEqual([x["type"] for x in a], ["owner_acceptance_state_integrity"])
+
+    def test_upward_state_replacement_cannot_suppress_alert(self):
+        self.hs._owner_acceptance_check(self.runner(3), self.state, 5)
+        self.state.write_text(json.dumps({"unbacked": 9}))
+        a = self.hs._owner_acceptance_check(self.runner(6), self.state, 5)
+        self.assertIn("owner_acceptance_unbacked_rising", [x["type"] for x in a])
+
+    def test_restart_preserves_floor(self):
+        self.hs._owner_acceptance_check(self.runner(2), self.state, 5)
+        hs2 = importlib.machinery.SourceFileLoader("aq_health_spider_oa2", str(REAL / "scripts" / "ai" / "aq-health-spider")).load_module()
+        hs2._emit_event = lambda t, p: None
+        a = hs2._owner_acceptance_check(self.runner(3), self.state, 5)
+        self.assertEqual([x["type"] for x in a], ["owner_acceptance_unbacked_rising"])
+        self.assertEqual((a[0]["previous"], a[0]["current"]), (2, 3))
+
+    def test_state_write_failure_is_reported(self):
+        ro = Path(self._td.name) / "ro"
+        ro.mkdir()
+        ro.chmod(0o500)
+        self.addCleanup(ro.chmod, 0o700)
+        if os.access(ro, os.W_OK):
+            self.skipTest("cannot make a directory unwritable (running as root)")
+        a = self.hs._owner_acceptance_check(self.runner(4), ro / "state.json", 4)
+        self.assertEqual(sorted(x["type"] for x in a), ["owner_acceptance_state_integrity", "owner_acceptance_state_unwritable"])
+
+    def test_default_floor_comes_from_tracked_allowlist(self):
+        n = len(json.loads((REAL / "config" / "pm-tracker-unbacked-owner-acceptances.json").read_text())["entries"])
+        self.hs._OWNER_ALLOWLIST_FILE = REAL / "config" / "pm-tracker-unbacked-owner-acceptances.json"
+        self.state.write_text(json.dumps({"unbacked": n}))
+        self.assertEqual(self.hs._owner_acceptance_check(self.runner(n), self.state), [])
+        self.assertEqual([x["type"] for x in self.hs._owner_acceptance_check(self.runner(n + 1), self.state)], ["owner_acceptance_unbacked_rising"])
 
 
 if __name__ == "__main__":

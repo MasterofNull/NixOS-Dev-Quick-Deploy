@@ -1080,7 +1080,10 @@ def _recorded_problem(ref: dict, plan: str, item_id, h: str) -> str | None:
         return f"record decision {d.get('decision')!r} is not 'approved'"
     if d.get("plan") != plan:
         return "record plan does not match this plan"
-    listed = [i for i in (d.get("items") or []) if isinstance(i, dict) and i.get("id") == item_id]
+    items = d.get("items")
+    if not isinstance(items, list):
+        return "record items must be a list"
+    listed = [i for i in items if isinstance(i, dict) and i.get("id") == item_id]
     if len(listed) != 1 or listed[0].get("acceptance_sha256") != h:
         return "record does not list this item with the current acceptance hash (block edited or moved)"
     latest, err = _load_decision_log()
