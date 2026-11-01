@@ -358,10 +358,23 @@ sys.exit(1)
         [[ -n "$MAX_TOKENS" ]] && _PF_ARGS+=(--max-tokens "$MAX_TOKENS")
         _pf_rc=0
         "${_PF_ARGS[@]}" >/dev/null || _pf_rc=$?
-        if [[ "$_pf_rc" -eq 3 ]]; then
-            echo "REFUSED: assembled prompt + output allowance exceeds the local context window. Decompose the task; nothing was launched." >&2
+        if [[ "$_pf_rc" -ne 0 ]]; then
+            # Fail closed: oversize (3) and any preflight failure (crash, bad args, could
+            # not record) are all refusals. Nothing is launched without a measurement.
+            if [[ "$_pf_rc" -eq 3 ]]; then
+                echo "REFUSED: assembled prompt + output allowance exceeds the local context window. Decompose the task; nothing was launched." >&2
+            else
+                echo "REFUSED: context preflight failed (exit $_pf_rc); refusing to launch an unmeasured task. Nothing was launched." >&2
+                if [[ ! -s "$OUTPUT_FILE" ]]; then
+                    # The preflight process died before recording its own refusal: record it
+                    # through the same Python writer (task_registry), never from the shell.
+                    python3 "$LIB_DIR/local_preflight.py" --record-error --error-code "$_pf_rc" \
+                        --task-id "$ID" --output "$OUTPUT_FILE" --mode "$MODE" \
+                        --prompt "${PROMPT:0:500}" --delegation-dir "$DELEGATION_DIR" >/dev/null 2>&1 || true
+                fi
+            fi
             [[ "$NO_CONSULT" != "true" ]] && { timeout 10 python3 "$LIB_DIR/dispatch_consult.py" release --subject "$CONSULT_SUBJECT" --owner local >/dev/null 2>&1 || true; }
-            exit 3
+            if [[ "$_pf_rc" -eq 3 ]]; then exit 3; else exit 4; fi
         fi
 
         audit_event_start "local" "$ID" "${PROMPT:0:200}"

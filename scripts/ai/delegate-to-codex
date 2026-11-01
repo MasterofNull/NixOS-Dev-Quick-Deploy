@@ -193,7 +193,7 @@ registry_append() {
     # Row built in python from argv (no shell re-parse); written via the shared-lock +
     # atomic-replace TaskRegistry path.
     local row
-    row="$(python3 -c 'import json,sys; print(json.dumps({"id":sys.argv[1],"agent":"codex","role":sys.argv[5],"description":sys.argv[2],"output_file":sys.argv[3],"pid":None,"status":"running","created":sys.argv[4],"model_requested":sys.argv[6] or "unknown","model_effective":sys.argv[6] or "unknown","effort":sys.argv[7] or "n/a"}))' \
+    row="$(python3 -c 'import json,sys; print(json.dumps({"id":sys.argv[1],"agent":"codex","role":sys.argv[5],"description":sys.argv[2],"output_file":sys.argv[3],"pid":None,"status":"running","created":sys.argv[4],"model_requested":sys.argv[6] or "unknown","model_effective":"unknown","effort":sys.argv[7] or "n/a"}))' \
         "$id" "$description" "$output_file" "$ts" "$ROLE" "$model" "$effort")"
     python3 "$SCRIPT_DIR/lib/registry-update.py" append "$REGISTRY" "$row"
 }

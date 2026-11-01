@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Routing S1: local context preflight + normalized dispatch evidence."""
 import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -8,6 +9,10 @@ import threading
 import unittest
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
+
+# Hermetic: no live context assembler / embedded-assist calls in either path.
+os.environ["AQ_CONTEXT_ASSEMBLER"] = "0"
+os.environ["SWITCHBOARD_URL"] = "http://127.0.0.1:1"
 
 REPO = Path(__file__).resolve().parents[2]
 LIB = REPO / "scripts" / "ai" / "lib"
@@ -20,6 +25,8 @@ N_CTX = 8000
 
 
 class _Llama(BaseHTTPRequestHandler):
+    seen: list = []  # (path, body) for every POST
+
     def log_message(self, *a):
         pass
 
@@ -31,12 +38,24 @@ class _Llama(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def do_GET(self):
+        if self.path.startswith("/slots"):
+            return self._send([{"is_processing": False}])
         self._send({"default_generation_settings": {"n_ctx": N_CTX}, "total_slots": 1})
 
     def do_POST(self):
         n = int(self.headers.get("Content-Length", 0))
-        content = json.loads(self.rfile.read(n))["content"]
-        self._send({"tokens": list(range(len(content) // 4))})  # 4 bytes/token mock
+        body = json.loads(self.rfile.read(n))
+        _Llama.seen.append((self.path, body))
+        if self.path == "/apply-template":
+            # chat template adds 10 chars of framing per message
+            return self._send({"prompt": "".join("<|im_start|>" + str(m.get("content")) for m in body["messages"])})
+        if self.path == "/tokenize":
+            return self._send({"tokens": list(range(len(body["content"]) // 4))})  # 4 bytes/token mock
+        # /v1/chat/completions: minimal SSE stream
+        self.send_response(200)
+        self.send_header("Content-Type", "text/event-stream")
+        self.end_headers()
+        self.wfile.write(b'data: {"choices":[{"delta":{"content":"ok"}}]}\n\ndata: [DONE]\n\n')
 
 
 def _run(url, prompt, max_tokens, tmp):
@@ -69,7 +88,7 @@ class PreflightTests(unittest.TestCase):
             self.assertEqual(r.returncode, 3, r.stderr)
             ref = json.loads(r.stderr.strip().splitlines()[-1])
             self.assertTrue(ref["refused"])
-            self.assertEqual((ref["method"], ref["limit"]), ("tokenize", N_CTX))
+            self.assertEqual((ref["method"], ref["limit"]), ("apply_template+tokenize", N_CTX))
             self.assertIn("decompose_hint", ref)
             rows = _rows(tmp)
             self.assertEqual(len(rows), 1)
@@ -93,13 +112,149 @@ class PreflightTests(unittest.TestCase):
             self.assertLessEqual(pf["measured"], pf["limit"])
             self.assertEqual(pf["measured"], pf["prompt_tokens"] + 64)
             self.assertEqual(_rows(tmp), [])  # nothing registered, nothing launched
+            self.assertTrue(Path(f"{tmp}/o.log.preflight.json").is_file())
 
-    def test_byte_guard_fallback_is_labeled(self):
-        msgs = [{"role": "user", "content": "a" * 100}]
-        pf = de.preflight(msgs, 10, "http://127.0.0.1:1", "direct")
-        self.assertEqual(pf["method"], "byte_guard")
+    def test_agent_mode_measures_agent_request_with_tools(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            r = subprocess.run(
+                [sys.executable, str(DISPATCH), "--task-id", "ta", "--output", f"{tmp}/a.log",
+                 "--mode", "agent", "--prompt", "tiny", "--max-tokens", "64",
+                 "--delegation-dir", tmp, "--llama-url", self.url],
+                capture_output=True, text=True, timeout=120)
+            # Agent system prompt (lists tools) dwarfs a direct "tiny" request, but a
+            # small agent request must still fit an 8k window (schemas are not re-counted).
+            self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+            pf = json.loads(r.stdout)["preflight"]
+            self.assertEqual(pf["mode"], "agent")
+            self.assertGreater(pf["prompt_tokens"], 1000)
+            self.assertEqual(pf["verdict"], "accept")
+
+    def test_byte_fallback_is_labeled_guaranteed_upper_bound(self):
+        text = "\u00e9" * 100  # 2 bytes per char; real tokens can never exceed bytes
+        payload = {"messages": [{"role": "user", "content": text}], "_tool_schemas": [{"name": "t"}]}
+        pf = de.preflight(payload, 10, "http://127.0.0.1:1", "agent")
+        self.assertEqual(pf["method"], "byte_upper_bound")
+        self.assertGreaterEqual(pf["prompt_tokens"], len(json.dumps(payload["messages"], ensure_ascii=False).encode()))
         self.assertEqual(pf["limit_source"], "config:local-model-config.yaml")
         self.assertIsInstance(pf["limit"], int)
+
+    def test_small_agent_request_accepted_in_8192_window(self):
+        payload = {"messages": [{"role": "user", "content": "Say hi."}],
+                   "_tool_schemas": [{"name": "t", "description": "d" * 21000}],
+                   "grammar": "root ::= " + "x" * 5000}
+        pf = de.preflight(payload, 800, self.url, "agent")
+        self.assertEqual(pf["method"], "apply_template+tokenize")
+        self.assertEqual(pf["verdict"], "accept", pf)
+        self.assertLess(pf["prompt_tokens"], 100)
+
+    def test_tool_schemas_count_in_byte_fallback(self):
+        base = {"messages": [{"role": "user", "content": "hi"}]}
+        big = dict(base, _tool_schemas=[{"name": "t", "description": "d" * 4000}])
+        a = de.preflight(base, 0, "http://127.0.0.1:1", "agent")["prompt_tokens"]
+        b = de.preflight(big, 0, "http://127.0.0.1:1", "agent")["prompt_tokens"]
+        self.assertGreaterEqual(b - a, 4000)
+
+
+def _wrapper(url, tmp, prompt, extra=(), pf_exit=None):
+    """Run the real delegate-to-local with a python3 shim: dispatch/conn_retry
+    launches touch a sentinel instead of running."""
+    bin_dir = Path(tmp) / "bin"
+    bin_dir.mkdir(exist_ok=True)
+    sentinel = Path(tmp) / "LAUNCHED"
+    shim = bin_dir / "python3"
+    shim.write_text(f"""#!/bin/sh
+case "$*" in
+  *--record-error*) ;;
+  *local_preflight.py*) {'exit ' + str(pf_exit) if pf_exit else ':'} ;;
+esac
+case "$*" in
+  *conn_retry.py*|*dispatch.py*delegate*) echo launched > {sentinel}; echo ok > "$OUT_FOR_SENTINEL"; exit 0 ;;
+esac
+exec {sys.executable} "$@"
+""")
+    shim.chmod(0o755)
+    out = Path(tmp) / "outputs" / "x.log"
+    env = dict(os.environ, PATH=f"{bin_dir}:{os.environ['PATH']}", AQ_DELEGATION_DIR=tmp,
+               LLAMA_PORT=url.rsplit(":", 1)[1], AQ_NO_CONSULT="1", OUT_FOR_SENTINEL=str(out))
+    r = subprocess.run(
+        [str(REPO / "scripts" / "ai" / "delegate-to-local"), "--mode", "direct", "--wait",
+         "--prompt", prompt, *extra],
+        capture_output=True, text=True, timeout=120, env=env, cwd=tmp)
+    return r, sentinel
+
+
+class WrapperLaunchBoundaryTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.srv = HTTPServer(("127.0.0.1", 0), _Llama)
+        threading.Thread(target=cls.srv.serve_forever, daemon=True).start()
+        cls.url = f"http://127.0.0.1:{cls.srv.server_port}"
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.srv.shutdown()
+
+    def test_oversize_refused_and_not_launched(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            r, sentinel = _wrapper(self.url, tmp, "y" * 40000, ["--max-tokens", "64"])
+            self.assertEqual(r.returncode, 3, r.stderr)
+            self.assertFalse(sentinel.exists(), "oversize task must not launch")
+            rows = _rows(tmp)
+            self.assertEqual([x["outcome"] for x in rows], ["refused"])
+            self.assertEqual(rows[0]["preflight"]["verdict"], "refuse")
+
+    def test_preflight_crash_blocks_launch_and_is_recorded(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            r, sentinel = _wrapper(self.url, tmp, "small task", ["--max-tokens", "64"], pf_exit=7)
+            self.assertEqual(r.returncode, 4, r.stderr)
+            self.assertFalse(sentinel.exists(), "unmeasured task must not launch")
+            rows = _rows(tmp)
+            self.assertEqual(len(rows), 1)
+            self.assertEqual((rows[0]["status"], rows[0]["outcome"]), ("failed", "refused"))
+            self.assertEqual(rows[0]["terminal_reason"], "preflight_error")
+
+    def test_preflight_bad_args_blocks_launch(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            r, sentinel = _wrapper(self.url, tmp, "small task", ["--max-tokens", "notanumber"])
+            self.assertNotEqual(r.returncode, 0, r.stderr)
+            self.assertFalse(sentinel.exists())
+
+    def test_accepted_job_launches_and_records_preflight_evidence(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            r, sentinel = _wrapper(self.url, tmp, "small task", ["--max-tokens", "64"])
+            self.assertTrue(sentinel.exists(), r.stdout + r.stderr)
+            side = list((Path(tmp) / "outputs").glob("*.preflight.json"))
+            self.assertEqual(len(side), 1)
+            saved = json.loads(side[0].read_text())
+            self.assertEqual(saved["preflight"]["verdict"], "accept")
+            # the registry row the launched job would write picks the evidence up
+            out = str(side[0])[: -len(".preflight.json")]
+            reg = TaskRegistry(Path(tmp))
+            reg.append(saved["task_id"], "d", out, "direct", "implementer")
+            row = _rows(tmp)[-1]
+            self.assertEqual(row["preflight"]["verdict"], "accept")
+            self.assertEqual(row["preflight"]["limit"], N_CTX)
+            self.assertEqual(row["preflight"]["method"], "apply_template+tokenize")
+
+    def test_preflight_payload_matches_actual_request(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            _Llama.seen.clear()
+            r = _run(self.url, "parity prompt", 64, tmp)
+            self.assertEqual(r.returncode, 0, r.stderr)
+            measured = [b for p, b in _Llama.seen if p == "/apply-template"][-1]["messages"]
+            _Llama.seen.clear()
+            deleg = Path(tmp) / "root" / ".agents" / "delegation"
+            deleg.mkdir(parents=True)
+            d = subprocess.run(
+                [sys.executable, str(LIB / "dispatch.py"), "delegate", "--task-id", "t1",
+                 "--output", f"{tmp}/real.log", "--mode", "direct", "--role", "auto",
+                 "--prompt", "parity prompt", "--timeout", "30", "--max-tokens", "64",
+                 "--delegation-dir", str(deleg), "--llama-url", self.url,
+                 "--hybrid-url", "http://127.0.0.1:1", "--ralph-url", "http://127.0.0.1:1"],
+                capture_output=True, text=True, timeout=60)
+            sent = [b for p, b in _Llama.seen if p == "/v1/chat/completions"]
+            self.assertTrue(sent, d.stdout + d.stderr)
+            self.assertEqual(sent[-1]["messages"], measured)
 
 
 class EvidenceTests(unittest.TestCase):

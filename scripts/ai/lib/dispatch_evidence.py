@@ -26,12 +26,12 @@ from typing import Any, Optional
 REPO_ROOT = Path(__file__).resolve().parents[3]
 LOCAL_MODEL_CONFIG = REPO_ROOT / "config" / "local-model-config.yaml"
 
-# Fallback only when /tokenize is unreachable. Over-counts on purpose
-# (typical code/English is ~3-4 bytes/token); labeled method="byte_guard".
-BYTES_PER_TOKEN_GUARD = float(os.environ.get("AQ_PREFLIGHT_BYTES_PER_TOKEN", "2"))
-# Chat-template framing per message (role markers, end tokens).
-PER_MESSAGE_OVERHEAD_TOKENS = int(os.environ.get("AQ_PREFLIGHT_MSG_OVERHEAD_TOKENS", "8"))
 PREFLIGHT_EXIT_CODE = 3
+PREFLIGHT_ERROR_EXIT_CODE = 4
+# Template framing + tool preamble the server may add that raw bytes do not cover.
+FALLBACK_TEMPLATE_MARGIN_TOKENS = 2048
+_PROMPT_KEYS = ("messages", "tools", "_tool_schemas", "tool_choice", "grammar", "json_schema",
+                "response_format")
 
 _LANE_BY_AGENT_PREFIX = ("local", "codex", "gemini", "claude", "antigravity")
 
@@ -63,10 +63,33 @@ def normalize_row(row: dict) -> dict:
         "preflight": {"method": "n/a", "measured": None, "limit": None, "verdict": "n/a"},
         "outcome": "unknown",
     }
+    saved = _read_preflight_evidence(row)
+    if saved is not None:
+        defaults["preflight"] = saved
     out = dict(row)
     for key, value in defaults.items():
         out.setdefault(key, value)
     return out
+
+
+def evidence_path(output_file: Any) -> Optional[Path]:
+    """Sidecar where local_preflight leaves an accepted job's verdict."""
+    return Path(str(output_file) + ".preflight.json") if output_file else None
+
+
+def _read_preflight_evidence(row: dict) -> Optional[dict]:
+    """The accepted-job preflight written for THIS row (task id must match)."""
+    path = evidence_path(row.get("output_file"))
+    if path is None or not path.is_file():
+        return None
+    try:
+        saved = json.loads(path.read_text())
+    except (OSError, ValueError):
+        return None
+    if isinstance(saved, dict) and saved.get("task_id") == row.get("id") \
+            and isinstance(saved.get("preflight"), dict):
+        return saved["preflight"]
+    return None
 
 
 # ── context limit ───────────────────────────────────────────────────────────
@@ -109,21 +132,47 @@ def context_limit(llama_url: str, config_path: Path = LOCAL_MODEL_CONFIG) -> tup
 
 # ── measurement ─────────────────────────────────────────────────────────────
 
-def measure_messages(messages: list[dict], llama_url: str) -> tuple[int, str]:
-    """(tokens, method) for the assembled chat messages."""
-    texts = [str(m.get("content") or "") for m in messages]
-    framing = PER_MESSAGE_OVERHEAD_TOKENS * len(messages)
-    tok = _http_json(f"{llama_url}/tokenize", {"content": "\n".join(texts)})
-    if isinstance(tok, dict) and isinstance(tok.get("tokens"), list):
-        return len(tok["tokens"]) + framing, "tokenize"
-    size = sum(len(t.encode("utf-8")) for t in texts)
-    return math.ceil(size / BYTES_PER_TOKEN_GUARD) + framing, "byte_guard"
+def _payload_bytes(payload: dict) -> int:
+    """UTF-8 size of everything prompt-bearing in the request (messages, tool
+    schemas, grammar). Every token is >= 1 byte, so this never undercounts."""
+    parts = {k: payload[k] for k in _PROMPT_KEYS if payload.get(k)}
+    return len(json.dumps(parts, ensure_ascii=False).encode("utf-8")) + FALLBACK_TEMPLATE_MARGIN_TOKENS
 
 
-def preflight(messages: list[dict], max_tokens: int, llama_url: str, mode: str) -> dict:
-    """Verdict dict: {method, measured, limit, verdict, ...}. Pure; no side effects."""
+def measure_payload(payload: dict, llama_url: str) -> tuple[int, str]:
+    """(tokens, method) for the request exactly as it will be sent.
+
+    Exact path: the server renders the chat template (/apply-template) and
+    tokenizes that rendered prompt; tool schemas / grammar carried outside
+    messages are added at their byte size (an upper bound). If either server
+    call is unavailable the whole request falls back to bytes-as-tokens.
+    """
+    body: dict[str, Any] = {"messages": payload.get("messages", [])}
+    if payload.get("tools"):
+        body["tools"] = payload["tools"]
+    rendered = _http_json(f"{llama_url}/apply-template", body)
+    prompt = rendered.get("prompt") if isinstance(rendered, dict) else None
+    if isinstance(prompt, str):
+        tok = _http_json(f"{llama_url}/tokenize",
+                         {"content": prompt, "add_special": True, "parse_special": True})
+        if isinstance(tok, dict) and isinstance(tok.get("tokens"), list):
+            # apply-template already rendered messages (+ tools when sent). Only keys the
+            # server renders into context but apply-template did not cover are added;
+            # _tool_schemas (never sent; the system prompt lists tools) and grammar /
+            # json_schema (sampler constraints) are not context.
+            extras = {k: payload[k] for k in ("tool_choice", "response_format") if payload.get(k)}
+            extra_bytes = len(json.dumps(extras, ensure_ascii=False).encode("utf-8")) if extras else 0
+            return len(tok["tokens"]) + extra_bytes, "apply_template+tokenize"
+    return _payload_bytes(payload), "byte_upper_bound"
+
+
+def preflight(payload: dict, max_tokens: int, llama_url: str, mode: str) -> dict:
+    """Verdict dict: {method, measured, limit, verdict, ...}. Pure; no side effects.
+
+    `payload` is the request the runner would POST (build_llama_payload output).
+    """
     limit, limit_source = context_limit(llama_url)
-    prompt_tokens, method = measure_messages(messages, llama_url)
+    prompt_tokens, method = measure_payload(payload, llama_url)
     measured = prompt_tokens + int(max_tokens)
     result: dict[str, Any] = {
         "method": method,
@@ -132,7 +181,8 @@ def preflight(messages: list[dict], max_tokens: int, llama_url: str, mode: str) 
         "output_allowance": int(max_tokens),
         "limit": limit,
         "limit_source": limit_source,
-        "overhead": "template_framing" if mode == "direct" else "template_framing;agent_tool_schema_excluded",
+        "mode": mode,
+        "overhead": "rendered_request:template+tools",
     }
     if limit is None:
         result["verdict"] = "skipped_no_limit"
