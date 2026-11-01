@@ -36,6 +36,24 @@
         "reason": "Merged in #505/#509. The only non-test importer is the dashboard health summary (aistack.py:7493-7506), which reads state; no production agent loop calls DurableEffectStore to record intents, so the ledger is never written outside scripts/ai/aq-durable and tests. Found in the 2026-10-28 P3 retro-review.",
         "tracking": ".agent/memory/issues-backlog.md: 2026-10-28 P3 retro-review"
       }
+    },
+    {
+      "feature": "activation signing provisioning (aq-activation-sign signer, aq-activation-keygen oneshot, aq-activation-deployment-id oneshot, /etc/aq-activation inputs)",
+      "entrypoint": "nix/modules/services/activation-signing.nix",
+      "live_caller": "nix/modules/services/default.nix",
+      "enable": "mySystem.activation.signing.enable",
+      "health_signal": "scripts/ai/aq-pm-tracker:_ACTIVATION_SIGNERS",
+      "state": "enabled-but-unpinned: units and files are provisioned on rebuild, but signers.json is empty (fail closed, nothing verifies) until the owner pins signing.pub into mySystem.activation.signing.signerPublicKeys and runs sudo aq-activation-sign --init-chain",
+      "observed_by": "aq-pm-tracker reads the chain/head/signers (reports chain-invalid and grants_unverified until pinned and initialised); systemctl status aq-activation-keygen; systemctl status aq-activation-deployment-id; /var/lib/aq-activation/signing.pub; /etc/aq-activation/deployment-id"
+    },
+    {
+      "feature": "aq-activation-sign owner signer (store-installed, sudo password required)",
+      "entrypoint": "scripts/ai/lib/activation_signer.py",
+      "live_caller": "nix/modules/services/activation-signing.nix",
+      "enable": "mySystem.activation.signing.enable",
+      "health_signal": "scripts/ai/aq-pm-tracker:_ACTIVATION_LOG_DIR",
+      "state": "enabled-but-unpinned (see the provisioning entry: aq-activation-keygen); no grant can verify before the owner pins the key",
+      "observed_by": "aq-pm-tracker chain verification and activation_stale/grants_unverified counters; test scripts/testing/test-activation-signer.py"
     }
   ]
 }
