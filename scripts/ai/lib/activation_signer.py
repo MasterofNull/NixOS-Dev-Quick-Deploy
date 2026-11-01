@@ -19,12 +19,14 @@ one per line, keys case-sensitive, duplicates refused, anything else ignored as 
 Evidence baseline: `baseline-inputs.json` in the evidence copy is the canonical JSON whose sha256 IS the signed
 `evidence_baseline_sha256` (the envelope field set is fixed by activation_chain), so the enable_evidence and
 detection_snapshot values are authenticated by the signature.
-Deployment identity: explicit /etc/aq-activation/deployment-id, else sha256(salt:/etc/machine-id)[:32]; neither => refuse.
+Deployment identity: only /etc/aq-activation/deployment-id (verifier reads the same file); `--init-id` provisions it
+as sha256(salt:/etc/machine-id)[:32] when Nix does not declare one; absent => refuse.
 """
 from __future__ import annotations
 
 import fcntl
 import hashlib
+import shlex
 import json
 import os
 import re
@@ -46,9 +48,19 @@ _NAME = re.compile(r"^[a-z0-9._-]{1,64}$")
 _UNIT = re.compile(r"^[A-Za-z0-9@._-]{1,128}\.(service|socket|timer)$")
 _APPROVER = re.compile(r"^[A-Za-z0-9._-]{1,32}$")
 _MAX_FILE = 1 << 20
-_UNIT_PROPS = ("ExecStart", "ExecStartPre", "ExecStartPost", "ExecStop", "ExecReload", "Environment",
+_UNIT_PROPS = ("ExecCondition", "ExecStartPre", "ExecStart", "ExecStartPost", "ExecReload", "ExecStop",
+               "ExecStopPost", "Environment",
                "EnvironmentFiles", "ReadOnlyPaths", "ReadWritePaths", "WorkingDirectory")
-_EXEC_PROPS = {"ExecStart", "ExecStartPre", "ExecStartPost", "ExecStop", "ExecReload"}
+_EXEC_PROPS = {"ExecCondition", "ExecStartPre", "ExecStart", "ExecStartPost", "ExecReload", "ExecStop",
+               "ExecStopPost"}
+_INTERPRETERS = re.compile(r"^(python[0-9.]*|pypy[0-9]*|sh|bash|dash|zsh|fish|ksh|env|node(js)?|deno|bun|perl[0-9.]*|"
+                           r"ruby|lua(jit)?[0-9.-]*|php[0-9]*|java|guile|racket|tclsh[0-9.]*|awk|gawk|xargs|busybox)$")
+_SCRIPT_EXT = re.compile(r"\.(py|pyc|sh|bash|js|mjs|cjs|rb|pl|pm|lua|php|jar|tcl|conf|cfg|ini|json|ya?ml|toml|env)$",
+                         re.IGNORECASE)
+# environment variables that steer code/library loading: every entry must be an absolute store path
+_SEARCH_VARS = re.compile(r"^(PATH|PYTHONPATH|PYTHONHOME|PYTHONSTARTUP|PYTHONUSERBASE|NODE_PATH|NODE_OPTIONS|PERL5LIB|"
+                          r"PERL5OPT|RUBYLIB|RUBYOPT|GEM_PATH|GEM_HOME|CLASSPATH|LUA_PATH|LUA_CPATH|XDG_CONFIG_DIRS|"
+                          r"XDG_DATA_DIRS|GI_TYPELIB_PATH|LD_[A-Z_]+|GCONV_PATH|LOCPATH|NIX_[A-Z_]*PATH)$")
 _STATE_PROPS = {"ReadOnlyPaths", "ReadWritePaths", "WorkingDirectory"}   # may name declared state_paths
 _STORE = "/nix/store/"
 _PATH_TOKEN = re.compile(r"(?:^|[\s=:'\"({])(/[A-Za-z0-9_.+@%~/-]*)")
@@ -163,7 +175,7 @@ def safe_read(path: str, cap: int = _MAX_FILE, invoker: tuple[int, int] | None =
             if not _may(os.fstat(fd), uid, gid, 1):
                 raise SignerError(f"invoking user cannot search the directory above {comp} in {path}")
             try:
-                nfd = os.open(comp, os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC | (0 if last else os.O_DIRECTORY),
+                nfd = os.open(comp, os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC | (os.O_NONBLOCK if last else os.O_DIRECTORY),
                               dir_fd=fd)
             except OSError as e:
                 raise SignerError(f"cannot open {path}: {e.strerror}") from None
@@ -268,20 +280,33 @@ def load_signers(paths: Paths) -> list[str]:
     return keys
 
 
+_ID_RE = re.compile(r"[A-Za-z0-9._-]{8,64}")
+
+
 def load_deployment_id(paths: Paths) -> str:
-    """Explicit Nix-declared id wins; otherwise derive from /etc/machine-id and the salt. Neither => refuse."""
-    explicit = ""
+    """The one resolution, shared with the verifier (aq-pm-tracker reads the same file): the provisioned
+    /etc/aq-activation/deployment-id. Absent, empty or malformed => refuse."""
+    if not paths.deployment_id.exists():
+        raise SignerError("no deployment identity: /etc/aq-activation/deployment-id is absent (run --init-id or "
+                          "set mySystem.activation.signing.deploymentId)")
+    dep = _read_text(paths.deployment_id)
+    if not _ID_RE.fullmatch(dep):
+        raise SignerError("deployment-id malformed or empty")
+    return dep
+
+
+def init_id(paths: Paths) -> str:
+    """Provisioning step: write deployment-id = sha256(salt:machine-id)[:32] when none exists (never overwrites)."""
     if paths.deployment_id.exists():
-        explicit = _read_text(paths.deployment_id)
-    if explicit:
-        return explicit
+        return load_deployment_id(paths)
     if not (paths.deployment_salt.exists() and paths.machine_id.exists()):
-        raise SignerError("no deployment identity: set mySystem.activation.signing.deploymentId or provide "
-                          "/etc/machine-id and the deployment salt")
+        raise SignerError("cannot derive a deployment identity: deployment salt or /etc/machine-id missing")
     salt, mid = _read_text(paths.deployment_salt), _read_text(paths.machine_id)
     if not salt or not re.fullmatch(r"[0-9a-f]{32}", mid) or mid == "0" * 32:
         raise SignerError("machine-id missing or invalid: cannot derive a deployment identity")
-    return sha256_hex(f"{salt}:{mid}".encode())[:32]
+    dep = sha256_hex(f"{salt}:{mid}".encode())[:32]
+    _write_file(paths.deployment_id, (dep + "\n").encode("ascii"), 0o644)
+    return dep
 
 
 def load_eligible(paths: Paths) -> list[dict]:
@@ -357,10 +382,64 @@ def _store_path(p: str) -> bool:
     return c.startswith(_STORE) and os.path.realpath(c).startswith(_STORE)
 
 
+def _check_exec(unit: str, prop: str, value: str) -> int:
+    """Every command block must name an absolute executable and no argument may resolve outside the Nix store
+    (relative arguments would resolve inside a mutable WorkingDirectory). Returns the number of commands."""
+    blocks = re.findall(r"\{([^}]*)\}", value)
+    if value.strip() and not blocks:
+        raise SignerError(f"unit {unit} {prop}: unparseable command (unclassifiable)")
+    n = 0
+    for blk in blocks:
+        pm, am = re.search(r"path=([^;]*)", blk), re.search(r"argv\[\]=([^;]*)", blk)
+        exe = (pm.group(1).strip() if pm else "")
+        argv = am.group(1).split() if am else []
+        if not exe or not argv:
+            raise SignerError(f"unit {unit} {prop}: command without executable/argv (unclassifiable)")
+        if not exe.startswith("/"):
+            raise SignerError(f"unit {unit} {prop}: relative executable {exe!r}")
+        n += 1
+        interp = bool(_INTERPRETERS.match(os.path.basename(exe)))
+        for i, tok in enumerate(argv):
+            if tok.startswith("/"):
+                continue                      # absolute: classified by the path-token check
+            if i == 0:
+                continue                      # argv[0] is a display name, not loaded
+            if interp and not tok.startswith("-"):
+                raise SignerError(f"unit {unit} {prop}: interpreter argument {tok!r} is not a store path")
+            if interp and tok in ("-c", "-e", "-E", "-m", "-r"):
+                raise SignerError(f"unit {unit} {prop}: interpreter inline code/module option {tok!r}")
+            val = tok.split("=", 1)[1] if tok.startswith("-") and "=" in tok else tok
+            if val.startswith("/"):
+                continue
+            if "/" in val or val.startswith(".") or val.startswith("~") or _SCRIPT_EXT.search(val):
+                raise SignerError(f"unit {unit} {prop}: relative path argument {tok!r} resolves outside the store")
+    return n
+
+
+def _check_env(unit: str, value: str) -> None:
+    try:
+        items = shlex.split(value)
+    except ValueError:
+        raise SignerError(f"unit {unit} Environment: unparseable (unclassifiable)") from None
+    for item in items:
+        name, eq, val = item.partition("=")
+        if not eq or not _SEARCH_VARS.match(name):
+            continue
+        entries = val.split(":") if name != "NODE_OPTIONS" and name not in ("PERL5OPT", "RUBYOPT") else val.split()
+        for ent in entries:
+            ent = ent.split("=", 1)[1] if ent.startswith("--") and "=" in ent else ent
+            if ent.startswith("-") and name in ("NODE_OPTIONS", "PERL5OPT", "RUBYOPT"):
+                continue
+            if not ent.startswith("/") or not _store_path(ent):
+                raise SignerError(f"unit {unit} Environment {name} entry {ent!r} is empty, relative or not a "
+                                  "Nix store path")
+
+
 def check_unit(env: Env, unit: str, entry: dict) -> None:
     """Executables, helpers, environment and EnvironmentFiles must be Nix-store paths (after normalisation and
-    symlink resolution). Declared state_paths may satisfy only the state-class properties (ReadOnlyPaths,
-    ReadWritePaths, WorkingDirectory), never an executable or configuration check."""
+    symlink resolution); relative arguments and code-loading environment entries must also stay in the store.
+    Declared state_paths may satisfy only the state-class properties (ReadOnlyPaths, ReadWritePaths,
+    WorkingDirectory), never an executable or configuration check."""
     if not _UNIT.match(unit):
         raise SignerError(f"manifest unit name invalid: {unit!r}")
     state = [_canon(p) for p in entry.get("state_paths", []) if isinstance(p, str) and p.startswith("/")]
@@ -372,12 +451,15 @@ def check_unit(env: Env, unit: str, entry: dict) -> None:
         prop, _, value = line.partition("=")
         if prop not in _UNIT_PROPS:
             continue
+        if prop in _EXEC_PROPS:
+            n = _check_exec(unit, prop, value)
+            exec_paths += n if prop == "ExecStart" else 0
+        elif prop == "Environment":
+            _check_env(unit, value)
         for raw in _unit_paths(prop, value):
             p = _canon(raw)
             if p == "/home" or p.startswith("/home/"):
                 raise SignerError(f"unit {unit} {prop} references {p} under /home")
-            if prop == "ExecStart":
-                exec_paths += 1
             if _store_path(p):
                 continue
             if prop in _STATE_PROPS and any(p == a or p.startswith(a.rstrip("/") + "/") for a in state):
@@ -716,6 +798,9 @@ def main(argv: list[str], environ: dict | None = None, paths: Paths | None = Non
         approver = "owner"
     env = env or Env(paths=paths or Paths(), approver=approver)
     try:
+        if argv == ["--init-id"]:
+            print(init_id(env.paths))
+            return 0
         if argv == ["--init-key"]:
             print(init_key(env.paths))
             return 0
@@ -725,7 +810,7 @@ def main(argv: list[str], environ: dict | None = None, paths: Paths | None = Non
             return recover(env)
         if len(argv) == 2 and argv[0] in ("grant", "revoke", "wave-grant"):
             return sign(env, argv[0], argv[1])
-        print("usage: aq-activation-sign --init-chain | --recover | grant|revoke|wave-grant <request.json>",
+        print("usage: aq-activation-sign --init-id | --init-chain | --recover | grant|revoke|wave-grant <request.json>",
               file=sys.stderr)
         return 2
     except SignerError as e:

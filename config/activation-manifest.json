@@ -38,13 +38,13 @@
       }
     },
     {
-      "feature": "activation signing provisioning (aq-activation-sign signer, aq-activation-keygen oneshot, /etc/aq-activation inputs)",
+      "feature": "activation signing provisioning (aq-activation-sign signer, aq-activation-keygen oneshot, aq-activation-deployment-id oneshot, /etc/aq-activation inputs)",
       "entrypoint": "nix/modules/services/activation-signing.nix",
       "live_caller": "nix/modules/services/default.nix",
       "enable": "mySystem.activation.signing.enable",
       "health_signal": "scripts/ai/aq-pm-tracker:_ACTIVATION_SIGNERS",
       "state": "enabled-but-unpinned: units and files are provisioned on rebuild, but signers.json is empty (fail closed, nothing verifies) until the owner pins signing.pub into mySystem.activation.signing.signerPublicKeys and runs sudo aq-activation-sign --init-chain",
-      "observed_by": "aq-pm-tracker reads the chain/head/signers (reports chain-invalid and grants_unverified until pinned and initialised); systemctl status aq-activation-keygen; /var/lib/aq-activation/signing.pub"
+      "observed_by": "aq-pm-tracker reads the chain/head/signers (reports chain-invalid and grants_unverified until pinned and initialised); systemctl status aq-activation-keygen; systemctl status aq-activation-deployment-id; /var/lib/aq-activation/signing.pub; /etc/aq-activation/deployment-id"
     },
     {
       "feature": "aq-activation-sign owner signer (store-installed, sudo password required)",

@@ -6,6 +6,7 @@ import os
 import shutil
 import sys
 import tempfile
+import threading
 import unittest
 from pathlib import Path
 
@@ -44,7 +45,7 @@ class Fixture:
             self.on_confirm()
         return self.confirm_answer
 
-    def write_etc(self, signers=None, dep="dep1", eligible=None):
+    def write_etc(self, signers=None, dep="dep-test-1", eligible=None):
         (self.etc / "signers.json").write_text(json.dumps({"keys": signers if signers is not None else []}))
         (self.etc / "deployment-id").write_text(dep + "\n")
         (self.etc / "eligible.json").write_text(json.dumps(
@@ -96,7 +97,7 @@ class Fixture:
         return sg.init_chain(self.env)
 
     def state_view(self):
-        return ac.load_chain(self.paths.log, self.paths.head, [self.pub], "dep1")
+        return ac.load_chain(self.paths.log, self.paths.head, [self.pub], "dep-test-1")
 
 
 class SignerTests(unittest.TestCase):
@@ -235,6 +236,65 @@ class SignerTests(unittest.TestCase):
         self.f.unit_text = GOOD_UNIT + "ReadOnlyPaths=/var/lib/foo/data\n"
         self.assertEqual(self.f.run("grant", self.f.grant_req()), 0)
 
+    def test_relative_and_mutable_dependencies_refused(self):
+        self.f.init()
+        py = "/nix/store/aaaa-py/bin/python3"
+        def ex(prop, argv, path=py):
+            return (f"{prop}={{ path={path} ; argv[]={path} {argv} ; ignore_errors=no ; start_time=[n/a] ; "
+                    "stop_time=[n/a] ; pid=0 ; code=(null) ; status=0/0 }\n")
+        base = ex("ExecStart", "/nix/store/aaaa-x/w.py")
+        wd = "WorkingDirectory=/var/lib/foo\n"
+        self.f.write_etc(signers=[self.f.pub], eligible=[{"plan": "p", "item": "i1", "units": ["x.service"],
+                                                          "paths": [], "state_paths": ["/var/lib/foo"]}])
+        bad = {
+            "relative-script": ex("ExecStart", "worker.py") + wd,
+            "relative-subdir": ex("ExecStart", "bin/run") + wd,
+            "dot-relative": ex("ExecStart", "./run") + wd,
+            "relative-opt-value": ex("ExecStart", "--config=conf/a") + wd,
+            "inline-code": ex("ExecStart", "-c print(1)") + wd,
+            "relative-exe": ex("ExecStart", "", path="bin/x") + wd,
+            "pythonpath-relative": base + wd + "Environment=PYTHONPATH=.\n",
+            "pythonpath-empty-entry": base + wd + "Environment=PYTHONPATH=/nix/store/a-p::/nix/store/b-p\n",
+            "pythonpath-mutable": base + wd + "Environment=PYTHONPATH=/var/lib/foo\n",
+            "path-relative": base + "Environment=PATH=bin:/nix/store/a-b/bin\n",
+            "ld-library-path": base + "Environment=LD_LIBRARY_PATH=/var/lib/foo\n",
+            "ld-preload-relative": base + "Environment=LD_PRELOAD=evil.so\n",
+            "stopPost-mutable": base + "ExecStopPost={ path=/var/lib/foo/x ; argv[]=/var/lib/foo/x ; ignore_errors=no }\n",
+            "condition-relative": base + ex("ExecCondition", "check.sh") + wd,
+            "condition-mutable": base + ex("ExecCondition", "", path="/var/lib/foo/c") + wd,
+            "startpre-relative": base + ex("ExecStartPre", "prep.sh"),
+            "unparseable": "ExecStart=garbage\n",
+        }
+        for name, text in bad.items():
+            self.f.unit_text = text
+            with self.assertRaises(sg.SignerError, msg=name):
+                self.f.run("grant", self.f.grant_req())
+        # store-only dependencies (python running a store script, store PYTHONPATH) are accepted
+        self.f.unit_text = (base + wd + "Environment=PYTHONPATH=/nix/store/a-p/lib:/nix/store/b-p/lib "
+                            "PATH=/nix/store/c-b/bin\nExecCondition={ path=/nix/store/d-t/bin/test ; "
+                            "argv[]=/nix/store/d-t/bin/test -f /var/lib/foo/flag ; ignore_errors=no }\n")
+        with self.assertRaises(sg.SignerError):      # a mutable absolute arg is still not a store path
+            self.f.run("grant", self.f.grant_req())
+        self.f.unit_text = base + wd + "Environment=PYTHONPATH=/nix/store/a-p/lib:/nix/store/b-p/lib PATH=/nix/store/c-b/bin\n"
+        self.assertEqual(self.f.run("grant", self.f.grant_req()), 0)
+
+    def test_fifo_final_component_does_not_block(self):
+        fifo = self.td / "fifo"
+        os.mkfifo(fifo, 0o644)
+        done = []
+        t = threading.Thread(target=lambda: done.append(self._try_read(str(fifo))), daemon=True)
+        t.start()
+        t.join(5)
+        self.assertFalse(t.is_alive(), "safe_read blocked on a FIFO")
+        self.assertIn("not a regular file", done[0])
+
+    def _try_read(self, path):
+        try:
+            sg.safe_read(path, invoker=(os.geteuid(), os.getegid()))
+        except sg.SignerError as e:
+            return str(e)
+        return "read"
+
     def test_store_symlink_escape_refused(self):
         self.assertTrue(sg._store_path("/nix/store/aaaa-x/bin/x"))
         self.assertFalse(sg._store_path("/nix/storeX/a"))
@@ -295,19 +355,23 @@ class SignerTests(unittest.TestCase):
         self.assertIn('"systemd_unit": "x.service"', self.f.displayed[-1])
 
     # ---- deployment identity
-    def test_deployment_identity_from_machine_id(self):
+    def test_deployment_identity_single_resolution(self):
         paths = sg.Paths(state=self.f.state, etc=self.td / "etc2", machine_id=self.td / "machine-id")
         paths.etc.mkdir()
-        self.refuses(lambda: sg.load_deployment_id(paths), "no deployment identity")
+        # signer's load path reads only the provisioned file (the verifier reads the same one)
+        self.refuses(lambda: sg.load_deployment_id(paths), "absent")
+        self.refuses(lambda: sg.init_id(paths), "cannot derive")
         (paths.etc / "deployment-salt").write_text("salt\n")
-        self.refuses(lambda: sg.load_deployment_id(paths), "no deployment identity")
         paths.machine_id.write_text("0" * 32 + "\n")
-        self.refuses(lambda: sg.load_deployment_id(paths), "machine-id")
+        self.refuses(lambda: sg.init_id(paths), "machine-id")
         paths.machine_id.write_text("a" * 32 + "\n")
-        a = sg.load_deployment_id(paths)
+        a = sg.init_id(paths)
         self.assertEqual(a, sg.sha256_hex(("salt:" + "a" * 32).encode())[:32])
-        paths.machine_id.write_text("b" * 32 + "\n")
-        self.assertNotEqual(a, sg.load_deployment_id(paths))
+        self.assertEqual(sg.load_deployment_id(paths), a)
+        paths.machine_id.write_text("b" * 32 + "\n")          # never overwrites an existing id
+        self.assertEqual(sg.init_id(paths), a)
+        (paths.etc / "deployment-id").write_text("\n")
+        self.refuses(lambda: sg.load_deployment_id(paths), "malformed")
         (paths.etc / "deployment-id").write_text("explicit-id-1\n")
         self.assertEqual(sg.load_deployment_id(paths), "explicit-id-1")
 

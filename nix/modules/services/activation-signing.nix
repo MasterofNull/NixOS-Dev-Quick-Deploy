@@ -6,7 +6,7 @@
 #   /var/lib/aq-activation/signing.key      0400, generated ON THE HOST by a oneshot (never in the repo or SOPS)
 #   /var/lib/aq-activation/signing.pub      public half, for the owner to pin into signerPublicKeys
 #   /etc/aq-activation/signers.json         {"keys": [<pinned public keys>]}; empty until pinned => nothing verifies
-#   /etc/aq-activation/deployment-id        optional explicit machine identity (else derived from /etc/machine-id + deployment-salt)
+#   /etc/aq-activation/deployment-id        machine identity; Nix-declared, else written once by aq-activation-deployment-id from /etc/machine-id + deployment-salt
 #   /etc/aq-activation/eligible.json        the only source of item eligibility
 #   aq-activation-sign                      store-installed signer, sudo with a password (never NOPASSWD)
 {
@@ -86,9 +86,10 @@ in {
       default = null;
       description = ''
         Explicit, unique, stable machine identity bound into the genesis and every later envelope. When null
-        (default) the signer derives it at run time as the first 32 hex of sha256 "<deploymentIdSalt>:<contents
-        of /etc/machine-id>", so hosts sharing a hostname differ and a rename does not invalidate the chain.
-        With neither a valid /etc/machine-id nor this option the signer refuses before --init-chain.
+        (default) the aq-activation-deployment-id oneshot writes /etc/aq-activation/deployment-id once, as the
+        first 32 hex of sha256 "<deploymentIdSalt>:<contents of /etc/machine-id>", so hosts sharing a hostname
+        differ and a rename does not invalidate the chain. Signer and verifier both read only that file; if it
+        is absent (no valid /etc/machine-id, oneshot failed) both fail closed.
       '';
     };
     eligibleItems = mkOption {
@@ -112,6 +113,25 @@ in {
     environment.etc."aq-activation/deployment-salt".text = cfg.deploymentIdSalt + "\n";
     environment.etc."aq-activation/deployment-id" = mkIf (cfg.deploymentId != null) {text = cfg.deploymentId + "\n";};
     environment.etc."aq-activation/eligible.json".text = builtins.toJSON cfg.eligibleItems;
+
+    systemd.services.aq-activation-deployment-id = mkIf (cfg.deploymentId == null) {
+      description = "Provision the activation deployment id from machine-id + salt if absent";
+      wantedBy = ["multi-user.target"];
+      before = ["aq-activation-keygen.service"];
+      serviceConfig = {
+        Type = "oneshot";
+        RemainAfterExit = true;
+        ExecStart = "${pyEnv}/bin/python -I ${bundle}/activation_signer.py --init-id";
+        NoNewPrivileges = true;
+        PrivateTmp = true;
+        ProtectSystem = "strict";
+        ProtectHome = true;
+        ReadWritePaths = ["/etc/aq-activation"];
+        CapabilityBoundingSet = ["CAP_DAC_OVERRIDE" "CAP_CHOWN" "CAP_FOWNER"];
+        RestrictAddressFamilies = ["AF_UNIX"];
+        LockPersonality = true;
+      };
+    };
 
     systemd.services.aq-activation-keygen = {
       description = "Generate the activation signing key if absent (host-local, root-only)";
