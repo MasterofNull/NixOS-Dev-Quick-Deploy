@@ -115,6 +115,16 @@ def _run() -> int:
         llama_url=a.llama_url, hybrid_url="", ralph_url="", task_type=task_type,
         max_tokens_hint=hint, tool_manifest=a.tool_manifest)
 
+    if mode in ("hybrid", "ralph"):
+        # These services assemble their own prompt; a direct-chat measurement would be a
+        # false "accept". Record the labeled limitation and let the launch proceed.
+        pf = de.not_measured(mode)
+        out = Path(a.output)
+        out.parent.mkdir(parents=True, exist_ok=True)
+        de.evidence_path(out).write_text(json.dumps({"task_id": a.task_id, "preflight": pf}))
+        print(json.dumps({"refused": False, "preflight": pf}))
+        return 0
+
     # Same prompt augmentation dispatch._run_task applies before the runner (direct/agent).
     if mode in ("direct", "agent"):
         prompt = D._apply_context_assembler(prompt, a.task_id, Path(a.output))
@@ -135,6 +145,8 @@ def _run() -> int:
         out = Path(a.output)
         out.parent.mkdir(parents=True, exist_ok=True)
         de.evidence_path(out).write_text(json.dumps({"task_id": a.task_id, "preflight": pf}))
+        # Launch consumes exactly the prompt that was measured: assemble once.
+        de.assembled_path(out).write_text(json.dumps({"task_id": a.task_id, "mode": mode, "prompt": prompt}))
         print(json.dumps({"refused": False, "preflight": pf}))
         return 0
 
@@ -145,7 +157,7 @@ def _run() -> int:
     D.TaskRegistry(Path(a.delegation_dir)).append(
         task_id=a.task_id, description=a.prompt, output_file=str(out), mode=mode,
         role=cfg.role, pid=None,
-        extra={"status": "failed", "terminal_reason": "preflight_refused",
+        extra={"status": "failed", "terminal_reason": pf.get("terminal_reason") or "preflight_refused",
                "outcome": "refused", "preflight": pf, "model_effective": "n/a"})
     print(refusal, file=sys.stderr)
     return de.PREFLIGHT_EXIT_CODE

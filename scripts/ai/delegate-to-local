@@ -439,6 +439,11 @@ print(classify_mode(sys.argv[1]))
             --ralph-url      "http://127.0.0.1:${RALPH_PORT}"
             --script-dir     "$EFFECTIVE_SCRIPT_DIR"
         )
+        if [[ -f "${OUTPUT_FILE}.assembled.json" ]]; then
+            # Launch the exact prompt preflight measured (no second live assembly).
+            _DISPATCH_ARGS[1]="$LIB_DIR/dispatch_measured.py"
+            _DISPATCH_ARGS+=(--assembled-file "${OUTPUT_FILE}.assembled.json")
+        fi
         [[ -n "$TASK_TYPE" ]] && _DISPATCH_ARGS+=(--task-type "$TASK_TYPE")
         [[ -n "$MAX_TOKENS" ]] && _DISPATCH_ARGS+=(--max-tokens "$MAX_TOKENS")
 

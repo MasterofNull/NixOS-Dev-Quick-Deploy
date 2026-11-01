@@ -24,7 +24,8 @@ from pathlib import Path
 from typing import Any, Optional
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
-LOCAL_MODEL_CONFIG = REPO_ROOT / "config" / "local-model-config.yaml"
+LOCAL_MODEL_CONFIG = Path(os.environ.get("AQ_LOCAL_MODEL_CONFIG")
+                          or REPO_ROOT / "config" / "local-model-config.yaml")
 
 PREFLIGHT_EXIT_CODE = 3
 PREFLIGHT_ERROR_EXIT_CODE = 4
@@ -75,6 +76,22 @@ def normalize_row(row: dict) -> dict:
 def evidence_path(output_file: Any) -> Optional[Path]:
     """Sidecar where local_preflight leaves an accepted job's verdict."""
     return Path(str(output_file) + ".preflight.json") if output_file else None
+
+
+def assembled_path(output_file: Any) -> Path:
+    """Sidecar holding the exact assembled prompt preflight measured."""
+    return Path(str(output_file) + ".assembled.json")
+
+
+def load_assembled_prompt(path: Any, task_id: str) -> Optional[str]:
+    """The measured prompt, or None when missing/unreadable/for another task."""
+    try:
+        saved = json.loads(Path(path).read_text())
+    except (OSError, ValueError, TypeError):
+        return None
+    if isinstance(saved, dict) and saved.get("task_id") == task_id and isinstance(saved.get("prompt"), str):
+        return saved["prompt"]
+    return None
 
 
 def _read_preflight_evidence(row: dict) -> Optional[dict]:
@@ -185,7 +202,13 @@ def preflight(payload: dict, max_tokens: int, llama_url: str, mode: str) -> dict
         "overhead": "rendered_request:template+tools",
     }
     if limit is None:
-        result["verdict"] = "skipped_no_limit"
+        # Fail closed: without a context limit nothing can be proven to fit.
+        result["verdict"] = "refuse"
+        result["reason"] = "no_context_limit"
+        result["terminal_reason"] = "preflight_no_limit"
+        result["decompose_hint"] = ("No context limit is available (llama /props unreachable and "
+                                    "no inference.ctx_size in config/local-model-config.yaml); "
+                                    "restore the limit source and retry.")
     elif measured > limit:
         result["verdict"] = "refuse"
         result["reason"] = "assembled_prompt_plus_output_exceeds_context"
@@ -195,6 +218,15 @@ def preflight(payload: dict, max_tokens: int, llama_url: str, mode: str) -> dict
     else:
         result["verdict"] = "accept"
     return result
+
+
+NOT_MEASURED_LIMITATION = "service-side assembly not measurable at dispatch"
+
+
+def not_measured(mode: str) -> dict:
+    """Labeled limitation for modes whose prompt is assembled by a remote service."""
+    return {"method": "n/a", "measured": None, "limit": None, "verdict": "not_measured",
+            "mode": mode, "limitation": NOT_MEASURED_LIMITATION}
 
 
 def refusal_json(task_id: str, pf: dict) -> str:

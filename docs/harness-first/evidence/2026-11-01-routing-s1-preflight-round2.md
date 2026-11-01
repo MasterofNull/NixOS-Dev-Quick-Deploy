@@ -24,3 +24,9 @@ Scope: `.agents/plans/agentic-routing/PLAN.md` S1 only. Uncommitted at time of w
 - Context assembler and embedded-assist prefetch call live services, so the launched prompt can differ slightly from the measured one.
 - With llama down, agent mode falls back to the byte bound and is refused (about 43k bytes of schemas); direct mode is unaffected.
 - hybrid/ralph modes are measured as a direct request.
+
+## Round 3 (Codex: 3 HIGH)
+- Assemble once: preflight writes the exact measured prompt to `<output>.assembled.json`. `delegate-to-local` then launches `lib/dispatch_measured.py` (dispatch.py is whole-file pinned by the L2B contract and stays unmodified). The launcher replaces dispatch's context-assembler and embedded-assist steps with the measured prompt, then runs `dispatch.main()`. A missing or mismatched file fails the launch.
+- No context limit is now a refusal (`terminal_reason=preflight_no_limit`), not `skipped_no_limit`. `AQ_LOCAL_MODEL_CONFIG` overrides the config path (used by the test).
+- hybrid/ralph record verdict `not_measured` with limitation "service-side assembly not measurable at dispatch"; launch proceeds, and they are never recorded as `accept`.
+- Tests: parity with a mock embedded-assist that returns different content on each call (launch carries call 1, never call 2); no-limit refusal at helper and wrapper level; hybrid/ralph label.

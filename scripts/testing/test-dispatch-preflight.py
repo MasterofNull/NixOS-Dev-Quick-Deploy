@@ -37,7 +37,13 @@ class _Llama(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    no_ctx = False
+
     def do_GET(self):
+        if self.path.startswith("/slots"):
+            return self._send([{"is_processing": False}])
+        if _Llama.no_ctx:
+            return self._send({})
         if self.path.startswith("/slots"):
             return self._send([{"is_processing": False}])
         self._send({"default_generation_settings": {"n_ctx": N_CTX}, "total_slots": 1})
@@ -58,12 +64,29 @@ class _Llama(BaseHTTPRequestHandler):
         self.wfile.write(b'data: {"choices":[{"delta":{"content":"ok"}}]}\n\ndata: [DONE]\n\n')
 
 
-def _run(url, prompt, max_tokens, tmp):
+def _run(url, prompt, max_tokens, tmp, mode="direct", env=None):
     return subprocess.run(
         [sys.executable, str(DISPATCH), "--task-id", "t1",
-         "--output", f"{tmp}/o.log", "--mode", "direct", "--prompt", prompt,
+         "--output", f"{tmp}/o.log", "--mode", mode, "--prompt", prompt,
          "--max-tokens", str(max_tokens), "--delegation-dir", tmp, "--llama-url", url],
-        capture_output=True, text=True, timeout=60)
+        capture_output=True, text=True, timeout=60, env=env)
+
+
+class _Switchboard(BaseHTTPRequestHandler):
+    """embedded-assist stand-in: every call returns DIFFERENT content."""
+    calls = 0
+
+    def log_message(self, *a):
+        pass
+
+    def do_POST(self):
+        self.rfile.read(int(self.headers.get("Content-Length", 0)))
+        _Switchboard.calls += 1
+        chunk = {"choices": [{"delta": {"content": f"ASSIST-CALL-{_Switchboard.calls}"}}]}
+        self.send_response(200)
+        self.send_header("Content-Type", "text/event-stream")
+        self.end_headers()
+        self.wfile.write(f"data: {json.dumps(chunk)}\n\ndata: [DONE]\n\n".encode())
 
 
 def _rows(tmp):
@@ -155,7 +178,7 @@ class PreflightTests(unittest.TestCase):
         self.assertGreaterEqual(b - a, 4000)
 
 
-def _wrapper(url, tmp, prompt, extra=(), pf_exit=None):
+def _wrapper(url, tmp, prompt, extra=(), pf_exit=None, mode="direct", extra_env=None):
     """Run the real delegate-to-local with a python3 shim: dispatch/conn_retry
     launches touch a sentinel instead of running."""
     bin_dir = Path(tmp) / "bin"
@@ -175,9 +198,9 @@ exec {sys.executable} "$@"
     shim.chmod(0o755)
     out = Path(tmp) / "outputs" / "x.log"
     env = dict(os.environ, PATH=f"{bin_dir}:{os.environ['PATH']}", AQ_DELEGATION_DIR=tmp,
-               LLAMA_PORT=url.rsplit(":", 1)[1], AQ_NO_CONSULT="1", OUT_FOR_SENTINEL=str(out))
+               LLAMA_PORT=url.rsplit(":", 1)[1], AQ_NO_CONSULT="1", OUT_FOR_SENTINEL=str(out), **(extra_env or {}))
     r = subprocess.run(
-        [str(REPO / "scripts" / "ai" / "delegate-to-local"), "--mode", "direct", "--wait",
+        [str(REPO / "scripts" / "ai" / "delegate-to-local"), "--mode", mode, "--wait",
          "--prompt", prompt, *extra],
         capture_output=True, text=True, timeout=120, env=env, cwd=tmp)
     return r, sentinel
@@ -202,6 +225,23 @@ class WrapperLaunchBoundaryTests(unittest.TestCase):
             rows = _rows(tmp)
             self.assertEqual([x["outcome"] for x in rows], ["refused"])
             self.assertEqual(rows[0]["preflight"]["verdict"], "refuse")
+
+    def test_missing_context_limit_blocks_launch(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            _Llama.no_ctx = True
+            self.addCleanup(setattr, _Llama, "no_ctx", False)
+            r, sentinel = _wrapper(self.url, tmp, "small task", ["--max-tokens", "64"],
+                                   extra_env={"AQ_LOCAL_MODEL_CONFIG": f"{tmp}/missing.yaml"})
+            self.assertEqual(r.returncode, 3, r.stderr)
+            self.assertFalse(sentinel.exists(), "no-limit task must not launch")
+            self.assertEqual(_rows(tmp)[0]["terminal_reason"], "preflight_no_limit")
+
+    def test_hybrid_launches_with_not_measured_label(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            r, sentinel = _wrapper(self.url, tmp, "small task", ["--max-tokens", "64"], mode="hybrid")
+            self.assertTrue(sentinel.exists(), r.stdout + r.stderr)
+            saved = json.loads(next((Path(tmp) / "outputs").glob("*.preflight.json")).read_text())
+            self.assertEqual(saved["preflight"]["verdict"], "not_measured")
 
     def test_preflight_crash_blocks_launch_and_is_recorded(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -236,25 +276,75 @@ class WrapperLaunchBoundaryTests(unittest.TestCase):
             self.assertEqual(row["preflight"]["limit"], N_CTX)
             self.assertEqual(row["preflight"]["method"], "apply_template+tokenize")
 
-    def test_preflight_payload_matches_actual_request(self):
+    def test_launch_uses_the_measured_prompt_not_a_second_assembly(self):
+        sw = HTTPServer(("127.0.0.1", 0), _Switchboard)
+        threading.Thread(target=sw.serve_forever, daemon=True).start()
+        self.addCleanup(sw.shutdown)
+        env = dict(os.environ, SWITCHBOARD_URL=f"http://127.0.0.1:{sw.server_port}")
         with tempfile.TemporaryDirectory() as tmp:
+            _Switchboard.calls = 0
             _Llama.seen.clear()
-            r = _run(self.url, "parity prompt", 64, tmp)
+            r = _run(self.url, "parity prompt", 64, tmp, env=env)
             self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertEqual(_Switchboard.calls, 1)
             measured = [b for p, b in _Llama.seen if p == "/apply-template"][-1]["messages"]
+            self.assertIn("ASSIST-CALL-1", json.dumps(measured))
             _Llama.seen.clear()
             deleg = Path(tmp) / "root" / ".agents" / "delegation"
             deleg.mkdir(parents=True)
             d = subprocess.run(
-                [sys.executable, str(LIB / "dispatch.py"), "delegate", "--task-id", "t1",
-                 "--output", f"{tmp}/real.log", "--mode", "direct", "--role", "auto",
+                [sys.executable, str(LIB / "dispatch_measured.py"), "delegate", "--task-id", "t1",
+                 "--output", f"{tmp}/o.log", "--mode", "direct", "--role", "auto",
                  "--prompt", "parity prompt", "--timeout", "30", "--max-tokens", "64",
+                 "--assembled-file", f"{tmp}/o.log.assembled.json",
                  "--delegation-dir", str(deleg), "--llama-url", self.url,
                  "--hybrid-url", "http://127.0.0.1:1", "--ralph-url", "http://127.0.0.1:1"],
-                capture_output=True, text=True, timeout=60)
+                capture_output=True, text=True, timeout=60, env=env)
             sent = [b for p, b in _Llama.seen if p == "/v1/chat/completions"]
             self.assertTrue(sent, d.stdout + d.stderr)
+            self.assertEqual(_Switchboard.calls, 1, "launch must not re-run embedded-assist")
+            self.assertNotIn("ASSIST-CALL-2", json.dumps(sent[-1]))
             self.assertEqual(sent[-1]["messages"], measured)
+
+    def test_launch_refuses_when_assembled_prompt_missing(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            _Llama.seen.clear()
+            deleg = Path(tmp) / "root" / ".agents" / "delegation"
+            deleg.mkdir(parents=True)
+            d = subprocess.run(
+                [sys.executable, str(LIB / "dispatch_measured.py"), "delegate", "--task-id", "t1",
+                 "--output", f"{tmp}/o.log", "--mode", "direct", "--prompt", "p", "--max-tokens", "64",
+                 "--assembled-file", f"{tmp}/nope.json", "--delegation-dir", str(deleg),
+                 "--llama-url", self.url, "--hybrid-url", "http://127.0.0.1:1",
+                 "--ralph-url", "http://127.0.0.1:1"], capture_output=True, text=True, timeout=60)
+            self.assertNotEqual(d.returncode, 0)
+            self.assertFalse([1 for p, _ in _Llama.seen if p == "/v1/chat/completions"])
+
+    def test_hybrid_and_ralph_are_never_accepted(self):
+        for mode in ("hybrid", "ralph"):
+            with tempfile.TemporaryDirectory() as tmp:
+                r = _run(self.url, "small task", 64, tmp, mode=mode)
+                self.assertEqual(r.returncode, 0, r.stderr)
+                pf = json.loads(r.stdout)["preflight"]
+                self.assertEqual(pf["verdict"], "not_measured")
+                self.assertNotEqual(pf["verdict"], "accept")
+                self.assertEqual(pf["limitation"], de.NOT_MEASURED_LIMITATION)
+                row = de.normalize_row({"id": "t1", "output_file": f"{tmp}/o.log"})
+                self.assertEqual(row["preflight"]["verdict"], "not_measured")
+                self.assertEqual(row["preflight"]["limitation"], de.NOT_MEASURED_LIMITATION)
+                self.assertFalse(Path(f"{tmp}/o.log.assembled.json").exists())
+
+    def test_no_context_limit_refuses_before_launch(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            _Llama.no_ctx = True
+            self.addCleanup(setattr, _Llama, "no_ctx", False)
+            pf = de.preflight({"messages": [{"role": "user", "content": "x"}]}, 8, self.url, "direct")
+            r = _run(self.url, "small task", 64, tmp,
+                     env=dict(os.environ, AQ_LOCAL_MODEL_CONFIG=f"{tmp}/missing.yaml"))
+            self.assertEqual(r.returncode, 3, r.stderr)
+            rows = _rows(tmp)
+            self.assertEqual(rows[0]["terminal_reason"], "preflight_no_limit")
+            self.assertEqual(rows[0]["outcome"], "refused")
 
 
 class EvidenceTests(unittest.TestCase):
