@@ -6,7 +6,7 @@
 #   /var/lib/aq-activation/signing.key      0400, generated ON THE HOST by a oneshot (never in the repo or SOPS)
 #   /var/lib/aq-activation/signing.pub      public half, for the owner to pin into signerPublicKeys
 #   /etc/aq-activation/signers.json         {"keys": [<pinned public keys>]}; empty until pinned => nothing verifies
-#   /etc/aq-activation/deployment-id        machine identity bound into every signed envelope
+#   /etc/aq-activation/deployment-id        optional explicit machine identity (else derived from /etc/machine-id + deployment-salt)
 #   /etc/aq-activation/eligible.json        the only source of item eligibility
 #   aq-activation-sign                      store-installed signer, sudo with a password (never NOPASSWD)
 {
@@ -34,6 +34,8 @@ with lib; let
     exec ${pkgs.coreutils}/bin/env -i \
       LC_ALL=C.UTF-8 \
       SUDO_USER="''${SUDO_USER:-}" \
+      SUDO_UID="''${SUDO_UID:-}" \
+      SUDO_GID="''${SUDO_GID:-}" \
       AQ_ACTIVATION_SYSTEMCTL=${pkgs.systemd}/bin/systemctl \
       ${pyEnv}/bin/python -I ${bundle}/activation_signer.py "$@"
   '';
@@ -80,12 +82,13 @@ in {
       description = "Salt for the derived deployment id.";
     };
     deploymentId = mkOption {
-      type = types.str;
-      default = builtins.substring 0 32 (builtins.hashString "sha256" "${cfg.deploymentIdSalt}:${config.networking.hostName}");
-      defaultText = literalExpression ''first 32 hex of sha256 "<deploymentIdSalt>:<networking.hostName>"'';
+      type = types.nullOr (types.strMatching "[A-Za-z0-9._-]{8,64}");
+      default = null;
       description = ''
-        Machine identity bound into the genesis and every later envelope. The default derives from the host
-        name, so renaming the host invalidates the chain; set it explicitly to pin it before running --init-chain.
+        Explicit, unique, stable machine identity bound into the genesis and every later envelope. When null
+        (default) the signer derives it at run time as the first 32 hex of sha256 "<deploymentIdSalt>:<contents
+        of /etc/machine-id>", so hosts sharing a hostname differ and a rename does not invalidate the chain.
+        With neither a valid /etc/machine-id nor this option the signer refuses before --init-chain.
       '';
     };
     eligibleItems = mkOption {
@@ -106,7 +109,8 @@ in {
     ];
 
     environment.etc."aq-activation/signers.json".text = builtins.toJSON {keys = cfg.signerPublicKeys;};
-    environment.etc."aq-activation/deployment-id".text = cfg.deploymentId + "\n";
+    environment.etc."aq-activation/deployment-salt".text = cfg.deploymentIdSalt + "\n";
+    environment.etc."aq-activation/deployment-id" = mkIf (cfg.deploymentId != null) {text = cfg.deploymentId + "\n";};
     environment.etc."aq-activation/eligible.json".text = builtins.toJSON cfg.eligibleItems;
 
     systemd.services.aq-activation-keygen = {
