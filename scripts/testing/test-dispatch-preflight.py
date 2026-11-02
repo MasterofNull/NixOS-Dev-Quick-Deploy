@@ -38,6 +38,7 @@ class _Llama(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     no_ctx = False
+    slots = 1
 
     def do_GET(self):
         if self.path.startswith("/slots"):
@@ -46,7 +47,7 @@ class _Llama(BaseHTTPRequestHandler):
             return self._send({})
         if self.path.startswith("/slots"):
             return self._send([{"is_processing": False}])
-        self._send({"default_generation_settings": {"n_ctx": N_CTX}, "total_slots": 1})
+        self._send({"default_generation_settings": {"n_ctx": N_CTX}, "total_slots": _Llama.slots})
 
     def do_POST(self):
         n = int(self.headers.get("Content-Length", 0))
@@ -54,7 +55,10 @@ class _Llama(BaseHTTPRequestHandler):
         _Llama.seen.append((self.path, body))
         if self.path == "/apply-template":
             # chat template adds 10 chars of framing per message
-            return self._send({"prompt": "".join("<|im_start|>" + str(m.get("content")) for m in body["messages"])})
+            text = "".join("<|im_start|>" + str(m.get("content")) for m in body["messages"])
+            if (body.get("chat_template_kwargs") or {}).get("enable_thinking") is not False:
+                text += "T" * 16000  # thinking preamble the template adds unless disabled
+            return self._send({"prompt": text})
         if self.path == "/tokenize":
             return self._send({"tokens": list(range(len(body["content"]) // 4))})  # 4 bytes/token mock
         # /v1/chat/completions: minimal SSE stream
@@ -161,14 +165,51 @@ class PreflightTests(unittest.TestCase):
         self.assertEqual(pf["limit_source"], "config:local-model-config.yaml")
         self.assertIsInstance(pf["limit"], int)
 
+        template_payload = {
+            "messages": [{"role": "user", "content": "small"}],
+            "chat_template_kwargs": {"enable_thinking": False, "template_context": "x" * 9000},
+            "parallel_tool_calls": False,
+            "add_generation_prompt": False,
+            "enable_thinking": False,
+            "reasoning_format": "",
+        }
+        template_pf = de.preflight(template_payload, 10, "http://127.0.0.1:1", "agent")
+        expected_template_parts = {"messages": template_payload["messages"], **de.template_options(template_payload)}
+        self.assertFalse(expected_template_parts["parallel_tool_calls"])
+        self.assertFalse(expected_template_parts["add_generation_prompt"])
+        self.assertFalse(expected_template_parts["enable_thinking"])
+        self.assertEqual(expected_template_parts["reasoning_format"], "")
+        self.assertGreaterEqual(
+            template_pf["prompt_tokens"],
+            len(json.dumps(expected_template_parts, ensure_ascii=False).encode()),
+        )
+
     def test_small_agent_request_accepted_in_8192_window(self):
         payload = {"messages": [{"role": "user", "content": "Say hi."}],
+                   "chat_template_kwargs": {"enable_thinking": False},
                    "_tool_schemas": [{"name": "t", "description": "d" * 21000}],
                    "grammar": "root ::= " + "x" * 5000}
         pf = de.preflight(payload, 800, self.url, "agent")
         self.assertEqual(pf["method"], "apply_template+tokenize")
         self.assertEqual(pf["verdict"], "accept", pf)
         self.assertLess(pf["prompt_tokens"], 100)
+
+    def test_multi_slot_n_ctx_is_already_per_slot(self):
+        _Llama.slots = 2
+        self.addCleanup(setattr, _Llama, "slots", 1)
+        payload = {"messages": [{"role": "user", "content": "x" * 24000}],  # ~6000 tokens
+                   "chat_template_kwargs": {"enable_thinking": False}}
+        pf = de.preflight(payload, 100, self.url, "direct")
+        self.assertEqual(pf["limit"], N_CTX)
+        self.assertEqual(pf["verdict"], "accept", pf)
+
+    def test_chat_template_kwargs_change_the_measurement(self):
+        msgs = [{"role": "user", "content": "x" * 20000}]  # 5000 tokens
+        off = de.preflight({"messages": msgs, "chat_template_kwargs": {"enable_thinking": False}},
+                           100, self.url, "direct")
+        on = de.preflight({"messages": msgs}, 100, self.url, "direct")
+        self.assertEqual(off["verdict"], "accept", off)
+        self.assertEqual(on["verdict"], "refuse", on)
 
     def test_tool_schemas_count_in_byte_fallback(self):
         base = {"messages": [{"role": "user", "content": "hi"}]}
@@ -287,7 +328,10 @@ class WrapperLaunchBoundaryTests(unittest.TestCase):
             r = _run(self.url, "parity prompt", 64, tmp, env=env)
             self.assertEqual(r.returncode, 0, r.stderr)
             self.assertEqual(_Switchboard.calls, 1)
-            measured = [b for p, b in _Llama.seen if p == "/apply-template"][-1]["messages"]
+            tbody = [b for p, b in _Llama.seen if p == "/apply-template"][-1]
+            measured = tbody["messages"]
+            measured_opts = {k: tbody[k] for k in de.TEMPLATE_KEYS if k in tbody}
+            self.assertIn("chat_template_kwargs", measured_opts)
             self.assertIn("ASSIST-CALL-1", json.dumps(measured))
             _Llama.seen.clear()
             deleg = Path(tmp) / "root" / ".agents" / "delegation"
@@ -305,6 +349,8 @@ class WrapperLaunchBoundaryTests(unittest.TestCase):
             self.assertEqual(_Switchboard.calls, 1, "launch must not re-run embedded-assist")
             self.assertNotIn("ASSIST-CALL-2", json.dumps(sent[-1]))
             self.assertEqual(sent[-1]["messages"], measured)
+            self.assertEqual({k: sent[-1].get(k) for k in de.TEMPLATE_KEYS if k in sent[-1]},
+                             measured_opts)
 
     def test_launch_refuses_when_assembled_prompt_missing(self):
         with tempfile.TemporaryDirectory() as tmp:

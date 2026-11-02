@@ -9,7 +9,7 @@ Two concerns, one module because both feed the same registry row:
 * preflight(): measure the assembled local prompt + output allowance against
   the live model context limit BEFORE inference starts.
 
-Context limit SSOT: the running llama-server (/props n_ctx / total_slots),
+Context limit SSOT: the running llama-server (/props default_generation_settings.n_ctx, already per-slot),
 falling back to config/local-model-config.yaml inference.ctx_size (mirror of
 the Nix llamaCpp.ctxSize). Nothing is hardcoded here.
 """
@@ -128,9 +128,8 @@ def context_limit(llama_url: str, config_path: Path = LOCAL_MODEL_CONFIG) -> tup
     props = _http_json(f"{llama_url}/props")
     if isinstance(props, dict):
         n_ctx = (props.get("default_generation_settings") or {}).get("n_ctx")
-        slots = props.get("total_slots") or 1
         if isinstance(n_ctx, int) and n_ctx > 0:
-            return n_ctx // max(int(slots), 1), "llama_props"
+            return n_ctx, "llama_props"  # llama.cpp reports the per-slot n_ctx here
     try:
         in_inference = False
         for line in config_path.read_text().splitlines():
@@ -153,7 +152,18 @@ def _payload_bytes(payload: dict) -> int:
     """UTF-8 size of everything prompt-bearing in the request (messages, tool
     schemas, grammar). Every token is >= 1 byte, so this never undercounts."""
     parts = {k: payload[k] for k in _PROMPT_KEYS if payload.get(k)}
+    parts.update(template_options(payload))
     return len(json.dumps(parts, ensure_ascii=False).encode("utf-8")) + FALLBACK_TEMPLATE_MARGIN_TOKENS
+
+
+# Request fields llama.cpp's chat-template rendering consumes; forwarded verbatim so the
+# measured prompt is rendered exactly as the real request will be.
+TEMPLATE_KEYS = ("chat_template_kwargs", "tools", "tool_choice", "parallel_tool_calls",
+                 "add_generation_prompt", "enable_thinking", "reasoning_format")
+
+
+def template_options(payload: dict) -> dict:
+    return {k: payload[k] for k in TEMPLATE_KEYS if payload.get(k) is not None}
 
 
 def measure_payload(payload: dict, llama_url: str) -> tuple[int, str]:
@@ -165,8 +175,7 @@ def measure_payload(payload: dict, llama_url: str) -> tuple[int, str]:
     call is unavailable the whole request falls back to bytes-as-tokens.
     """
     body: dict[str, Any] = {"messages": payload.get("messages", [])}
-    if payload.get("tools"):
-        body["tools"] = payload["tools"]
+    body.update(template_options(payload))
     rendered = _http_json(f"{llama_url}/apply-template", body)
     prompt = rendered.get("prompt") if isinstance(rendered, dict) else None
     if isinstance(prompt, str):
@@ -177,7 +186,7 @@ def measure_payload(payload: dict, llama_url: str) -> tuple[int, str]:
             # server renders into context but apply-template did not cover are added;
             # _tool_schemas (never sent; the system prompt lists tools) and grammar /
             # json_schema (sampler constraints) are not context.
-            extras = {k: payload[k] for k in ("tool_choice", "response_format") if payload.get(k)}
+            extras = {k: payload[k] for k in ("response_format",) if payload.get(k)}
             extra_bytes = len(json.dumps(extras, ensure_ascii=False).encode("utf-8")) if extras else 0
             return len(tok["tokens"]) + extra_bytes, "apply_template+tokenize"
     return _payload_bytes(payload), "byte_upper_bound"
