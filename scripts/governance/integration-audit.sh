@@ -25,7 +25,6 @@ trap 'rm -rf "${TEMP_DIR}"' EXIT
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
 CYAN='\033[0;36m'
 NC='\033[0m' # No Color
 
@@ -90,7 +89,8 @@ scan_feature_flags() {
         > "${feature_flags}" 2>/dev/null || true
 
     # Count unique feature flags
-    local count=$(wc -l < "${feature_flags}" || echo "0")
+    local count
+    count=$(wc -l < "${feature_flags}" || echo "0")
     log "Found ${count} potential feature flag references"
 
     # Parse into JSON array
@@ -121,7 +121,8 @@ scan_config_optional() {
         fi
     done > "${config_files}" || true
 
-    local count=$(wc -l < "${config_files}" || echo "0")
+    local count
+    count=$(wc -l < "${config_files}" || echo "0")
     log "Found ${count} config files with disabled features"
 
     # Parse into JSON array
@@ -150,7 +151,8 @@ check_manual_enabling() {
         --glob '!.git/**' \
         > "${manual_enable}" 2>/dev/null || true
 
-    local count=$(wc -l < "${manual_enable}" || echo "0")
+    local count
+    count=$(wc -l < "${manual_enable}" || echo "0")
     log "Found ${count} references to manual enabling"
 
     # Parse into JSON array
@@ -181,7 +183,8 @@ check_auto_enable_logic() {
         fi
     done > "${auto_enable}" || true
 
-    local count=$(wc -l < "${auto_enable}" || echo "0")
+    local count
+    count=$(wc -l < "${auto_enable}" || echo "0")
     log "Found ${count} files with auto-enable logic"
 }
 
@@ -226,10 +229,14 @@ categorize_features() {
     )
 
     # Build JSON arrays
-    local cat_a_json=$(printf '%s\n' "${category_a_features[@]}" | jq -R . | jq -s '.')
-    local cat_b_json=$(printf '%s\n' "${category_b_features[@]}" | jq -R . | jq -s '.')
-    local cat_c_json=$(printf '%s\n' "${category_c_features[@]}" | jq -R . | jq -s '.')
-    local cat_d_json=$(printf '%s\n' "${category_d_features[@]}" | jq -R . | jq -s '.')
+    local cat_a_json
+    cat_a_json=$(printf '%s\n' "${category_a_features[@]}" | jq -R . | jq -s '.') || true
+    local cat_b_json
+    cat_b_json=$(printf '%s\n' "${category_b_features[@]}" | jq -R . | jq -s '.') || true
+    local cat_c_json
+    cat_c_json=$(printf '%s\n' "${category_c_features[@]}" | jq -R . | jq -s '.') || true
+    local cat_d_json
+    cat_d_json=$(printf '%s\n' "${category_d_features[@]}" | jq -R . | jq -s '.') || true
 
     # Update JSON report
     local tmp_json="${TEMP_DIR}/report_cats.json"
@@ -275,10 +282,11 @@ check_nix_modules() {
     local nix_controls="${TEMP_DIR}/nix_controls.txt"
 
     # Search Nix files for enable options
-    find "${ROOT_DIR}/nix/modules" -type f -name "*.nix" 2>/dev/null | \
-    xargs grep -l 'enable.*=.*mkOption\|mkEnableOption' > "${nix_controls}" 2>/dev/null || true
+    find "${ROOT_DIR}/nix/modules" -type f -name "*.nix" -print0 2>/dev/null | \
+    xargs -0 grep -l 'enable.*=.*mkOption\|mkEnableOption' > "${nix_controls}" 2>/dev/null || true
 
-    local count=$(wc -l < "${nix_controls}" || echo "0")
+    local count
+    count=$(wc -l < "${nix_controls}" || echo "0")
     log "Found ${count} Nix modules with enable options"
 }
 
@@ -407,41 +415,49 @@ MDEOF
     sed -i "s/TIMESTAMP_PLACEHOLDER/$(date --iso-8601=seconds)/" "${MD_REPORT}"
 
     # Add summary from JSON
-    local summary=$(jq -r '.summary |
+    local summary
+    summary=$(jq -r '.summary |
         "- Total Features: \(.total_features)\n" +
         "- Category A (Auto-Enabled): \(.category_a_auto_enabled)\n" +
         "- Category B (Keep Disabled): \(.category_b_keep_disabled)\n" +
         "- Category C (Remove): \(.category_c_remove)\n" +
-        "- Category D (Conditional): \(.category_d_conditional)"' "${JSON_REPORT}")
+        "- Category D (Conditional): \(.category_d_conditional)"' "${JSON_REPORT}") || true
     sed -i "s|SUMMARY_PLACEHOLDER|${summary}|" "${MD_REPORT}"
 
     # Add category lists
-    local cat_a=$(jq -r '.categories.category_a[] | "- `" + . + "`"' "${JSON_REPORT}" || echo "None found")
+    local cat_a
+    cat_a=$(jq -r '.categories.category_a[] | "- `" + . + "`"' "${JSON_REPORT}" || echo "None found")
     sed -i "/CATEGORY_A_PLACEHOLDER/r /dev/stdin" "${MD_REPORT}" <<< "${cat_a}"
     sed -i "s/CATEGORY_A_PLACEHOLDER//" "${MD_REPORT}"
 
-    local cat_b=$(jq -r '.categories.category_b[] | "- `" + . + "`"' "${JSON_REPORT}" || echo "None found")
+    local cat_b
+    cat_b=$(jq -r '.categories.category_b[] | "- `" + . + "`"' "${JSON_REPORT}" || echo "None found")
     sed -i "/CATEGORY_B_PLACEHOLDER/r /dev/stdin" "${MD_REPORT}" <<< "${cat_b}"
     sed -i "s/CATEGORY_B_PLACEHOLDER//" "${MD_REPORT}"
 
-    local cat_c=$(jq -r '.categories.category_c[] | "- `" + . + "`"' "${JSON_REPORT}" || echo "None found")
+    local cat_c
+    cat_c=$(jq -r '.categories.category_c[] | "- `" + . + "`"' "${JSON_REPORT}" || echo "None found")
     sed -i "/CATEGORY_C_PLACEHOLDER/r /dev/stdin" "${MD_REPORT}" <<< "${cat_c}"
     sed -i "s/CATEGORY_C_PLACEHOLDER//" "${MD_REPORT}"
 
-    local cat_d=$(jq -r '.categories.category_d[] | "- `" + . + "`"' "${JSON_REPORT}" || echo "None found")
+    local cat_d
+    cat_d=$(jq -r '.categories.category_d[] | "- `" + . + "`"' "${JSON_REPORT}" || echo "None found")
     sed -i "/CATEGORY_D_PLACEHOLDER/r /dev/stdin" "${MD_REPORT}" <<< "${cat_d}"
     sed -i "s/CATEGORY_D_PLACEHOLDER//" "${MD_REPORT}"
 
     # Add feature flags section
-    local ff_count=$(jq '.feature_flags_found | length' "${JSON_REPORT}")
+    local ff_count
+    ff_count=$(jq '.feature_flags_found | length' "${JSON_REPORT}") || true
     sed -i "s|FEATURE_FLAGS_PLACEHOLDER|Found ${ff_count} feature flag references (see JSON report for details)|" "${MD_REPORT}"
 
     # Add config disabled section
-    local cfg_count=$(jq '.optional_features | length' "${JSON_REPORT}")
+    local cfg_count
+    cfg_count=$(jq '.optional_features | length' "${JSON_REPORT}") || true
     sed -i "s|CONFIG_DISABLED_PLACEHOLDER|Found ${cfg_count} config files with disabled features (see JSON report for details)|" "${MD_REPORT}"
 
     # Add manual enable section
-    local man_count=$(jq '.manual_enabling_required | length' "${JSON_REPORT}")
+    local man_count
+    man_count=$(jq '.manual_enabling_required | length' "${JSON_REPORT}") || true
     sed -i "s|MANUAL_ENABLE_PLACEHOLDER|Found ${man_count} references to manual enabling (see JSON report for details)|" "${MD_REPORT}"
 }
 
@@ -457,15 +473,18 @@ main() {
     # Run audit checks
     log ""
     log "=== Phase 1: Feature Flag Scanning ==="
-    local flags_json=$(scan_feature_flags)
+    local flags_json
+    flags_json=$(scan_feature_flags) || true
 
     log ""
     log "=== Phase 2: Configuration Analysis ==="
-    local config_json=$(scan_config_optional)
+    local config_json
+    config_json=$(scan_config_optional) || true
 
     log ""
     log "=== Phase 3: Manual Enabling Check ==="
-    local manual_json=$(check_manual_enabling)
+    local manual_json
+    manual_json=$(check_manual_enabling) || true
 
     log ""
     log "=== Phase 4: Auto-Enable Verification ==="
@@ -477,7 +496,8 @@ main() {
 
     log ""
     log "=== Phase 6: Dashboard Analysis ==="
-    local toggle_count=$(check_dashboard_toggles)
+    local toggle_count
+    toggle_count=$(check_dashboard_toggles) || true
 
     log ""
     log "=== Phase 7: Nix Module Analysis ==="

@@ -32,10 +32,10 @@ PERF_BASELINE_FILE="${REPO_ROOT}/ai-stack/eval/results/perf-baseline.json"
 HOST_NAME="$(hostname -s 2>/dev/null || echo nixos)"
 FLAKE_CONFIG_NAME="${FLAKE_CONFIG_NAME:-${HOST_NAME}-ai-dev}"
 
-pass()  { printf '\033[0;32m[TC3 PASS] %s\033[0m\n' "$*"; }
-fail()  { printf '\033[0;31m[TC3 FAIL] %s\033[0m\n' "$*" >&2; FAILURES=$((FAILURES + 1)); }
-skip()  { printf '\033[0;33m[TC3 SKIP] %s\033[0m\n' "$*"; }
-info()  { printf '\033[0;36m[TC3 INFO] %s\033[0m\n' "$*"; }
+pass()  { printf '\033[0;32m[TC3 PASS] %s\033[0m\n' "$*"; }  # ok-raw-echo
+fail()  { printf '\033[0;31m[TC3 FAIL] %s\033[0m\n' "$*" >&2; FAILURES=$((FAILURES + 1)); }  # ok-raw-echo
+skip()  { printf '\033[0;33m[TC3 SKIP] %s\033[0m\n' "$*"; }  # ok-raw-echo
+info()  { printf '\033[0;36m[TC3 INFO] %s\033[0m\n' "$*"; }  # ok-raw-echo
 
 FAILURES=0
 
@@ -202,7 +202,7 @@ if [[ "${SKIP_PERF}" -eq 0 ]]; then
     if curl -fsS --max-time 5 --connect-timeout 3 "${hybrid_url}/health" >/dev/null 2>&1; then
         latencies=()
         successes=0
-        for i in $(seq 1 10); do
+        for _ in $(seq 1 10); do
             t_start=$(date +%s%N)
             status_code="$(curl -sS --max-time 15 --connect-timeout 5 \
                 -H "Content-Type: application/json" \
@@ -218,7 +218,7 @@ if [[ "${SKIP_PERF}" -eq 0 ]]; then
         done
         if [[ "${successes}" -ge 3 ]]; then
             # Sort and take p95 approximation from available successful samples.
-            IFS=$'\n' sorted=($(sort -n <<<"${latencies[*]}")); unset IFS
+            mapfile -t sorted < <(IFS=$'\n'; sort -n <<<"${latencies[*]}")
             count="${#sorted[@]}"
             p50_idx=$(( (count - 1) / 2 ))
             p95_idx=$(( count - 1 ))

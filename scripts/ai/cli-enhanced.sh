@@ -7,16 +7,10 @@ set -euo pipefail
 # Color definitions (ANSI escape codes)
 readonly COLOR_RESET='\033[0m'
 readonly COLOR_BOLD='\033[1m'
-readonly COLOR_DIM='\033[2m'
 readonly COLOR_RED='\033[31m'
 readonly COLOR_GREEN='\033[32m'
 readonly COLOR_YELLOW='\033[33m'
-readonly COLOR_BLUE='\033[34m'
-readonly COLOR_MAGENTA='\033[35m'
 readonly COLOR_CYAN='\033[36m'
-readonly COLOR_BRIGHT_RED='\033[91m'
-readonly COLOR_BRIGHT_GREEN='\033[92m'
-readonly COLOR_BRIGHT_YELLOW='\033[93m'
 
 # Check if output supports colors
 has_colors() {
@@ -27,7 +21,8 @@ has_colors() {
 print_header() {
     local message="$1"
     local width=${#message}
-    local border="$(printf '=%.0s' $(seq 1 $((width + 4))))"
+    local border
+    border="$(printf '=%.0s' $(seq 1 $((width + 4))))"
 
     if has_colors; then
         echo -e "\n${COLOR_CYAN}${border}${COLOR_RESET}"
@@ -44,7 +39,8 @@ print_header() {
 
 print_info() {
     local message="$1"
-    local timestamp=$(date '+%Y-%m-%d %H:%M:%S')
+    local timestamp
+    timestamp=$(date '+%Y-%m-%d %H:%M:%S')
     if has_colors; then
         echo -e "${COLOR_CYAN}[${timestamp}] ℹ ${message}${COLOR_RESET}"
     else
@@ -54,7 +50,8 @@ print_info() {
 
 print_success() {
     local message="$1"
-    local timestamp=$(date '+%Y-%m-%d %H:%M:%S')
+    local timestamp
+    timestamp=$(date '+%Y-%m-%d %H:%M:%S')
     if has_colors; then
         echo -e "${COLOR_GREEN}[${timestamp}] ✓ ${message}${COLOR_RESET}"
     else
@@ -64,7 +61,8 @@ print_success() {
 
 print_warning() {
     local message="$1"
-    local timestamp=$(date '+%Y-%m-%d %H:%M:%S')
+    local timestamp
+    timestamp=$(date '+%Y-%m-%d %H:%M:%S')
     if has_colors; then
         echo -e "${COLOR_YELLOW}[${timestamp}] ⚠ ${message}${COLOR_RESET}" >&2
     else
@@ -75,7 +73,8 @@ print_warning() {
 print_error() {
     local message="$1"
     local code="${2:-}"
-    local timestamp=$(date '+%Y-%m-%d %H:%M:%S')
+    local timestamp
+    timestamp=$(date '+%Y-%m-%d %H:%M:%S')
     local code_str=""
     [[ -n "$code" ]] && code_str=" [$code]"
 
@@ -100,7 +99,8 @@ progress_bar() {
     local filled=$((percent / 2))
     local empty=$((50 - filled))
 
-    local bar="$(printf '█%.0s' $(seq 1 $filled))$(printf '░%.0s' $(seq 1 $empty))"
+    local bar
+    bar="$(printf '█%.0s' $(seq 1 $filled))$(printf '░%.0s' $(seq 1 $empty))"
 
     if has_colors; then
         local color="${COLOR_GREEN}"
@@ -287,7 +287,7 @@ print_table() {
     # Print separator
     local sep_line=""
     for ((i = 0; i < num_cols; i++)); do
-        sep_line+="$(printf '%-$((${widths[$i]} + 1))s' | tr ' ' '-')"
+        sep_line+="$(printf '%*s' "$((${widths[$i]} + 1))" '' | tr ' ' '-')"
     done
     echo "$sep_line"
 

@@ -12,8 +12,8 @@ set -eu
 # -----------------------------------------------------------------------------
 # Repository Paths and Defaults
 # -----------------------------------------------------------------------------
-SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
-REPO_ROOT=$(CDPATH= cd -- "${SCRIPT_DIR}/../.." && pwd)
+SCRIPT_DIR=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)
+REPO_ROOT=$(CDPATH='' cd -- "${SCRIPT_DIR}/../.." && pwd)
 TEMPLATE_DIR=${MCP_TEMPLATE_DIR:-${REPO_ROOT}/templates}
 SERVER_HOME=${MCP_SERVER_HOME:-${REPO_ROOT}/mcp-servers}
 DEFAULT_MODE=${MCP_SERVER_MODE:-minimal}

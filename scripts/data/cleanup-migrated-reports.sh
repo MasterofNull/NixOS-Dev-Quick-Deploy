@@ -36,10 +36,9 @@ echo "🔍 Finding migrated files..."
 echo ""
 
 deleted_count=0
-kept_count=0
 
 # Query database for migrated files
-PGPASSWORD="$DB_PASSWORD" psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" -t -A <<SQL | while IFS='|' read -r title original_file; do
+PGPASSWORD="$DB_PASSWORD" psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" -t -A <<SQL | while IFS='|' read -r _ original_file; do
 SELECT
     title,
     metadata->>'original_file' as original_file

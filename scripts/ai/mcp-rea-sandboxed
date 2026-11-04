@@ -17,8 +17,6 @@ REPO_ROOT="$(cd -- "${SCRIPT_DIR}/../.." && pwd)"
 CANDIDATE_REGISTRY="${REPO_ROOT}/config/agent-capability-intake-candidates.json"
 CAPABILITY_CATALOG="${REPO_ROOT}/config/system-capability-catalog.json"
 
-PINNED_PACKAGE="rea-reverse-engineering"
-PINNED_VERSION="0.1.0"
 
 verify_admission() {
   if ! python3 - "${CANDIDATE_REGISTRY}" "${CAPABILITY_CATALOG}" <<'PY'

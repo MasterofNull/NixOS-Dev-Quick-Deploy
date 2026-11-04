@@ -3,12 +3,9 @@
 # Automated testing for Linux kernel builds with QEMU, sparse, and more.
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 KERNEL_DIR="${KERNEL_DIR:-$HOME/kernel}"
 LINUX_DIR="${KERNEL_DIR}/linux"
-TEST_DIR="${KERNEL_DIR}/tests"
 RESULTS_DIR="${KERNEL_DIR}/results"
-ROOTFS_DIR="${KERNEL_DIR}/rootfs"
 
 # AIDB for result tracking
 AIDB_ENDPOINT="${AIDB_ENDPOINT:-http://127.0.0.1:8002}"
@@ -440,7 +437,8 @@ cmd_report() {
     local format="${1:-text}"
 
     mkdir -p "$RESULTS_DIR"
-    local report_file="${RESULTS_DIR}/report-$(date +%Y%m%d-%H%M%S)"
+    local report_file
+    report_file="${RESULTS_DIR}/report-$(date +%Y%m%d-%H%M%S)"
 
     if [[ "$format" == "--json" || "$format" == "json" ]]; then
         report_file="${report_file}.json"

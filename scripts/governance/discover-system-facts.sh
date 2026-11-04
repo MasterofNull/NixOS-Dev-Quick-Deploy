@@ -51,8 +51,8 @@ detect_cpu_vendor() {
     local lscpu_vendor
     lscpu_vendor="$(lscpu 2>/dev/null | awk -F: '/Vendor ID:/ {gsub(/^[ \t]+/,"",$2); print tolower($2)}')"
     case "${lscpu_vendor}" in
-      *amd*|*authenticamd*)   cpu_vendor_local="amd" ;;
-      *intel*|*genuineintel*) cpu_vendor_local="intel" ;;
+      *amd*)   cpu_vendor_local="amd" ;;
+      *intel*) cpu_vendor_local="intel" ;;
     esac
     [[ "${cpu_vendor_local}" != "unknown" ]] && { echo "$cpu_vendor_local"; return 0; }
   fi
@@ -60,11 +60,6 @@ detect_cpu_vendor() {
   # ── AArch64 / ARM64 ────────────────────────────────────────────────────
   if [[ "${arch_local}" == "aarch64" || "${arch_local}" == "arm64" ]]; then
     # Check /proc/cpuinfo for Qualcomm, Apple, or generic ARM indicators.
-    local cpuinfo_hardware=""
-    if [[ -r /proc/cpuinfo ]]; then
-      cpuinfo_hardware="$(grep -m1 -iE 'Hardware|implementer' /proc/cpuinfo 2>/dev/null | head -1 || true)"
-    fi
-
     # Qualcomm: Snapdragon SoCs report "Qualcomm" in Hardware or /sys/firmware/devicetree
     if grep -qiE "qualcomm|Snapdragon" /proc/cpuinfo 2>/dev/null \
         || [[ -f /sys/firmware/devicetree/base/compatible ]] \
@@ -141,7 +136,7 @@ detect_gpu_vendor() {
   if [[ "${gpu_vendor_local}" == "none" && ( "${arch_local}" == "aarch64" || "${arch_local}" == "arm64" ) ]]; then
     # Check DRM driver names exposed in /sys/class/drm/card*/device/driver
     local drm_drivers=""
-    drm_drivers="$(ls -1 /sys/class/drm/card*/device/driver 2>/dev/null | xargs -I{} basename {} 2>/dev/null | sort -u || true)"
+    drm_drivers="$(for _drv in /sys/class/drm/card*/device/driver; do [[ -e "${_drv}" ]] && basename "$(readlink -f "${_drv}")"; done 2>/dev/null | sort -u || true)"
 
     if echo "${drm_drivers}" | grep -qiE "^msm$"; then
       # Qualcomm MSM DRM driver — Adreno GPU
@@ -362,9 +357,12 @@ secureboot_enable="${SECUREBOOT_ENABLE_OVERRIDE:-false}"
 # roles.aiStack, and roles.gaming via lib.mkDefault in their modules.
 # These cover the remaining composable roles written into facts.nix.
 # ---------------------------------------------------------------------------
+# shellcheck disable=SC2034  # facts.nix toggle; no emitter in this script reads it yet (see REPORT.md)
 server_role_enabled="${SERVER_ROLE_OVERRIDE:-false}"
+# shellcheck disable=SC2034  # facts.nix toggle; no emitter in this script reads it yet (see REPORT.md)
 mobile_role_enabled="${MOBILE_ROLE_OVERRIDE:-${is_mobile}}"
 # ai-dev profile needs virtualization for Podman containers and MCP servers
+# shellcheck disable=SC2034  # facts.nix toggle; no emitter in this script reads it yet (see REPORT.md)
 if [[ "${profile_value}" == "ai-dev" ]]; then
   virtualization_role_enabled="${VIRTUALIZATION_ROLE_OVERRIDE:-true}"
 else
@@ -489,6 +487,7 @@ ai_embed_model_file="${AI_EMBED_MODEL_FILE_OVERRIDE:-${ai_embed_model_file}}"
 ai_embed_model_id="${AI_EMBED_MODEL_ID_OVERRIDE:-${ai_embed_model_id}}"
 ai_embed_dims="${AI_EMBED_DIMS_OVERRIDE:-${ai_embed_dims}}"
 ai_embed_pooling="${AI_EMBED_POOLING_OVERRIDE:-${ai_embed_pooling}}"
+# shellcheck disable=SC2034  # facts.nix toggle; no emitter in this script reads it yet (see REPORT.md)
 ai_embed_enabled="${AI_EMBED_ENABLED_OVERRIDE:-true}"
 
 # Resolve known model sha256 values from the repository checksum registry.
@@ -504,11 +503,13 @@ lookup_model_sha() {
 
 ai_llama_sha="$(lookup_model_sha "${ai_llama_model_id}" "${ai_llama_model_file}" || true)"
 ai_embed_sha="$(lookup_model_sha "${ai_embed_model_id}" "${ai_embed_model_file}" || true)"
+# shellcheck disable=SC2034  # facts.nix toggle; no emitter in this script reads it yet (see REPORT.md)
 if [[ "${ai_llama_sha}" =~ ^[a-fA-F0-9]{64}$ ]]; then
   ai_llama_sha_literal="\"${ai_llama_sha}\""
 else
   ai_llama_sha_literal="null"
 fi
+# shellcheck disable=SC2034  # facts.nix toggle; no emitter in this script reads it yet (see REPORT.md)
 if [[ "${ai_embed_sha}" =~ ^[a-fA-F0-9]{64}$ ]]; then
   ai_embed_sha_literal="\"${ai_embed_sha}\""
 else

@@ -15,7 +15,7 @@ mkdir -p "${OUT_DIR}"
 
 run_json_last() {
   local out
-  out="$($@)"
+  out="$("$@")"
   printf '%s\n' "${out}" | awk 'NF{line=$0} END{if (line == "") {exit 1} print line}'
 }
 

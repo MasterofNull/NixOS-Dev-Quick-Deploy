@@ -126,7 +126,8 @@ check_age_key() {
 
         # Backup existing key if present
         if [[ -f "$AGE_KEY_FILE" ]]; then
-            local backup_file="${AGE_KEY_FILE}.backup.$(date +%Y%m%d_%H%M%S)"
+            local backup_file
+            backup_file="${AGE_KEY_FILE}.backup.$(date +%Y%m%d_%H%M%S)"
             cp "$AGE_KEY_FILE" "$backup_file"
             log_info "Backed up existing key to: $backup_file" >&2
         fi
@@ -242,7 +243,8 @@ generate_sops_config() {
             return 0
         else
             log_warning ".sops.yaml exists but doesn't match current key"
-            local backup="${sops_config}.backup.$(date +%Y%m%d_%H%M%S)"
+            local backup
+            backup="${sops_config}.backup.$(date +%Y%m%d_%H%M%S)"
             cp "$sops_config" "$backup"
             log_info "Backed up to: $backup"
         fi
@@ -329,7 +331,6 @@ main() {
 
     parse_args "$@"
 
-    local failed=false
 
     # Step 1: Check dependencies
     echo -e "${BLUE}[1/5] Checking Dependencies${NC}"
@@ -342,7 +343,6 @@ main() {
             log_info "Run with --install-deps to install automatically"
             exit 1
         fi
-        failed=true
     fi
     echo
 
