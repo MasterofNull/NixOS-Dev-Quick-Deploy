@@ -10,6 +10,9 @@
     user.email = lib.mkDefault "user@localhost";
   };
 
+  # ---- Herdr H1 (package/config/facade only; runtimeEnable stays false) ----
+  programs.aqHerdr.enable = true;
+
   # ---- Machine-specific packages ------------------------------------------
   # Packages already in nix/home/base.nix (ripgrep, fd, jq, git, etc.) do not
   # need to be repeated here.

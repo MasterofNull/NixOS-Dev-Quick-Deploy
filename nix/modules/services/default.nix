@@ -30,5 +30,6 @@
     ./keep-awake.nix
     ./oncalld.nix
     ./aq-help-center.nix
+    ./activation-signing.nix
   ];
 }

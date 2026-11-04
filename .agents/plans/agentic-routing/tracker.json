@@ -1,0 +1,116 @@
+{
+  "plan": {
+    "id": "agentic-routing",
+    "title": "Agentic routing: risk/complexity classification, assignment, multi-review, preflight",
+    "prd_ref": ".agents/plans/agentic-routing/PLAN.md",
+    "owner": "hyperd",
+    "goal": "One versioned work-class record drives lane assignment, review requirements and local preflight, enforced in trusted CI",
+    "success_criteria": [
+      "Oversize local work is refused before inference with a visible state",
+      "Core changes require two valid independent receipts, enforced by trusted CI",
+      "Dispatches from CLI and Agent tool yield correlated records with honest model/effort"
+    ]
+  },
+  "phases": [
+    {"id": "mvp", "name": "MVP slices", "goal": "S1-S3 frozen scope", "order": 1},
+    {"id": "later", "name": "Later phases", "goal": "Designed, not scheduled", "order": 2}
+  ],
+  "items": [
+    {
+      "id": "freeze",
+      "name": "Plan frozen",
+      "phase": "mvp",
+      "kind": "milestone",
+      "goal": "Merged plan frozen as MVP scope",
+      "validation_goal": "FREEZE.md and PLAN.md merged; Codex PASS_WITH_FOLLOWUPS recorded",
+      "deps": [],
+      "detection": {
+        "commit_match": ["docs\\(routing\\): freeze agentic routing"],
+        "freeze_record": ".agents/plans/agentic-routing/FREEZE.md"
+      }
+    },
+    {
+      "id": "s1",
+      "name": "S1 local preflight + normalized dispatch evidence",
+      "phase": "mvp",
+      "kind": "slice",
+      "goal": "Refuse oversize local prompts before inference using assembled prompt + overhead + output allowance; normalize dispatch registry fields; refusal dashboard state",
+      "validation_goal": "Oversize local dispatch refused pre-launch in live QA; accepted work fits context; dashboard shows refusals; usage unknown stays unknown",
+      "deps": ["freeze"],
+      "priority": "P1",
+      "detection": {
+        "commit_match": ["feat\\(routing\\): .*(preflight|dispatch evidence)", "fix\\(routing\\): .*preflight"]
+      }
+    },
+    {
+      "id": "s2",
+      "name": "S2 core classification + multi-review enforcement",
+      "phase": "mvp",
+      "kind": "slice",
+      "goal": "Precise core rules in risk_tier.py/risk-tier-policy.json; structured multi-review receipts; trusted-base CI consumption; shadow then enforce",
+      "validation_goal": "Canon change classifies core; corrupt/missing policy blocks explicitly; PR weakening classifier cannot weaken its acceptance; duplicate/stale/author-conflicting receipts fail; two valid reviews pass",
+      "deps": ["freeze"],
+      "priority": "P1",
+      "detection": {
+        "commit_match": ["feat\\(routing\\): .*(core classif|multi-review|review receipts)", "feat\\(risk-tier\\): .*core"]
+      }
+    },
+    {
+      "id": "s3",
+      "name": "S3 assignment defaults + Agent coverage",
+      "phase": "mvp",
+      "kind": "slice",
+      "goal": "Wrappers write the shared work-class record, record substitutions, enforce explicit eligible model selection; Agent-tool hook with dispatch/completion correlation",
+      "validation_goal": "Real CLI and Agent dispatches produce correlated records; Codex cooldown selects qualified substitute or blocks; Agent enforcement on only after live hook demonstration",
+      "deps": ["s1", "s2"],
+      "priority": "P2",
+      "detection": {
+        "commit_match": ["feat\\(routing\\): .*(assignment|agent coverage|agent hook)"]
+      }
+    },
+    {
+      "id": "p-profiles",
+      "name": "Launch profiles",
+      "phase": "later",
+      "kind": "slice",
+      "goal": "Child launch profiles via real configuration and tool permissions",
+      "validation_goal": "Profile changes actual child tool permissions, not only advertised skills",
+      "deps": ["s3"],
+      "priority": "P3",
+      "detection": {"commit_match": ["feat\\(routing\\): .*launch profile"]}
+    },
+    {
+      "id": "p-modality",
+      "name": "Modality probes (transcript + keyframes for media)",
+      "phase": "later",
+      "kind": "slice",
+      "goal": "Capability probes per model/account; media lanes require transcript plus keyframes",
+      "validation_goal": "Probe results dated and re-run on staleness",
+      "deps": ["s3"],
+      "priority": "P3",
+      "detection": {"commit_match": ["feat\\(routing\\): .*modality"]}
+    },
+    {
+      "id": "p-enforce",
+      "name": "Wider enforcement + calibrated content signals",
+      "phase": "later",
+      "kind": "slice",
+      "goal": "Extend enforcement beyond core after corpus testing; calibrated keyword/novelty signals",
+      "validation_goal": "False-positive/negative rates measured on a representative corpus",
+      "deps": ["s2"],
+      "priority": "P3",
+      "detection": {"commit_match": ["feat\\(routing\\): .*(wider enforcement|content signals)"]}
+    },
+    {
+      "id": "p-integration",
+      "name": "Coordinator/tracker integration + shadow lane qualification",
+      "phase": "later",
+      "kind": "slice",
+      "goal": "Surface routing records in coordinator and PM tracker; qualify local lanes from shadow results",
+      "validation_goal": "Qualification derived from measured shadow outcomes; review counters survive lane substitution",
+      "deps": ["s3"],
+      "priority": "P3",
+      "detection": {"commit_match": ["feat\\(routing\\): .*(coordinator integration|lane qualification)"]}
+    }
+  ]
+}

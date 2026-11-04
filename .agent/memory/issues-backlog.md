@@ -6228,3 +6228,6 @@ File: scripts/ai/lib/worktree-isolation.sh; scripts/automation/prsi-orchestrator
   Severity: medium
   Action: fixed in verified-acceptance follow-up; focused owner acceptance and authority suites passed.
   File: scripts/ai/aq-pm-tracker ~L1083; scripts/testing/test-pm-tracker-owner-acceptance.py
+[FIXED; BUILD AND ACTIVATION VERIFIED] herdr-home-manager-shellcheck — Home Manager generation blocked by SC1091 on optional telemetry source. Root cause: repository-only relative shim is absent from writeShellApplication build inputs; optional-source contract lacked ShellCheck annotation. Severity: high. Action: annotate the optional source and validate the complete generation. File: scripts/ai/aq-herdr:2.
+
+[DEFERRED] herdr-h2-project-packaging — project prototype commands require python3 and repository-relative lib files absent from the H1 facade package. Root cause: prototype assumes repository execution; facade runtimeInputs contains only coreutils. Severity: medium. Action: resolve with H2 packaging before claiming H2 readiness; outside H1 rebuild regression. Files: scripts/ai/aq-herdr (project dispatch), nix/home/herdr.nix (runtimeInputs).

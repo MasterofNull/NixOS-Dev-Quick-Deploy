@@ -1,0 +1,12 @@
+{
+  "schema": 1,
+  "pr": 673,
+  "reviewed_head_sha": "42de92c4fe02c230f3ee492c4380203ff3f46f4f",
+  "run_id": "local-20261031-162120-dadlmy",
+  "reviewer_lane": "local-direct",
+  "author_lane": "claude",
+  "verdict": "PASS",
+  "output_file": ".agents/delegation/outputs/local-20261031-162120-dadlmy.log",
+  "output_sha256": "db81a27c2bff910eba5438268d5136a3aad90b90280500ad4e8fd3ef909d3761",
+  "created_at": "2026-10-31T23:35:12Z"
+}
