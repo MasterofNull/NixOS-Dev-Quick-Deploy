@@ -1709,12 +1709,7 @@ def _execute(plan: Plan, facts: HostFacts) -> ConfineResult:
     oom_killed = oom.get("oom_kill", 0) > 0
     os.close(r_fd)
     rc = proc.returncode
-    # Under host load the scope can be created and reaped before the watcher thread ever opens its
-    # memory.events (starved thread / sub-poll-interval OOM). With no counter observed, a SIGKILL
-    # that none of our own kill paths issued in an OOMPolicy=kill scope is the cgroup OOM kill.
-    if (plan.systemd_run and not oom_killed and not oom.get("attached")
-            and not (timed_out or killed_by or size_reason) and rc in (-9, EXIT_KILLED)):
-        oom_killed = True
+    oom_killed = oom_killed or _oom_by_inference(plan.systemd_run, oom, bool(timed_out or killed_by or size_reason), rc)
     duration = time.monotonic() - t0
     events = _read_status_events(b"".join(status_chunks))
     ran = any("child-pid" in e for e in events)
@@ -1776,6 +1771,16 @@ def _execute(plan: Plan, facts: HostFacts) -> ConfineResult:
     return res
 
 
+def _oom_by_inference(systemd_run: Optional[str], oom: Dict[str, int], own_kill: bool, rc: Optional[int]) -> bool:
+    """A SIGKILL we did not issue, in an OOMPolicy=kill scope, is the cgroup OOM kill when the counter
+    could not be observed: the scope was never attached, or it vanished under the watcher (read failed)
+    before the post-kill oom_kill value could be read. An attached watcher that saw the scope alive
+    through its last read and counted 0 is authoritative, so other SIGKILLs stay plain child failures."""
+    if not systemd_run or own_kill or oom.get("oom_kill", 0) > 0 or rc not in (-9, EXIT_KILLED):
+        return False
+    return not oom.get("attached") or bool(oom.get("scope-gone"))
+
+
 def _scope_events_path(run_id: str) -> Optional[str]:
     uid = os.getuid()
     base = f"/sys/fs/cgroup/user.slice/user-{uid}.slice/user@{uid}.service"
@@ -1813,6 +1818,7 @@ def _watch_oom(run_id: str, stop: threading.Event, out: Dict[str, int]) -> None:
                     if k == "oom_kill" and v.isdigit():
                         out["oom_kill"] = max(out.get("oom_kill", 0), int(v))
             except OSError:
+                out["scope-gone"] = 1   # cgroup removed before the final counter read; value unknown
                 return
             if stop.is_set():
                 return
