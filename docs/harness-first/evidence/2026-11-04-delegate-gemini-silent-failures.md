@@ -34,3 +34,7 @@ Revert the commit. Both changed files are self-contained and nothing else depend
 
 ## Hint Feedback
 No hints were consulted. The environment-variable path of the secret scan sharing the argv limit was found by running the test, not from a hint.
+
+## Follow-up commit
+
+`scripts/ai/lib/gemini-background-worker.sh` had the same byte-counter bug (`|| echo 0` under pipefail, line 34), found by Gemini review `gemini-20261104-094403-fftrqd` (LOW). Fixed the same way (`|| true`). Scratch reproduction: old form gives `0\n0`, new form gives `0`.
