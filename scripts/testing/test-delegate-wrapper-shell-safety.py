@@ -105,6 +105,96 @@ def run_wrapper(provider: str, root: Path, fail: bool) -> tuple[subprocess.Compl
     return proc, argv_out
 
 
+def run_gemini(root: Path, args: list[str]) -> subprocess.CompletedProcess:
+    env = dict(os.environ)
+    env.update(
+        {
+            "STUB_ARGV_OUT": str(root / "argv.json"),
+            "GEMINI_BIN": str(root / "stub-provider"),
+            "HYBRID_COORDINATOR_URL": "http://127.0.0.1:9",
+            "A2A_BUDGET_BYPASS": "1",
+        }
+    )
+    env.pop("STUB_FAIL", None)
+    return subprocess.run(
+        [str(root / "scripts" / "ai" / "delegate-to-gemini")] + args,
+        cwd=root, env=env, capture_output=True, text=True, timeout=60,
+    )
+
+
+def check_gemini_mode_mapping() -> None:
+    for wrapper_mode, cli_mode in (("yolo", "auto"), ("auto_edit", "accept-edits"), ("plan", "plan")):
+        root = make_sandbox()
+        try:
+            proc = run_gemini(root, ["--prompt", "hi", "--mode", wrapper_mode])
+            assert proc.returncode == 0, f"{wrapper_mode}: rc={proc.returncode} {proc.stderr}"
+            wait_terminal(root)
+            argv = json.loads((root / "argv.json").read_text())
+            assert argv[argv.index("--mode") + 1] == cli_mode, f"{wrapper_mode}: argv={argv!r}"
+            assert "--approval-mode" not in argv, f"{wrapper_mode}: obsolete option passed: {argv!r}"
+        finally:
+            shutil.rmtree(root, ignore_errors=True)
+    print("PASS gemini: yolo->auto, auto_edit->accept-edits, plan->plan, no --approval-mode")
+
+
+def check_gemini_noise_only_output() -> None:
+    """All-filtered output (e.g. 429 quota noise) must count as 0 meaningful bytes, not a bash arithmetic error."""
+    root = make_sandbox()
+    try:
+        proc = run_gemini(root, ["--prompt", "hi"])
+        assert proc.returncode == 0, proc.stderr
+        row = wait_terminal(root)
+        (root / row["output_file"]).write_text("Warning: quota\nAttempt 1 failed. retrying with backoff\n")
+        env = dict(os.environ, GEMINI_BIN=str(root / "stub-provider"))
+        chk = subprocess.run(
+            [str(root / "scripts" / "ai" / "delegate-to-gemini"), "--check", row["id"]],
+            cwd=root, env=env, capture_output=True, text=True, timeout=60,
+        )
+        assert chk.returncode == 0, f"rc={chk.returncode} {chk.stderr}"
+        assert "syntax error" not in chk.stderr and "integer expression" not in chk.stderr, chk.stderr
+        assert "0B meaningful content" in chk.stderr, chk.stderr
+        print("PASS gemini: noise-only output reported as 0 meaningful bytes, no arithmetic error")
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+def check_gemini_wait_nonzero_exit() -> None:
+    """--wait with a failing provider must reach the failure handling, not die on set -e at the tee pipeline."""
+    root = make_sandbox()
+    try:
+        env = dict(os.environ)
+        env.update(STUB_FAIL="1", STUB_ARGV_OUT=str(root / "argv.json"), GEMINI_BIN=str(root / "stub-provider"),
+                   HYBRID_COORDINATOR_URL="http://127.0.0.1:9", A2A_BUDGET_BYPASS="1")
+        proc = subprocess.run(
+            [str(root / "scripts" / "ai" / "delegate-to-gemini"), "--prompt", "hi", "--wait"],
+            cwd=root, env=env, capture_output=True, text=True, timeout=60,
+        )
+        out = proc.stdout + proc.stderr
+        assert proc.returncode == 3, f"rc={proc.returncode} {out}"
+        assert "failed (exit 3" in out, out
+        row = registry_rows(root)[-1]
+        assert row["status"] == "failed", row
+        assert "boom-launch-error" in (root / row["output_file"]).read_text()
+        print("PASS gemini: --wait non-zero exit reaches failure handling, status failed, stderr in log")
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+def check_gemini_oversize_prompt() -> None:
+    root = make_sandbox()
+    try:
+        # Via file: the same limit would block passing this much text to the wrapper itself as argv.
+        big = root / "big-prompt.txt"
+        big.write_text("x" * 131072)
+        proc = run_gemini(root, ["--prompt-file", str(big)])
+        assert proc.returncode != 0, proc.stdout
+        assert "too large" in proc.stderr and "131071" in proc.stderr, proc.stderr
+        assert not (root / "argv.json").exists(), "stub was invoked despite oversize prompt"
+        print("PASS gemini: oversize prompt rejected with clear error, provider never invoked")
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
 def check_provider(provider: str) -> None:
     # 1. prompt reaches the provider byte-identical; nothing executes
     root = make_sandbox()
@@ -222,6 +312,10 @@ def main() -> int:
     check_worker_launch_error_logged()
     check_provider("codex")
     check_provider("gemini")
+    check_gemini_mode_mapping()
+    check_gemini_noise_only_output()
+    check_gemini_oversize_prompt()
+    check_gemini_wait_nonzero_exit()
     print("ALL PASS")
     return 0
 
