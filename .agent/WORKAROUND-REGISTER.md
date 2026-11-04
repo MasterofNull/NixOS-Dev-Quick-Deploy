@@ -433,3 +433,30 @@ Codex lane absent).
 - producer to fix: activation-chain signer (`accept`/`wave-accept`/`reject` ops) and its verifier.
 - fix-path: verified-acceptance slice 3 after the signer MVP round trip; until then a signed-shaped `approval_ref` fails closed.
 - class: governance · severity: medium · SSOT `.agents/plans/system-integrity-recovery/VERIFIED-ACCEPTANCE.md`.
+
+## CI-MASK-NIX-BUILD-CHECK-FLAKE — `nix-build.yml` step "Check flake" masked — OPEN
+- symptom: `nix-build.yml` step "Check flake" runs `nix flake check --all-systems || true`, so it can never fail.
+- band-aid in place? yes: `|| true` / `continue-on-error: true` annotated `# KNOWN-FAILING:` in the workflow.
+- root cause: `--all-systems` evaluates aarch64-linux outputs, which abort with `error: Unsupported system: aarch64-linux` (run 41875000226, main f77faf19); the mask hid this from the start.
+- producer to fix: `.github/workflows/nix-build.yml` Check flake step (and the flake's per-system outputs).
+- fix-path: either restrict the check to the supported system (drop `--all-systems`) or make the aarch64 outputs evaluable, then remove `|| true` and the KNOWN-FAILING comment; guard `scripts/governance/check-workflow-masks.py` keeps the mask annotated until then.
+- class: T2 validation-gap · severity: medium · status: OPEN · opened: 2026-11-04.
+- evidence: `docs/harness-first/evidence/2026-11-04-ci-unmask-gates.md`.
+
+## CI-MASK-SHELLCHECK-SHELLCHECK-ANALYSIS — `shellcheck.yml` ShellCheck Analysis step masked — OPEN
+- symptom: `shellcheck.yml` ShellCheck Analysis step has `continue-on-error: true`, so shellcheck errors never fail the workflow.
+- band-aid in place? yes: `|| true` / `continue-on-error: true` annotated `# KNOWN-FAILING:` in the workflow.
+- root cause: shellcheck at severity error currently exits 1 (SC2068 errors in repo scripts; run 41875000366), and the mask was added instead of fixing the scripts.
+- producer to fix: shell scripts reported by that run (SC2068: unquoted `${arr[@]}`).
+- fix-path: fix the SC2068 findings, then remove `continue-on-error: true` and the KNOWN-FAILING comment.
+- class: T2 validation-gap · severity: medium · status: OPEN · opened: 2026-11-04.
+- evidence: `docs/harness-first/evidence/2026-11-04-ci-unmask-gates.md`.
+
+## CI-MASK-VALIDATE-SHELL-SCRIPTS-RUN-SHELLCHECK — `validate-shell-scripts.yml` Run ShellCheck step masked — OPEN
+- symptom: `validate-shell-scripts.yml` Run ShellCheck step has `continue-on-error: true`, so shellcheck warnings never fail the workflow.
+- band-aid in place? yes: `|| true` / `continue-on-error: true` annotated `# KNOWN-FAILING:` in the workflow.
+- root cause: shellcheck at severity warning reports many findings across `scripts/` (SC2034, SC2155, SC2088; run 41875000213); the mask hides them.
+- producer to fix: scripts under `scripts/` reported by that run.
+- fix-path: burn down the findings (or lower severity to error, matching shellcheck.yml, once that is clean), then remove the mask and the KNOWN-FAILING comment.
+- class: T2 validation-gap · severity: medium · status: OPEN · opened: 2026-11-04.
+- evidence: `docs/harness-first/evidence/2026-11-04-ci-unmask-gates.md`.

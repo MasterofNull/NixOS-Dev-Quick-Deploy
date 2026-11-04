@@ -767,7 +767,7 @@ jobs:
 
       - name: Run advanced parity suite
         run: |
-          chmod +x scripts/automation/*.sh scripts/testing/*.sh scripts/security/*.sh scripts/data/*.sh scripts/ai/*.sh 2>/dev/null || true
+          chmod +x scripts/automation/*.sh scripts/testing/*.sh scripts/security/*.sh scripts/data/*.sh scripts/ai/*.sh 2>/dev/null || true  # NON-GATING: unmatched glob is fine; missing exec bit fails the run step
           ./scripts/automation/run-advanced-parity-suite.sh
 
   security:
