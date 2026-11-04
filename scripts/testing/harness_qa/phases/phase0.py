@@ -2135,6 +2135,33 @@ def _check_local_agent_monitor_visibility(ctx: RunContext) -> list[CheckResult]:
     except Exception as exc:
         results.append(skipped(5, "0.12.8", "dashboard local-agent monitor endpoint", str(exc)[:160]))
 
+    # 0.12.9 — routing S1: local context preflight is wired and refuses an
+    # oversize prompt before launch (fixture uses a throwaway delegation dir;
+    # no inference is started).
+    try:
+        import tempfile
+        wrapper = (ctx.repo_root / "scripts" / "ai" / "delegate-to-local").read_text()
+        dispatch = ctx.repo_root / "scripts" / "ai" / "lib" / "local_preflight.py"
+        if "local_preflight.py" not in wrapper or "exit 3" not in wrapper:
+            results.append(failed(4, "0.12.9", "local context preflight wired", "delegate-to-local does not call local_preflight.py"))
+        else:
+            with tempfile.TemporaryDirectory() as tmp:
+                rc = subprocess.run(
+                    [sys.executable, str(dispatch),
+                     "--task-id", "qa-preflight-fixture", "--output", f"{tmp}/o.log",
+                     "--mode", "direct", "--prompt", "qa preflight fixture", "--max-tokens", "10000000",
+                     "--delegation-dir", tmp,
+                     "--llama-url", os.environ.get("AQ_QA_LLAMA_URL", "http://127.0.0.1:1")],
+                    capture_output=True, text=True, timeout=60, cwd=str(ctx.repo_root),
+                )
+                refusal = json.loads(rc.stderr.strip().splitlines()[-1]) if rc.stderr.strip() else {}
+            if rc.returncode == 3 and refusal.get("refused") is True:
+                results.append(passed(4, "0.12.9", f"local context preflight refuses oversize prompt before launch (method={refusal.get('method')})"))
+            else:
+                results.append(failed(4, "0.12.9", "local context preflight refuses oversize prompt before launch", f"rc={rc.returncode} {rc.stderr.strip()[:120]}"))
+    except Exception as exc:
+        results.append(failed(4, "0.12.9", "local context preflight refuses oversize prompt before launch", str(exc)[:160]))
+
     return results
 
 

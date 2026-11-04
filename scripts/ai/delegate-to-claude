@@ -111,8 +111,8 @@ TAIL_PID=""
 # both slip under the cap. Exits 3 (printed refusal) when over cap.
 registry_append() {
     local rc=0
-    python3 - "$REGISTRY" "$@" <<'PYEOF' || rc=$?
-import fcntl, json, sys, time
+    AQ_LIB_DIR="$SCRIPT_DIR/lib" python3 - "$REGISTRY" "$@" <<'PYEOF' || rc=$?
+import fcntl, json, os, sys, time
 from datetime import datetime, timezone
 registry, tid, desc, out, pid, role, tier, model, cap = sys.argv[1:10]
 with open(registry + ".lock", "a") as lk:
@@ -138,7 +138,14 @@ with open(registry + ".lock", "a") as lk:
            "output_file": out, "pid": int(pid) if pid else None, "status": "running",
            "tokens_in": None, "tokens_out": None,
            "requested_model_tier": tier or None, "resolved_model": model or None,
+           "model_requested": tier or "unknown", "model_effective": model or "unknown",
            "created": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")}
+    sys.path.insert(0, os.environ["AQ_LIB_DIR"])
+    try:
+        from dispatch_evidence import normalize_row
+        row = normalize_row(row)
+    except ImportError:  # evidence is additive; never block a dispatch on it
+        pass
     with open(registry, "a") as fh:
         fh.write(json.dumps(row) + "\n")
 PYEOF

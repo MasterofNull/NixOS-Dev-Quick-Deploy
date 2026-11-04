@@ -744,3 +744,7 @@ DP3 PR506 at 7f9ef0f4 has no release acceptance: real worktree confinement, brok
 - Intervenable: Kill switch available via \`aq-capability-intake disable rea-reverse-engineering\` and Nix option \`mySystem.mcpServers.rea.enable\`.
 - PM-tracked: \`.agents/plans/sota-rounding/tracker.json\` (w1-s1..w1-s4).
 - Evidence: \`docs/harness-first/evidence/2026-10-22-rea-activation.md\`.
+
+## Routing S1 preflight correction — 2026-11-01
+
+Source integration verified; 21 focused tests and independent review pass. Running activation, complete real dispatch journey, observability, intervention and live PM projection are explicitly deferred until landing and owner deployment. No activation or MVP acceptance claimed. Evidence: docs/harness-first/evidence/2026-11-01-routing-s1-preflight.md.

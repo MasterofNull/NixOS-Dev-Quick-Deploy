@@ -272,6 +272,21 @@
       "ci_workflow": ".github/workflows/test.yml#syntax"
     },
     {
+      "id": "dispatch-preflight-tests",
+      "cmd": "scripts/testing/test-dispatch-preflight.py",
+      "paths": [
+        "scripts/ai/delegate-to-local",
+        "scripts/ai/lib/local_preflight.py",
+        "scripts/ai/lib/dispatch_evidence.py",
+        "scripts/ai/lib/task_registry.py",
+        "scripts/testing/test-dispatch-preflight.py"
+      ],
+      "needs": [
+        "python3"
+      ],
+      "ci_workflow": ".github/workflows/test.yml#syntax"
+    },
+    {
       "id": "delegation-dir-resolution-tests",
       "cmd": "scripts/testing/test-delegation-dir-resolution.py",
       "paths": [

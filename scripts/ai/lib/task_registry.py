@@ -30,6 +30,11 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
+_LIB_DIR = str(Path(__file__).resolve().parent)
+if _LIB_DIR not in sys.path:
+    sys.path.insert(0, _LIB_DIR)
+from dispatch_evidence import normalize_row, summarize as summarize_dispatch_evidence  # noqa: E402
+
 
 _MAX_COMPLETED = 750    # max completed/failed entries in PENDING.json
 _MAX_HANDOFF_LINES = 300  # max delegation tracking lines in HANDOFF.md
@@ -401,7 +406,7 @@ class TaskRegistry:
 
     def append_row_atomic(self, row: dict) -> None:
         """Public append under the same sibling lock the rewriters use."""
-        self._locked_append(self.registry_file, json.dumps(row))
+        self._locked_append(self.registry_file, json.dumps(normalize_row(row)))
 
     def append(
         self,
@@ -411,6 +416,7 @@ class TaskRegistry:
         mode: str,
         role: str,
         pid: Optional[int] = None,
+        extra: Optional[dict] = None,
     ) -> None:
         """Append a new running task entry to registry.jsonl."""
         self.registry_file.parent.mkdir(parents=True, exist_ok=True)
@@ -426,7 +432,8 @@ class TaskRegistry:
             "tokens_out": None,
             "created": _now(),
         }
-        self._locked_append(self.registry_file, json.dumps(entry))
+        entry.update(extra or {})
+        self._locked_append(self.registry_file, json.dumps(normalize_row(entry)))
 
     def update_status(self, task_id: str, status: str) -> None:
         self._update_registry(task_id, {"status": status})
@@ -1169,6 +1176,7 @@ class TaskRegistry:
             "tasks": tasks,
             "delegated_worktrees": delegated_worktrees,
             "delegated_worktrees_count": len(delegated_worktrees),
+            "dispatch_evidence": summarize_dispatch_evidence(observed),
         }
 
     def cmd_monitor(self, limit: int = 20) -> int:

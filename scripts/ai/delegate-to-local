@@ -347,6 +347,36 @@ sys.exit(1)
             exit 2
         fi
 
+        # ── Routing S1: context preflight (refuse before any launch) ───────
+        # Synchronous in blocking and background modes so the caller gets the
+        # refusal (exit 3 + JSON on stderr) rather than a detached failure.
+        _PF_ARGS=(python3 "$LIB_DIR/local_preflight.py"
+            --task-id "$ID" --output "$OUTPUT_FILE" --mode "$MODE" --role "$ROLE"
+            --prompt "$PROMPT" --timeout "$TIMEOUT" --tool-manifest "$TOOL_MANIFEST"
+            --delegation-dir "$DELEGATION_DIR" --llama-url "http://127.0.0.1:${LLAMA_PORT}")
+        [[ -n "$TASK_TYPE" ]] && _PF_ARGS+=(--task-type "$TASK_TYPE")
+        [[ -n "$MAX_TOKENS" ]] && _PF_ARGS+=(--max-tokens "$MAX_TOKENS")
+        _pf_rc=0
+        "${_PF_ARGS[@]}" >/dev/null || _pf_rc=$?
+        if [[ "$_pf_rc" -ne 0 ]]; then
+            # Fail closed: oversize (3) and any preflight failure (crash, bad args, could
+            # not record) are all refusals. Nothing is launched without a measurement.
+            if [[ "$_pf_rc" -eq 3 ]]; then
+                echo "REFUSED: assembled prompt + output allowance exceeds the local context window. Decompose the task; nothing was launched." >&2
+            else
+                echo "REFUSED: context preflight failed (exit $_pf_rc); refusing to launch an unmeasured task. Nothing was launched." >&2
+                if [[ ! -s "$OUTPUT_FILE" ]]; then
+                    # The preflight process died before recording its own refusal: record it
+                    # through the same Python writer (task_registry), never from the shell.
+                    python3 "$LIB_DIR/local_preflight.py" --record-error --error-code "$_pf_rc" \
+                        --task-id "$ID" --output "$OUTPUT_FILE" --mode "$MODE" \
+                        --prompt "${PROMPT:0:500}" --delegation-dir "$DELEGATION_DIR" >/dev/null 2>&1 || true
+                fi
+            fi
+            [[ "$NO_CONSULT" != "true" ]] && { timeout 10 python3 "$LIB_DIR/dispatch_consult.py" release --subject "$CONSULT_SUBJECT" --owner local >/dev/null 2>&1 || true; }
+            if [[ "$_pf_rc" -eq 3 ]]; then exit 3; else exit 4; fi
+        fi
+
         audit_event_start "local" "$ID" "${PROMPT:0:200}"
 
         # ── CS-1: worktree isolation for agent-mode dispatches ──────────────
@@ -409,6 +439,11 @@ print(classify_mode(sys.argv[1]))
             --ralph-url      "http://127.0.0.1:${RALPH_PORT}"
             --script-dir     "$EFFECTIVE_SCRIPT_DIR"
         )
+        if [[ -f "${OUTPUT_FILE}.assembled.json" ]]; then
+            # Launch the exact prompt preflight measured (no second live assembly).
+            _DISPATCH_ARGS[1]="$LIB_DIR/dispatch_measured.py"
+            _DISPATCH_ARGS+=(--assembled-file "${OUTPUT_FILE}.assembled.json")
+        fi
         [[ -n "$TASK_TYPE" ]] && _DISPATCH_ARGS+=(--task-type "$TASK_TYPE")
         [[ -n "$MAX_TOKENS" ]] && _DISPATCH_ARGS+=(--max-tokens "$MAX_TOKENS")
 

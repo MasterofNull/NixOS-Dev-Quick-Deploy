@@ -157,6 +157,7 @@ def caller_fixture(wrapper: Path, *, local: bool, background: bool) -> None:
             (stub_bin / "python3").write_text(
                 '#!/bin/sh\n'
                 'case "$1" in\n'
+                '  */local_preflight.py) exit 0 ;;  # preflight is covered by test-dispatch-preflight.py\n'
                 '  */dispatch.py)\n'
                 '    shift; task=""; output=""; delegation=""\n'
                 '    while [ "$#" -gt 0 ]; do\n'
