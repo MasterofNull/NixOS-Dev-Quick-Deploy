@@ -132,6 +132,23 @@
       "ci_workflow": ".github/workflows/test.yml#syntax"
     },
     {
+      "id": "pm-tracker-owner-acceptance",
+      "cmd": "scripts/testing/test-pm-tracker-owner-acceptance.py",
+      "paths": [
+        "scripts/ai/aq-pm-tracker",
+        "scripts/ai/aq-health-spider",
+        "scripts/governance/tier0.d/check-pm-tracker.sh",
+        "config/pm-tracker-unbacked-owner-acceptances*.json",
+        "assets/aqos-progress-tracker.html",
+        "dashboard/backend/api/routes/pm.py"
+      ],
+      "needs": [
+        "python3",
+        "git"
+      ],
+      "ci_workflow": ".github/workflows/test.yml#syntax"
+    },
+    {
       "id": "tool-security-auditor-smoke",
       "cmd": "scripts/testing/test-tool-security-auditor.py",
       "paths": [],

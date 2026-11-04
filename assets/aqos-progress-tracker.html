@@ -157,7 +157,7 @@
   /* ---------- stats ---------- */
   .stats {
     display: grid;
-    grid-template-columns: repeat(4, 1fr);
+    grid-template-columns: repeat(5, 1fr);
     gap: 12px;
     margin-bottom: 30px;
   }
@@ -328,6 +328,8 @@
     max-width: 100%;
   }
   .item-chip[data-status="SHIPPED"], .item-chip[data-status="ACTIVATED"] { border-left-color: var(--good); }
+  .item-chip[data-status="SHIPPED"][data-assurance="unverified"], .item-chip[data-status="SHIPPED"][data-assurance="recorded"] { border-left-style: dashed; }
+  .assurance-tag { font-size: 0.72em; color: var(--ink-muted); margin-left: 0.35em; white-space: nowrap; }
   .item-chip[data-status="UNVERIFIED"] { border-left-color: var(--blocked); border-left-style: dashed; }
   .item-chip[data-status="IN-PROGRESS"] { border-left-color: var(--active); }
   .item-chip[data-status="BLOCKED"] { border-left-color: var(--blocked); }
@@ -468,6 +470,10 @@
       <span class="stat-num" id="stat-shipped">&mdash;</span>
       <span class="stat-label">items shipped / total</span>
     </div>
+    <div class="stat" id="stat-assurance-tile" title="Owner acceptances are self-asserted text until backed by an approval record; owner-verified (signed) ships in a later slice">
+      <span class="stat-num" id="stat-assurance">&mdash;</span>
+      <span class="stat-label">shipped unverified / recorded / owner-verified (signed)</span>
+    </div>
     <div class="stat crit" id="stat-blocked-tile">
       <span class="stat-num" id="stat-blocked">&mdash;</span>
       <span class="stat-label">blocked items</span>
@@ -583,6 +589,8 @@
     document.getElementById('stat-plans').textContent = plans.length;
     const known = Number.isFinite(Number(data.known_items)) ? Number(data.known_items) : total;
     document.getElementById('stat-shipped').textContent = `${shipped} / ${known} known`;
+    document.getElementById('stat-assurance').textContent =
+      `${data.shipped_unverified ?? '?'} / ${data.shipped_recorded ?? '?'} / ${data.owner_verified_signed ?? '?'}`;
     document.getElementById('stat-blocked').textContent = blocked;
     document.getElementById('stat-blocked-tile').classList.toggle('crit', blocked > 0);
   }
@@ -651,6 +659,7 @@
       itemId: `${String(planId || '')}:${String(item && item.id || '')}`,
       name: String(item && item.name || item && item.id || 'untitled item'),
       status: STATUS_ORDER.includes(rawStatus) ? rawStatus : 'NOT-STARTED',
+      assurance: item && (item.acceptance_assurance === 'unverified' || item.acceptance_assurance === 'recorded' || item.acceptance_assurance === 'signed') ? item.acceptance_assurance : '',
       pct: Number.isFinite(Number(item && item.pct)) ? Number(item.pct) : null,
       phase: item && item.phase || '__unphased__',
       deps: Array.isArray(item && item.deps) ? item.deps.map(String) : [],
@@ -658,10 +667,19 @@
     };
   }
 
+  // Marker only on SHIPPED: the projected status is never rewritten (ACTIVATED authority is the activation grant).
+  function assuranceTag(item) {
+    return item.status === 'SHIPPED' && (item.assurance === 'unverified' || item.assurance === 'recorded')
+      ? `<span class="assurance-tag">(${escapeHtml(item.assurance)})</span>` : '';
+  }
+  function assuranceLabel(item) {
+    return item.status + (item.status === 'SHIPPED' && (item.assurance === 'unverified' || item.assurance === 'recorded') ? ` (${item.assurance})` : '');
+  }
+
   function renderItemChip(item) {
     return `
-      <span class="item-chip" data-item-id="${escapeHtml(item.itemId)}" data-status="${escapeHtml(item.status)}" title="${escapeHtml(item.name)} — ${escapeHtml(item.status)} (${item.pct == null ? 'unknown' : item.pct + '%'})">
-        <span class="item-name">${escapeHtml(item.name)}</span>
+      <span class="item-chip" data-item-id="${escapeHtml(item.itemId)}" data-status="${escapeHtml(item.status)}" data-assurance="${escapeHtml(item.assurance)}" title="${escapeHtml(item.name)} — ${escapeHtml(assuranceLabel(item))} (${item.pct == null ? 'unknown' : item.pct + '%'})">
+        <span class="item-name">${escapeHtml(item.name)}${assuranceTag(item)}</span>
         <span class="item-pct">${item.pct == null ? 'unknown' : item.pct + '%'}</span>
       </span>
     `;
@@ -767,7 +785,7 @@
       const cards = items.map(item => `
         <article class="kanban-card" data-item-id="${escapeHtml(item.itemId)}">
           <span class="kanban-plan" title="${escapeHtml(item.planTitle)}">${escapeHtml(item.planId)}</span>
-          <span class="kanban-name">${escapeHtml(item.name)}</span>
+          <span class="kanban-name">${escapeHtml(item.name)}${assuranceTag(item)}</span>
           <span class="kanban-meta">${item.priorityLane ? `<span class="priority-lane">${escapeHtml(item.priorityLane)}</span>` : ''}<span class="kanban-pct">${item.pct == null ? 'unknown' : item.pct + '%'}</span></span>
         </article>
       `).join('');

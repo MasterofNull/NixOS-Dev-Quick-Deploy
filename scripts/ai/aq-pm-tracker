@@ -11,6 +11,9 @@ Modes:
   aq-pm-tracker <plan-dir> --check    validate manifest + project; exit 0 ok / 1 on manifest error
   aq-pm-tracker --all                 aggregate human summary across every .agents/plans/*/tracker.json
   aq-pm-tracker --all-json            aggregate projection (JSON): {generated_at, plans[], program_rollup_pct}
+  aq-pm-tracker --check-owner-acceptance --baseline-sha256 <hex>   owner-acceptance gate (tier0.d/check-pm-tracker supplies the pinned digest)
+Owner acceptances: items carry acceptance_assurance (recorded | unverified | null) and status_label; a SHIPPED item
+whose owner acceptance has no valid approval_ref projects "SHIPPED (unverified)" (ACTIVATED/held labels unchanged).
 Status precedence: ACTIVATED > SHIPPED > BLOCKED > FROZEN > IN-PROGRESS > DESIGNED > NOT-STARTED.
 UNVERIFIED (untrusted-author hold): an item that would project SHIPPED/ACTIVATED but whose commit evidence
 comes ONLY from `(#N)` squash commits listed in config/pm-tracker-untrusted-provenance.json is capped at
@@ -25,6 +28,7 @@ try:  # aq-usage-hook
     _aqm = _aqu.module_from_spec(_aqs); _aqs.loader.exec_module(_aqm); _aqm.record(__file__, __name__)
 except Exception:
     pass
+import hashlib
 import json
 import os
 import re
@@ -605,10 +609,12 @@ def project(plan_dir: Path) -> dict:
                       "kind": it.get("kind"), "goal": it.get("goal"),
                       "validation_goal": it.get("validation_goal"), "deps": it.get("deps", []),
                       "status": status, "pct": pct, "hold": hold,
+                      **_assurance_fields(it, plan_dir.name, status),
                       **_activation_flags(it, plan_dir.name, activation_ctx)})
     rollup, known_items, unknown_items = _rollup(items)
     shipped = sum(1 for i in items if i["status"] in ("SHIPPED", "ACTIVATED"))
-    return {"plan": manifest.get("plan", {}), "phases": manifest.get("phases", []),
+    return {**_assurance_counts(items),
+            "plan": manifest.get("plan", {}), "phases": manifest.get("phases", []),
             "items": items, "issues": manifest.get("issues", []),
             "rollup_pct": rollup, "shipped": shipped, "total": len(items),
             "held": sum(1 for i in items if i["status"] == "UNVERIFIED"),
@@ -681,7 +687,11 @@ def project_all() -> dict:
             items.append({"id": it["id"], "name": it.get("name"), "phase": it.get("phase"),
                           "deps": it.get("deps", []), "priority_lane": it.get("priority_lane"),
                           "status": status, "pct": pct, "hold": hold,
+                          **_assurance_fields(it, plan_dir.name, status),
                           **_activation_flags(it, plan_dir.name, activation_ctx)})
+            if items[-1]["acceptance_assurance"] == "unverified":
+                # identity of each unbacked owner acceptance, for set-membership against the committed allowlist
+                items[-1]["unbacked_key"] = [plan_dir.name, it["id"], acceptance_sha256(plan_dir.name, it["id"], it["acceptance"])]
         rollup, known_items, unknown_items = _rollup(items)
         shipped = sum(1 for i in items if i["status"] in ("SHIPPED", "ACTIVATED"))
         plan_meta = manifest.get("plan", {})
@@ -690,6 +700,7 @@ def project_all() -> dict:
             "title": plan_meta.get("title", plan_dir.name),
             "rollup_pct": rollup,
             "shipped": shipped,
+            **_assurance_counts(items),
             "held": sum(1 for i in items if i["status"] == "UNVERIFIED"),
             "activation_stale": sum(1 for i in items if i["activation_stale"]),
             "grants_unverified": sum(1 for i in items if i["grants_unverified"]),
@@ -710,6 +721,8 @@ def project_all() -> dict:
         "generated_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "plans": plans_out,
         "missing_activation_subject": sum(p["missing_activation_subject"] for p in plans_out),
+        **{k: sum(p[k] for p in plans_out) for k in
+           ("shipped_unverified", "shipped_recorded", "unbacked_owner_acceptances", "owner_verified_signed")},
         "program_rollup_pct": program_rollup_pct,
         "known_items": known_items,
         "unknown_items": unknown_items,
@@ -729,8 +742,8 @@ GRANDFATHERED_ACCEPTANCES: list[str] = []
 
 
 def _is_owner_acceptor(by) -> bool:
-    # Known limitation: "hyperd" is self-asserted text; real owner acceptance needs an
-    # aq-approve-backed record. Fail closed: only this allowlist counts as a human owner.
+    # Classifies who the block CLAIMS to be; "hyperd" is self-asserted text. Trust comes from an
+    # approval_ref or the frozen allowlist (see validate_manifest / acceptance_assurance), not from this literal.
     return isinstance(by, str) and (by == "hyperd" or by.startswith("hyperd ("))
 
 
@@ -811,7 +824,10 @@ def _strict_legacy_entries(text: str) -> set[tuple]:
 
 
 def _git_run(*a):
-    return subprocess.run(["git", "-C", str(REPO), *a], capture_output=True, text=True)
+    try:
+        return subprocess.run(["git", "-C", str(REPO), *a], capture_output=True, text=True, timeout=120)
+    except (OSError, subprocess.TimeoutExpired) as e:   # fail closed: callers treat rc != 0 as an error
+        return subprocess.CompletedProcess(["git", *a], 124, "", f"git invocation failed: {e}")
 
 
 def _resolve_legacy_base(rel: str, git=_git_run) -> tuple[str, str]:
@@ -949,9 +965,350 @@ def check_untrusted_items(git=_git_run) -> int:
     return bad
 
 
+# --- Verifiable owner acceptance (SSOT: .agents/plans/system-integrity-recovery/VERIFIED-ACCEPTANCE.md) ---
+# `by: "hyperd"` is self-asserted text. An owner acceptance counts as `recorded` only when it carries an
+# `approval_ref` to a committed decision record bound to the exact acceptance block; otherwise it must be in the
+# frozen remove-only allowlist (grandfathered, projected `unverified`). `signed` (owner-authenticated through the
+# activation chain) is slice 3: nothing here ever returns it, and a signed-shaped ref fails closed.
+OWNER_ALLOWLIST_REL = "config/pm-tracker-unbacked-owner-acceptances.json"
+OWNER_BASELINE_REL = "config/pm-tracker-unbacked-owner-acceptances.baseline.json"
+APPROVAL_DIR = ".agent/approvals/acceptance/"
+APPROVAL_LOG_REL = APPROVAL_DIR + "LOG.jsonl"
+_HEX64 = re.compile(r"[0-9a-f]{64}")
+_REF_PATH = re.compile(r"\.agent/approvals/acceptance/[A-Za-z0-9][A-Za-z0-9._-]*\.json")
+_RECORDED_KEYS = frozenset(("record", "sha256"))
+_SIGNED_KEYS = frozenset(("envelope_seq", "envelope_sha256"))
+# Unbacked owner acceptances (allowlisted) counted by the last validate_manifest() call (WARN only).
+UNBACKED_OWNER_ACCEPTANCES: list[str] = []
+
+
+def acceptance_sha256(plan: str, item_id, acc: dict) -> str:
+    """Binding hash: editing note/date/by, or moving the block to another item, changes it."""
+    body = {k: v for k, v in acc.items() if k != "approval_ref"}
+    canon = json.dumps({"plan": plan, "item": item_id, "acceptance": body}, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(canon.encode("utf-8")).hexdigest()
+
+
+def _owner_entries_list(text: str) -> list[tuple]:
+    """Strict parse of the baseline/allowlist format -> list of (plan, item, acceptance_sha256); ValueError on any defect."""
+    try:
+        data = json.loads(text)
+    except Exception as e:
+        raise ValueError(f"unparsable JSON ({e})")
+    entries = data.get("entries") if isinstance(data, dict) else None
+    if not isinstance(entries, list):
+        raise ValueError("'entries' missing or not a list")
+    out = []
+    for e in entries:
+        t = tuple(e.get(k) for k in ("plan", "item", "acceptance_sha256")) if isinstance(e, dict) else None
+        if (t is None or not all(isinstance(v, str) and v.strip() for v in t)
+                or not _HEX64.fullmatch(t[2]) or set(e) != {"plan", "item", "acceptance_sha256"}):
+            raise ValueError(f"malformed entry {e!r}")
+        out.append(t)
+    return out
+
+
+def _owner_allowlist() -> set[tuple[str, str, str]]:
+    """Frozen (plan, item, acceptance_sha256) of grandfathered unbacked owner acceptances; remove-only."""
+    try:
+        return set(_owner_entries_list((REPO / OWNER_ALLOWLIST_REL).read_text()))
+    except Exception:
+        return set()
+
+
+def _ref_state(ref, plan: str, item_id, acc: dict) -> tuple[str | None, str | None]:
+    """(shape, problem). shape is "recorded" | "signed" | None; problem is None only for a fully valid recorded ref.
+    Malformed / ambiguous / unknown-key refs are validation errors, never a fallback to another shape."""
+    if not isinstance(ref, dict):
+        return None, "approval_ref must be an object"
+    keys = set(ref)
+    if keys & _RECORDED_KEYS and keys & _SIGNED_KEYS:
+        return None, "approval_ref carries both recorded and signed shapes"
+    if keys == _RECORDED_KEYS:
+        return "recorded", _recorded_problem(ref, plan, item_id, acceptance_sha256(plan, item_id, acc))
+    if keys == _SIGNED_KEYS:
+        seq, esha = ref["envelope_seq"], ref["envelope_sha256"]
+        if isinstance(seq, bool) or not isinstance(seq, int) or seq < 0 or not (isinstance(esha, str) and _HEX64.fullmatch(esha)):
+            return None, "malformed signed approval_ref (envelope_seq int >= 0, envelope_sha256 64 hex)"
+        return "signed", "signed approval_ref cannot be verified yet (signed verifier is slice 3); failing closed"
+    return None, f"approval_ref has unknown or incomplete keys {sorted(keys)}"
+
+
+def _load_decision_log() -> tuple[dict, str | None]:
+    """Append-only decision log (R3): contiguous dseq from 1; returns (latest decision per (plan,item), error)."""
+    f = REPO / APPROVAL_LOG_REL
+    if not f.exists():
+        return {}, None
+    latest: dict = {}
+    try:
+        lines = f.read_text(encoding="utf-8").splitlines()
+    except (OSError, ValueError) as e:
+        return {}, f"unreadable: {e}"
+    for n, line in enumerate(lines, 1):
+        try:
+            e = json.loads(line)
+        except ValueError:
+            return {}, f"line {n} is not JSON"
+        ok = (isinstance(e, dict) and e.get("dseq") == n and not isinstance(e.get("dseq"), bool)
+              and isinstance(e.get("plan"), str) and isinstance(e.get("item"), str)
+              and isinstance(e.get("acceptance_sha256"), str) and _HEX64.fullmatch(e["acceptance_sha256"])
+              and e.get("decision") in ("approved", "rejected"))
+        if not ok:
+            return {}, f"line {n} malformed or dseq not contiguous (expected {n})"
+        latest[(e["plan"], e["item"])] = e
+    return latest, None
+
+
+def _recorded_problem(ref: dict, plan: str, item_id, h: str) -> str | None:
+    rec, sha = ref["record"], ref["sha256"]
+    if not isinstance(rec, str) or not _REF_PATH.fullmatch(rec):
+        return f"record path must be a single repo-relative {APPROVAL_DIR}<name>.json"
+    if not isinstance(sha, str) or not _HEX64.fullmatch(sha):
+        return "sha256 must be 64 lowercase hex"
+    f = REPO / rec
+    if f.is_symlink() or not f.is_file():
+        return "record file missing"
+    raw = f.read_bytes()
+    if hashlib.sha256(raw).hexdigest() != sha:
+        return "record bytes do not match approval_ref.sha256 (record modified)"
+    try:
+        d = json.loads(raw)
+    except ValueError as e:
+        return f"record not valid JSON ({e})"
+    if not isinstance(d, dict) or d.get("schema") != 1:
+        return "record is not an object with schema 1"
+    if d.get("kind") != "tracker-acceptance":
+        return "record kind != tracker-acceptance"
+    if d.get("decision") != "approved":
+        return f"record decision {d.get('decision')!r} is not 'approved'"
+    if d.get("plan") != plan:
+        return "record plan does not match this plan"
+    items = d.get("items")
+    if not isinstance(items, list):
+        return "record items must be a list"
+    listed = [i for i in items if isinstance(i, dict) and i.get("id") == item_id]
+    if len(listed) != 1 or listed[0].get("acceptance_sha256") != h:
+        return "record does not list this item with the current acceptance hash (block edited or moved)"
+    latest, err = _load_decision_log()
+    if err:
+        return f"decision log invalid: {err}"
+    last = latest.get((plan, item_id))
+    if last is not None and (last["decision"] != "approved" or last["acceptance_sha256"] != h):
+        return "superseded by a later decision in the log (rejected or different hash)"
+    return None
+
+
+def _owner_item_verdict(plan: str, it: dict, acc: dict, allow: set) -> tuple[str, str]:
+    """("recorded"|"unbacked"|"error", message) for an owner acceptance block."""
+    iid = it.get("id")
+    if "approval_ref" in acc:
+        shape, problem = _ref_state(acc["approval_ref"], plan, iid, acc)
+        if problem:
+            return "error", (f"plan {plan} item {iid}: owner acceptance approval_ref invalid ({problem})")
+        return "recorded", ""
+    if (plan, iid, acceptance_sha256(plan, iid, acc)) in allow:
+        return "unbacked", ""
+    return "error", (f"plan {plan} item {iid}: owner acceptance has no approval_ref and is not in "
+                     f"{OWNER_ALLOWLIST_REL}; request one through aq-approve")
+
+
+def acceptance_assurance(item: dict, plan: str) -> str | None:
+    """"recorded" | "unverified" for an owner acceptance, None when no owner acceptance is involved.
+    Never "signed" until slice 3 ships the activation-chain verifier."""
+    acc = item.get("acceptance")
+    if not (isinstance(acc, dict) and acc.get("status") == "accepted" and _is_owner_acceptor(acc.get("by"))):
+        return None
+    if "approval_ref" in acc:
+        shape, problem = _ref_state(acc["approval_ref"], plan, item.get("id"), acc)
+        if shape == "recorded" and problem is None:
+            return "recorded"
+    return "unverified"
+
+
+def _assurance_fields(item: dict, plan: str, status: str) -> dict:
+    a = acceptance_assurance(item, plan)
+    marker = f" ({a})" if status == "SHIPPED" and a in ("unverified", "recorded") else ""
+    return {"acceptance_assurance": a, "status_label": status + marker}
+
+
+def _assurance_counts(items: list[dict]) -> dict:
+    return {"shipped_unverified": sum(1 for i in items if i["status"] == "SHIPPED" and i["acceptance_assurance"] == "unverified"),
+            "shipped_recorded": sum(1 for i in items if i["status"] == "SHIPPED" and i["acceptance_assurance"] == "recorded"),
+            "unbacked_owner_acceptances": sum(1 for i in items if i["acceptance_assurance"] == "unverified"),
+            "owner_verified_signed": 0}  # signed path ships in slice 3; an honest 0, not a missing field
+
+
+def _rev_file(git, rev: str, rel: str) -> tuple[str, str]:
+    """("ok", text) | ("absent", "") | ("error", reason); only a verified-missing path is absent."""
+    ls = git("ls-tree", rev, "--", rel)
+    if ls.returncode != 0:
+        return "error", f"git ls-tree {rev[:12]} {rel} failed: {ls.stderr.strip()}"
+    if not ls.stdout.strip():
+        return "absent", ""
+    show = git("show", f"{rev}:{rel}")
+    if show.returncode != 0:
+        return "error", f"git show {rev[:12]}:{rel} failed: {show.stderr.strip()}"
+    return "ok", show.stdout
+
+
+def _removal_justified(plan: str, iid: str) -> bool:
+    """(e): a removed allowlist entry needs the matching tracker change: the owner acceptance block gone
+    (or no longer an owner acceptance), or an approval_ref that validates."""
+    try:
+        m = json.loads((REPO / ".agents" / "plans" / plan / "tracker.json").read_text())
+    except FileNotFoundError:
+        return True
+    except (OSError, ValueError):
+        return False
+    it = next((i for i in m.get("items", []) if isinstance(i, dict) and i.get("id") == iid), None)
+    if it is None:
+        return True
+    acc = it.get("acceptance")
+    if not (isinstance(acc, dict) and acc.get("status") == "accepted" and _is_owner_acceptor(acc.get("by"))):
+        return True
+    if "approval_ref" in acc:
+        return _ref_state(acc["approval_ref"], plan, iid, acc)[1] is None
+    return False
+
+
+def check_owner_acceptance(git=_git_run, pinned: str | None = None) -> int:
+    """Gate for owner acceptances (R4 with amendments A and C). The base is chosen ONLY here (fetched origin/main
+    merge-base AND tip); there is no flag, env var or parameter to choose one (`git` is a test seam).
+    Prerequisites (fetch, historical resolution, parsing) fail closed. The failure conditions (a)-(e) are
+    evaluated only after those succeed; "unchanged" in (c) refers to file presence, not content."""
+    tag = "[owner-acceptance]"
+    if not (isinstance(pinned, str) and _HEX64.fullmatch(pinned)):
+        print(f"{tag} FAIL (prereq): pinned baseline sha256 missing/malformed (the gate script supplies BASELINE_SHA256)")
+        return 1
+    fetched = git("fetch", "--quiet", "origin", "+refs/heads/main:refs/remotes/origin/main")
+    if fetched.returncode != 0:
+        print(f"{tag} FAIL (prereq): cannot fetch origin/main (fail closed, no offline pass): {fetched.stderr.strip()}")
+        return 1
+    tip_p = git("rev-parse", "--verify", "--quiet", "origin/main^{commit}")
+    tip = tip_p.stdout.strip()
+    if tip_p.returncode != 0 or not tip:
+        print(f"{tag} FAIL (prereq): origin/main does not resolve after fetch")
+        return 1
+    mb_p = git("merge-base", "HEAD", tip)
+    mb = mb_p.stdout.strip()
+    if mb_p.returncode != 0 or not mb:
+        print(f"{tag} FAIL (prereq): git merge-base HEAD origin/main failed: {mb_p.stderr.strip()}")
+        return 1
+
+    present: dict = {}      # (rev label, rel) -> bool
+    allow_hist: dict = {}   # rev label -> set of tuples
+    for label, rev in (("merge-base", mb), ("tip", tip)):
+        for rel in (OWNER_BASELINE_REL, OWNER_ALLOWLIST_REL):
+            status, text = _rev_file(git, rev, rel)
+            if status == "error":
+                print(f"{tag} FAIL (prereq): {text}")
+                return 1
+            present[(label, rel)] = status == "ok"
+            if status == "ok" and rel == OWNER_ALLOWLIST_REL:
+                try:
+                    allow_hist[label] = set(_owner_entries_list(text))
+                except ValueError as e:
+                    print(f"{tag} FAIL (prereq): allowlist at {label} unparsable: {e}")
+                    return 1
+        allow_hist.setdefault(label, set())
+
+    cand_base_f, cand_allow_f = REPO / OWNER_BASELINE_REL, REPO / OWNER_ALLOWLIST_REL
+    cand_base_raw = cand_base_f.read_bytes() if cand_base_f.is_file() else None
+    cand_base = cand_allow = None
+    try:
+        if cand_base_raw is not None:
+            cand_base = _owner_entries_list(cand_base_raw.decode("utf-8"))
+        if cand_allow_f.is_file():
+            cand_allow = _owner_entries_list(cand_allow_f.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as e:
+        print(f"{tag} FAIL (prereq): candidate baseline/allowlist unparsable: {e}")
+        return 1
+
+    fails: list[str] = []
+    all_absent = not any(present.values())
+    bootstrap = (all_absent and cand_base is not None and cand_allow is not None
+                 and hashlib.sha256(cand_base_raw).hexdigest() == pinned
+                 and len(set(cand_allow)) == len(cand_allow) and len(set(cand_base)) == len(cand_base)
+                 and set(cand_allow) == set(cand_base))
+    if bootstrap:
+        print(f"{tag} bootstrap: baseline + allowlist introduced together, digest matches the pinned literal, tuple sets equal")
+    else:
+        for rel, have in ((OWNER_BASELINE_REL, cand_base is not None), (OWNER_ALLOWLIST_REL, cand_allow is not None)):
+            if not have and (present[("merge-base", rel)] or present[("tip", rel)]):
+                fails.append(f"(a) {rel} is missing in the candidate but present at the merge-base/origin/main tip")
+        if cand_base_raw is not None and hashlib.sha256(cand_base_raw).hexdigest() != pinned:
+            fails.append(f"(b) {OWNER_BASELINE_REL} sha256 differs from the pinned literal in the gate")
+        pm = tuple(present[("merge-base", r)] for r in (OWNER_BASELINE_REL, OWNER_ALLOWLIST_REL))
+        pt = tuple(present[("tip", r)] for r in (OWNER_BASELINE_REL, OWNER_ALLOWLIST_REL))
+        if not (pm == pt and pm[0] == pm[1]):
+            fails.append(f"(c) inconsistent file presence: merge-base baseline/allowlist={pm}, origin/main tip={pt} "
+                         "(allowed: absent at both, or both files present at both)")
+        cand = cand_allow or []
+        if len(set(cand)) != len(cand) or len({(p, i) for p, i, _ in cand}) != len(cand):
+            fails.append("(d) duplicate allowlist tuple or duplicate (plan,item) key")
+        base_set = set(cand_base or [])
+        inter = allow_hist["merge-base"] & allow_hist["tip"]
+        for t in sorted(set(cand)):
+            if t not in base_set:
+                fails.append(f"(d) allowlist tuple not in the frozen baseline: {t[0]}:{t[1]}")
+            elif t not in inter:
+                fails.append(f"(d) allowlist tuple not in allowlist@merge-base AND allowlist@origin/main tip "
+                             f"(reintroduction or addition): {t[0]}:{t[1]}")
+        for t in sorted((allow_hist["merge-base"] | allow_hist["tip"]) - set(cand)):
+            if not _removal_justified(t[0], t[1]):
+                fails.append(f"(e) allowlist entry removed without the matching tracker change (acceptance block "
+                             f"removed or a valid approval_ref added): {t[0]}:{t[1]}")
+
+    # Tracker state: every owner acceptance is backed by a valid ref or an allowlist entry (also catches edited notes).
+    allow_now = set(cand_allow or [])
+    for plan_dir in discover_tracked_plans():
+        try:
+            m = json.loads((plan_dir / "tracker.json").read_text())
+        except (OSError, ValueError) as e:
+            fails.append(f"state: {plan_dir.name}/tracker.json unreadable ({e})")
+            continue
+        for it in m.get("items", []):
+            acc = it.get("acceptance") if isinstance(it, dict) else None
+            if isinstance(acc, dict) and acc.get("status") == "accepted" and _is_owner_acceptor(acc.get("by")):
+                kind, msg = _owner_item_verdict(plan_dir.name, it, acc, allow_now)
+                if kind == "error":
+                    fails.append(f"state: {msg}")
+    # Decision records / log are append-only against the merge-base.
+    ls = git("ls-tree", "-r", "--name-only", mb, "--", APPROVAL_DIR)
+    if ls.returncode != 0:
+        print(f"{tag} FAIL (prereq): git ls-tree {mb[:12]} {APPROVAL_DIR} failed: {ls.stderr.strip()}")
+        return 1
+    for rel in [x for x in ls.stdout.splitlines() if x.strip()]:
+        status, base_text = _rev_file(git, mb, rel)
+        if status != "ok":
+            print(f"{tag} FAIL (prereq): cannot read {rel} at merge-base: {base_text}")
+            return 1
+        f = REPO / rel
+        cur = f.read_text(encoding="utf-8") if f.is_file() else None
+        if cur is None:
+            fails.append(f"append-only: {rel} deleted")
+        elif rel == APPROVAL_LOG_REL:
+            if not cur.startswith(base_text):
+                fails.append(f"append-only: {rel} existing lines edited or removed")
+        elif cur != base_text:
+            fails.append(f"append-only: {rel} modified")
+    _, log_err = _load_decision_log()
+    if log_err:
+        fails.append(f"append-only: {APPROVAL_LOG_REL} invalid: {log_err}")
+
+    if fails:
+        for f in fails:
+            print(f"{tag} FAIL {f}")
+        return 1
+    print(f"{tag} PASS: allowlist {len(allow_now)} unbacked owner acceptance(s) (remove-only vs baseline/merge-base/tip); "
+          "every owner acceptance backed; records append-only")
+    return 0
+
+
 def validate_manifest(plan_dir: Path) -> list[str]:
     errs = []
     GRANDFATHERED_ACCEPTANCES.clear()
+    UNBACKED_OWNER_ACCEPTANCES.clear()
     p = plan_dir / "tracker.json"
     if not p.is_file():
         return [f"no tracker.json in {plan_dir}"]
@@ -971,6 +1328,7 @@ def validate_manifest(plan_dir: Path) -> list[str]:
         if not it.get("goal") or not it.get("validation_goal"):
             errs.append(f"item {it.get('id')} missing goal/validation_goal (editorial required)")
     legacy = _legacy_allowlist()
+    owner_allow = _owner_allowlist()
     for it in m.get("items", []):
         # Acceptance is the independent sign-off gate: an agent lane / test script may
         # not accept its own work unless a review receipt backs it (frozen allowlist grandfathered).
@@ -978,6 +1336,12 @@ def validate_manifest(plan_dir: Path) -> list[str]:
         if isinstance(acc, dict) and acc.get("status") == "accepted":
             by = acc.get("by")
             if _is_owner_acceptor(by):
+                # Trust comes from an approval_ref or the frozen allowlist, never from the literal `by`.
+                kind, msg = _owner_item_verdict(plan_dir.name, it, acc, owner_allow)
+                if kind == "error":
+                    errs.append(msg)
+                elif kind == "unbacked":
+                    UNBACKED_OWNER_ACCEPTANCES.append(f"{plan_dir.name}:{it.get('id')}")
                 continue
             problem = _receipt_problem(acc.get("receipt"), by)
             if problem is None:
@@ -993,6 +1357,15 @@ def validate_manifest(plan_dir: Path) -> list[str]:
             if d not in ids:
                 errs.append(f"item {it.get('id')} dep '{d}' not an item id")
     return errs
+
+
+def _assurance_summary(d: dict) -> str:
+    out = ""
+    if d.get("shipped_unverified"):
+        out += f", {d['shipped_unverified']} SHIPPED (unverified)"
+    if d.get("shipped_recorded"):
+        out += f", {d['shipped_recorded']} SHIPPED (recorded)"
+    return out
 
 
 def _print_hold(it: dict, indent: str) -> None:
@@ -1011,6 +1384,9 @@ def main() -> int:
         return check_legacy_allowlist()
     if "--check-untrusted-items" in args:
         return check_untrusted_items()
+    if "--check-owner-acceptance" in args:
+        pinned = args[args.index("--baseline-sha256") + 1] if "--baseline-sha256" in args[:-1] else None
+        return check_owner_acceptance(pinned=pinned)
 
     # Aggregate mode — discovers every .agents/plans/*/tracker.json and
     # projects the program-wide rollup. Independent of the single-plan
@@ -1026,6 +1402,7 @@ def main() -> int:
             print("!! DEGRADED: untrusted-provenance config unavailable; commit-derived completions are UNKNOWN, rollup not authoritative")
         for p in data["plans"]:
             held = f", {p['held']} UNVERIFIED" if p["held"] else ""
+            held += _assurance_summary(p)
             print(f"\n## {p['title']}  —  {p['rollup_pct']}%  ({p['shipped']}/{p['total']} shipped{held})")
             by_phase = {}
             for it in p["items"]:
@@ -1036,7 +1413,7 @@ def main() -> int:
                     continue
                 print(f"  {ph['name']}:")
                 for it in rows:
-                    print(f"    [{it['status']:<11}] {_format_pct(it['pct'])}%  {it['name']}")
+                    print(f"    [{it['status_label']:<11}] {_format_pct(it['pct'])}%  {it['name']}")
                     _print_hold(it, "      ")
         return 0
 
@@ -1068,6 +1445,9 @@ def main() -> int:
         if GRANDFATHERED_ACCEPTANCES:
             print(f"WARN: {plan_dir.name}: {len(GRANDFATHERED_ACCEPTANCES)} allowlisted legacy "
                   f"agent/test acceptance(s) lack independent review (config/pm-tracker-legacy-acceptances.json)")
+        if UNBACKED_OWNER_ACCEPTANCES:
+            print(f"WARN: {plan_dir.name}: {len(UNBACKED_OWNER_ACCEPTANCES)} unbacked owner acceptance(s) "
+                  f"(grandfathered, projected SHIPPED (unverified)): {OWNER_ALLOWLIST_REL}")
         print(f"PASS: {plan_dir.name}/tracker.json valid + projects")
         return 0
     data = project(plan_dir)
@@ -1076,6 +1456,7 @@ def main() -> int:
         return 0
     pl = data["plan"]
     held = f", {data['held']} UNVERIFIED" if data["held"] else ""
+    held += _assurance_summary(data)
     print(f"# {pl.get('title', plan_dir.name)}  —  {data['rollup_pct']}%  ({data['shipped']}/{data['total']} shipped{held})")
     print(f"  goal: {pl.get('goal', '')}")
     if data.get("hold_degraded"):
@@ -1087,7 +1468,7 @@ def main() -> int:
         rows = by_phase.get(ph["id"], [])
         print(f"\n## {ph['name']}")
         for it in rows:
-            print(f"  [{it['status']:<11}] {_format_pct(it['pct'])}%  {it['name']}")
+            print(f"  [{it['status_label']:<11}] {_format_pct(it['pct'])}%  {it['name']}")
             _print_hold(it, "    ")
     if data["issues"]:
         print("\n## issues")
