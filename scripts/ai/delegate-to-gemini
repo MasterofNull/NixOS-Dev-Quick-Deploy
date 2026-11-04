@@ -49,6 +49,9 @@ GEMINI_BIN="${GEMINI_BIN:-$(command -v gemini 2>/dev/null || echo "$HOME/.local/
 # _gemini_meaningful_bytes() strips known header/warning/error lines before measuring.
 GEMINI_MIN_CONTENT_BYTES=500
 
+# Linux MAX_ARG_STRLEN: one argv element (the -p prompt) may be at most 131072 bytes incl. NUL, else exec fails E2BIG.
+GEMINI_MAX_ARG_BYTES=131072
+
 # Phase 56.1/56.7 — delegation audit bridge
 # shellcheck disable=SC1091
 source "${SCRIPT_DIR}/lib/audit-write.sh" 2>/dev/null || true
@@ -58,6 +61,15 @@ source "${SCRIPT_DIR}/lib/harness-grounding.sh" 2>/dev/null || true
 
 die()  { echo "ERROR: $*" >&2; exit 1; }
 info() { echo "[delegate-to-gemini] $*"; }
+
+# Refuse a prompt that cannot be exec'd as one argv/env element (E2BIG would otherwise be silent).
+check_prompt_size() {
+    local bytes; bytes="$(printf '%s' "$1" | wc -c)"
+    if [[ "$bytes" -ge "$GEMINI_MAX_ARG_BYTES" ]]; then
+        die "Prompt too large for gemini -p: ${bytes} bytes (limit $((GEMINI_MAX_ARG_BYTES - 1)) per argument, kernel MAX_ARG_STRLEN).
+  Trim the prompt, or point gemini at files by path instead of inlining their contents."
+    fi
+}
 
 # A2A action policy gate: authorize the approval MODE before launching gemini
 # (config/agent-action-policy.json). Blocks invalid/kill-switched modes and — when the
@@ -157,7 +169,7 @@ _gemini_meaningful_bytes() {
     # Real model output never contains node_modules paths or googleapis.com URLs.
     grep -Ev \
         "^Warning:|^YOLO mode|^Attempt [0-9]+ failed\.|An unexpected critical|FetchError|ETIMED|EAI_AGAIN|ENOTFOUND|retrying with backoff|^\s+at |node_modules|googleapis\.com|GaxiosError|AbortSignal|errorRedactor|paramsSerializer|validateStatus|<<REDACTED|Symbol\(|'s-gaxios-error'\]|response: undefined|'Content-Type'|'User-Agent'|'x-goog-api-client'|^\s+[a-zA-Z_]+: [\"'{[]|^\s*[{}],?\s*$|type: 'system'|stop serving requests|migrate to Antigravity|gemini-cli-migration|unpaid tiers" \
-        "$file" 2>/dev/null | wc -c || echo 0
+        "$file" 2>/dev/null | wc -c || true
 }
 
 require_gemini() {
@@ -346,6 +358,7 @@ cmd_delegate() {
 
     local id; id="$(task_id)"
     # A2A safeguards: authorize the mode, scan the outbound prompt, check the dispatch budget.
+    check_prompt_size "$prompt"  # before the gates: the secret scan passes the prompt via env (same limit)
     policy_gate_action gemini "$mode" "$id"
     guard_outbound_prompt "$prompt" "$id"
     budget_gate_dispatch gemini
@@ -390,6 +403,8 @@ cmd_delegate() {
 
 ${prompt}"
 
+    check_prompt_size "$full_prompt"
+
     info "Delegating task: $id"
     info "Approval mode:   $mode"
     info "Role:            $role"
@@ -418,8 +433,11 @@ ${prompt}"
     if [[ "$wait_mode" == "true" ]]; then
         # Blocking mode: run in foreground, tee to output file
         info "Running in blocking mode..."
+        # set -e/pipefail would abort here on a non-zero provider exit, skipping the failed/partial-success handling.
+        set +e
         "${cmd[@]}" 2>&1 | tee "$output_file"
         local exit_code="${PIPESTATUS[0]}"
+        set -e
         local meaningful_bytes; meaningful_bytes="$(_gemini_meaningful_bytes "$output_file")"
         if [[ "$exit_code" -eq 0 ]]; then
             registry_update_status "$id" "done"
@@ -445,6 +463,7 @@ ${prompt}"
                 info "  Bypass: export GEMINI_API_KEY=<key> from https://aistudio.google.com/apikey"
                 info "  See: .agent/memory/issues-backlog.md (antigravity-cli-migration-pending)"
             fi
+            return "$exit_code"
         fi
     else
         # Background mode: fully detach so it survives session eviction. Dynamic values travel
