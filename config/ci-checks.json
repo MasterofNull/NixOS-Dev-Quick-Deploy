@@ -446,6 +446,19 @@
       "ci_workflow": ".github/workflows/test.yml#syntax"
     },
     {
+      "id": "mcp-integrity-unit-path-test",
+      "cmd": "scripts/testing/test-mcp-integrity-unit-path.sh",
+      "paths": [
+        "scripts/testing/test-mcp-integrity-unit-path.sh",
+        "nix/modules/services/mcp-servers.nix",
+        "config/ci-checks.json"
+      ],
+      "needs": [
+        "bash"
+      ],
+      "ci_workflow": ".github/workflows/test.yml#syntax"
+    },
+    {
       "id": "tests-agent",
       "cmd": "scripts/testing/run-test-group.py tests-agent",
       "paths": [

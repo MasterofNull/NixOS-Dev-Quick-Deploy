@@ -2410,6 +2410,7 @@ in {
       systemd.services.ai-mcp-integrity-check = {
         description = "AI stack MCP source file integrity check";
         after = ["local-fs.target"];
+        path = [pkgs.coreutils pkgs.jq];
         serviceConfig =
           (mkHardenedService {
             tier = cfg.hardwareTier;
