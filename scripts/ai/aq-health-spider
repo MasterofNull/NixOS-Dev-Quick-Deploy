@@ -1376,24 +1376,8 @@ class HealthSpider:
         elif atype == "aq_confine_alert":
             logger.warning(f"[aq-confine] pending high alert {anomaly.get('alert_id', '')}: {anomaly.get('title', '')}")
             return True
-        elif atype in ("owner_acceptance_unbacked_rising", "owner_acceptance_allowlist_unauthorized", "owner_acceptance_probe_failed", "owner_acceptance_state_unwritable"):
+        elif atype in ("owner_acceptance_unbacked_rising", "owner_acceptance_probe_failed", "owner_acceptance_state_unwritable"):
             logger.warning(f"[owner-acceptance] {anomaly.get('detail')}")
-            if atype == "owner_acceptance_allowlist_unauthorized":
-                try:
-                    push(
-                        source="health-spider",
-                        severity="high",
-                        autonomy_boundary="human_gate",
-                        title="Owner-acceptance allowlist edited outside the protected trunk",
-                        detail=anomaly.get("detail", atype),
-                        proposed_action="Revert the working-tree additions to config/pm-tracker-unbacked-owner-acceptances.json; the allowlist is remove-only and trusted only from origin/main.",
-                        payload=anomaly,
-                        dedup_key="owner-acceptance-allowlist-unauthorized",
-                        why="An entry that is not on origin/main would silence the unbacked-acceptance alert if the working tree were trusted.",
-                        next_step="git diff origin/main -- config/pm-tracker-unbacked-owner-acceptances.json",
-                    )
-                except Exception:
-                    pass
             if atype == "owner_acceptance_unbacked_rising":
                 try:
                     push(

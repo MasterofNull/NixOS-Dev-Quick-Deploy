@@ -7,6 +7,7 @@ import sys
 import tempfile
 import threading
 import unittest
+from unittest import mock
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 
@@ -391,6 +392,61 @@ class WrapperLaunchBoundaryTests(unittest.TestCase):
             rows = _rows(tmp)
             self.assertEqual(rows[0]["terminal_reason"], "preflight_no_limit")
             self.assertEqual(rows[0]["outcome"], "refused")
+
+
+class FastRefusalTests(unittest.TestCase):
+    """Explicit --max-tokens >= context limit refuses before any prompt work."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.srv = HTTPServer(("127.0.0.1", 0), _Llama)
+        threading.Thread(target=cls.srv.serve_forever, daemon=True).start()
+        cls.url = f"http://127.0.0.1:{cls.srv.server_port}"
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.srv.shutdown()
+
+    def _in_process(self, tmp, max_tokens):
+        import local_preflight as lp
+
+        def boom(*a, **k):
+            raise AssertionError("prompt work ran on the fast refusal path")
+        argv = ["local_preflight.py", "--task-id", "t1", "--output", f"{tmp}/o.log",
+                "--mode", "direct", "--prompt", "small task", "--max-tokens", str(max_tokens),
+                "--delegation-dir", tmp, "--llama-url", self.url]
+        with mock.patch.object(sys, "argv", argv), \
+                mock.patch.object(lp.D, "classify_task_type", boom), \
+                mock.patch.object(lp.D, "_apply_context_assembler", boom), \
+                mock.patch.object(lp.D, "_embedded_assist_prefetch", boom):
+            return lp._run()
+
+    def test_output_budget_over_limit_refuses_without_prompt_work(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            rc = self._in_process(tmp, N_CTX)
+            self.assertEqual(rc, 3)
+            ref = json.loads((Path(tmp) / "o.log").read_text())
+            self.assertEqual((ref["reason"], ref["method"], ref["limit"]),
+                             ("output_budget_exceeds_context", "output_budget_only", N_CTX))
+            row = _rows(tmp)[0]
+            self.assertEqual((row["status"], row["outcome"], row["model_effective"]),
+                             ("failed", "refused", "n/a"))
+            self.assertEqual(row["preflight"]["verdict"], "refuse")
+
+    def test_output_budget_below_limit_takes_measured_path(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            r = _run(self.url, "small task", N_CTX - 6000, tmp)
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertEqual(json.loads(r.stdout)["preflight"]["method"], "apply_template+tokenize")
+
+    def test_no_limit_still_refuses_preflight_no_limit(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            _Llama.no_ctx = True
+            self.addCleanup(setattr, _Llama, "no_ctx", False)
+            r = _run(self.url, "small task", 64, tmp,
+                     env=dict(os.environ, AQ_LOCAL_MODEL_CONFIG=f"{tmp}/missing.yaml"))
+            self.assertEqual(r.returncode, 3, r.stderr)
+            self.assertEqual(_rows(tmp)[0]["terminal_reason"], "preflight_no_limit")
 
 
 class EvidenceTests(unittest.TestCase):

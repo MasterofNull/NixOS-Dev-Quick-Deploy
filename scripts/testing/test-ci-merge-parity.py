@@ -26,6 +26,9 @@ def make_repo(tmp):
     (d / ".github/workflows").mkdir(parents=True)
     for n in ("run-ci-checks.sh", "ci-merge-parity.sh", "ci-clean-env.sh"):
         shutil.copy(GOV / n, d / "scripts/governance" / n)
+    (d / "scripts/governance/lib").mkdir()
+    for n in ("clean-git-env.sh", "clean_git_env.py"):
+        shutil.copy(GOV / "lib" / n, d / "scripts/governance/lib" / n)
     (d / "scripts/chk.sh").write_text('#!/usr/bin/env bash\n[[ ! -e poison ]] || { echo "poison present"; exit 1; }\n')
     (d / "config/ci-checks.json").write_text(json.dumps({"version": 1, "checks": [
         {"id": "chk", "cmd": "scripts/chk.sh", "paths": [], "needs": [], "ci_workflow": ".github/workflows/w.yml"}], "ci_exempt": []}))
@@ -79,6 +82,24 @@ class MergeParity(unittest.TestCase):
         self.assertEqual(r.returncode, 1)
         self.assertIn("conflicts", r.stderr)
         self.assertIn("Update the branch", r.stderr)
+
+    def test_merge_is_real_commit_with_clean_index(self):
+        out = Path(self.tmp) / "probe.txt"
+        (self.repo / "scripts/chk.sh").write_text(
+            '#!/usr/bin/env bash\n{ echo "CACHED:"; git diff --cached --name-only; echo "PR:"; '
+            'git diff --name-only origin/main...HEAD; echo "PARENTS:"; git rev-list --parents -n1 HEAD | wc -w; } > "%s"\n' % out)
+        git(self.repo, "add", "-A"); git(self.repo, "commit", "-qm", "probe")
+        git(self.repo, "branch", "-f", "main", "HEAD")
+        git(self.repo, "update-ref", "refs/remotes/origin/main", "HEAD")
+        (self.repo / "branch.txt").write_text("b"); git(self.repo, "add", "-A"); git(self.repo, "commit", "-qm", "f")
+        self.advance_main("mainonly.txt", "m")
+        r = self.parity("--all")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        lines = out.read_text().split("\n")
+        self.assertEqual(lines[lines.index("CACHED:") + 1], "PR:")  # index clean: nothing staged
+        pr = lines[lines.index("PR:") + 1:lines.index("PARENTS:")]
+        self.assertEqual([x for x in pr if x], ["branch.txt"])  # main's file not attributed to the PR
+        self.assertEqual(lines[lines.index("PARENTS:") + 1].strip(), "3")  # commit + 2 parents
 
     def test_skip_env_warns_not_silent(self):
         r = self.parity("--all", env={"CI_MERGE_PARITY_SKIP": "1"})

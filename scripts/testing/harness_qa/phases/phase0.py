@@ -2153,6 +2153,8 @@ def _check_local_agent_monitor_visibility(ctx: RunContext) -> list[CheckResult]:
                      "--delegation-dir", tmp,
                      "--llama-url", os.environ.get("AQ_QA_LLAMA_URL", "http://127.0.0.1:1")],
                     capture_output=True, text=True, timeout=60, cwd=str(ctx.repo_root),
+                    # Hermetic: never depend on a live switchboard / context assembler.
+                    env=dict(os.environ, SWITCHBOARD_URL="http://127.0.0.1:1", AQ_CONTEXT_ASSEMBLER="0"),
                 )
                 refusal = json.loads(rc.stderr.strip().splitlines()[-1]) if rc.stderr.strip() else {}
             if rc.returncode == 3 and refusal.get("refused") is True:
