@@ -1,0 +1,12 @@
+{
+  "schema": 1,
+  "pr": 683,
+  "reviewed_head_sha": "7531ec085de35c4e23f6188cc11732477c457e51",
+  "run_id": "gemini-20261104-094100-wf66t9",
+  "reviewer_lane": "gemini",
+  "author_lane": "claude",
+  "verdict": "PASS",
+  "output_file": ".agents/delegation/outputs/gemini-20261104-094100-wf66t9.log",
+  "output_sha256": "5244f7376a22a7c9186118f2319250a3122b4ef926067b70cc3b9f52436e5568",
+  "created_at": "2026-11-04T18:37:41Z"
+}
