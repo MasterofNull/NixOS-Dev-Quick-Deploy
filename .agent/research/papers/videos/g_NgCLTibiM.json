@@ -1,0 +1,16 @@
+{
+  "arxiv_id": "youtube:g_NgCLTibiM",
+  "title": "Make Your AI Agents Predictable With Graph Engineering - Zachary Blumenfeld, Neo4j",
+  "summary": "Zachary Blumenfeld describes graph engineering as an explicit representation of agent work: execution graphs route and run tasks, context graphs connect decisions to domain data, and procedural graphs encode reusable skills as steps, deterministic scripts, decision models, escalation paths, and validation. The talk emphasizes traceability, governance, improving procedures from observed runs, and portability of graph-shaped procedures across runtimes. The speaker presents performance and quality improvements as early results and a demonstration, not independently validated benchmarks.",
+  "harness_implications": "AQ-OS already has graph query, temporal knowledge graph, graph indexing, and skill/workflow infrastructure. The talk supports evaluating a bounded procedural-graph slice rather than adding another graph database: encode one real agent workflow as a versioned graph procedure; preserve run traces and provenance; route deterministic steps, model decisions, escalation, and validation explicitly; then prove it is called in a live path and observable through existing QA/dashboard surfaces. Current evidence does not establish that this full procedure lifecycle or cross-runtime portability is enabled end-to-end. Measure task success, latency, token use, and human interventions against the existing workflow before generalizing.",
+  "url": "https://www.youtube.com/watch?v=g_NgCLTibiM",
+  "source_channel": "AI Engineer (@aiDotEngineer)",
+  "source_type": "YouTube talk; summary derived from published captions mirrored by AINotes",
+  "source_transcript": "https://ainotes.us/summary/make-your-ai-agents-predictable-with-graph-engineering-zachary-blumenfeld-neo4j",
+  "ingestion_note": "The local aq-transcribe invocation produced metadata only and was stopped. This record is a concise research summary based on the published-caption transcript mirror; it is not a locally generated transcript.",
+  "caveats": [
+    "The talk's reported performance gains are speaker-reported early results and demonstration figures, not independently verified benchmarks.",
+    "Do not infer that AQ-OS currently provides complete procedural graph execution, provenance/versioning, drift assessment, or cross-runtime portability from source-level graph components alone."
+  ],
+  "ingested_at": "2026-11-03"
+}
