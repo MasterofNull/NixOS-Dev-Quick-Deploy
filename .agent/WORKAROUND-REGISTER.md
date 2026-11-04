@@ -417,3 +417,19 @@ Codex lane absent).
 - producer to fix: REA packaging (Nix) plus a REA-specific confine profile exposing it; confine.py streaming/stdin pass-through mode.
 - fix-path: package REA declaratively and add a `rea` profile; add a streaming mode to confine.run with a test that round-trips an MCP initialize through the sandbox.
 - class: T3 · severity: medium (capability down, no security exposure) · found 2026-10-27 retro-review batch G (Gemini PR #561).
+
+## WR-PM-ACCEPT-1 — factory-kit template projectors lack acceptance_assurance — OPEN (deferred, due 2026-11-30)
+- symptom: `templates/factory-kit/pm-tracker/projector.py` and `templates/factory-gate-bundle/pm-tracker/projector.py` do not emit `acceptance_assurance` / `status_label` / `shipped_unverified`, so generated kits still project a self-asserted owner acceptance as plain SHIPPED.
+- band-aid in place? no code band-aid; the template self-tests do not claim the new field. Dated deferral (verified acceptance slice 1, 2026-10-31); owner = orchestrator lane (Claude).
+- root cause: the template projectors are generated copies of `scripts/ai/aq-pm-tracker`, not a shared module.
+- producer to fix: `scripts/ai/aq-pm-tracker` (single source) via a template sync step.
+- fix-path: regenerate/sync both templates from `scripts/ai/aq-pm-tracker` after verified-acceptance slice 2 lands; add a parity test.
+- class: parity · severity: medium · due 2026-11-30.
+
+## WR-PM-ACCEPT-2 — `recorded` owner-acceptance assurance is evidence, not owner authentication — OPEN (interim until slice 3)
+- symptom: an item with a valid `approval_ref` projects `SHIPPED (recorded)`; every one of the 131 grandfathered owner acceptances projects `SHIPPED (unverified)`; `owner_verified_signed` is 0.
+- band-aid in place? yes, by design: labels say `recorded`/`unverified`, never verified. A same-uid agent can still fabricate a record and its hash (visible as a PR diff needing independent review).
+- root cause: aq-approve stores and the repo are writable by the agents' own OS user; the owner-authenticated anchor is the root-owned activation chain, not built yet.
+- producer to fix: activation-chain signer (`accept`/`wave-accept`/`reject` ops) and its verifier.
+- fix-path: verified-acceptance slice 3 after the signer MVP round trip; until then a signed-shaped `approval_ref` fails closed.
+- class: governance · severity: medium · SSOT `.agents/plans/system-integrity-recovery/VERIFIED-ACCEPTANCE.md`.

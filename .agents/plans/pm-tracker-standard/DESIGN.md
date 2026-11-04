@@ -117,7 +117,15 @@ canonical doc change (agent parity), not hash-bound.
 - it carries `receipt`: a schema-1 review receipt under `.agent/reviews/receipts/` (PASS/PASS_WITH_FOLLOWUPS, reviewer != author, reviewer == `by`), minted by `scripts/ai/aq-review-receipt` from a real reviewer run, or
 - the exact (plan, item, by) triple is in `config/pm-tracker-legacy-acceptances.json` (frozen, remove-only; enforced by `--check-legacy-allowlist` in `tier0.d/check-pm-tracker.sh`). The check diffs against the merge-base with `origin/main` (fallback `main`) and fails closed on any git or JSON error; the introducing-commit case requires the file to be absent at both the merge-base and the base ref (`origin/main`/`main`) tip; if it exists at the tip, that version is the base.
 
-Everything else fails closed. Origin: 2026-10-27 audit found 48 author-lane self-acceptances (reset in this change). Limitation: `hyperd` is self-asserted text; real owner acceptance needs an aq-approve-backed record.
+Everything else fails closed. Origin: 2026-10-27 audit found 48 author-lane self-acceptances (reset in this change). Limitation: `hyperd` is self-asserted text; see "Owner acceptance assurance" below for the approval_ref + allowlist contract.
+
+## Owner acceptance assurance (2026-10-31, verified acceptance slice 1)
+
+Design SSOT: `.agents/plans/system-integrity-recovery/VERIFIED-ACCEPTANCE.md` (rev5). `by: "hyperd"` classifies who a block claims to be; it is never trust. An owner `acceptance` block is backed only by (1) `approval_ref: {record, sha256}` pointing at a committed decision record under `.agent/approvals/acceptance/` that names this plan, item and the block's binding hash (`acceptance_sha256` = sha256 of canonical `{plan,item,acceptance minus approval_ref}`), or (2) a tuple in `config/pm-tracker-unbacked-owner-acceptances.json` (frozen, remove-only subset of `...baseline.json`, whose sha256 is pinned as `BASELINE_SHA256` in `tier0.d/check-pm-tracker.sh`). Malformed, ambiguous, unknown-key or signed-shaped refs are validation errors (the signed verifier is slice 3; nothing returns `signed` yet).
+
+Projection: items carry `acceptance_assurance` (`recorded` | `unverified` | null) and `status_label`; the marker ` (unverified)` / ` (recorded)` is appended to SHIPPED only (ACTIVATED and UNVERIFIED-hold labels never change). Counters `shipped_unverified`, `shipped_recorded`, `unbacked_owner_acceptances`, `owner_verified_signed` (0 until slice 3) appear per plan and in `--all-json`. `recorded` is evidence of a decision, not authentication of the owner.
+
+Gate: `aq-pm-tracker --check-owner-acceptance --baseline-sha256 <pin>` runs unconditionally from `tier0.d/check-pm-tracker.sh` (no SKIP). It fetches `origin/main` (fail closed offline), compares against the merge-base AND tip, and fails on conditions (a)-(e) of the design's R4 amendment C (after fetch, resolution and parsing succeed; prerequisite failures fail closed), plus any owner acceptance lacking a valid ref or allowlist entry, plus edits/deletes of existing decision records or log lines vs the merge-base.
 
 ## Untrusted-author hold (owner directive 2026-10-27)
 Work shipped by the Gemini/Antigravity lane is untrusted until independently re-verified (retro-review of PRs

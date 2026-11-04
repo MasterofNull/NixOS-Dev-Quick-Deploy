@@ -60,10 +60,13 @@ class AcceptanceAuthority(unittest.TestCase):
             if by:
                 self.assertIn(str(by), out)
 
-    def test_owner_passes(self):
+    def test_owner_literal_alone_no_longer_passes(self):
+        # "hyperd" is self-asserted text: without an approval_ref or a frozen-allowlist entry it is a validation error
+        # (full coverage in test-pm-tracker-owner-acceptance.py).
         for by in ["hyperd", "hyperd (owner directive 2026-09-26)"]:
             rc, out = run_check({"status": "accepted", "by": by, "date": "2026-10-27"})
-            self.assertEqual(rc, 0, f"{by!r}: {out}")
+            self.assertEqual(rc, 1, f"{by!r}: {out}")
+            self.assertIn("approval_ref", out)
 
     def test_valid_receipt_passes(self):
         rc, out = run_with_receipt(good_receipt())
