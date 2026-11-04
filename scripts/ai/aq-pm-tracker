@@ -14,7 +14,10 @@ Modes:
   aq-pm-tracker --check-owner-acceptance --baseline-sha256 <hex>   owner-acceptance gate (tier0.d/check-pm-tracker supplies the pinned digest)
 Owner acceptances: items carry acceptance_assurance (recorded | unverified | null) and status_label; a SHIPPED item
 whose owner acceptance has no valid approval_ref projects "SHIPPED (unverified)" (ACTIVATED/held labels unchanged).
-Status precedence: ACTIVATED > SHIPPED > BLOCKED > FROZEN > IN-PROGRESS > DESIGNED > NOT-STARTED.
+Activation cap (P0.9): SHIPPED additionally requires an activation signal (a live systemd_unit/command check, a
+verified-or-stale activation grant, or detection.wired_caller {file, pattern} found in the repo) AND a registered
+test (detection.tests: existing repo paths). Without both the item projects BUILT (code exists, not proven live).
+Status precedence: ACTIVATED > SHIPPED > BUILT > BLOCKED > FROZEN > IN-PROGRESS > DESIGNED > NOT-STARTED.
 UNVERIFIED (untrusted-author hold): an item that would project SHIPPED/ACTIVATED but whose commit evidence
 comes ONLY from `(#N)` squash commits listed in config/pm-tracker-untrusted-provenance.json is capped at
 UNVERIFIED until a valid independent review receipt or a later trusted commit clears it (see DESIGN.md).
@@ -44,7 +47,7 @@ _GIT_LOG_CACHE_PATHS = (
     Path("/var/lib/nixos-system-dashboard/telemetry/pm-git-log.cache"),
 )
 _STATUS_PCT_FLOOR = {"ACTIVATED": 100, "SHIPPED": 100, "BLOCKED": 0, "FROZEN": 20,
-                     "UNVERIFIED": 40, "IN-PROGRESS": 50, "DESIGNED": 10, "NOT-STARTED": 0}
+                     "UNVERIFIED": 40, "BUILT": 80, "IN-PROGRESS": 50, "DESIGNED": 10, "NOT-STARTED": 0}
 _UNVERIFIED_PCT = _STATUS_PCT_FLOOR["UNVERIFIED"]
 UNTRUSTED_CONFIG = REPO / "config" / "pm-tracker-untrusted-provenance.json"
 _PR_SUBJECT = re.compile(r"\(#(\d+)\)\s*$")
@@ -505,6 +508,34 @@ def _untrusted_hold(item: dict, gitlog: str, untrusted: dict | None, plan: str =
                       f"{'' if listed else ' or a later trusted commit'}"}
 
 
+def _activation_signal(item: dict, grant_signal: bool) -> bool:
+    """Activation evidence from data the projector already reads: live systemd/command projection, an activation
+    grant, or a wired caller (a repo file that matches a pattern). Never probes the live system beyond those."""
+    det = item.get("detection") or {}
+    if grant_signal or det.get("systemd_unit") or det.get("command"):
+        return True
+    wc = det.get("wired_caller")
+    if isinstance(wc, dict) and wc.get("file") and wc.get("pattern"):
+        f = REPO / wc["file"]
+        try:
+            return f.is_file() and re.search(wc["pattern"], f.read_text(errors="replace")) is not None
+        except (OSError, re.error):
+            return False
+    return False
+
+
+def _registered_test(item: dict) -> bool:
+    tests = (item.get("detection") or {}).get("tests") or []
+    return bool(tests) and all((REPO / t).is_file() for t in tests)
+
+
+def _cap_unactivated(item: dict, status: str, pct: int | None, reason: str) -> tuple[str, int | None]:
+    """P0.9: SHIPPED needs an activation signal AND a registered test, else BUILT."""
+    if status == "SHIPPED" and not (_activation_signal(item, reason == "grant-stale") and _registered_test(item)):
+        return "BUILT", _STATUS_PCT_FLOOR["BUILT"]
+    return status, pct
+
+
 def project_item_full(item: dict, gitlog: str, source_health: str = "complete",
                       untrusted: dict | None = None, plan: str = "",
                       activation_ctx: dict | None = None) -> tuple[str, int | None, dict | None]:
@@ -516,10 +547,11 @@ def project_item_full(item: dict, gitlog: str, source_health: str = "complete",
             if (item.get("detection") or {}).get("commit_match"):
                 return "UNKNOWN", None, {"degraded": True, "lane": "?", "since": "?", "prs": [],
                                          "reason": "untrusted-provenance config unavailable; completion unverifiable"}
-            return status, pct, None
-        hold = _untrusted_hold(item, gitlog, untrusted, plan)
-        if hold:
-            return "UNVERIFIED", _UNVERIFIED_PCT, hold
+        else:
+            hold = _untrusted_hold(item, gitlog, untrusted, plan)
+            if hold:
+                return "UNVERIFIED", _UNVERIFIED_PCT, hold
+    status, pct = _cap_unactivated(item, status, pct, reason)
     return status, pct, None
 
 
@@ -1380,6 +1412,9 @@ def _print_hold(it: dict, indent: str) -> None:
 
 def main() -> int:
     args = [a for a in sys.argv[1:]]
+    if "-h" in args or "--help" in args:
+        print(__doc__)
+        return 0
     if "--check-legacy-allowlist" in args:
         return check_legacy_allowlist()
     if "--check-untrusted-items" in args:

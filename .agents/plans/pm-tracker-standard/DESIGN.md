@@ -45,7 +45,9 @@ to (2), and (2)'s items roll up from ground truth.
      "detection": {                                     // ground-truth status signals
         "commit_match": ["regex"], "activation_subject": "...",
         "freeze_record": "path", "authorization_record": "path",
-        "slice_claim": "claim-id", "blocker_note": "..."
+        "slice_claim": "claim-id", "blocker_note": "...",
+        "wired_caller": {"file": "repo/path", "pattern": "regex"},  // activation signal: live caller exists
+        "tests": ["repo/path/to/registered-test"]                   // registered test(s); all must exist
      },
      "pct_hint": 0-100          // used only for 'active' rendering
   }],
@@ -55,6 +57,9 @@ to (2), and (2)'s items roll up from ground truth.
 ```
 Status precedence (projected): ACTIVATED > SHIPPED(done) > BLOCKED > FROZEN(active) >
 IN-PROGRESS(active) > DESIGNED > NOT-STARTED.
+**Activation cap (P0.9):** an item that would project SHIPPED projects BUILT (80%) unless it has BOTH an activation
+signal (`systemd_unit`/`command` live projection, a verified-or-stale activation grant, or a matching
+`wired_caller`) AND `detection.tests` (every path exists). ACTIVATED (verified grant) and the UNVERIFIED hold are unaffected.
 
 ## Rendering (reuse the proven template)
 Reuse the existing AQ-OS tracker HTML (gantt lanes, kanban board grouped done/active/
