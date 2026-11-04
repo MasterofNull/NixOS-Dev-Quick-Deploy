@@ -1221,9 +1221,38 @@ def test_cgroup_behavioral():
         confine._scope_cache.clear()
 
 
+def test_oom_detection_race_pure():
+    f = confine._oom_by_inference
+    K = confine.EXIT_KILLED
+    check("OOM race: watcher saw the event -> not inferred (counter path owns it)", not f("/x", {"attached": 1, "oom_kill": 1}, False, -9))
+    check("OOM race: attached, scope vanished before final read, SIGKILL -> oom-killed",
+          f("/x", {"attached": 1, "scope-gone": 1}, False, -9) and f("/x", {"attached": 1, "scope-gone": 1}, False, K))
+    check("OOM race: never attached, SIGKILL -> oom-killed", f("/x", {}, False, -9))
+    check("OOM race: attached, scope alive at last read, oom_kill=0, SIGKILL stays a plain kill",
+          not f("/x", {"attached": 1, "oom_kill": 0}, False, -9))
+    check("OOM race: our own kill (timeout/egress/size) is never relabelled", not f("/x", {"scope-gone": 1}, True, -9))
+    check("OOM race: non-SIGKILL exit is never relabelled", not f("/x", {"scope-gone": 1}, False, 1) and not f("/x", {}, False, 0))
+    check("OOM race: no systemd scope -> never inferred", not f(None, {"scope-gone": 1}, False, -9))
+    import errno, tempfile
+    with tempfile.NamedTemporaryFile() as tf:
+        orig = (confine._scope_events_path, confine.os.pread)
+        confine._scope_events_path = lambda _r: tf.name
+
+        def gone(*_a):
+            raise OSError(errno.ENODEV, "scope removed")
+        confine.os.pread = gone
+        out_d = {}
+        try:
+            confine._watch_oom("racerun0001", threading.Event(), out_d)
+        finally:
+            confine._scope_events_path, confine.os.pread = orig
+    check("OOM race: watcher records scope-gone when the final read fails", out_d.get("attached") == 1 and out_d.get("scope-gone") == 1
+          and "oom_kill" not in out_d, str(out_d))
+
+
 def main():
     pure = [test_profiles_and_schema, test_cgroup_scope_pure, test_explain_goldens, test_env_and_path_policy, test_fail_closed_simulated, test_lint,
-            test_host_git_hostile_layout, test_hostile_dirs_pure, test_guidance_pure, test_nproc_headroom, test_path_policy_h2]
+            test_host_git_hostile_layout, test_hostile_dirs_pure, test_guidance_pure, test_nproc_headroom, test_path_policy_h2, test_oom_detection_race_pure]
     behav = [test_secrets_and_env, test_writes_and_net_and_commit, test_git_hostile_inside, test_import_cases,
              test_mid_run_and_kill, test_kill_limits_isolation_guidance, test_size_caps_and_telemetry, test_explain_cli_exact,
              test_h2_h1_m1_m3_behavioral, test_cgroup_behavioral]
