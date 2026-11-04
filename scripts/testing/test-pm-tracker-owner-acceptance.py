@@ -753,6 +753,18 @@ class HealthSpiderProbe(unittest.TestCase):
         self._td = tempfile.TemporaryDirectory()
         self.addCleanup(self._td.cleanup)
         self.state = Path(self._td.name) / "state.json"
+        self._anchor_env = {
+            name: os.environ.get(name)
+            for name in (self.hs._OWNER_ACCEPTANCE_ANCHOR_PATH_ENV, self.hs._OWNER_ACCEPTANCE_ANCHOR_SHA256_ENV)
+        }
+        self.addCleanup(self._restore_anchor_env)
+
+    def _restore_anchor_env(self):
+        for name, value in self._anchor_env.items():
+            if value is None:
+                os.environ.pop(name, None)
+            else:
+                os.environ[name] = value
 
     def key(self, n):
         return ["plan-x", f"I{n}", f"{n:064x}"]
@@ -765,24 +777,24 @@ class HealthSpiderProbe(unittest.TestCase):
         return lambda: (rc, json.dumps(body))
 
     def _entries(self, listed):
-        return json.dumps({"entries": [dict(zip(("plan", "item", "acceptance_sha256"), self.key(i))) for i in listed]})
+        return json.dumps({"schema": 1, "frozen": "test", "note": "test",
+                           "entries": [dict(zip(("plan", "item", "acceptance_sha256"), self.key(i))) for i in listed]})
 
-    def allow(self, listed, working=None):
-        """Trusted blob = origin/main in a temp repo; working-tree file defaults to the same entries."""
-        repo = Path(self._td.name) / "repo"
-        if not repo.exists():
-            subprocess.run(["git", "init", "-q", str(repo)], check=True)
-        g = lambda *a: subprocess.run(["git", "-C", str(repo), "-c", "user.name=t", "-c", "user.email=t@t", *a], check=True, capture_output=True)
-        f = repo / "config" / "pm-tracker-unbacked-owner-acceptances.json"
-        f.parent.mkdir(exist_ok=True)
-        f.write_text(self._entries(listed))
-        g("add", "-A"); g("commit", "-q", "-m", "allow")
-        g("update-ref", "refs/remotes/origin/main", "HEAD")
-        f.write_text(self._entries(listed if working is None else working))
-        self.repo = repo
+    def allow(self, listed):
+        self.anchor(self._entries(listed).encode())
+
+    def anchor(self, blob):
+        expr = ('let flake = builtins.getFlake ' + json.dumps(str(REAL))
+                + '; pkgs = import flake.inputs.nixpkgs { system = builtins.currentSystem; }; in '
+                + 'pkgs.writeText "owner-acceptance-fixture.json" ' + json.dumps(blob.decode()))
+        result = subprocess.run(["nix", "build", "--impure", "--no-link", "--print-out-paths", "--expr", expr], check=True, capture_output=True, text=True)
+        path = result.stdout.strip()
+        self.assertTrue(path.startswith("/nix/store/"), path)
+        os.environ[self.hs._OWNER_ACCEPTANCE_ANCHOR_PATH_ENV] = path
+        os.environ[self.hs._OWNER_ACCEPTANCE_ANCHOR_SHA256_ENV] = sha(blob)
 
     def types(self, runner):
-        return sorted(x["type"] for x in self.hs._owner_acceptance_check(runner, self.state, getattr(self, "repo", Path(self._td.name) / "norepo")))
+        return sorted(x["type"] for x in self.hs._owner_acceptance_check(runner, self.state))
 
     def test_counters_published_and_listed_is_quiet(self):
         self.allow([1, 2, 3])
@@ -795,12 +807,10 @@ class HealthSpiderProbe(unittest.TestCase):
         self.allow([1, 2, 3])
         self.assertEqual(self.types(self.runner([1, 2, 4])), ["owner_acceptance_unbacked_rising"])   # swap: same count
 
-    def test_removing_entry_from_allowlist_and_reality_is_quiet(self):
+    def test_source_removal_remains_allowed_until_owner_rebuild(self):
         self.allow([1, 2])
-        self.assertEqual(self.types(self.runner([1, 2])), [])
-        self.allow([1])
-        self.assertEqual(self.types(self.runner([1])), [])
-        self.assertEqual(self.types(self.runner([1, 2])), ["owner_acceptance_unbacked_rising"])   # not re-addable
+        (Path(self._td.name) / "mutable-source.json").write_text(self._entries([1]))
+        self.assertEqual(self.types(self.runner([2])), [])  # stale-superset until the owner rebuilds
 
     def test_state_file_content_never_changes_the_decision(self):
         self.allow([1, 2])
@@ -828,21 +838,38 @@ class HealthSpiderProbe(unittest.TestCase):
             self.assertEqual(self.types(runner), ["owner_acceptance_probe_failed"])
         self.assertEqual(self.events, [])    # nothing measured, nothing published as a count
 
-    def test_unreadable_allowlist_is_probe_failed(self):
+    def test_missing_or_unreadable_anchor_is_probe_failed(self):
         self.assertEqual(self.types(self.runner([1])), ["owner_acceptance_probe_failed"])     # no repo at all
+        os.environ[self.hs._OWNER_ACCEPTANCE_ANCHOR_PATH_ENV] = "/nix/store/missing-owner-acceptance-anchor"
+        os.environ[self.hs._OWNER_ACCEPTANCE_ANCHOR_SHA256_ENV] = "0" * 64
+        self.assertEqual(self.types(self.runner([1])), ["owner_acceptance_probe_failed"])
+
+    def test_malformed_or_schema_invalid_anchor_is_probe_failed(self):
+        for blob in (b"not json", b'{"schema": 1, "entries": []}'):
+            expr = ('let flake = builtins.getFlake ' + json.dumps(str(REAL))
+                    + '; pkgs = import flake.inputs.nixpkgs { system = builtins.currentSystem; }; in '
+                    + 'pkgs.writeText "invalid-owner-acceptance-fixture.json" ' + json.dumps(blob.decode()))
+            path = subprocess.run(["nix", "build", "--impure", "--no-link", "--print-out-paths", "--expr", expr], check=True, capture_output=True, text=True).stdout.strip()
+            os.environ[self.hs._OWNER_ACCEPTANCE_ANCHOR_PATH_ENV] = path
+            os.environ[self.hs._OWNER_ACCEPTANCE_ANCHOR_SHA256_ENV] = sha(blob)
+            self.assertEqual(self.types(self.runner([1])), ["owner_acceptance_probe_failed"])
+
+    def test_hash_mismatch_is_probe_failed(self):
         self.allow([1])
-        subprocess.run(["git", "-C", str(self.repo), "update-ref", "-d", "refs/remotes/origin/main"], check=True)
-        self.assertEqual(self.types(self.runner([1])), ["owner_acceptance_probe_failed"])     # no origin/main
+        os.environ[self.hs._OWNER_ACCEPTANCE_ANCHOR_SHA256_ENV] = "0" * 64
+        self.assertEqual(self.types(self.runner([1])), ["owner_acceptance_probe_failed"])
 
-    def test_codex_repro_working_tree_addition_cannot_silence(self):
-        self.allow([1, 2], working=[1, 2, 9])
-        self.assertEqual(self.types(self.runner([1, 2, 9])),
-                         ["owner_acceptance_allowlist_unauthorized", "owner_acceptance_unbacked_rising"])
-        self.assertEqual(self.types(self.runner([1, 2])), ["owner_acceptance_allowlist_unauthorized"])
-
-    def test_working_tree_removal_is_quiet(self):
-        self.allow([1, 2, 3], working=[1])
-        self.assertEqual(self.types(self.runner([1])), [])
+    def test_worktree_or_origin_mutation_cannot_silence(self):
+        self.allow([1, 2])
+        mutable = Path(self._td.name) / "mutable-repo" / "config" / "pm-tracker-unbacked-owner-acceptances.json"
+        mutable.parent.mkdir(parents=True)
+        mutable.write_text(self._entries([1, 2, 9]))
+        original_run = self.hs.subprocess.run
+        self.hs.subprocess.run = lambda *args, **kwargs: self.fail("anchor decision must not read git/origin")
+        try:
+            self.assertEqual(self.types(self.runner([1, 2, 9])), ["owner_acceptance_unbacked_rising"])
+        finally:
+            self.hs.subprocess.run = original_run
 
     def test_state_write_failure_is_reported(self):
         self.allow([1])
@@ -852,17 +879,11 @@ class HealthSpiderProbe(unittest.TestCase):
         self.addCleanup(ro.chmod, 0o700)
         if os.access(ro, os.W_OK):
             self.skipTest("cannot make a directory unwritable (running as root)")
-        a = sorted(x["type"] for x in self.hs._owner_acceptance_check(self.runner([1]), ro / "state.json", self.repo))
+        a = sorted(x["type"] for x in self.hs._owner_acceptance_check(self.runner([1]), ro / "state.json"))
         self.assertEqual(a, ["owner_acceptance_state_unwritable"])
 
     def test_real_projection_keys_are_all_in_real_allowlist(self):
-        real = json.loads((REAL / "config" / "pm-tracker-unbacked-owner-acceptances.json").read_text())["entries"]
-        self.allow([])
-        repo = self.repo
-        f = repo / "config" / "pm-tracker-unbacked-owner-acceptances.json"
-        f.write_text(json.dumps({"entries": real}))
-        subprocess.run(["git", "-C", str(repo), "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qam", "real"], check=True)
-        subprocess.run(["git", "-C", str(repo), "update-ref", "refs/remotes/origin/main", "HEAD"], check=True)
+        self.anchor((REAL / "config" / "pm-tracker-unbacked-owner-acceptances.json").read_bytes())
         r = subprocess.run([sys.executable, str(TRACKER), "--all-json"], capture_output=True, text=True, cwd=str(REAL))
         self.assertEqual(self.types(lambda: (r.returncode, r.stdout)), [])
 

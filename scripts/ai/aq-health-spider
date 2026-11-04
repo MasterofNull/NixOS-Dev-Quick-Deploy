@@ -28,6 +28,7 @@ except Exception:
 
 import argparse
 import asyncio
+import hashlib
 import json
 import logging
 import os
@@ -919,17 +920,53 @@ def _deployed_revision_check(rev: Optional[str] = None, repo: Optional[Path] = N
 
 
 _OWNER_ACCEPTANCE_STATE = REPO_ROOT / ".agents" / "telemetry" / "owner-acceptance-unbacked.json"
-_OWNER_ALLOWLIST_REL = "config/pm-tracker-unbacked-owner-acceptances.json"
 _OWNER_ACCEPTANCE_KEYS = ("shipped_unverified", "shipped_recorded", "unbacked_owner_acceptances", "owner_verified_signed")
+_OWNER_ACCEPTANCE_ENTRY_KEYS = ("plan", "item", "acceptance_sha256")
+_OWNER_ACCEPTANCE_ANCHOR_PATH_ENV = "OWNER_ACCEPTANCE_ALLOWLIST_PATH"
+_OWNER_ACCEPTANCE_ANCHOR_SHA256_ENV = "OWNER_ACCEPTANCE_ALLOWLIST_SHA256"
 
 
-def _owner_acceptance_check(runner=None, state_path: Optional[Path] = None, repo: Optional[Path] = None) -> List[Dict[str, Any]]:
+def _owner_acceptance_anchor_entries() -> set:
+    """Read the Nix-produced owner-acceptance anchor without mutable fallbacks."""
+    raw_path = os.environ.get(_OWNER_ACCEPTANCE_ANCHOR_PATH_ENV)
+    expected_sha256 = os.environ.get(_OWNER_ACCEPTANCE_ANCHOR_SHA256_ENV)
+    if not raw_path or not expected_sha256:
+        raise ValueError("deployed Nix anchor environment is missing; redeploy ai-health-spider")
+    path = Path(raw_path)
+    if not path.is_absolute() or path.parent != Path("/nix/store") or path.is_symlink():
+        raise ValueError("deployed Nix anchor must be a direct /nix/store file; redeploy ai-health-spider")
+    if len(expected_sha256) != 64 or any(c not in "0123456789abcdef" for c in expected_sha256):
+        raise ValueError("deployed Nix anchor SHA-256 is invalid; redeploy ai-health-spider")
+    raw = path.read_bytes()
+    if hashlib.sha256(raw).hexdigest() != expected_sha256:
+        raise ValueError("deployed Nix anchor SHA-256 mismatch; redeploy ai-health-spider")
+    doc = json.loads(raw.decode("utf-8"))
+    if not isinstance(doc, dict) or set(doc) != {"schema", "frozen", "note", "entries"}:
+        raise ValueError("deployed Nix anchor schema is invalid; redeploy ai-health-spider")
+    if doc["schema"] != 1 or not isinstance(doc["frozen"], str) or not isinstance(doc["note"], str):
+        raise ValueError("deployed Nix anchor schema is invalid; redeploy ai-health-spider")
+    if not isinstance(doc["entries"], list):
+        raise ValueError("deployed Nix anchor entries are invalid; redeploy ai-health-spider")
+    entries = set()
+    for entry in doc["entries"]:
+        if not isinstance(entry, dict) or set(entry) != set(_OWNER_ACCEPTANCE_ENTRY_KEYS):
+            raise ValueError("deployed Nix anchor entry schema is invalid; redeploy ai-health-spider")
+        key = tuple(entry[k] for k in _OWNER_ACCEPTANCE_ENTRY_KEYS)
+        if (not all(isinstance(value, str) and value for value in key)
+                or len(key[2]) != 64 or any(c not in "0123456789abcdef" for c in key[2])):
+            raise ValueError("deployed Nix anchor entry is invalid; redeploy ai-health-spider")
+        if key in entries:
+            raise ValueError("deployed Nix anchor contains duplicate entries; redeploy ai-health-spider")
+        entries.add(key)
+    return entries
+
+
+def _owner_acceptance_check(runner=None, state_path: Optional[Path] = None) -> List[Dict[str, Any]]:
     """Owner-acceptance assurance probe (verified acceptance slice 1). Publishes shipped_unverified / shipped_recorded /
     unbacked_owner_acceptances / owner_verified_signed (always 0 until the signed path ships) as a telemetry event every
     cycle, and alerts when any unbacked acceptance is absent from the committed remove-only allowlist. A probe that could not read the projection is itself an anomaly: a check that measured nothing must
     not look healthy. `runner` returns (returncode, stdout) and is a test seam."""
     state_path = state_path or _OWNER_ACCEPTANCE_STATE
-    repo = repo or REPO_ROOT
     now = time.time()
 
     def failed(detail: str) -> List[Dict[str, Any]]:
@@ -950,24 +987,11 @@ def _owner_acceptance_check(runner=None, state_path: Optional[Path] = None, repo
     except (OSError, subprocess.TimeoutExpired, ValueError, KeyError, TypeError) as exc:
         return failed(f"owner-acceptance counts unavailable: {exc}")
     _emit_event("owner_acceptance_assurance", counts)
-    # Decision = set membership of each live unbacked acceptance against the allowlist blob on the protected trunk
-    # (origin/main), never the working tree and never mutable state (both are agent-writable).
-    def entry_set(text: str) -> set:
-        return {tuple(e.get(k) for k in ("plan", "item", "acceptance_sha256")) for e in json.loads(text)["entries"]}
-
     try:
-        r = subprocess.run(["git", "-c", f"safe.directory={repo}", "-C", str(repo), "show", f"origin/main:{_OWNER_ALLOWLIST_REL}"],
-                           capture_output=True, text=True, timeout=10)
-        if r.returncode != 0:
-            return failed(f"trusted allowlist origin/main:{_OWNER_ALLOWLIST_REL} unreadable: {r.stderr.strip()[:200]}")
-        allowed = entry_set(r.stdout)
+        allowed = _owner_acceptance_anchor_entries()
         live = [tuple(i["unbacked_key"]) for p in data["plans"] for i in p["items"] if "unbacked_key" in i]
     except (OSError, subprocess.TimeoutExpired, ValueError, KeyError, TypeError, AttributeError) as exc:
-        return failed(f"owner-acceptance trusted allowlist/keys unreadable: {exc}")
-    try:
-        added = sorted(entry_set((repo / _OWNER_ALLOWLIST_REL).read_text()) - allowed)   # removals are stricter: fine
-    except (OSError, ValueError, KeyError, TypeError, AttributeError):
-        added = []   # an unreadable working copy cannot widen the trusted set
+        return failed(f"owner-acceptance deployed Nix anchor/keys unreadable: {exc}")
     unlisted = sorted(k for k in live if k not in allowed)
     if len(live) != counts["unbacked_owner_acceptances"]:
         unlisted = unlisted or [("?", "?", "count/keys mismatch")]
@@ -980,14 +1004,9 @@ def _owner_acceptance_check(runner=None, state_path: Optional[Path] = None, repo
                     "detail": f"trend state not persisted ({state_path}): {exc}", "timestamp": now})
     if unlisted:
         out.append({"type": "owner_acceptance_unbacked_rising", "zone": "owner-acceptance", "severity": "high",
-                    "detail": f"{len(unlisted)} unbacked owner acceptance(s) not in origin/main:{_OWNER_ALLOWLIST_REL} "
+                    "detail": f"{len(unlisted)} unbacked owner acceptance(s) not in the deployed Nix anchor "
                               f"(add an approval_ref; the allowlist is remove-only): {unlisted[:5]}",
                     "unlisted": [list(k) for k in unlisted], "current": counts["unbacked_owner_acceptances"], "timestamp": now})
-    if added:
-        out.append({"type": "owner_acceptance_allowlist_unauthorized", "zone": "owner-acceptance", "severity": "high",
-                    "detail": f"{len(added)} allowlist entr(ies) in the working tree are absent from origin/main (the allowlist "
-                              f"is remove-only; ignored for the decision): {added[:5]}",
-                    "added": [list(k) for k in added], "timestamp": now})
     return out
 
 

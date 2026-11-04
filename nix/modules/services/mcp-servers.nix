@@ -83,6 +83,12 @@ let
         name = "nixos-quick-deploy-repo";
       };
 
+  ownerAcceptanceAllowlistSource = builtins.readFile
+    "${toString repoSource}/config/pm-tracker-unbacked-owner-acceptances.json";
+  ownerAcceptanceAllowlist = pkgs.writeText "pm-tracker-unbacked-owner-acceptances.json"
+    ownerAcceptanceAllowlistSource;
+  ownerAcceptanceAllowlistSha256 = builtins.hashString "sha256" ownerAcceptanceAllowlistSource;
+
   repoMcp = "${toString repoSource}/ai-stack/mcp-servers";
   repoAiStack = "${toString repoSource}/ai-stack";
   # Keep active OSINT service evaluation secure. Maigret/MOSAIC remain excluded
@@ -1891,6 +1897,8 @@ in {
             RestartSec = "10s";
             Environment = [
               "REPO_ROOT=${mcp.repoPath}"
+              "OWNER_ACCEPTANCE_ALLOWLIST_PATH=${ownerAcceptanceAllowlist}"
+              "OWNER_ACCEPTANCE_ALLOWLIST_SHA256=${ownerAcceptanceAllowlistSha256}"
               # Phase 101 pattern: repoSource is Nix store (read-only); live path needed for writes.
               "ATTENTION_QUEUE_DIR=${mcp.repoPath}/.agents/attention"
             ];
