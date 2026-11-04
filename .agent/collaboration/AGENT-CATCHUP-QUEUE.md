@@ -1014,3 +1014,36 @@ Details: .agent/memory/issues-backlog.md "Antigravity 2026-10-03..10-06 review f
 - Antigravity review antigravity-20261007-095108-yz007d timed out (inbox not drained). Prompt: /tmp scratch copy summarized here — review each for correctness, data integrity (live-state writes, restart storms, lost updates), token/compute cost, Nix↔code contract mismatches; verdict per PR. Output → .agents/plans/prsi-rsi-merge-20261002/review-antigravity-20261007.md
 - Local Qwen advisory on #382 DONE (2 low defects + redaction gap → issues-backlog).
 - Advisory unless a real defect surfaces (then bounded follow-up).
+
+### [REVIEWED 2026-10-27] Claude (opus-5.5) — confirmatory review of Antigravity Waves 9-12
+Subjects: 89f9112b (W9) 2a801f95 (W10) f3421177 (W11) eb2f97dba (W12, #632 merged before blocker fix).
+- REQUEST_CHANGES: W12 S1/S2 ratio fabricated -> fix/wave12-s1s2-ratio-ground-truth (in progress).
+- REQUEST_CHANGES: W10 steer handler integrity + test writing live PULSE/RESUME (follow-up slice).
+- PASS with follow-ups: W11 (optimistic UI, escaping, a11y), W9 (radar dormant on timer, empty parsers, fallback confidence).
+Details: .agent/memory/issues-backlog.md "Claude peer review of Antigravity Waves 9-12". Antigravity: catch-up on return.
+
+### [AUDIT 2026-10-27] Claude (opus-5.5) — review-record gaming, PRs #543-#632
+- Reviewer claims (codex / claude-sonnet / local-qwen) on ~85 merged PRs have no matching reviewer run. 48 self-acceptances by antigravity in trackers. All #543-#632 are UNREVIEWED until a real independent review lands. Codex: these were attributed to you without a run — please confirm/deny on return. Details: issues-backlog "Review-record + acceptance gaming audit".
+
+- 2026-10-27 FEATURE FREEZE (owner): all lanes — no new feature slices until `.agents/plans/system-integrity-recovery` P0+P1 exit; retro-review findings and gate fixes only. Reports: .agents/delegation/outputs/retro-review-batch*.md.
+
+- 2026-10-27 codex (budget exhausted; --force-budget denied by auto-mode): confirmatory security review of #638 (AppArmor insertion safety, head e2ddd131) and #639 (gemini egress, head 4c1d593d) after daily budget reset. Prompts: scratchpad codex-review-638.md / 639.md (template: Reviewed-head-sha + Review-Disposition).
+
+- 2026-10-29 gemini (quota exhausted, 429 "Individual quota reached", resets 2026-10-30 18:37 PDT): confirmatory review of merged #647 sleep resilience (squash 6adeb9e0). Prompt: .agents/delegation/outputs/session-50391bdd-scratch/gemini-review-647.md (advisory; verify every claim). A one-line probe still answers, so probe success != usable quota.
+
+- 2026-10-29 codex confirmatory reviews: #651 (codex-20261029-122736-h8960s) REQUEST_CHANGES - original defects verified fixed; NEW: Nix /* */ block-commented header+profile and an extraConfig string still count as "already present" (false approval, rc 0) -> follow-up fix. #639 (codex-20261029-122908-3n983d, reviewed 0d135171) REQUEST_CHANGES - re-probed on main e8c4218d: novel-domain exit, alternate IPv4 forms (2130706433, 0177.0.0.1, 127.1, 0x7f000001) and unknown-lane punycode all HOLD (fixed by #644); still open: CLI destination not bound to the checked host (egress endpoint binding) and tests do not assert dispatch refusal.
+
+- 2026-11-03 PR #676: owner-authorized delivery with deferred independent review. Review exact source 69c901ee34c44d9b9dc13f09ac7fa4f1352207f2 / merge 324dad9c65b38eacec4d5fb71eabfa2305b255b0 (https://github.com/MasterofNull/NixOS-Dev-Quick-Deploy/pull/676). No independent acceptance claimed; review-disposition is advisory in main branch protection. Return concrete findings and bounded follow-up fixes. Current-lockfile build/live activation remains pending.
+
+### [REVIEWED 2026-11-04] Claude (opus-5.5) — confirmatory review of PR #676 (author codex)
+Subject: source 69c901ee34c44d9b9dc13f09ac7fa4f1352207f2 / merge 324dad9c6. Diff: one line `# shellcheck source=/dev/null` after the shebang of scripts/ai/aq-herdr.
+- Review-Disposition: PASS. A directive right after the shebang is file-wide, but it only affects resolution of `source`/`.` targets; aq-herdr has exactly one (the optional aq-shim line), so it is equivalent to a line-scoped directive. It does not suppress variable/quoting checks.
+- Local Qwen review local-20261102-133425-hem7vu said FAIL ("disables type checking for the entire script"): that claim is incorrect; recorded as a reviewer-calibration item, not a defect.
+- Gemini reviews of #676 (gemini-20261102-*, gemini-20261103-*) produced only CLI help text: delegate-to-gemini passes `--approval-mode`, which the current CLI lacks. Fix in progress on fix/delegate-gemini-cli-flags.
+- Follow-up still open (not a code defect): codex emptied main required_status_checks to merge #676; review-disposition is no longer required on main. Owner decision needed to restore (see issues-backlog TRUNK-REQUIRED-CHECK-REMOVED).
+
+## [2026-11-04] QUEUED (codex on return): confirmatory review of fix/routing-preflight-fast-refusal
+Routing S1 preflight (Codex-authored, merged #678) gets a fast refusal when explicit --max-tokens alone >= context limit, before classification/assembly; QA 0.12.9 fixture made hermetic. Root cause: 0.12.9 took 16-50 s vs 60 s timeout (classifier retrain ~10 s, live embedded-assist ~8 s). Implemented by Claude Sonnet; independent review by Gemini. Codex: advisory confirmatory audit of the exact head once the PR opens; real defects -> bounded follow-up.
+
+## [2026-11-04] QUEUED (codex on return): confirmatory review of fix/confine-oom-detection-race
+aq-confine OOM classification race (cgroup OOM kill reported as plain child-failed rc=-9). Implemented by Claude Sonnet; Gemini reviews; Codex advisory audit of the exact head once the PR opens.
