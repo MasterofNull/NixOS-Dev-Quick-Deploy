@@ -39,7 +39,6 @@ jobs:
             --exclude=SC2086
             --exclude=SC2046
             --shell=bash
-        continue-on-error: true
       
       - name: ShellCheck Summary
         if: always()
