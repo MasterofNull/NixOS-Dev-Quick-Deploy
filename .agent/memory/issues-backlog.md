@@ -6218,3 +6218,7 @@ File: scripts/ai/lib/worktree-isolation.sh; scripts/automation/prsi-orchestrator
 [DONE] rsi-b14a56f02e72228dea7c852b — resolved 2026-10-26: phase-0 check 0.10.2 passing in health-monitor JSON run 2026-10-26T06:44:01Z — ledger status=resolved
 
 [DONE] rsi-6e45c88de3ad4e164a6da6cb — resolved 2026-10-26: fixed timestamp parsing in ContinuousLearningPipeline._parse_event_timestamp to handle +00:00Z and trailing Z ISO variants — ledger status=resolved
+
+[FIXED; BUILD AND ACTIVATION VERIFIED] herdr-home-manager-shellcheck — Home Manager generation blocked by SC1091 on optional telemetry source. Root cause: repository-only relative shim is absent from writeShellApplication build inputs; optional-source contract lacked ShellCheck annotation. Severity: high. Action: annotate the optional source and validate the complete generation. File: scripts/ai/aq-herdr:2.
+
+[DEFERRED] herdr-h2-project-packaging — project prototype commands require python3 and repository-relative lib files absent from the H1 facade package. Root cause: prototype assumes repository execution; facade runtimeInputs contains only coreutils. Severity: medium. Action: resolve with H2 packaging before claiming H2 readiness; outside H1 rebuild regression. Files: scripts/ai/aq-herdr (project dispatch), nix/home/herdr.nix (runtimeInputs).
