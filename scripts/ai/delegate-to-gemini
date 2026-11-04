@@ -12,21 +12,20 @@
 #   delegate-to-gemini --list                             # list all delegated tasks
 #   delegate-to-gemini --status <task-id>                 # check running/done/failed
 #
-# Approval modes (--mode flag):
-#   yolo       — approve all tool calls automatically, incl. run_shell_command (DEFAULT)
-#   auto_edit  — auto-approve file edits only; run_shell_command NOT available in this mode
+# Approval modes (--mode flag), mapped to the Gemini CLI --mode flag:
+#   yolo       -> --mode auto        — approve all tool calls automatically, incl. run_shell_command (DEFAULT)
+#   auto_edit  -> --mode accept-edits — auto-approve file edits only; run_shell_command NOT available
+#   plan       -> --mode plan        — read-only, intended for reviews
 #
-#   DEFAULT changed to yolo (2026-05-18): auto_edit restricts Gemini to read_file/grep_search/
+#   DEFAULT is yolo (2026-05-18): auto_edit restricts Gemini to read_file/grep_search/
 #   replace only — any prompt telling Gemini to run aq-* or shell commands wastes a turn
 #   with "Tool run_shell_command not found". Use --mode auto_edit explicitly when you want
 #   to prevent all shell execution (pure read+edit tasks only).
 #
-#   NOTE: 'plan' mode is NOT supported by the current Gemini API tier — returns HTTP 400.
-#
 # Options:
 #   --prompt TEXT      Task prompt to send to Gemini
 #   --prompt-file FILE Read prompt from file
-#   --mode MODE        Approval mode: auto_edit|yolo  [default: yolo]
+#   --mode MODE        Approval mode: yolo|auto_edit|plan  [default: yolo]
 #   --model MODEL      Gemini model override
 #   --wait             Block until task completes (default: background)
 #   --check ID         Print output of a completed task
@@ -43,7 +42,7 @@ source "${SCRIPT_DIR}/lib/delegation-dir.sh" 2>/dev/null || resolve_delegation_d
 DELEGATION_DIR="${AQ_DELEGATION_DIR:-$(resolve_delegation_dir "$SCRIPT_DIR")}"
 OUTPUTS_DIR="$DELEGATION_DIR/outputs"
 REGISTRY="$DELEGATION_DIR/registry.jsonl"
-GEMINI_BIN="${GEMINI_BIN:-$HOME/.npm-global/bin/gemini}"
+GEMINI_BIN="${GEMINI_BIN:-$(command -v gemini 2>/dev/null || echo "$HOME/.local/bin/gemini")}"
 
 # Phase 173: minimum meaningful content bytes to treat a non-zero-exit run as partial-success.
 # Raw byte threshold (200) is fooled by large error-only logs (stack traces, retry attempts).
@@ -163,8 +162,7 @@ _gemini_meaningful_bytes() {
 
 require_gemini() {
     [[ -x "$GEMINI_BIN" ]] || die "Gemini CLI not found at $GEMINI_BIN
-  Install: npm install -g @google/gemini-cli
-  Or set:  export GEMINI_BIN=/path/to/gemini
+  Install the gemini CLI so it is on PATH, or set:  export GEMINI_BIN=/path/to/gemini
 
   AUTH NOTE (2026-06-18): Google sunset individual OAuth access permanently.
   This script delegates via the @google/gemini-cli npm binary using API-key auth
@@ -401,7 +399,14 @@ ${prompt}"
     # NO_COLOR=1 + TERM=dumb suppress "256-color not detected" and ANSI noise in log files
     # Inject /run/current-system/sw/bin so Gemini tool calls can find rg, fd, jq, etc.
     local _augmented_path="/run/current-system/sw/bin:${PATH}"
-    local cmd=(env NO_COLOR=1 TERM=dumb "PATH=${_augmented_path}" "$GEMINI_BIN" "-p" "$full_prompt" "--approval-mode" "$mode")
+    local cli_mode
+    case "$mode" in
+        yolo)      cli_mode="auto" ;;
+        auto_edit) cli_mode="accept-edits" ;;
+        plan)      cli_mode="plan" ;;
+        *) die "Unmapped mode '$mode'" ;;
+    esac
+    local cmd=(env NO_COLOR=1 TERM=dumb "PATH=${_augmented_path}" "$GEMINI_BIN" "-p" "$full_prompt" "--mode" "$cli_mode")
     [[ -n "$model_flag" ]] && cmd+=("--model" "$model_flag")
 
     # Register before launching so the task is findable even if we die
@@ -469,9 +474,10 @@ ${prompt}"
 
 PROMPT=""
 PROMPT_FILE=""
-# Default: yolo mode — provides run_shell_command + full tool surface.
-# auto_edit restricts to read_file/grep_search/replace only, causing run_shell_command errors.
-# Use --mode auto_edit explicitly only when you want to prevent shell execution.
+# Default: yolo mode (Gemini CLI --mode auto) — provides run_shell_command + full tool surface.
+# auto_edit (--mode accept-edits) restricts to read_file/grep_search/replace only, causing
+# run_shell_command errors. Use --mode auto_edit explicitly only when you want to prevent
+# shell execution. plan (--mode plan) is read-only, intended for reviews.
 MODE="yolo"
 MODEL=""
 ROLE="implement"
@@ -497,9 +503,8 @@ done
 
 # Validate approval mode
 case "$MODE" in
-    yolo|auto_edit) ;;
-    plan) die "'plan' mode is not supported by current Gemini API (returns HTTP 400). Use 'auto_edit' for research tasks." ;;
-    *) die "Invalid --mode '$MODE'. Valid: auto_edit | yolo" ;;
+    yolo|auto_edit|plan) ;;
+    *) die "Invalid --mode '$MODE'. Valid: yolo | auto_edit | plan" ;;
 esac
 
 case "$ROLE" in

@@ -19,7 +19,7 @@
       "privileged_reason": "edit -> --dangerously-bypass-approvals-and-sandbox: arbitrary shell + edits with no per-action approval."
     },
     "gemini": {
-      "allowed_modes": ["auto_edit", "yolo"],
+      "allowed_modes": ["plan", "auto_edit", "yolo"],
       "privileged_modes": ["yolo"],
       "blocked_modes": [],
       "privileged_reason": "yolo -> auto-approves ALL tool calls including run_shell_command (no approval prompt)."
