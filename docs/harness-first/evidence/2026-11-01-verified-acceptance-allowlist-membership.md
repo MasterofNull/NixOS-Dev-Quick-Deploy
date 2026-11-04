@@ -23,14 +23,28 @@ Implementation delegated per Rule 17; independent reviewer (Codex) re-reviews th
 
 `owner_acceptance_unbacked_rising` (high), `owner_acceptance_allowlist_unauthorized` (high), `owner_acceptance_probe_failed` (warning), `owner_acceptance_state_unwritable` (high). Path: `HealthSpider.run_once` calls `_owner_acceptance_check` (`scripts/ai/aq-health-spider`, harness-level block "owner-acceptance") then `handle_anomaly`, which emits a `health_spider_<type>` telemetry event for all three and, for `unbacked_rising`, `push()`es a `human_gate` high-severity item (dedup key `owner-acceptance-unbacked-rising`) into the attention queue with proposed action and next step. This round added `owner_acceptance_state_unwritable` to the same handler branch so it is logged and counted as unresolved; no separate dashboard allowlist exists for these names. The counters themselves are published as the `owner_acceptance_assurance` event.
 
-## Tests
+## Commands Executed
+
+- `python3 scripts/testing/test-pm-tracker-owner-acceptance.py`
+
+## Validation Evidence
 
 `python3 scripts/testing/test-pm-tracker-owner-acceptance.py`: Ran 51 tests, OK. `HealthSpiderProbe` covers: listed set is quiet; a swapped unlisted acceptance alerts at the same count; removing an entry from allowlist and reality is quiet and re-adding alerts; state file missing/corrupt/0/131/99999/-1 yields the same decision; an upward overwrite within range cannot suppress; count/key mismatch alerts; unreadable projection or allowlist gives probe_failed; state write failure is reported; the real projection against the real allowlist is quiet.
 
-## Residual risks
+## Rollback Plan
+
+Revert the commit; trackers are untouched.
+
+## Residual Risk
 
 - A local `origin/main` ref can be tampered with (`git update-ref`) or go stale until the next fetch; trunk protection on the remote is the real anchor, the local ref is its cached copy.
 - An agent can still edit the committed allowlist or tracker `acceptance` blocks; the remove-only checks in `aq-pm-tracker --check-owner-acceptance` (baseline, merge-base, tip) guard that, not the spider.
 - The spider trusts the output of `aq-pm-tracker --all-json`; a tampered tracker script defeats it.
 - `project_all` skips plans whose manifest fails to parse, so their acceptances are not checked (pre-existing).
 - Verified in tests with a stubbed runner and the real projection; not yet observed in a deployed spider cycle (spider restart/rebuild required).
+
+Superseded on 2026-11-02 by the Nix-store anchor (see 2026-11-02-verified-acceptance-nix-anchor-plan.md); the origin/main read and the allowlist_unauthorized alert were removed.
+
+## Hint Feedback
+
+None.

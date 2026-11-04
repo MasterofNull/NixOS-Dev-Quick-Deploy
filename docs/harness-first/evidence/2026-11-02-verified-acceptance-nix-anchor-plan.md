@@ -1,5 +1,7 @@
 # VA ratchet amendment — Nix-store owner-acceptance allowlist anchor
 
+## Objective
+
 Status: PLAN_READY_WITH_FOLLOWUPS — repository implementation authorized by the existing owner decision; live activation remains owner-only.
 
 Authority: the owner decision already recorded in `.agent/collaboration/PULSE.log:1482`
@@ -8,7 +10,7 @@ of allowlist … residual = stale-superset until rebuild.”  This amendment
 implements that exact decision only; it does not widen the verified-acceptance
 program or create a new authorization gate.
 
-## Narrow objective
+### Narrow objective
 
 Make the health-spider's decision source an immutable Nix-store copy of
 `config/pm-tracker-unbacked-owner-acceptances.json`, installed declaratively
@@ -19,6 +21,14 @@ The current VA subject (`83c2749c`, `fix(pm): unbacked-acceptance alert trusts
 only the trunk allowlist`) is an interim trust boundary only: it reads
 `git show origin/main:<allowlist>`.  PULSE 1482 records that origin/main, like
 the state file and worktree, is agent-writable and therefore insufficient.
+
+## Workflow/Session IDs
+
+Branch `feat/verified-owner-acceptance`, worktree `.agents/delegation/worktrees/verified-acceptance`.
+
+## Delegation Decision
+
+Implementers were bounded Sonnet-tier sub-agents (Rule 17); the 2026-11-02 nix-anchor amendment was implemented by Codex and committed by the Claude orchestrator.
 
 ## Exact implementation surface
 
@@ -92,3 +102,23 @@ owner-approved rebuild and must not mark the ratchet activated beforehand.
 ## Frozen independent-review amendment
 
 Bind the deployed path to a declaratively computed expected SHA-256 from the same immutable repoSource closure. Never derive the anchor from mutable REPO_ROOT. Validate store path, exact bytes hash and schema; fail closed with no fallback. Include a real Nix-produced fixture exercising production reader success/hash mismatch. Temporary fixtures must not weaken production validation. Operator error identifies invalid deployed Nix anchor and need to redeploy. This closes provenance ambiguity found by independent architecture/security/failure-mode/operator review.
+
+## Commands Executed
+
+None (design document).
+
+## Validation Evidence
+
+No validation evidence is recorded in this file. Activation evidence is deferred to the owner deployment boundary (see Non-goals and deployment boundary).
+
+## Rollback Plan
+
+Revert the commit; trackers are untouched.
+
+## Residual Risk
+
+Stale-superset until owner rebuild: the deployed store copy may retain entries removed from the source allowlist (see Non-goals and deployment boundary).
+
+## Hint Feedback
+
+None.
