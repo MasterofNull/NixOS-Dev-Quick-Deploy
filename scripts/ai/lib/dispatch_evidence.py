@@ -229,6 +229,33 @@ def preflight(payload: dict, max_tokens: int, llama_url: str, mode: str) -> dict
     return result
 
 
+def output_budget_preflight(max_tokens: int, llama_url: str, mode: str) -> Optional[dict]:
+    """Prompt-independent refusal: None unless the output budget alone cannot fit.
+
+    An explicit output allowance >= the context limit cannot fit whatever the prompt is,
+    so callers may refuse before classification and prompt assembly. A missing limit
+    refuses exactly as preflight() does (fail closed).
+    """
+    limit, limit_source = context_limit(llama_url)
+    result: dict[str, Any] = {
+        "method": "output_budget_only", "measured": int(max_tokens), "prompt_tokens": None,
+        "output_allowance": int(max_tokens), "limit": limit, "limit_source": limit_source,
+        "mode": mode, "overhead": "none:prompt_not_measured",
+    }
+    if limit is None:
+        result.update(verdict="refuse", reason="no_context_limit", terminal_reason="preflight_no_limit",
+                      decompose_hint=("No context limit is available (llama /props unreachable and "
+                                      "no inference.ctx_size in config/local-model-config.yaml); "
+                                      "restore the limit source and retry."))
+        return result
+    if int(max_tokens) >= limit:
+        result.update(verdict="refuse", reason="output_budget_exceeds_context",
+                      decompose_hint=f"Lower --max-tokens below the context limit ({limit}) "
+                                     "and split the work so prompt plus output fits.")
+        return result
+    return None
+
+
 NOT_MEASURED_LIMITATION = "service-side assembly not measurable at dispatch"
 
 

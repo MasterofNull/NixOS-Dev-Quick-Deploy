@@ -90,6 +90,12 @@ def _run() -> int:
 
     # Mirrors dispatch.main() delegate resolution; drift only skews the estimate.
     mode = D.classify_mode(a.prompt) if a.mode == "auto" else a.mode
+    if a.max_tokens is not None and mode not in ("hybrid", "ralph"):
+        # Output budget alone can exceed the context: refuse before the slow
+        # classification / assembly / prefetch steps (same contract as below).
+        early = de.output_budget_preflight(a.max_tokens, a.llama_url, mode)
+        if early is not None:
+            return _refuse(a, early, mode, a.role)
     tokens = a.max_tokens if a.max_tokens is not None else D.classify_tokens(a.prompt, mode)
     task_type = (D.classify_task_type(a.prompt, mode)
                  if (not a.task_type or a.task_type == "auto") else a.task_type)
@@ -150,13 +156,17 @@ def _run() -> int:
         print(json.dumps({"refused": False, "preflight": pf}))
         return 0
 
+    return _refuse(a, pf, mode, cfg.role)
+
+
+def _refuse(a, pf, mode, role) -> int:
     refusal = de.refusal_json(a.task_id, pf)
     out = Path(a.output)
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(refusal + "\n")
     D.TaskRegistry(Path(a.delegation_dir)).append(
         task_id=a.task_id, description=a.prompt, output_file=str(out), mode=mode,
-        role=cfg.role, pid=None,
+        role=role, pid=None,
         extra={"status": "failed", "terminal_reason": pf.get("terminal_reason") or "preflight_refused",
                "outcome": "refused", "preflight": pf, "model_effective": "n/a"})
     print(refusal, file=sys.stderr)
