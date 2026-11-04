@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Merge-commit parity: CI tests the PR MERGE commit (HEAD + base), local tests the branch.
-# Builds a temp worktree of HEAD merged (no-commit) with <base>, runs the CI manifest checks
-# there plus the ci-manifest-coverage tier0.d check, then removes the worktree.
+# Builds a throwaway merge COMMIT of HEAD + <base> (git merge-tree + commit-tree, unreferenced, no hooks),
+# checks it out detached in a temp worktree so HEAD there is the merge and the index is clean (as in
+# GitHub's refs/pull/N/merge), runs the CI manifest checks plus the ci-manifest-coverage tier0.d check, then removes it.
 # Usage: ci-merge-parity.sh [--base origin/main] [--all]   (default scope: --changed)
 # Env: CI_MERGE_PARITY_SKIP=1 skips ONLY this merge step (prints WARN; checks on the branch still run elsewhere).
 set -euo pipefail
@@ -30,12 +31,12 @@ echo "ci-merge-parity: testing committed HEAD $(git rev-parse --short HEAD); unc
 WT="$(mktemp -d "${TMPDIR:-/tmp}/ci-merge-parity-XXXXXX")"
 cleanup() { git worktree remove --force "${WT}" >/dev/null 2>&1 || true; git worktree prune >/dev/null 2>&1 || true; }
 trap cleanup EXIT
-git worktree add --detach -q "${WT}" HEAD
-if ! git -C "${WT}" -c user.name=ci-parity -c user.email=ci-parity@localhost merge --no-commit --no-ff -q "${BASE}" >/dev/null 2>&1; then
-  git -C "${WT}" merge --abort >/dev/null 2>&1 || true
+if ! tree="$(git merge-tree --write-tree HEAD "${BASE}" 2>/dev/null)"; then
   echo "FAIL: merging ${BASE} into HEAD conflicts; CI would test an unmergeable PR. Update the branch first (git rebase ${BASE} or git merge ${BASE})." >&2
   exit 1
 fi
+merge="$(git -c user.name=ci-parity -c user.email=ci-parity@localhost commit-tree "${tree}" -p HEAD -p "$(git rev-parse "${BASE}")" -m "ci-merge-parity merge")"
+git worktree add --detach -q "${WT}" "${merge}"
 echo "ci-merge-parity: running ${SCOPE} manifest checks on HEAD+${BASE} merge tree"
 rc=0
 # Select checks by the PR's own diff (what CI path filters see), not main's delta in the merge.
