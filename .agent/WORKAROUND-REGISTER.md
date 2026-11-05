@@ -452,11 +452,12 @@ Codex lane absent).
 - class: T2 validation-gap · severity: medium · status: OPEN · opened: 2026-11-04.
 - evidence: `docs/harness-first/evidence/2026-11-04-ci-unmask-gates.md`.
 
-## CI-MASK-VALIDATE-SHELL-SCRIPTS-RUN-SHELLCHECK — `validate-shell-scripts.yml` Run ShellCheck step masked — OPEN
+## CI-MASK-VALIDATE-SHELL-SCRIPTS-RUN-SHELLCHECK — `validate-shell-scripts.yml` Run ShellCheck step masked — CLOSED
 - symptom: `validate-shell-scripts.yml` Run ShellCheck step has `continue-on-error: true`, so shellcheck warnings never fail the workflow.
 - band-aid in place? yes: `|| true` / `continue-on-error: true` annotated `# KNOWN-FAILING:` in the workflow.
 - root cause: shellcheck at severity warning reports many findings across `scripts/` (SC2034, SC2155, SC2088; run 41875000213); the mask hides them.
 - producer to fix: scripts under `scripts/` reported by that run.
 - fix-path: burn down the findings (or lower severity to error, matching shellcheck.yml, once that is clean), then remove the mask and the KNOWN-FAILING comment.
-- class: T2 validation-gap · severity: medium · status: OPEN · opened: 2026-11-04.
+- class: T2 validation-gap · severity: medium · status: CLOSED · opened: 2026-11-04.
 - evidence: `docs/harness-first/evidence/2026-11-04-ci-unmask-gates.md`.
+- closed 2026-11-04: all shellcheck warning-severity findings under scripts/ fixed at the producer (PR #691, 288 -> 0); `continue-on-error` and the KNOWN-FAILING comment removed (branch fix/ci-unmask-validate-shell).

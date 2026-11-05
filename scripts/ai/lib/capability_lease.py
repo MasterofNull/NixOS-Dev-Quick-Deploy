@@ -285,10 +285,15 @@ def _is_malformed(data: dict[str, Any]) -> bool:
 
 
 def verify(
-    lease: LeaseLike, key: bytes, current_epoch: Optional[int] = None
+    lease: LeaseLike,
+    key: bytes,
+    current_epoch: Optional[int] = None,
+    *,
+    now: Optional[datetime] = None,
 ) -> str:
     """Typed, report-only verdict. Check order (first match wins):
     malformed → bad-signature → expired → epoch-stale → ok.
+    `now` defaults to wall-clock time; pass it to pin the expiry check.
     """
     data = _as_dict(lease)
     if _is_malformed(data):
@@ -299,7 +304,7 @@ def verify(
     if not hmac.compare_digest(expected, actual):
         return VERIFY_BAD_SIGNATURE
 
-    if is_expired(data):
+    if is_expired(data, now=now):
         return VERIFY_EXPIRED
 
     if current_epoch is not None and epoch_stale(data, current_epoch):

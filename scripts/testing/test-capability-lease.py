@@ -19,6 +19,7 @@ import os
 import subprocess
 import sys
 import tempfile
+from datetime import datetime, timezone
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -30,6 +31,11 @@ import capability_lease as cl  # noqa: E402
 SCHEMA_PATH = REPO_ROOT / "config" / "schemas" / "capability-lease.schema.json"
 GOLDEN_PATH = REPO_ROOT / "scripts" / "testing" / "fixtures" / "capability-lease-golden.json"
 CLI_PATH = REPO_ROOT / "scripts" / "ai" / "aq-lease"
+
+# Golden leases carry absolute validity windows (child expires 2026-11-01).
+# Golden VERIFY_OK assertions pin expiry to this instant, inside every golden
+# lease's [issued_at, expires_at) window, so they do not depend on wall-clock time.
+GOLDEN_NOW = datetime(2026, 8, 1, tzinfo=timezone.utc)
 
 try:
     import jsonschema  # type: ignore
@@ -122,7 +128,7 @@ def test_sign_verify_roundtrip() -> None:
     golden = load_golden()
     key = cl.DEV_SIGNING_KEY
 
-    verdict = cl.verify(golden["valid"], key)
+    verdict = cl.verify(golden["valid"], key, now=GOLDEN_NOW)
     check("sign/verify: roundtrip on a freshly-signed lease -> ok", verdict == cl.VERIFY_OK)
 
     verdict = cl.verify(golden["tampered"], key)
@@ -220,6 +226,11 @@ def test_expiry() -> None:
         "expiry: verify() on an expired-but-correctly-signed lease -> expired",
         cl.verify(golden["expired"], key) == cl.VERIFY_EXPIRED,
     )
+    check(
+        "expiry: golden child verifies as expired when now is after its expires_at",
+        cl.verify(golden["child"], key, now=datetime(2026, 11, 2, tzinfo=timezone.utc))
+        == cl.VERIFY_EXPIRED,
+    )
 
 
 # ---------------------------------------------------------------------
@@ -247,7 +258,8 @@ def test_epoch_stale() -> None:
     )
     check(
         "epoch-stale: verify() with current current_epoch -> ok",
-        cl.verify(lease, key, current_epoch=lease["revocation_epoch"]) == cl.VERIFY_OK,
+        cl.verify(lease, key, current_epoch=lease["revocation_epoch"], now=GOLDEN_NOW)
+        == cl.VERIFY_OK,
     )
 
 
@@ -279,7 +291,7 @@ def test_attenuation_accepts_valid_subset() -> None:
     )
     check(
         "attenuation: golden child verifies ok under DEV key",
-        cl.verify(child, cl.DEV_SIGNING_KEY) == cl.VERIFY_OK,
+        cl.verify(child, cl.DEV_SIGNING_KEY, now=GOLDEN_NOW) == cl.VERIFY_OK,
     )
 
     # Build a fresh valid attenuation directly through the library too.
