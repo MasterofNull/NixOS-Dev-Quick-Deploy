@@ -170,8 +170,27 @@
       ],
       "ci_workflow": ".github/workflows/test.yml#syntax"
     },
-    {"id": "workflow-failure-masks", "cmd": "scripts/governance/check-workflow-masks.py", "paths": [".github/workflows/**", "scripts/governance/check-workflow-masks.py"], "needs": ["python3"], "ci_workflow": ".github/workflows/test.yml#syntax"},
-    {"id": "check-workflow-masks-test", "cmd": "scripts/testing/test-check-workflow-masks.py", "paths": [], "needs": ["python3"], "ci_workflow": ".github/workflows/test.yml#syntax"},
+    {
+      "id": "workflow-failure-masks",
+      "cmd": "scripts/governance/check-workflow-masks.py",
+      "paths": [
+        ".github/workflows/**",
+        "scripts/governance/check-workflow-masks.py"
+      ],
+      "needs": [
+        "python3"
+      ],
+      "ci_workflow": ".github/workflows/test.yml#syntax"
+    },
+    {
+      "id": "check-workflow-masks-test",
+      "cmd": "scripts/testing/test-check-workflow-masks.py",
+      "paths": [],
+      "needs": [
+        "python3"
+      ],
+      "ci_workflow": ".github/workflows/test.yml#syntax"
+    },
     {
       "id": "validate-echo-colors",
       "cmd": "scripts/testing/validate-echo-colors.sh",
@@ -261,7 +280,20 @@
       ],
       "ci_workflow": ".github/workflows/test.yml#syntax"
     },
-    {"id": "activation-manifest-tests", "cmd": "scripts/testing/test-activation-manifest.py", "paths": ["scripts/governance/check-activation-manifest.py", "scripts/governance/tier0.d/check-activation-manifest.sh", "config/activation-manifest.json", "scripts/testing/test-activation-manifest.py"], "needs": ["python3"], "ci_workflow": ".github/workflows/test.yml#syntax"},
+    {
+      "id": "activation-manifest-tests",
+      "cmd": "scripts/testing/test-activation-manifest.py",
+      "paths": [
+        "scripts/governance/check-activation-manifest.py",
+        "scripts/governance/tier0.d/check-activation-manifest.sh",
+        "config/activation-manifest.json",
+        "scripts/testing/test-activation-manifest.py"
+      ],
+      "needs": [
+        "python3"
+      ],
+      "ci_workflow": ".github/workflows/test.yml#syntax"
+    },
     {
       "id": "rea-sandbox-tests",
       "cmd": "scripts/testing/test-rea-sandbox.py",
@@ -592,6 +624,7 @@
         "scripts/testing/test-aq-collab-round-dispatch-contract.py",
         "scripts/testing/test-aq-collab-round-recovery.py",
         "scripts/testing/test-aq-commit-agent-draft.py",
+        "scripts/testing/test-aq-completions.sh",
         "scripts/testing/test-aq-context-manage-checkpoint.py",
         "scripts/testing/test-aq-context-sandbox.py",
         "scripts/testing/test-aq-ctx-freshness.sh",
@@ -642,6 +675,7 @@
         "scripts/testing/test-aq-tempest.py",
         "scripts/testing/test-aq-triage.py",
         "scripts/testing/test-aq-update-tiers.py",
+        "scripts/testing/test-aq-usage-logging.py",
         "scripts/testing/test-aq-workspace.py",
         "scripts/testing/test-aq-worktree-reap.py"
       ],
@@ -667,6 +701,7 @@
         "scripts/testing/test-aq-collab-round-dispatch-contract.py",
         "scripts/testing/test-aq-collab-round-recovery.py",
         "scripts/testing/test-aq-commit-agent-draft.py",
+        "scripts/testing/test-aq-completions.sh",
         "scripts/testing/test-aq-context-manage-checkpoint.py",
         "scripts/testing/test-aq-context-sandbox.py",
         "scripts/testing/test-aq-ctx-freshness.sh",
@@ -717,6 +752,7 @@
         "scripts/testing/test-aq-tempest.py",
         "scripts/testing/test-aq-triage.py",
         "scripts/testing/test-aq-update-tiers.py",
+        "scripts/testing/test-aq-usage-logging.py",
         "scripts/testing/test-aq-workspace.py",
         "scripts/testing/test-aq-worktree-reap.py"
       ]
@@ -775,7 +811,6 @@
         "scripts/testing/test-capability-integration-wiring.py",
         "scripts/testing/test-capability-lease-gate.py",
         "scripts/testing/test-capability-lease-issuance.py",
-        "scripts/testing/test-capability-lease.py",
         "scripts/testing/test-capability-outcome-resolver.py"
       ],
       "needs": [
@@ -795,7 +830,6 @@
         "scripts/testing/test-capability-integration-wiring.py",
         "scripts/testing/test-capability-lease-gate.py",
         "scripts/testing/test-capability-lease-issuance.py",
-        "scripts/testing/test-capability-lease.py",
         "scripts/testing/test-capability-outcome-resolver.py"
       ]
     },
@@ -852,7 +886,6 @@
         "scripts/testing/test-dashboard-cockpit-steering.py",
         "scripts/testing/test-dashboard-command-center-graph-payloads.py",
         "scripts/testing/test-dashboard-command-center-graphs.py",
-        "scripts/testing/test-dashboard-compat-routes.py",
         "scripts/testing/test-dashboard-context-store-ui.py",
         "scripts/testing/test-dashboard-deployment-execution.py",
         "scripts/testing/test-dashboard-governance-projection.py",
@@ -881,7 +914,6 @@
         "scripts/testing/test-dashboard-cockpit-steering.py",
         "scripts/testing/test-dashboard-command-center-graph-payloads.py",
         "scripts/testing/test-dashboard-command-center-graphs.py",
-        "scripts/testing/test-dashboard-compat-routes.py",
         "scripts/testing/test-dashboard-context-store-ui.py",
         "scripts/testing/test-dashboard-deployment-execution.py",
         "scripts/testing/test-dashboard-governance-projection.py",
@@ -904,15 +936,12 @@
       "cmd": "scripts/testing/run-test-group.py tests-delegate",
       "paths": [
         "scripts/testing/run-test-group.py",
-        "scripts/testing/test-delegate-agent-mapping.py",
         "scripts/testing/test-delegate-antigravity-background-stdio.py",
         "scripts/testing/test-delegate-attention-queue-wiring.py",
         "scripts/testing/test-delegate-codex-quota-precheck.sh",
         "scripts/testing/test-delegate-codex-shared-writable.py",
-        "scripts/testing/test-delegate-coding.py",
         "scripts/testing/test-delegate-dir-env-override.py",
         "scripts/testing/test-delegate-failure-classification.py",
-        "scripts/testing/test-delegate-local-agent.py",
         "scripts/testing/test-delegate-response-budget-wiring.py",
         "scripts/testing/test-delegate-routing-profile-honoring.py",
         "scripts/testing/test-delegate-to-antigravity.py",
@@ -926,15 +955,12 @@
       ],
       "ci_workflow": ".github/workflows/test.yml#syntax",
       "tests": [
-        "scripts/testing/test-delegate-agent-mapping.py",
         "scripts/testing/test-delegate-antigravity-background-stdio.py",
         "scripts/testing/test-delegate-attention-queue-wiring.py",
         "scripts/testing/test-delegate-codex-quota-precheck.sh",
         "scripts/testing/test-delegate-codex-shared-writable.py",
-        "scripts/testing/test-delegate-coding.py",
         "scripts/testing/test-delegate-dir-env-override.py",
         "scripts/testing/test-delegate-failure-classification.py",
-        "scripts/testing/test-delegate-local-agent.py",
         "scripts/testing/test-delegate-response-budget-wiring.py",
         "scripts/testing/test-delegate-routing-profile-honoring.py",
         "scripts/testing/test-delegate-to-antigravity.py",
@@ -1068,7 +1094,6 @@
         "scripts/testing/test-analysis-only-stagnation-mode.py",
         "scripts/testing/test-anti-fabrication-lint.py",
         "scripts/testing/test-antigravity-claim-receipt.py",
-        "scripts/testing/test-antigravity-env-strengthening.py",
         "scripts/testing/test-antigravity-health-credential-check.py",
         "scripts/testing/test-antigravity-health-quota.sh",
         "scripts/testing/test-antigravity-implementer-lane.py",
@@ -1114,9 +1139,9 @@
         "scripts/testing/test-check-harness-first-pr-evidence-gate.py",
         "scripts/testing/test-check-mergeable.sh",
         "scripts/testing/test-ci-checks-manifest.py",
+        "scripts/testing/test-ci-merge-parity.py",
         "scripts/testing/test-ci-skill-bundle-smoke.py",
         "scripts/testing/test-cockpit-telemetry.py",
-        "scripts/testing/test-codex-config-reconcile.py",
         "scripts/testing/test-collaborative-plan-persistence.py",
         "scripts/testing/test-commit-review-disposition-hook.py",
         "scripts/testing/test-complexity-lane-routing.py",
@@ -1132,7 +1157,8 @@
         "scripts/testing/test-continuous-learning-qdrant-upsert.py",
         "scripts/testing/test-control-channel.py",
         "scripts/testing/test-coordinator-prsi-canonical-queue.py",
-        "scripts/testing/test-cross-agent-contradiction-detection.py"
+        "scripts/testing/test-cross-agent-contradiction-detection.py",
+        "scripts/testing/test-curated-web-research.py"
       ],
       "needs": [
         "python3",
@@ -1162,7 +1188,6 @@
         "scripts/testing/test-analysis-only-stagnation-mode.py",
         "scripts/testing/test-anti-fabrication-lint.py",
         "scripts/testing/test-antigravity-claim-receipt.py",
-        "scripts/testing/test-antigravity-env-strengthening.py",
         "scripts/testing/test-antigravity-health-credential-check.py",
         "scripts/testing/test-antigravity-health-quota.sh",
         "scripts/testing/test-antigravity-implementer-lane.py",
@@ -1208,9 +1233,9 @@
         "scripts/testing/test-check-harness-first-pr-evidence-gate.py",
         "scripts/testing/test-check-mergeable.sh",
         "scripts/testing/test-ci-checks-manifest.py",
+        "scripts/testing/test-ci-merge-parity.py",
         "scripts/testing/test-ci-skill-bundle-smoke.py",
         "scripts/testing/test-cockpit-telemetry.py",
-        "scripts/testing/test-codex-config-reconcile.py",
         "scripts/testing/test-collaborative-plan-persistence.py",
         "scripts/testing/test-commit-review-disposition-hook.py",
         "scripts/testing/test-complexity-lane-routing.py",
@@ -1226,7 +1251,8 @@
         "scripts/testing/test-continuous-learning-qdrant-upsert.py",
         "scripts/testing/test-control-channel.py",
         "scripts/testing/test-coordinator-prsi-canonical-queue.py",
-        "scripts/testing/test-cross-agent-contradiction-detection.py"
+        "scripts/testing/test-cross-agent-contradiction-detection.py",
+        "scripts/testing/test-curated-web-research.py"
       ]
     },
     {
@@ -1235,11 +1261,9 @@
       "paths": [
         "scripts/testing/run-test-group.py",
         "scripts/testing/test-decompose-loop.py",
-        "scripts/testing/test-delegate.py",
         "scripts/testing/test-delegated-prompt-failure-history.py",
         "scripts/testing/test-delegated-prompt-failure-trend.py",
         "scripts/testing/test-delegation-feedback-contract.py",
-        "scripts/testing/test-delegation-local-gemini.py",
         "scripts/testing/test-dependency-hygiene-ladder.py",
         "scripts/testing/test-deploy-source-guard.py",
         "scripts/testing/test-deployment-causality-clustering.py",
@@ -1288,7 +1312,6 @@
         "scripts/testing/test-frontier-scan-due.py",
         "scripts/testing/test-frontier-scan-topic.py",
         "scripts/testing/test-frontier-sources.py",
-        "scripts/testing/test-functional-prompt-eval.py",
         "scripts/testing/test-gate-checkout.py",
         "scripts/testing/test-gepa-prompt-compile.py",
         "scripts/testing/test-gitleaks-ci-parity.py",
@@ -1325,11 +1348,9 @@
       "ci_workflow": ".github/workflows/test.yml#syntax",
       "tests": [
         "scripts/testing/test-decompose-loop.py",
-        "scripts/testing/test-delegate.py",
         "scripts/testing/test-delegated-prompt-failure-history.py",
         "scripts/testing/test-delegated-prompt-failure-trend.py",
         "scripts/testing/test-delegation-feedback-contract.py",
-        "scripts/testing/test-delegation-local-gemini.py",
         "scripts/testing/test-dependency-hygiene-ladder.py",
         "scripts/testing/test-deploy-source-guard.py",
         "scripts/testing/test-deployment-causality-clustering.py",
@@ -1378,7 +1399,6 @@
         "scripts/testing/test-frontier-scan-due.py",
         "scripts/testing/test-frontier-scan-topic.py",
         "scripts/testing/test-frontier-sources.py",
-        "scripts/testing/test-functional-prompt-eval.py",
         "scripts/testing/test-gate-checkout.py",
         "scripts/testing/test-gepa-prompt-compile.py",
         "scripts/testing/test-gitleaks-ci-parity.py",
@@ -1453,7 +1473,6 @@
         "scripts/testing/test-microarchitectural-isolation.py",
         "scripts/testing/test-modal-task-profiles.py",
         "scripts/testing/test-model-budget.py",
-        "scripts/testing/test-model-catalog-freshness.py",
         "scripts/testing/test-model-optimization-implementation.py",
         "scripts/testing/test-model-probe-freshness.py",
         "scripts/testing/test-model-symlink-verification.sh",
@@ -1509,7 +1528,6 @@
         "scripts/testing/test-microarchitectural-isolation.py",
         "scripts/testing/test-modal-task-profiles.py",
         "scripts/testing/test-model-budget.py",
-        "scripts/testing/test-model-catalog-freshness.py",
         "scripts/testing/test-model-optimization-implementation.py",
         "scripts/testing/test-model-probe-freshness.py",
         "scripts/testing/test-model-symlink-verification.sh",
@@ -1558,9 +1576,6 @@
         "scripts/testing/test-prm-steering.py",
         "scripts/testing/test-progressive-disclosure-implementation.py",
         "scripts/testing/test-prompt-eval-transport-guard.py",
-        "scripts/testing/test-radar-ingest.py",
-        "scripts/testing/test-runtime-state-out-of-tracked-config.py",
-        "scripts/testing/test-runtime-writers-leave-checkout-clean.py",
         "scripts/testing/test-provider-projection.py",
         "scripts/testing/test-prsi-budget-reservation.py",
         "scripts/testing/test-prsi-queue-fail-closed.py",
@@ -1579,6 +1594,7 @@
         "scripts/testing/test-quick-deploy-target-discovery.py",
         "scripts/testing/test-quickstart.py",
         "scripts/testing/test-race-harness.py",
+        "scripts/testing/test-radar-ingest.py",
         "scripts/testing/test-rag-posture-diagnosis.py",
         "scripts/testing/test-ragas-autoscoring-wiring.py",
         "scripts/testing/test-ragas-faithfulness-guard.py",
@@ -1609,6 +1625,7 @@
         "scripts/testing/test-routing-history.py",
         "scripts/testing/test-routing-profile-registry.py",
         "scripts/testing/test-rsi-adapters.py",
+        "scripts/testing/test-rsi-gate.py",
         "scripts/testing/test-rsi-hung-delegate.py",
         "scripts/testing/test-rsi-intake-code-scanning.py",
         "scripts/testing/test-rsi-lane-quota.py",
@@ -1619,7 +1636,9 @@
         "scripts/testing/test-rsi-sweep.py",
         "scripts/testing/test-run-ci-checks-maintenance.py",
         "scripts/testing/test-run-event-metrics.py",
-        "scripts/testing/test-run-test-group-state-isolation.py"
+        "scripts/testing/test-run-test-group-state-isolation.py",
+        "scripts/testing/test-runtime-state-out-of-tracked-config.py",
+        "scripts/testing/test-runtime-writers-leave-checkout-clean.py"
       ],
       "needs": [
         "python3",
@@ -1659,9 +1678,6 @@
         "scripts/testing/test-prm-steering.py",
         "scripts/testing/test-progressive-disclosure-implementation.py",
         "scripts/testing/test-prompt-eval-transport-guard.py",
-        "scripts/testing/test-radar-ingest.py",
-        "scripts/testing/test-runtime-state-out-of-tracked-config.py",
-        "scripts/testing/test-runtime-writers-leave-checkout-clean.py",
         "scripts/testing/test-provider-projection.py",
         "scripts/testing/test-prsi-budget-reservation.py",
         "scripts/testing/test-prsi-queue-fail-closed.py",
@@ -1680,6 +1696,7 @@
         "scripts/testing/test-quick-deploy-target-discovery.py",
         "scripts/testing/test-quickstart.py",
         "scripts/testing/test-race-harness.py",
+        "scripts/testing/test-radar-ingest.py",
         "scripts/testing/test-rag-posture-diagnosis.py",
         "scripts/testing/test-ragas-autoscoring-wiring.py",
         "scripts/testing/test-ragas-faithfulness-guard.py",
@@ -1710,6 +1727,7 @@
         "scripts/testing/test-routing-history.py",
         "scripts/testing/test-routing-profile-registry.py",
         "scripts/testing/test-rsi-adapters.py",
+        "scripts/testing/test-rsi-gate.py",
         "scripts/testing/test-rsi-hung-delegate.py",
         "scripts/testing/test-rsi-intake-code-scanning.py",
         "scripts/testing/test-rsi-lane-quota.py",
@@ -1720,7 +1738,9 @@
         "scripts/testing/test-rsi-sweep.py",
         "scripts/testing/test-run-ci-checks-maintenance.py",
         "scripts/testing/test-run-event-metrics.py",
-        "scripts/testing/test-run-test-group-state-isolation.py"
+        "scripts/testing/test-run-test-group-state-isolation.py",
+        "scripts/testing/test-runtime-state-out-of-tracked-config.py",
+        "scripts/testing/test-runtime-writers-leave-checkout-clean.py"
       ]
     },
     {
@@ -1797,7 +1817,6 @@
         "scripts/testing/test-understand-anything-batch-validation.py",
         "scripts/testing/test-useful-token-metrics.py",
         "scripts/testing/test-vectorization-visualization.py",
-        "scripts/testing/test-web-research-lane.py",
         "scripts/testing/test-workflow-blueprints.py",
         "scripts/testing/test-workflow-deviation-c1a.py",
         "scripts/testing/test-workflow-deviation-contract.py",
@@ -1885,7 +1904,6 @@
         "scripts/testing/test-understand-anything-batch-validation.py",
         "scripts/testing/test-useful-token-metrics.py",
         "scripts/testing/test-vectorization-visualization.py",
-        "scripts/testing/test-web-research-lane.py",
         "scripts/testing/test-workflow-blueprints.py",
         "scripts/testing/test-workflow-deviation-c1a.py",
         "scripts/testing/test-workflow-deviation-contract.py",
@@ -2069,578 +2087,757 @@
   "test_exempt": [
     {
       "script": "scripts/testing/test-a2a-compat.py",
+      "class": "known-failing",
       "reason": "fails on main: references missing file ai-stack/mcp-servers/hybrid-coordinator/http_server.py, tracked in backlog"
     },
     {
       "script": "scripts/testing/test-adk-declarative-wiring.sh",
+      "class": "known-failing",
       "reason": "fails on main: references missing file lib/adk/wiring-validator.sh, tracked in backlog"
     },
     {
       "script": "scripts/testing/test-adk-reviewer-gate-checklist.sh",
+      "class": "known-failing",
       "reason": "fails on main: references missing file lib/adk/implementation-discovery.sh, tracked in backlog"
     },
     {
       "script": "scripts/testing/test-advanced-features-control-plane.py",
+      "class": "known-failing",
       "reason": "fails on main: references missing file ai-stack/mcp-servers/hybrid-coordinator/http_server.py, tracked in backlog"
     },
     {
       "script": "scripts/testing/test-advanced-reasoning-patterns.py",
+      "class": "known-failing",
       "reason": "fails on main: references missing file ai-stack/agentic-patterns/self_consistency.py, tracked in backlog"
     },
     {
       "script": "scripts/testing/test-agent-auth-s5.py",
+      "class": "known-failing",
       "reason": "fails on main: ModuleNotFoundError 'shared' (sys.path/dependency not available), tracked in backlog"
     },
     {
       "script": "scripts/testing/test-agent-auth-s7-s9.py",
+      "class": "live-service",
       "reason": "host-only: needs a live local service (switchboard/dashboard/coordinator/AIDB); last output: FAILED (failures=2)"
     },
     {
       "script": "scripts/testing/test-agent-evaluation-bias.py",
+      "class": "known-failing",
       "reason": "fails on main: references missing file ai-stack/mcp-servers/hybrid-coordinator/http_server.py, tracked in backlog"
     },
     {
       "script": "scripts/testing/test-agent-lesson-registry.py",
+      "class": "known-failing",
       "reason": "fails on main (rc=1): AssertionError: expected one registry lesson, tracked in backlog"
     },
     {
       "script": "scripts/testing/test-agent-lesson-schema.py",
+      "class": "known-failing",
       "reason": "fails on main (rc=1): AssertionError: expected at least one lesson candidate, tracked in backlog"
     },
     {
       "script": "scripts/testing/test-agent-monitoring-audit.py",
+      "class": "known-failing",
       "reason": "fails on main (rc=1): FAILED (failures=1), tracked in backlog"
     },
     {
       "script": "scripts/testing/test-agent-pool-integration.py",
+      "class": "known-failing",
       "reason": "fails on main: references missing file ai-stack/mcp-servers/hybrid-coordinator/http_server.py, tracked in backlog"
     },
     {
       "script": "scripts/testing/test-agent-status-integration.py",
-      "reason": "fails on main (rc=1): \u274c Some tests failed, tracked in backlog"
+      "class": "known-failing",
+      "reason": "fails on main (rc=1): ❌ Some tests failed, tracked in backlog"
     },
     {
       "script": "scripts/testing/test-ai-coordinator.py",
+      "class": "known-failing",
       "reason": "fails on main (rc=1): AssertionError: gemini profile inference failed, tracked in backlog"
     },
     {
       "script": "scripts/testing/test-ai-insights-dashboard.py",
-      "reason": "host-only: needs a live local service (switchboard/dashboard/coordinator/AIDB); last output: \u2717 11 test(s) FAILED"
+      "class": "live-service",
+      "reason": "host-only: needs a live local service (switchboard/dashboard/coordinator/AIDB); last output: ✗ 11 test(s) FAILED"
     },
     {
       "script": "scripts/testing/test-ai-insights-roadmap-surfaces.py",
+      "class": "known-failing",
       "reason": "fails on main (rc=1): AssertionError: roadmap readiness should expose agentic pattern library readiness for phas, tracked in backlog"
     },
     {
       "script": "scripts/testing/test-ai-metrics-instrumentation.py",
+      "class": "known-failing",
       "reason": "fails on main: references missing file ai-stack/mcp-servers/hybrid-coordinator/http_server.py, tracked in backlog"
     },
     {
       "script": "scripts/testing/test-ai-service-health-monitoring.py",
-      "reason": "host-only: needs a live local service (switchboard/dashboard/coordinator/AIDB); last output: \u2717 11 test(s) FAILED"
+      "class": "live-service",
+      "reason": "host-only: needs a live local service (switchboard/dashboard/coordinator/AIDB); last output: ✗ 11 test(s) FAILED"
     },
     {
       "script": "scripts/testing/test-ai-stack-health-monitor.py",
+      "class": "known-failing",
       "reason": "fails on main (rc=1): AssertionError: health monitor unit must set TimeoutStartSec >= 490s (harness timeout + ma, tracked in backlog"
     },
     {
       "script": "scripts/testing/test-ai-stack-health.sh",
+      "class": "live-service",
       "reason": "host-only: needs a live local service (switchboard/dashboard/coordinator/AIDB); last output: One or more declarative AI stack checks failed (unit state or HTTP health)."
     },
     {
       "script": "scripts/testing/test-aidb-library-catalog-sync-fetch.py",
+      "class": "live-service",
       "reason": "host-only: needs a live local service (switchboard/dashboard/coordinator/AIDB); last output: Is the server running on that host and accepting TCP/IP connections?"
     },
     {
+      "script": "scripts/testing/test-antigravity-env-strengthening.py",
+      "class": "sandbox-env",
+      "reason": "host-only: asserts the real user's ~/.gemini/config/mcp_config.json exists; a CI runner has no Gemini/Antigravity install"
+    },
+    {
       "script": "scripts/testing/test-approval-recovery.py",
+      "class": "known-failing",
       "reason": "fails on main: ModuleNotFoundError 'fido2' (sys.path/dependency not available), tracked in backlog"
     },
     {
       "script": "scripts/testing/test-approval-runbook-engine.py",
+      "class": "known-failing",
       "reason": "fails on main (rc=1): - test_scope_bound_rejects_undeclared_effect: expected scope-effect rejection, got unautho, tracked in backlog"
     },
     {
       "script": "scripts/testing/test-approval-signer.py",
+      "class": "known-failing",
       "reason": "fails on main: ModuleNotFoundError 'fido2' (sys.path/dependency not available), tracked in backlog"
     },
     {
       "script": "scripts/testing/test-aq-approve-headless.py",
+      "class": "known-failing",
       "reason": "fails on main: ModuleNotFoundError 'fido2' (sys.path/dependency not available), tracked in backlog"
     },
     {
-      "script": "scripts/testing/test-aq-completions.sh",
-      "reason": "fails on main (rc=1): bash: line 1: complete: codex: no completion specification, tracked in backlog"
-    },
-    {
       "script": "scripts/testing/test-aq-confine.py",
+      "class": "live-service",
       "reason": "host-only: needs a live local service (switchboard/dashboard/coordinator/AIDB); last output: SUMMARY: 204 checks ran, 54 failed, 0 behavioral groups skipped (preflight: ok)"
     },
     {
       "script": "scripts/testing/test-aq-help-center.py",
+      "class": "known-failing",
       "reason": "fails on main (rc=1): AssertionError: Doc file missing for workspace-operator: /home/hyperd/Documents/NixOS-Dev-, tracked in backlog"
     },
     {
       "script": "scripts/testing/test-aq-loop-review-repair-guard.py",
+      "class": "mutates-state",
       "reason": "mutates tracked repo state when run in-tree (writes .agent/*, config/*, or sqlite files); needs tmpdir isolation before it can be a gate, tracked in backlog"
     },
     {
       "script": "scripts/testing/test-aq-memory-persistence.py",
+      "class": "sandbox-env",
       "reason": "host-only: fails in a no-network, mapped-uid sandbox but passes unsandboxed (needs loopback/network or the real uid); not verified stable on a CI runner"
     },
     {
       "script": "scripts/testing/test-aq-qa-continue-config.py",
+      "class": "known-failing",
       "reason": "fails on main (rc=1): AssertionError: aq-qa phase 0 should describe the switchboard ingress contract for Continu, tracked in backlog"
     },
     {
       "script": "scripts/testing/test-aq-report-reliability-interpretation.py",
+      "class": "known-failing",
       "reason": "fails on main (rc=1): TypeError: format_text() missing 1 required positional argument: 'editor_rescue_windows_su, tracked in backlog"
     },
     {
       "script": "scripts/testing/test-aq-report-tool-audit-sources.py",
+      "class": "known-failing",
       "reason": "fails on main (rc=1): AssertionError: expected only fresh entry inside window, tracked in backlog"
     },
     {
       "script": "scripts/testing/test-aq-tool.py",
+      "class": "sandbox-env",
       "reason": "host-only: fails in a no-network, mapped-uid sandbox but passes unsandboxed (needs loopback/network or the real uid); not verified stable on a CI runner"
     },
     {
-      "script": "scripts/testing/test-aq-usage-logging.py",
-      "reason": "fails on main (rc=1): AssertionError: aq-* entrypoints without the usage hook: ['aq-agent-auth', 'aq-confine', ', tracked in backlog"
-    },
-    {
       "script": "scripts/testing/test-attention-notifications.py",
+      "class": "known-failing",
       "reason": "fails on main (rc=1): AssertionError, tracked in backlog"
     },
     {
       "script": "scripts/testing/test-auto-tool-select-skill-routes.py",
+      "class": "known-failing",
       "reason": "fails on main (rc=1): AssertionError: auto-tool-select routes should expose /skills/list, tracked in backlog"
     },
     {
       "script": "scripts/testing/test-autonomous-capability-discovery.sh",
+      "class": "live-service",
       "reason": "host-only: needs a live local service (switchboard/dashboard/coordinator/AIDB); last output: Hybrid capability-discovery probe failed (HTTP 000)"
     },
     {
       "script": "scripts/testing/test-boot-stability-regressions.py",
+      "class": "known-failing",
       "reason": "fails on main (rc=1): AssertionError: apparmor-fix-agent should not force-add ignored HANDOFF.md during commits, tracked in backlog"
     },
     {
       "script": "scripts/testing/test-c6a-launch-dashboard-runtime-probe.py",
+      "class": "known-failing",
       "reason": "fails on main (rc=1): 1 assertion(s) failed, tracked in backlog"
     },
     {
+      "script": "scripts/testing/test-capability-lease.py",
+      "class": "known-failing",
+      "reason": "fails in a clean CI-like venv (CI=true, pip deps only): 'attenuation: golden child verifies ok under DEV key' (53/54); not yet root-caused"
+    },
+    {
       "script": "scripts/testing/test-chat-intent.py",
-      "reason": "fails on main (rc=1): FAIL  single word 'hello' \u2192 agentic (conservative default), tracked in backlog"
+      "class": "known-failing",
+      "reason": "fails on main (rc=1): FAIL  single word 'hello' → agentic (conservative default), tracked in backlog"
     },
     {
       "script": "scripts/testing/test-check-mcp-health-defaults.sh",
+      "class": "live-service",
       "reason": "host-only: needs a live local service (switchboard/dashboard/coordinator/AIDB); last output: One or more MCP health checks failed."
     },
     {
-      "script": "scripts/testing/test-ci-merge-parity.py",
-      "reason": "fails on main: ModuleNotFoundError 'clean_git_env' (sys.path/dependency not available), tracked in backlog"
-    },
-    {
       "script": "scripts/testing/test-claude-dispatch-payload-safety.py",
+      "class": "known-failing",
       "reason": "fails on main (rc=1): FAILED (failures=2), tracked in backlog"
     },
     {
+      "script": "scripts/testing/test-codex-config-reconcile.py",
+      "class": "sandbox-env",
+      "reason": "host-only: needs the installed Codex CLI (`codex mcp list --json`) to validate the rendered config; the runner has no Codex and an unpinned npm install would test a different version"
+    },
+    {
       "script": "scripts/testing/test-codex-subagent-configuration.py",
+      "class": "known-failing",
       "reason": "fails on main: references missing file .codex/config.toml, tracked in backlog"
     },
     {
       "script": "scripts/testing/test-continue-coordinator-ingress.py",
+      "class": "known-failing",
       "reason": "fails on main: references missing file ai-stack/mcp-servers/hybrid-coordinator/http_server.py, tracked in backlog"
     },
     {
       "script": "scripts/testing/test-continuous-learning-watchfiles-throttle.py",
+      "class": "known-failing",
       "reason": "fails on main (rc=1): AssertionError, tracked in backlog"
     },
     {
       "script": "scripts/testing/test-coordinator-strangler-route-ownership.py",
+      "class": "known-failing",
       "reason": "fails on main: references missing file ai-stack/mcp-servers/hybrid-coordinator/http_server.py, tracked in backlog"
     },
     {
-      "script": "scripts/testing/test-curated-web-research.py",
-      "reason": "host-only: fails in a no-network, mapped-uid sandbox but passes unsandboxed (needs loopback/network or the real uid); not verified stable on a CI runner"
-    },
-    {
       "script": "scripts/testing/test-dashboard-a2a-insights-ui.py",
+      "class": "known-failing",
       "reason": "fails on main (rc=1): - Analytics + A2A, tracked in backlog"
     },
     {
       "script": "scripts/testing/test-dashboard-advanced-runtime-summary.py",
+      "class": "mutates-state",
       "reason": "mutates tracked repo state when run in-tree (writes .agent/*, config/*, or sqlite files); needs tmpdir isolation before it can be a gate, tracked in backlog"
     },
     {
       "script": "scripts/testing/test-dashboard-ai-insights-ui.py",
+      "class": "known-failing",
       "reason": "fails on main (rc=1): - /api/insights/report/full, tracked in backlog"
     },
     {
       "script": "scripts/testing/test-dashboard-aidb-health-live-mode.py",
+      "class": "known-failing",
       "reason": "fails on main (rc=1): - fetch(`${FASTAPI_BASE}/api/aidb/health/detailed`, { cache: 'no-store' }), tracked in backlog"
     },
     {
       "script": "scripts/testing/test-dashboard-command-center-graph-ui.py",
+      "class": "known-failing",
       "reason": "fails on main (rc=1): AssertionError: expected command-center graph panel in dashboard configuration section, tracked in backlog"
     },
     {
       "script": "scripts/testing/test-dashboard-command-lenses-ui.py",
+      "class": "known-failing",
       "reason": "fails on main (rc=1): - .welcome-banner, tracked in backlog"
     },
     {
+      "script": "scripts/testing/test-dashboard-compat-routes.py",
+      "class": "known-failing",
+      "reason": "fails in a clean CI-like venv: 'missing dashboard compatibility routes' (api.main drops routes when an optional dependency is absent); passes on the dev host"
+    },
+    {
       "script": "scripts/testing/test-dashboard-config-control-plane.py",
+      "class": "known-failing",
       "reason": "fails on main (rc=1): AssertionError: front-door routing should expose implementation alias mapping, tracked in backlog"
     },
     {
       "script": "scripts/testing/test-dashboard-config-ui.py",
+      "class": "known-failing",
       "reason": "fails on main (rc=1): - compatibility_overrides, tracked in backlog"
     },
     {
       "script": "scripts/testing/test-dashboard-deployment-ui.py",
+      "class": "known-failing",
       "reason": "fails on main (rc=1): - /api/ws/deployments, tracked in backlog"
     },
     {
       "script": "scripts/testing/test-dashboard-operator-links-api-base.py",
+      "class": "known-failing",
       "reason": "fails on main (rc=1): - updateOperatorLinks();, tracked in backlog"
     },
     {
       "script": "scripts/testing/test-dashboard-orchestration-api-base.py",
+      "class": "known-failing",
       "reason": "fails on main (rc=1): - fetch(`${FASTAPI_BASE}/api/aistack/orchestration/evaluations/trends`), tracked in backlog"
     },
     {
       "script": "scripts/testing/test-dashboard-orchestration-sessions.py",
+      "class": "known-failing",
       "reason": "fails on main (rc=1): AttributeError: 'FakeClientSession' object has no attribute 'closed', tracked in backlog"
     },
     {
       "script": "scripts/testing/test-dashboard-phase5-7-integration.py",
+      "class": "known-failing",
       "reason": "fails on main (rc=1): AttributeError: 'FakeClientSession' object has no attribute 'closed', tracked in backlog"
     },
     {
       "script": "scripts/testing/test-dashboard-program-progress.py",
+      "class": "live-service",
       "reason": "host-only: needs a live local service (switchboard/dashboard/coordinator/AIDB); last output: FAILED (errors=2)"
     },
     {
       "script": "scripts/testing/test-dashboard-qa-provider-probe.py",
+      "class": "known-failing",
       "reason": "fails on main (rc=1): AssertionError: QA Phase 0 Status card must have exactly 5 pre-existing + 6 new probe rows, tracked in backlog"
     },
     {
       "script": "scripts/testing/test-dashboard-routing-posture-ui.py",
+      "class": "known-failing",
       "reason": "fails on main (rc=1): AssertionError: expected live routing posture panel in dashboard config section, tracked in backlog"
     },
     {
       "script": "scripts/testing/test-dashboard-security-headers.py",
+      "class": "live-service",
       "reason": "host-only: needs a live local service (switchboard/dashboard/coordinator/AIDB); last output: urllib.error.URLError: <urlopen error [Errno 111] Connection refused>"
     },
     {
       "script": "scripts/testing/test-dashboard-testing-ui.py",
+      "class": "known-failing",
       "reason": "fails on main (rc=1): - /api/testing/execute, tracked in backlog"
     },
     {
       "script": "scripts/testing/test-dashboard-visual.sh",
+      "class": "slow",
       "reason": "slow: exceeds the 120s timeout"
     },
     {
+      "script": "scripts/testing/test-delegate-agent-mapping.py",
+      "class": "live-service",
+      "reason": "host-only: needs a live local service (switchboard/dashboard/coordinator/AIDB); POSTs to the coordinator at 127.0.0.1:8003 with the host secret /run/secrets/hybrid_coordinator_api_key"
+    },
+    {
       "script": "scripts/testing/test-delegate-claude-model-routing.py",
+      "class": "known-failing",
       "reason": "fails on main (rc=1): FAILED (errors=2), tracked in backlog"
     },
     {
+      "script": "scripts/testing/test-delegate-coding.py",
+      "class": "live-service",
+      "reason": "host-only: needs a live local service (switchboard/dashboard/coordinator/AIDB); POSTs to the coordinator at 127.0.0.1:8003 with the host secret /run/secrets/hybrid_coordinator_api_key"
+    },
+    {
+      "script": "scripts/testing/test-delegate-local-agent.py",
+      "class": "live-service",
+      "reason": "host-only: needs a live local service (switchboard/dashboard/coordinator/AIDB); POSTs to the coordinator at 127.0.0.1:8003 with the host secret /run/secrets/hybrid_coordinator_api_key"
+    },
+    {
       "script": "scripts/testing/test-delegate-timeout-config.py",
+      "class": "known-failing",
       "reason": "fails on main (rc=1): AssertionError: expected delegate handler to read timeout slack from env, tracked in backlog"
     },
     {
       "script": "scripts/testing/test-delegate-to-claude-lifecycle.py",
+      "class": "known-failing",
       "reason": "fails on main (rc=1): FAILED (failures=6, errors=1), tracked in backlog"
     },
     {
       "script": "scripts/testing/test-delegate-wrapper-shell-safety.py",
+      "class": "known-failing",
       "reason": "fails on main: references missing file /tmp/tmp.ayXCQN4za0/delegate-shell-safety-wqyw6_ho/.agents/delegation/registry.jsonl, tracked in backlog"
     },
     {
+      "script": "scripts/testing/test-delegate.py",
+      "class": "live-service",
+      "reason": "host-only: needs a live local service (switchboard/dashboard/coordinator/AIDB); POSTs to the coordinator at 127.0.0.1:8003 with the host secret /run/secrets/hybrid_coordinator_api_key"
+    },
+    {
       "script": "scripts/testing/test-delegated-prompt-efficiency-integration.py",
+      "class": "known-failing",
       "reason": "fails on main: references missing file ai-stack/mcp-servers/hybrid-coordinator/http_server.py, tracked in backlog"
     },
     {
       "script": "scripts/testing/test-delegated-quality-integration.py",
+      "class": "known-failing",
       "reason": "fails on main: references missing file ai-stack/mcp-servers/hybrid-coordinator/http_server.py, tracked in backlog"
     },
     {
       "script": "scripts/testing/test-delegation-failover.py",
+      "class": "known-failing",
       "reason": "fails on main: references missing file ai-stack/mcp-servers/hybrid-coordinator/http_server.py, tracked in backlog"
     },
     {
       "script": "scripts/testing/test-delegation-feedback.py",
+      "class": "known-failing",
       "reason": "fails on main (rc=1): subprocess.TimeoutExpired: Command '['/home/hyperd/.nix-profile/bin/python3', '/home/hyper, tracked in backlog"
     },
     {
+      "script": "scripts/testing/test-delegation-local-gemini.py",
+      "class": "live-service",
+      "reason": "host-only: needs a live local service (switchboard/dashboard/coordinator/AIDB); POSTs to the coordinator at 127.0.0.1:8003 with the host secret /run/secrets/hybrid_coordinator_api_key"
+    },
+    {
       "script": "scripts/testing/test-deployment-dashboard.py",
+      "class": "live-service",
       "reason": "host-only: needs a live local service (switchboard/dashboard/coordinator/AIDB); last output: aiohttp.client_exceptions.ClientConnectorError: Cannot connect to host 127.0.0.1:8889 ssl:"
     },
     {
       "script": "scripts/testing/test-desktop-cosmic-greeter-config.py",
+      "class": "known-failing",
       "reason": "fails on main (rc=1): AssertionError: COSMIC greeter config seed should run before greeter startup, tracked in backlog"
     },
     {
       "script": "scripts/testing/test-execution-cell-adapter.py",
+      "class": "live-service",
       "reason": "host-only: needs a live local service (switchboard/dashboard/coordinator/AIDB); last output: FAILED: ['full_green_decision']"
     },
     {
       "script": "scripts/testing/test-execution-cell-clone.py",
+      "class": "live-service",
       "reason": "host-only: needs a live local service (switchboard/dashboard/coordinator/AIDB); last output: FAILED: ['nonwritable_parent_typed_failure', 'teardown_unprovable_is_quarantined', 'reconc"
     },
     {
       "script": "scripts/testing/test-execution-cell-perf-harness.py",
+      "class": "known-failing",
       "reason": "fails on main (rc=1): FAILED: ['e2e_all_cohorts_valid', 'e2e_all_rows_green', 'e2e_verdict_not_invalid', 'e2e_ve, tracked in backlog"
     },
     {
       "script": "scripts/testing/test-execution-cell-runner.py",
+      "class": "sandbox-env",
       "reason": "host-only: fails in a no-network, mapped-uid sandbox but passes unsandboxed (needs loopback/network or the real uid); not verified stable on a CI runner"
     },
     {
       "script": "scripts/testing/test-factory-gate-readiness.py",
+      "class": "slow",
       "reason": "slow: 60s wall serial, over the 45s budget for a gated test; run on demand"
     },
     {
+      "script": "scripts/testing/test-functional-prompt-eval.py",
+      "class": "sandbox-env",
+      "reason": "host-only: sandbox_hardening asserts bwrap containment ('host write not contained') and fails on the hosted runner's namespace/bwrap behaviour; containment is exercised on the host and by the confine-tests workflow"
+    },
+    {
       "script": "scripts/testing/test-harness-delegation-live.py",
+      "class": "live-service",
       "reason": "host-only: needs a live local service (switchboard/dashboard/coordinator/AIDB); last output: Ensure hybrid-coordinator is running: systemctl status hybrid-coordinator"
     },
     {
       "script": "scripts/testing/test-harness-hooks.py",
+      "class": "unstable",
       "reason": "unstable: passed in the sandboxed run but failed/timed out in a later run (plain=(1, 1), serial=(0, 0)); host-dependent or load-sensitive, tracked in backlog"
     },
     {
       "script": "scripts/testing/test-http-query-audit-metadata.py",
+      "class": "known-failing",
       "reason": "fails on main: references missing file ai-stack/mcp-servers/hybrid-coordinator/http_server.py, tracked in backlog"
     },
     {
       "script": "scripts/testing/test-integration-completeness.py",
+      "class": "known-failing",
       "reason": "fails on main (rc=1): Report saved: /home/hyperd/Documents/NixOS-Dev-Quick-Deploy/.agents/delegation/worktrees/r, tracked in backlog"
     },
     {
       "script": "scripts/testing/test-llm-router-integration.py",
+      "class": "known-failing",
       "reason": "fails on main (rc=1): Make sure llm_router.py and model_coordinator.py are in the hybrid-coordinator directory, tracked in backlog"
     },
     {
       "script": "scripts/testing/test-local-agent-config.py",
+      "class": "known-failing",
       "reason": "fails on main (rc=1): AssertionError: hyperd should pin the local llama.cpp lane to qwen3.6-35b-mtp-q5 for harne, tracked in backlog"
     },
     {
       "script": "scripts/testing/test-local-agent-offline-resilience.py",
+      "class": "known-failing",
       "reason": "fails on main: ModuleNotFoundError 'task_router' (sys.path/dependency not available), tracked in backlog"
     },
     {
       "script": "scripts/testing/test-local-delegation-reliability.py",
+      "class": "live-service",
       "reason": "host-only: needs a live local service (switchboard/dashboard/coordinator/AIDB); last output: FAILED (failures=4)"
     },
     {
       "script": "scripts/testing/test-local-inference-throughput.py",
+      "class": "unstable",
       "reason": "unstable: passed in the sandboxed run but failed/timed out in a later run (plain=(1, 2), serial=(0, 1)); host-dependent or load-sensitive, tracked in backlog"
     },
     {
       "script": "scripts/testing/test-local-subprocess-discipline-smoke.py",
+      "class": "live-service",
       "reason": "host-only: needs a live local service (switchboard/dashboard/coordinator/AIDB); last output: Exception: [Errno 111] Connection refused"
     },
     {
       "script": "scripts/testing/test-meta-learning-integration.py",
+      "class": "known-failing",
       "reason": "fails on main: references missing file ai-stack/mcp-servers/hybrid-coordinator/http_server.py, tracked in backlog"
     },
     {
+      "script": "scripts/testing/test-model-catalog-freshness.py",
+      "class": "sandbox-env",
+      "reason": "host-only: asserts the active llama.cpp model file (profile model_path under /var/lib) exists; a CI runner has no local model weights"
+    },
+    {
       "script": "scripts/testing/test-model-optimization-advanced-runtime.py",
+      "class": "known-failing",
       "reason": "fails on main: ModuleNotFoundError 'synthetic_data' (sys.path/dependency not available), tracked in backlog"
     },
     {
       "script": "scripts/testing/test-model-optimization-mcp-tools.py",
+      "class": "known-failing",
       "reason": "fails on main (rc=1): AssertionError: MCP handlers should expose capture_training_example, tracked in backlog"
     },
     {
       "script": "scripts/testing/test-model-optimization-runtime-integration.py",
+      "class": "known-failing",
       "reason": "fails on main (rc=1): AssertionError: interaction outcome should still update qdrant payload, tracked in backlog"
     },
     {
       "script": "scripts/testing/test-multi-agent-collaboration.py",
+      "class": "known-failing",
       "reason": "fails on main: ModuleNotFoundError 'agents' (sys.path/dependency not available), tracked in backlog"
     },
     {
       "script": "scripts/testing/test-network-policy-packaging.sh",
+      "class": "known-failing",
       "reason": "fails on main (rc=2): usage: scripts/testing/test-network-policy-packaging.sh AQ_NETWORK_POLICY NMCLI RESOLVECTL, tracked in backlog"
     },
     {
       "script": "scripts/testing/test-no-host-repo-paths-in-tests.py",
+      "class": "known-failing",
       "reason": "fails on main (rc=1): scripts/testing/test-nixos-writable-state-policy.py:90, tracked in backlog"
     },
     {
       "script": "scripts/testing/test-ops-handler-extraction.py",
+      "class": "known-failing",
       "reason": "fails on main: references missing file ai-stack/mcp-servers/hybrid-coordinator/http_server.py, tracked in backlog"
     },
     {
       "script": "scripts/testing/test-optional-performance-completion.py",
+      "class": "known-failing",
       "reason": "fails on main: references missing file .agents/plans/PHASE-4-5-COMPLETION-ROADMAP-2026-03-30.md, tracked in backlog"
     },
     {
       "script": "scripts/testing/test-orchestration-runtime-integration.py",
+      "class": "known-failing",
       "reason": "fails on main: references missing file ai-stack/mcp-servers/hybrid-coordinator/http_server.py, tracked in backlog"
     },
     {
       "script": "scripts/testing/test-orchestration-visibility.py",
+      "class": "known-failing",
       "reason": "fails on main (rc=1): - /api/aistack/orchestration/evaluations/trends, tracked in backlog"
     },
     {
       "script": "scripts/testing/test-pipeline-orchestration.py",
+      "class": "known-failing",
       "reason": "fails on main: references missing file ai-stack/agentic-patterns/pipeline_orchestration.py, tracked in backlog"
     },
     {
       "script": "scripts/testing/test-plans-index.py",
+      "class": "known-failing",
       "reason": "fails on main (rc=1): FAILED (failures=1), tracked in backlog"
     },
     {
       "script": "scripts/testing/test-pre-commit-whitespace-check.py",
+      "class": "known-failing",
       "reason": "fails on main (rc=1): AssertionError: Function should be called before exit, tracked in backlog"
     },
     {
       "script": "scripts/testing/test-progressive-context-integration.py",
+      "class": "known-failing",
       "reason": "fails on main: references missing file ai-stack/mcp-servers/hybrid-coordinator/http_server.py, tracked in backlog"
     },
     {
       "script": "scripts/testing/test-project-payload-manifest.py",
+      "class": "known-failing",
       "reason": "fails on main (rc=1): AssertionError: {'.github/CODEOWNERS'}, tracked in backlog"
     },
     {
       "script": "scripts/testing/test-prompt-effectiveness.py",
+      "class": "known-failing",
       "reason": "fails on main: ModuleNotFoundError 'local_orchestrator' (sys.path/dependency not available), tracked in backlog"
     },
     {
       "script": "scripts/testing/test-prompt-injection-resilience.sh",
+      "class": "live-service",
       "reason": "host-only: needs a live local service (switchboard/dashboard/coordinator/AIDB); last output: Hybrid injection probe failed (HTTP 000)"
     },
     {
       "script": "scripts/testing/test-qa-provider-probe-lifecycle.py",
+      "class": "known-failing",
       "reason": "fails on main (rc=1): FAILED (failures=1, errors=1), tracked in backlog"
     },
     {
       "script": "scripts/testing/test-quality-system-health.py",
+      "class": "live-service",
       "reason": "host-only: needs a live local service (switchboard/dashboard/coordinator/AIDB); last output: ============================================================"
     },
     {
       "script": "scripts/testing/test-query-performance.py",
+      "class": "known-failing",
       "reason": "fails on main: ModuleNotFoundError 'lib.search' (sys.path/dependency not available), tracked in backlog"
     },
     {
       "script": "scripts/testing/test-real-time-learning-integration.py",
+      "class": "known-failing",
       "reason": "fails on main: references missing file ai-stack/mcp-servers/hybrid-coordinator/http_server.py, tracked in backlog"
     },
     {
       "script": "scripts/testing/test-real-world-workflows.sh",
+      "class": "live-service",
       "reason": "host-only: needs a live local service (switchboard/dashboard/coordinator/AIDB); last output: Declarative health check failed."
     },
     {
       "script": "scripts/testing/test-revocation-epoch-authority.py",
+      "class": "known-failing",
       "reason": "fails on main (rc=1): 18 passed, 2 failed (of 20 assertions), tracked in backlog"
     },
     {
       "script": "scripts/testing/test-route-handler-adaptive-timeouts.py",
+      "class": "known-failing",
       "reason": "fails on main: ImportError 'routing_config' (module layout changed), tracked in backlog"
     },
     {
       "script": "scripts/testing/test-route-handler-backend-audit.py",
+      "class": "known-failing",
       "reason": "fails on main: ImportError 'routing_config' (module layout changed), tracked in backlog"
     },
     {
       "script": "scripts/testing/test-route-handler-classifier-context-cap.py",
+      "class": "known-failing",
       "reason": "fails on main: ImportError 'routing_config' (module layout changed), tracked in backlog"
     },
     {
       "script": "scripts/testing/test-route-handler-context-budget.py",
+      "class": "known-failing",
       "reason": "fails on main: ImportError 'routing_config' (module layout changed), tracked in backlog"
     },
     {
       "script": "scripts/testing/test-route-handler-discovery-gating.py",
+      "class": "known-failing",
       "reason": "fails on main: ImportError 'routing_config' (module layout changed), tracked in backlog"
     },
     {
       "script": "scripts/testing/test-route-handler-local-synthesis-budget.py",
+      "class": "known-failing",
       "reason": "fails on main: ImportError 'routing_config' (module layout changed), tracked in backlog"
     },
     {
-      "script": "scripts/testing/test-rsi-gate.py",
-      "reason": "host-only: fails in a no-network, mapped-uid sandbox but passes unsandboxed (needs loopback/network or the real uid); not verified stable on a CI runner"
-    },
-    {
       "script": "scripts/testing/test-safety-layer.py",
+      "class": "known-failing",
       "reason": "fails on main: ModuleNotFoundError 'tool_registry' (sys.path/dependency not available), tracked in backlog"
     },
     {
       "script": "scripts/testing/test-scope-gate.py",
+      "class": "known-failing",
       "reason": "fails on main (rc=1): FAILED (failures=1), tracked in backlog"
     },
     {
       "script": "scripts/testing/test-search-router-collection-timeouts.py",
+      "class": "known-failing",
       "reason": "fails on main: ModuleNotFoundError 'knowledge' (sys.path/dependency not available), tracked in backlog"
     },
     {
       "script": "scripts/testing/test-security-contract-gates.py",
+      "class": "known-failing",
       "reason": "fails on main (rc=1): AssertionError: parity plan missing PA-2, tracked in backlog"
     },
     {
       "script": "scripts/testing/test-security-cve-rsi-gate.py",
+      "class": "known-failing",
       "reason": "fails on main (rc=1): FAILED (failures=1), tracked in backlog"
     },
     {
       "script": "scripts/testing/test-security-nix-closure-scan.py",
+      "class": "known-failing",
       "reason": "fails on main (rc=1): FAILED (failures=1), tracked in backlog"
     },
     {
       "script": "scripts/testing/test-security-workflow-integration.py",
+      "class": "known-failing",
       "reason": "fails on main: ModuleNotFoundError 'audit_logger' (sys.path/dependency not available), tracked in backlog"
     },
     {
       "script": "scripts/testing/test-switchboard-continue-context-window.sh",
+      "class": "live-service",
       "reason": "host-only: needs a live local service (switchboard/dashboard/coordinator/AIDB); last output: [FAIL] switchboard /health unreachable at http://127.0.0.1:8085"
     },
     {
       "script": "scripts/testing/test-switchboard-local-tool-calling.sh",
+      "class": "live-service",
       "reason": "host-only: needs a live local service (switchboard/dashboard/coordinator/AIDB); last output: curl: (7) Failed to connect to 127.0.0.1:8085 after 0 ms: Could not connect to server"
     },
     {
       "script": "scripts/testing/test-task-classifier-local-continuation.py",
+      "class": "known-failing",
       "reason": "fails on main: ModuleNotFoundError 'core' (sys.path/dependency not available), tracked in backlog"
     },
     {
       "script": "scripts/testing/test-tier0-staged-isolation.sh",
+      "class": "known-failing",
       "reason": "fails on main: references missing file .agent/collaboration/RESUME.json, tracked in backlog"
     },
     {
       "script": "scripts/testing/test-vector-similarity-search-perf.py",
+      "class": "unstable",
       "reason": "unstable: passed in the sandboxed run but failed/timed out in a later run (plain=(124, 867), serial=(0, 57)); host-dependent or load-sensitive, tracked in backlog"
     },
     {
       "script": "scripts/testing/test-vscodium-extension-runtime-guards.py",
+      "class": "known-failing",
       "reason": "fails on main (rc=1): AssertionError: repair path should prune oversized Gemini and Qwen startup state, tracked in backlog"
     },
     {
       "script": "scripts/testing/test-vscodium-gpu-mitigation.py",
+      "class": "known-failing",
       "reason": "fails on main (rc=1): - vscodiumArgvJSON = pkgs.writeText 'vscodium-argv-baseline.json', tracked in backlog"
     },
     {
+      "script": "scripts/testing/test-web-research-lane.py",
+      "class": "unstable",
+      "reason": "flaky under the parallel group runner: 'same-host pacing delay should be applied once' (passes standalone)"
+    },
+    {
       "script": "scripts/testing/test-workflow-automation.py",
+      "class": "known-failing",
       "reason": "fails on main: ModuleNotFoundError 'workflows' (sys.path/dependency not available), tracked in backlog"
     },
     {
       "script": "scripts/testing/test-workflow-deviation-broker.py",
+      "class": "slow",
       "reason": "slow: exceeds the 120s timeout"
     },
     {
       "script": "scripts/testing/test-workflow-orchestration-defaults.py",
+      "class": "known-failing",
       "reason": "fails on main: references missing file ai-stack/mcp-servers/hybrid-coordinator/http_server.py, tracked in backlog"
     },
     {
       "script": "scripts/testing/test-workflow-pattern-adoption.py",
+      "class": "known-failing",
       "reason": "fails on main: references missing file ai-stack/mcp-servers/hybrid-coordinator/http_server.py, tracked in backlog"
     },
     {
       "script": "scripts/testing/test-workflow-run-policy-overrides.py",
+      "class": "known-failing",
       "reason": "fails on main: references missing file ai-stack/mcp-servers/hybrid-coordinator/http_server.py, tracked in backlog"
     },
     {
       "script": "scripts/testing/test-worktree-isolation.py",
+      "class": "known-failing",
       "reason": "fails on main (rc=1): AssertionError, tracked in backlog"
     }
   ]

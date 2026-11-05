@@ -5,7 +5,7 @@ State paths (RSI ledger/backlog, on-call, triage) are pointed at the per-test te
 naming the files, if `git status` (paths + content hashes) differs after the run (P0.6: tests cannot mutate live state).
 
 Each test gets a 120 s timeout, repo-locating GIT_* stripped, stdin closed and a private
-AQ_DELEGATION_DIR and no ambient PYTHONPATH so no test touches the shared delegation ledger. Fails if any test fails.
+AQ_DELEGATION_DIR and DASHBOARD_DATA_DIR and no ambient PYTHONPATH/PR-context vars so no test touches the shared delegation ledger. Fails if any test fails.
 """
 import hashlib
 import json
@@ -36,12 +36,17 @@ def tree_state() -> dict:
 
 def run_one(test: str):
     interp = "python3" if test.endswith(".py") else "bash"
-    with tempfile.TemporaryDirectory(prefix="aq-test-group-") as d:
+    # dir=/tmp: local-agent file tools only write under /tmp, ~/Documents or ~/.local/share/nixos-ai-stack, and a
+    # hosted runner's default TMPDIR (RUNNER_TEMP under /home/runner/work) is none of those.
+    with tempfile.TemporaryDirectory(prefix="aq-test-group-", dir="/tmp") as d:
         # PYTHONPATH is dropped: operator shells point it at the MAIN checkout, which shadows this tree's modules.
         # CI_CHECKS_* is dropped: ci-merge-parity exports CI_CHECKS_CHANGED_FILES for its own runner, and tests
         # of that runner must not inherit it.
-        env = {**{k: v for k, v in clean_git_env().items() if k != "PYTHONPATH" and not k.startswith("CI_CHECKS_")},
-               "TMPDIR": d, "AQ_DELEGATION_DIR": f"{d}/delegation",
+        # GITHUB_{EVENT_NAME,BASE_REF,HEAD_REF}: a PR runner's ambient PR context flips branch-sensitive gates under test.
+        # DASHBOARD_DATA_DIR: dashboard modules default to /var/lib/nixos-system-dashboard, which only exists on the host.
+        env = {**{k: v for k, v in clean_git_env().items() if k != "PYTHONPATH" and not k.startswith("CI_CHECKS_")
+                  and k not in ("GITHUB_EVENT_NAME", "GITHUB_BASE_REF", "GITHUB_HEAD_REF")},
+               "TMPDIR": d, "AQ_DELEGATION_DIR": f"{d}/delegation", "DASHBOARD_DATA_DIR": f"{d}/dashboard",
                "RSI_RUNTIME_DIR": f"{d}/rsi", "RSI_BACKLOG_FILE": f"{d}/issues-backlog.md",
                "PRSI_INCIDENTS_FILE": f"{d}/rsi/rsi-incidents.json",
                "AQ_ONCALL_STATE_DIR": f"{d}/oncall", "AQ_TRIAGE_STATE_DIR": f"{d}/triage",
