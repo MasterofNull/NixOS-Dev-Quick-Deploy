@@ -66,6 +66,4 @@ jobs:
           ignore_paths: |
             node_modules
             .git
-        # KNOWN-FAILING: shellcheck at severity warning reports hundreds of findings (SC2034, SC2155, SC2088; run 41875000213); tracked CI-MASK-VALIDATE-SHELL-SCRIPTS-RUN-SHELLCHECK
-        continue-on-error: true
 
