@@ -68,7 +68,8 @@ check_ralph_health() {
 # Submit a task to Ralph
 submit_task() {
     local task_file="$1"
-    local task_name=$(basename "$task_file" .json)
+    local task_name
+    task_name=$(basename "$task_file" .json)
 
     log_info "Submitting task: $task_name"
 
@@ -79,10 +80,14 @@ submit_task() {
     fi
 
     # Extract task properties
-    local description=$(echo "$task_json" | jq -r '.description // "No description"')
-    local backend=$(echo "$task_json" | jq -r '.backend // "aider"')
-    local max_iterations=$(echo "$task_json" | jq -r '.max_iterations // 10')
-    local require_approval=$(echo "$task_json" | jq -r '.require_approval // false')
+    local description
+    description=$(echo "$task_json" | jq -r '.description // "No description"') || true
+    local backend
+    backend=$(echo "$task_json" | jq -r '.backend // "aider"') || true
+    local max_iterations
+    max_iterations=$(echo "$task_json" | jq -r '.max_iterations // 10') || true
+    local require_approval
+    require_approval=$(echo "$task_json" | jq -r '.require_approval // false') || true
 
     log_info "  Description: $description"
     log_info "  Backend: $backend"
@@ -91,24 +96,28 @@ submit_task() {
 
     # Build task payload for Ralph
     # Ralph expects: prompt, backend, max_iterations, require_approval
-    local context=$(echo "$task_json" | jq -r '.context // {}')
-    local goal=$(echo "$context" | jq -r '.goal // ""')
+    local context
+    context=$(echo "$task_json" | jq -r '.context // {}') || true
+    local goal
+    goal=$(echo "$context" | jq -r '.goal // ""') || true
 
     # Create the prompt from the task definition
-    local prompt="Task: $description
+    local prompt
+    prompt="Task: $description
 
 Goal: $goal
 
 Task Definition:
-$(echo "$task_json" | jq -c '.')"
+$(echo "$task_json" | jq -c '.')" || true
 
     # Submit to Ralph
-    local payload=$(jq -n \
+    local payload
+    payload=$(jq -n \
         --arg prompt "$prompt" \
         --arg backend "$backend" \
         --argjson max_iterations "$max_iterations" \
         --argjson require_approval "$require_approval" \
-        '{prompt: $prompt, backend: $backend, max_iterations: $max_iterations, require_approval: $require_approval}')
+        '{prompt: $prompt, backend: $backend, max_iterations: $max_iterations, require_approval: $require_approval}') || true
 
     log_info "Submitting to Ralph API..."
 
@@ -120,13 +129,15 @@ $(echo "$task_json" | jq -c '.')"
     fi
 
     # Extract task ID from response
-    local task_id=$(echo "$response" | jq -r '.task_id // .id // "unknown"')
+    local task_id
+    task_id=$(echo "$response" | jq -r '.task_id // .id // "unknown"') || true
 
     log_success "Task submitted successfully"
     log_info "Task ID: $task_id"
 
     # Log to telemetry
-    local timestamp=$(date -Iseconds)
+    local timestamp
+    timestamp=$(date -Iseconds)
     echo "{\"timestamp\": \"$timestamp\", \"task_name\": \"$task_name\", \"task_id\": \"$task_id\", \"action\": \"submitted\"}" \
         >> "$TELEMETRY_DIR/ralph_orchestrator.jsonl"
 
@@ -146,8 +157,10 @@ monitor_task() {
             return 1
         fi
 
-        local status=$(echo "$response" | jq -r '.status // "unknown"')
-        local iteration=$(echo "$response" | jq -r '.iteration // 0')
+        local status
+        status=$(echo "$response" | jq -r '.status // "unknown"') || true
+        local iteration
+        iteration=$(echo "$response" | jq -r '.iteration // 0') || true
 
         case "$status" in
             "running")
@@ -157,7 +170,8 @@ monitor_task() {
                 log_success "Task $task_id: Completed"
 
                 # Log completion
-                local timestamp=$(date -Iseconds)
+                local timestamp
+                timestamp=$(date -Iseconds)
                 echo "{\"timestamp\": \"$timestamp\", \"task_id\": \"$task_id\", \"action\": \"completed\", \"iterations\": $iteration}" \
                     >> "$TELEMETRY_DIR/ralph_orchestrator.jsonl"
 
@@ -165,11 +179,13 @@ monitor_task() {
                 ;;
             "failed")
                 log_error "Task $task_id: Failed"
-                local error=$(echo "$response" | jq -r '.error // "Unknown error"')
+                local error
+                error=$(echo "$response" | jq -r '.error // "Unknown error"') || true
                 log_error "Error: $error"
 
                 # Log failure
-                local timestamp=$(date -Iseconds)
+                local timestamp
+                timestamp=$(date -Iseconds)
                 echo "{\"timestamp\": \"$timestamp\", \"task_id\": \"$task_id\", \"action\": \"failed\", \"error\": \"$error\"}" \
                     >> "$TELEMETRY_DIR/ralph_orchestrator.jsonl"
 
@@ -190,7 +206,8 @@ run_task() {
     local monitor="${2:-false}"
 
     # Submit the task
-    local task_id=$(submit_task "$task_file")
+    local task_id
+    task_id=$(submit_task "$task_file") || true
     if [ $? -ne 0 ]; then
         return 1
     fi
@@ -214,8 +231,10 @@ list_tasks() {
 
     for task_file in "$TASK_DIR"/*.json; do
         if [ -f "$task_file" ]; then
-            local task_name=$(basename "$task_file" .json)
-            local description=$(jq -r '.description // "No description"' "$task_file")
+            local task_name
+            task_name=$(basename "$task_file" .json)
+            local description
+            description=$(jq -r '.description // "No description"' "$task_file") || true
             echo "  • $task_name: $description"
         fi
     done

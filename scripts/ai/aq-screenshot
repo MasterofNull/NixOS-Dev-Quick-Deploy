@@ -35,8 +35,6 @@ EOF
   exit 0
 fi
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 # Resolve system chromium — nix profile first, then PATH
 CHROMIUM_PATH="${CHROMIUM_PATH:-}"

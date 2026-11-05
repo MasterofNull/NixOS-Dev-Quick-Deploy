@@ -10,7 +10,6 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
-WORLD_MODEL_DIR="${REPO_ROOT}/ai-stack/world-model"
 
 if [[ "${WORLD_MODEL_ENABLED:-false}" != "true" ]]; then
     echo "aq-context-warm: WORLD_MODEL_ENABLED is not 'true', skipping." >&2

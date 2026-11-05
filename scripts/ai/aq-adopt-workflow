@@ -62,7 +62,7 @@ while IFS= read -r line; do
   # Derive plan filename from candidate ID slug (first 50 chars, sanitized)
   SLUG=$(echo "$ID" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9-]/-/g' | cut -c1-50)
   # Find next available phase number
-  LAST_PHASE=$(ls "$PLANS_DIR"/phase-*.md 2>/dev/null | grep -oP 'phase-\K[0-9]+' | sort -n | tail -1 || echo "156")
+  LAST_PHASE=$(printf '%s\n' "$PLANS_DIR"/phase-*.md 2>/dev/null | grep -oP 'phase-\K[0-9]+' | sort -n | tail -1 || echo "156")
   NEXT_PHASE=$((LAST_PHASE + 1))
   PLAN_FILE="$PLANS_DIR/phase-${NEXT_PHASE}-${SLUG}.md"
 

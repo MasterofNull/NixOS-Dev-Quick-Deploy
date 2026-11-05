@@ -49,8 +49,6 @@ benchmark_vector_search() {
     log_info "Benchmarking vector search performance..."
 
     local iterations=100
-    local total_time=0
-    local collection="test-collection"
 
     log_info "Running $iterations vector searches..."
 
@@ -162,9 +160,12 @@ run_all_benchmarks() {
 
     local e2e_latency
     e2e_latency=$(benchmark_e2e_latency)
-    local e2e_p50=$(echo "$e2e_latency" | cut -d',' -f1)
-    local e2e_p95=$(echo "$e2e_latency" | cut -d',' -f2)
-    local e2e_p99=$(echo "$e2e_latency" | cut -d',' -f3)
+    local e2e_p50
+    e2e_p50=$(echo "$e2e_latency" | cut -d',' -f1) || true
+    local e2e_p95
+    e2e_p95=$(echo "$e2e_latency" | cut -d',' -f2) || true
+    local e2e_p99
+    e2e_p99=$(echo "$e2e_latency" | cut -d',' -f3) || true
 
     # Generate JSON report
     cat >"$output_file" <<EOF

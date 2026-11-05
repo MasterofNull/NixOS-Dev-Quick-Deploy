@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-MODEL_NAME="${EMBEDDING_MODEL:-BAAI/bge-small-en-v1.5}"
 CACHE_DIR="${EMBEDDINGS_CACHE_DIR:-${HOME}/.local/share/nixos-ai-stack/embeddings-cache}"
 HUB_DIR="${CACHE_DIR}/hub"
 export HF_HUB_ENABLE_HF_TRANSFER=0

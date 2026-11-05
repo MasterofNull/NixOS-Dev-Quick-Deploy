@@ -15,7 +15,6 @@ steps=(
   "scripts/testing/check-npm-security-monitor-smoke.sh"
 )
 
-declare -a results=()
 overall=0
 RESULTS_FILE="${OUT_DIR}/results.jsonl"
 : > "${RESULTS_FILE}"

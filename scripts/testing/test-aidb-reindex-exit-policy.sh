@@ -13,7 +13,7 @@ grep -q 'partial)' "$script" \
 grep -A4 'partial)' "$script" | grep -q 'exit 0' \
   || { echo "FAIL: partial reindex should exit 0 and rely on telemetry for degraded state"; exit 1; }
 
-grep -A4 '*)' "$script" | grep -q 'exit 1' \
+grep -F -A4 '*)' "$script" | grep -q 'exit 1' \
   || { echo "FAIL: total reindex failure should still exit non-zero"; exit 1; }
 
 echo "PASS: aidb-reindex exit policy"

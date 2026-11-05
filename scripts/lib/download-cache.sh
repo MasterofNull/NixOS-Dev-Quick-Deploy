@@ -22,18 +22,21 @@ cached_download() {
     fi
 
     # Generate cache filename from URL hash
-    local url_hash=$(echo -n "$url" | sha256sum | awk '{print $1}')
+    local url_hash
+    url_hash=$(echo -n "$url" | sha256sum | awk '{print $1}') || true
     local cache_file="${DOWNLOAD_CACHE}/${url_hash}"
     local cache_meta="${cache_file}.meta"
 
     # Check if cached file exists and is valid
     if [ -f "$cache_file" ] && [ -f "$cache_meta" ]; then
-        local cached_url=$(cat "$cache_meta")
+        local cached_url
+        cached_url=$(cat "$cache_meta") || true
 
         if [ "$cached_url" = "$url" ]; then
             # Verify integrity if checksum provided
             if [ -n "$expected_sha256" ]; then
-                local actual_sha256=$(sha256sum "$cache_file" | awk '{print $1}')
+                local actual_sha256
+                actual_sha256=$(sha256sum "$cache_file" | awk '{print $1}') || true
                 if [ "$actual_sha256" = "$expected_sha256" ]; then
                     echo "✓ Using cached file (integrity verified): ${cache_file##*/}"
                     cp "$cache_file" "$dest"
@@ -63,7 +66,8 @@ cached_download() {
     if curl -fsSL --retry 5 --retry-delay 3 --max-time "$CURL_TIMEOUT" --connect-timeout "$CURL_CONNECT_TIMEOUT" "$url" -o "$temp_file"; then
         # Verify integrity if checksum provided
         if [ -n "$expected_sha256" ]; then
-            local actual_sha256=$(sha256sum "$temp_file" | awk '{print $1}')
+            local actual_sha256
+            actual_sha256=$(sha256sum "$temp_file" | awk '{print $1}') || true
             if [ "$actual_sha256" != "$expected_sha256" ]; then
                 echo "✗ Download failed: checksum mismatch" >&2
                 echo "  Expected: $expected_sha256" >&2
@@ -131,9 +135,11 @@ cleanup_download_cache() {
 
     echo "🧹 Cleaning download cache (files older than ${days} days)..."
 
-    local count_before=$(find "$DOWNLOAD_CACHE" -type f | wc -l)
+    local count_before
+    count_before=$(find "$DOWNLOAD_CACHE" -type f | wc -l) || true
     find "$DOWNLOAD_CACHE" -type f -mtime +"$days" -delete
-    local count_after=$(find "$DOWNLOAD_CACHE" -type f | wc -l)
+    local count_after
+    count_after=$(find "$DOWNLOAD_CACHE" -type f | wc -l) || true
     local removed=$((count_before - count_after))
 
     echo "✓ Removed $removed old cache entries"
@@ -149,8 +155,10 @@ show_cache_stats() {
         return 0
     fi
 
-    local file_count=$(find "$DOWNLOAD_CACHE" -type f -name "*" ! -name "*.meta" | wc -l)
-    local total_size=$(du -sh "$DOWNLOAD_CACHE" 2>/dev/null | awk '{print $1}' || echo '0')
+    local file_count
+    file_count=$(find "$DOWNLOAD_CACHE" -type f -name "*" ! -name "*.meta" | wc -l) || true
+    local total_size
+    total_size=$(du -sh "$DOWNLOAD_CACHE" 2>/dev/null | awk '{print $1}' || echo '0')
 
     echo "Download Cache Statistics:"
     echo "  Location: $DOWNLOAD_CACHE"
@@ -161,9 +169,12 @@ show_cache_stats() {
         echo ""
         echo "Oldest files:"
         find "$DOWNLOAD_CACHE" -type f ! -name "*.meta" -printf '%T+ %s %p\n' | sort | head -5 | while read -r line; do
-            local date=$(echo "$line" | awk '{print $1}')
-            local size=$(echo "$line" | awk '{print $2}')
-            local file=$(echo "$line" | awk '{print $3}')
+            local date
+            date=$(echo "$line" | awk '{print $1}') || true
+            local size
+            size=$(echo "$line" | awk '{print $2}') || true
+            local file
+            file=$(echo "$line" | awk '{print $3}') || true
             local size_mb=$((size / 1024 / 1024))
             echo "  $(basename "$file"): ${size_mb}MB (${date%%T*})"
         done
@@ -182,7 +193,8 @@ verify_cache_file() {
         return 1
     fi
 
-    local actual_sha256=$(sha256sum "$cache_file" | awk '{print $1}')
+    local actual_sha256
+    actual_sha256=$(sha256sum "$cache_file" | awk '{print $1}') || true
     if [ "$actual_sha256" = "$expected_sha256" ]; then
         echo "✓ Cache file valid: $cache_hash"
         return 0
