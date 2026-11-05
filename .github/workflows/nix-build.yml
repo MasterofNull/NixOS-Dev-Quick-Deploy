@@ -43,7 +43,7 @@ jobs:
             /usr/local/share/boost \
             /var/lib/docker \
             /var/run/docker.sock
-          docker system prune --all --volumes -f 2>/dev/null || true
+          docker system prune --all --volumes -f 2>/dev/null || true  # NON-GATING: disk cleanup
           df -h /
 
       - name: Install Nix

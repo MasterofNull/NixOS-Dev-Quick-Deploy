@@ -1,0 +1,294 @@
+We're going to talk about graph engineering today.
+How many people have heard about that term, graph engineering?
+Okay, so a fair amount of room.
+And then just so I understand, how many people here are familiar with Neo4j and have used
+Neo4j?
+Okay, so we've got a few people.
+So let's go for just letting me know who we're talking to today.
+So just some history on some of the verb digits being used.
+There was a tweet that went out by Peter Steinberger, I think, earlier this year in the summer,
+that talked about graph engineering, and it was almost like, is this sort of a new discipline
+that's happening as this evolution from prompt engineering and context engineering.
+And there's a lot of hype around this.
+And the name for this is new, but the mechanisms are not really new.
+We've always known in computer science generally about state machines and workflow graphs and
+knowledge graphs and all these different things.
+What's changing is really how we think about them in reference to agents.
+And what I'm going to talk to you about today is just how we think about graph engineering.
+And I'm going to offer you a little bit of a new perspective on this.
+So if we actually try to define what graph engineering is, I think a good definition
+is it's just the practice of designing agent work as an explicit graph.
+So where nodes do work and edges effectively route state between them.
+And I tend to think of it in terms of three different types of graphs.
+We have our general execution graphs, which you're probably very familiar with.
+So these are the workflow graphs with routers and agents as actual nodes that happen with
+inside of an agent harness.
+But there's other ways that we can think about graph engineering too that overlap with this.
+So that includes context graphs.
+These are decision traces, instances of what's happened, and how it connects to other data
+inside of your domain.
+And then there's also something that I'd call more procedural graphs.
+So this is almost like having a skill or procedural knowledge as a graph, where the steps might
+not be actual agents, but they might be steps inside of a way of doing something basically
+a procedure.
+So different calls, maybe a step for a decision model, steps for different agents, whether
+to escalate validation steps and these sorts of things.
+And I'm really going to focus on these last two because I think we don't talk about them
+enough.
+And I think by understanding these, you can actually get a little bit at what the first
+graph is trying to do as well, but in a very portable and efficient way.
+So graph engineering lets agents really take on bigger, more complex work.
+And that's why we care about it.
+And really, if you were to split it up, I think in terms of the benefits that a graph
+offers agents in this context, it would be predictability.
+So being able to constrain a path that an agent takes, making sure that the answer
+is basically accurate from a task that it's doing and having an explicit graph, the ability
+to govern, control, and guide what the agent does and audit it so you can understand what
+it's doing and make it better next time.
+And then the third one, which is going to be interesting that we'll talk about is how
+do we actually make graph engineering portable, and instead of thinking about a graph as something
+that happens in the runtime, it could be something that you can store and actually move between
+different runtimes and have inside of a knowledge layer, which gives you more interoperability
+and allows you to have a very simple stack.
+And in the runtime, when we think about the graph, it's really like a piece of orchestration.
+So probably all of us, or a large portion of us are probably familiar with LangGraph,
+ADK, and all these other agent frameworks, even to a certain extent, Anthropics, multi-agent
+research, and some of their stuff fits inside of graph engineering.
+And what I'm going to talk about today is actually what happens when we take that sort
+of graph and we put it next to our data as context graphs and some of the things that
+I was talking about before.
+And really when you do this, as I was saying, you add this portability layer.
+You add the ability to take all of this knowledge and make it work, basically, with any type
+of runtime.
+So that's what I'm going to go over today.
+And this is what we're doing at Neo4j is we're defining this knowledge layer.
+And this knowledge layer sits between systems of record that you would ordinarily retrieve
+data from.
+So Databix, BigQuery, Snowflake, these types of places.
+It could be documentation.
+It could be obsidian, these markdown files.
+And then can we create standard protocols and artifacts that live inside of that layer
+that then you can take a graph engineering process and make it available to any runtime
+or any agent?
+And the way our product works, just so you know at Neo4j, is we have our core database
+and then we have a ton of other AI stuff on top of it.
+So the database and the analytics layer, I'm going to be showing some of this throughout
+my talk.
+But what I'm really going to be focusing on is this top layer where we talk about sort
+of this agentic brain or these other memory tools that wrap around the database.
+So just know that as I go through, I'm going to be showing you data being loaded into the
+database.
+That's going to constitute our knowledge layer.
+It's going to come from multiple different sources.
+But a lot of the sort of extensions of that tooling and some of the experimental things
+that I'm going to show you exist as sort of this graph AI that hooks into that and loads
+data in and out of that thing.
+So what we're doing at Neo4j and kind of how we're thinking about this, we start with this
+concept of a context graph, which has different types of memory from short-term memory, which
+is going to be like your conversation history, your long-term memory being entities that
+are extracted from that or from your data, and then reasoning or decision traces inside
+of that.
+And one of the interesting things that we've been looking at from a research perspective
+and this really started out not so much at that graph, but actually at individual skill
+level.
+There was a paper that we wrote earlier this year that we published in a workshop, and we
+were really trying to ask the question, can we take procedural knowledge, whether it be
+from past decisions or even something like a skill like we have here, and compile it
+down to a graph.
+And what we came up with was a process of taking written material, often a skill MD file and
+the scripts and the references and assets, and moving that into an actual graph structure,
+which is what you see on that other side.
+And the result of doing this and giving the agent the access to that graph structure,
+which has different nodes, again representing inside of the skill decisions, different routing
+points, different scripts that have to be executed, taking pros and compiling them down
+to deterministic scripts.
+When we do that and we force the agent to sort of run that graph, what we see is increases
+in task reward and performance.
+So this was from a while ago, I am still working on updating it to the latest models, but we
+were able to use a smaller model.
+In this case, I think it was Sonnet, and now we are on to Haiku, as a matter of fact.
+But we were seeing, even for really challenging tasks over diverse fields in physics and computer
+science and various security, physical training, a whole ton of things, is this overall increase
+in task reward performance when we were able to switch over to this.
+And our PMs, Will Lyne, who works on our labs team, actually took this idea and said,
+well, if we can do that with skills, maybe we can do it too with these memory graphs.
+So you can actually take that context graph that I was showing you earlier and distill
+a skill from that and have it still be connected in the same graph over to all of your past
+decision traces and data.
+And so then you get those performance benefits, but you also have all this provenance that
+goes back from every step.
+It's versioned, it's tracked, and you have governance over time where you can assess
+drift, you can understand where certain tool calls are coming from in their history.
+A human can go through, actually, inside of NAMS, Neo4j agent memory service, which is
+our reference architecture for this.
+There's a QR code there, and there will be another one at the end, and be able to understand
+exactly how this works, edit it, change it, do all sorts of cool stuff with it.
+So again, what we're talking about now are these artifacts that you can move around.
+I mean, this thing makes a skill, right?
+And so any agent harness that can take that skill can now be running these graphs and
+doing all of this logic.
+And we have various customers that are using us for graph engineering types of tasks.
+I'll go quickly because we're starting to run out of time.
+And even though they may not be using exactly the LABS project that we have, we have consultancies
+which are working with other asset managers for tough problems in compliance.
+So being able to write audit reports, for example, where you have data that might come
+from multiple sources.
+How do you automate that, but do it in a way that's governed and trustworthy?
+So you have compliance documentation, you might have entities with different ticker symbols
+and names from different databases, and those all need to be resolved.
+And so giving your agent these graphs that express the logic that you need to do on besides
+the data basically allows you to automate those things in a trustworthy way.
+And we have other people, such as Uber, that do this with configuration graphs.
+So basically, you can imagine if you have drivers across the country, compliance and
+regulations for different areas geographically very greatly, and they come from this sprawl
+of microservices that you need to pull data from to figure out, like, okay, well, what
+is it for each area, for each component of a car, for example.
+And so being able to express that logic and have it sit aside the data also helps them
+operationalize some of these things effectively.
+So I'm going to jump to a demo now.
+I'm going to warn you in advance it's going to be quite a lot, and I'm going to jump through
+it kind of quickly.
+But it's very interesting, and what I'm going to show you is how we can use that AIP library
+that I was talking about before to compile a skill and actually get a task that was not
+governed very well and took very long to run, basically cut its cost by like 100% and then
+run it a lot, lot faster.
+And of course, it's a demo, it's not a formal research proposal, but you can go there and
+look at the code.
+It's all very transparent.
+So this is going to be an example for a loan, a loan approval process.
+So in the side of a loan approval process, there's lots of policies that have to be followed,
+obviously.
+I'm not a financial expert, but many of you in the room are.
+And so there's probably going to be a policy doc, there's going to be a systems of steps
+that have to be followed exactly, and then you need your agent to be able to explain
+those steps very clearly, articulate them, and really get the answer right as if it was
+a human reviewing.
+And the first thing you can do, like I was saying before, and I don't have time to probably
+run this all live and the internet's going to be slow.
+So luckily, I have this preloaded.
+And basically, the question that was asked was, should we approve this new loan for this
+roses bakery business?
+And in this case, we have a business plan that's in a PDF that was uploaded.
+And that is, let's see, the business plan is the orange data.
+So if I was to scroll out here, you can see it here in the graph.
+That connects also to data that we pulled from data breaks, from past transactions, lending
+policy data, and past decisions that were actually made.
+And with that, the agent can crawl over all that information and basically realize that
+this person either had a loan before or there was a mistake before, something happened before,
+and come up with an audit trail for that and basically post a solution very, very quickly.
+And this is a great start.
+In terms of like resolving data and being able to follow policies and understand how
+things connect, this is great.
+One of the issues with this is, and I can show you a graph kind of of what this looks
+like.
+This is an example of me running more of these policies.
+And if I zoom in, I have a conversation here, and then I have my reasoning trace that exists
+inside of this graph.
+And all of these steps are time stamped, and they have tool calls.
+What can happen is, if I look at this happening twice, I think this is the right query.
+This is two decision chains, so it's going to be a little bit hard to see.
+Let me zoom in.
+There are different lengths, you'll notice.
+So one is longer than the other.
+In this case, it was because it found a president in one, basically something else that had
+happened before.
+The problem with this is that, if you run these over and over again, there's nothing
+actually enforcing that the agent follows an exact path.
+You might have a skill or something that will say, like, do these things.
+But then there's other problems where it's like there's these decision steps where it's
+approve or deny is a simple one, or approve or send to a human to review.
+And those decision steps as well come with confidence scores.
+Or you say, like, if you're confident about it, if you're not confident about something,
+but those decisions aren't calibrated.
+So it would be great to, like, even take some of this incentive to something like a type
+safe, you know, JEV type of model as well, to be able to do some of those things.
+So what you can do is you can scrape all of this and you can compile it into a graph-shaped
+skill, which is what we did here.
+And that graph-shaped skill, if I go here, you're not going to be able to see it.
+But that's okay that you don't see a lot of the detail here.
+The important part is that we sort of compiled all the information down from those successful
+runs that we did, even though they were a little bit inconsistent.
+And we put them into this graph YAML shape inside of this skill.
+And this skill, even though you probably have trouble seeing, has scripts.
+It has assets here.
+It has sometimes other reference resources.
+It doesn't for this one.
+It also has source documentation around the policy that you're supposed to do for the
+So there's basically a ton of stuff in here for traceability, but then also telling the
+agent how to run this skill.
+But the great thing is, once the skill is in this YAML format, we can port it into all
+this different tooling, including inside of a graph, because it's all sort of this deterministic
+format.
+And in a graph, it looks kind of like this thing here.
+So let me, actually let me just run this sucker again.
+This is kind of what it looks like.
+So you have all of these steps out here, and then basically what I just did is I wrapped
+a small client around this so the agent can say, hey, run the skill.
+And instead of the agent deciding all the routing steps, it's just done programmatically.
+We took a lot of that policy down and we put a lot of it into these execution scripts.
+Basically what's happening here, if I was just to sum it up, there's an execution that
+basically looks at, hey, do we meet certain hard rules around policies?
+After that, it's routed.
+If it's not auto-approved or denied based on that, it's routed to a decision model,
+like JAV or TypeSafe.
+And I can even probably show you a little bit of a clear view here.
+And it's given that that model is given a risk to your choice.
+Let me make that a little bigger.
+Hold on.
+Whether or not there's some exposure material and then an outcome of whether or not you're
+approving or denying.
+And then the rest of this will basically follow down into writing a report.
+Whether or not you need to escalate to a human review is this router.
+And then if not, basically the agent's going to write a report.
+And there's a circulation here to sort of check and lint that report.
+So once you do this, and you sort of get the model going where, OK, now we have this
+client that we can just run this thing in.
+Well, now I can go in here and then maybe I can probably don't have time to run this
+whole thing again, but I will give it a shot.
+I'll see if it goes and picks this up.
+It takes about two minutes to run.
+But the idea, I guess, while this is running, and it should pick up the AIP skill, which
+it is here, once you have it in this format, not only can you have the agent run this very
+quickly, you can track the runs.
+So for example, if I was to look at a single run, I can run this again.
+I could basically persist the runs inside of the graph.
+So this is a run of that skill with individual steps that it ran.
+And then I can just persist these over time.
+I can examine how well they work.
+So from a governance perspective, I have a little inspector here that I built really
+quickly.
+You can look at the status of all these.
+You can look at how a specific one ran, what was approved, what was denied inside of the
+process, what branches it took.
+And then once you have a graph, you can even do these cool observability things where you
+can ask, well, like what branches were taken and which branches weren't taken, which is
+very interesting from a governance perspective, it failed ever, all these cool different things.
+And all of that is stored besides your data.
+And so in none of this, we're not creating a loop inside of our agent.
+All we're doing here is basically giving it a client to run this programmatic skill that
+we compiled from documentation, or in this case, from our memory graph.
+And this might take a while to run just because of the internet.
+What I will show you is we ran this a few times.
+And what we saw is just running, I was using Fable, so my organization already yells at
+me for this enough, spending a bunch of money.
+But just using Fable alone on the graph, and it was correct pretty much every time, but
+it took 2.7 minutes.
+When we had the procedure, it almost cut in half just using AIP.
+And then because we had the procedure, we can use a simpler model like Haiku, and then
+we can cut the model time down even more, and then of course, the cost just goes way
+down.
+So because you're taking all of that load of having to figure out all the routing, all
+the stuff you're doing, you're putting into these execution scripts, these jev models,
+and everything, which makes everything just much, much more efficient.
+And this is going to take too long to run, it's mostly internet.
+You can see here about half a minute or two minutes wall clock on average down from like
+seven and a half.
+All right, so anyway, I'll end it here.
+So I want to give you some resources to check out if you're interested in this type of stuff.
+Aura is our cloud service offering where you can get the database that I was showing you
+before, you get $100 of free credits.
+We have nodes coming up, which is a speakers event, there's a startup program, and then
+all the code that I was referencing and the other projects that I was using to hook up
+to your agent memory, all that sort of stuff is down there.
+So I'll leave this up for a second until someone kicks me off.
+And I guess that's it for me for now.

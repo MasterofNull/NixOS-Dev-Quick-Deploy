@@ -1,0 +1,1175 @@
+1
+00:00:00,000 --> 00:00:14,880
+We're going to talk about graph engineering today.
+
+2
+00:00:14,880 --> 00:00:17,720
+How many people have heard about that term, graph engineering?
+
+3
+00:00:17,720 --> 00:00:20,000
+Okay, so a fair amount of room.
+
+4
+00:00:20,000 --> 00:00:24,240
+And then just so I understand, how many people here are familiar with Neo4j and have used
+
+5
+00:00:24,240 --> 00:00:25,240
+Neo4j?
+
+6
+00:00:25,240 --> 00:00:27,560
+Okay, so we've got a few people.
+
+7
+00:00:27,560 --> 00:00:36,760
+So let's go for just letting me know who we're talking to today.
+
+8
+00:00:36,760 --> 00:00:41,800
+So just some history on some of the verb digits being used.
+
+9
+00:00:41,800 --> 00:00:48,440
+There was a tweet that went out by Peter Steinberger, I think, earlier this year in the summer,
+
+10
+00:00:48,440 --> 00:00:52,680
+that talked about graph engineering, and it was almost like, is this sort of a new discipline
+
+11
+00:00:52,680 --> 00:00:57,880
+that's happening as this evolution from prompt engineering and context engineering.
+
+12
+00:00:57,880 --> 00:01:01,040
+And there's a lot of hype around this.
+
+13
+00:01:01,040 --> 00:01:04,480
+And the name for this is new, but the mechanisms are not really new.
+
+14
+00:01:04,480 --> 00:01:10,240
+We've always known in computer science generally about state machines and workflow graphs and
+
+15
+00:01:10,240 --> 00:01:12,960
+knowledge graphs and all these different things.
+
+16
+00:01:12,960 --> 00:01:18,880
+What's changing is really how we think about them in reference to agents.
+
+17
+00:01:18,880 --> 00:01:23,200
+And what I'm going to talk to you about today is just how we think about graph engineering.
+
+18
+00:01:23,200 --> 00:01:27,000
+And I'm going to offer you a little bit of a new perspective on this.
+
+19
+00:01:27,000 --> 00:01:31,760
+So if we actually try to define what graph engineering is, I think a good definition
+
+20
+00:01:31,760 --> 00:01:37,000
+is it's just the practice of designing agent work as an explicit graph.
+
+21
+00:01:37,000 --> 00:01:42,760
+So where nodes do work and edges effectively route state between them.
+
+22
+00:01:42,760 --> 00:01:47,280
+And I tend to think of it in terms of three different types of graphs.
+
+23
+00:01:47,280 --> 00:01:52,560
+We have our general execution graphs, which you're probably very familiar with.
+
+24
+00:01:52,560 --> 00:01:58,400
+So these are the workflow graphs with routers and agents as actual nodes that happen with
+
+25
+00:01:58,400 --> 00:02:00,800
+inside of an agent harness.
+
+26
+00:02:00,800 --> 00:02:05,760
+But there's other ways that we can think about graph engineering too that overlap with this.
+
+27
+00:02:05,760 --> 00:02:08,200
+So that includes context graphs.
+
+28
+00:02:08,200 --> 00:02:13,480
+These are decision traces, instances of what's happened, and how it connects to other data
+
+29
+00:02:13,480 --> 00:02:15,320
+inside of your domain.
+
+30
+00:02:15,320 --> 00:02:19,280
+And then there's also something that I'd call more procedural graphs.
+
+31
+00:02:19,280 --> 00:02:25,360
+So this is almost like having a skill or procedural knowledge as a graph, where the steps might
+
+32
+00:02:25,360 --> 00:02:32,200
+not be actual agents, but they might be steps inside of a way of doing something basically
+
+33
+00:02:32,200 --> 00:02:33,200
+a procedure.
+
+34
+00:02:33,200 --> 00:02:38,760
+So different calls, maybe a step for a decision model, steps for different agents, whether
+
+35
+00:02:38,760 --> 00:02:42,840
+to escalate validation steps and these sorts of things.
+
+36
+00:02:42,840 --> 00:02:47,120
+And I'm really going to focus on these last two because I think we don't talk about them
+
+37
+00:02:47,120 --> 00:02:48,120
+enough.
+
+38
+00:02:48,120 --> 00:02:52,280
+And I think by understanding these, you can actually get a little bit at what the first
+
+39
+00:02:52,280 --> 00:02:57,800
+graph is trying to do as well, but in a very portable and efficient way.
+
+40
+00:02:57,800 --> 00:03:02,920
+So graph engineering lets agents really take on bigger, more complex work.
+
+41
+00:03:02,920 --> 00:03:04,880
+And that's why we care about it.
+
+42
+00:03:04,880 --> 00:03:08,880
+And really, if you were to split it up, I think in terms of the benefits that a graph
+
+43
+00:03:08,880 --> 00:03:13,520
+offers agents in this context, it would be predictability.
+
+44
+00:03:13,520 --> 00:03:18,760
+So being able to constrain a path that an agent takes, making sure that the answer
+
+45
+00:03:18,760 --> 00:03:24,720
+is basically accurate from a task that it's doing and having an explicit graph, the ability
+
+46
+00:03:24,720 --> 00:03:29,960
+to govern, control, and guide what the agent does and audit it so you can understand what
+
+47
+00:03:29,960 --> 00:03:32,280
+it's doing and make it better next time.
+
+48
+00:03:32,280 --> 00:03:35,920
+And then the third one, which is going to be interesting that we'll talk about is how
+
+49
+00:03:35,920 --> 00:03:40,520
+do we actually make graph engineering portable, and instead of thinking about a graph as something
+
+50
+00:03:40,520 --> 00:03:46,640
+that happens in the runtime, it could be something that you can store and actually move between
+
+51
+00:03:46,640 --> 00:03:51,140
+different runtimes and have inside of a knowledge layer, which gives you more interoperability
+
+52
+00:03:51,140 --> 00:03:54,760
+and allows you to have a very simple stack.
+
+53
+00:03:54,760 --> 00:03:58,840
+And in the runtime, when we think about the graph, it's really like a piece of orchestration.
+
+54
+00:03:58,840 --> 00:04:03,800
+So probably all of us, or a large portion of us are probably familiar with LangGraph,
+
+55
+00:04:03,800 --> 00:04:11,200
+ADK, and all these other agent frameworks, even to a certain extent, Anthropics, multi-agent
+
+56
+00:04:11,200 --> 00:04:15,800
+research, and some of their stuff fits inside of graph engineering.
+
+57
+00:04:15,800 --> 00:04:19,400
+And what I'm going to talk about today is actually what happens when we take that sort
+
+58
+00:04:19,400 --> 00:04:24,240
+of graph and we put it next to our data as context graphs and some of the things that
+
+59
+00:04:24,240 --> 00:04:27,600
+I was talking about before.
+
+60
+00:04:27,600 --> 00:04:32,680
+And really when you do this, as I was saying, you add this portability layer.
+
+61
+00:04:32,680 --> 00:04:38,760
+You add the ability to take all of this knowledge and make it work, basically, with any type
+
+62
+00:04:38,760 --> 00:04:39,760
+of runtime.
+
+63
+00:04:39,760 --> 00:04:42,120
+So that's what I'm going to go over today.
+
+64
+00:04:42,120 --> 00:04:47,160
+And this is what we're doing at Neo4j is we're defining this knowledge layer.
+
+65
+00:04:47,160 --> 00:04:51,320
+And this knowledge layer sits between systems of record that you would ordinarily retrieve
+
+66
+00:04:51,320 --> 00:04:52,560
+data from.
+
+67
+00:04:52,560 --> 00:04:55,880
+So Databix, BigQuery, Snowflake, these types of places.
+
+68
+00:04:55,880 --> 00:04:56,880
+It could be documentation.
+
+69
+00:04:56,880 --> 00:05:00,560
+It could be obsidian, these markdown files.
+
+70
+00:05:00,560 --> 00:05:05,760
+And then can we create standard protocols and artifacts that live inside of that layer
+
+71
+00:05:05,760 --> 00:05:11,840
+that then you can take a graph engineering process and make it available to any runtime
+
+72
+00:05:11,840 --> 00:05:15,320
+or any agent?
+
+73
+00:05:15,320 --> 00:05:21,120
+And the way our product works, just so you know at Neo4j, is we have our core database
+
+74
+00:05:21,120 --> 00:05:24,920
+and then we have a ton of other AI stuff on top of it.
+
+75
+00:05:24,920 --> 00:05:29,560
+So the database and the analytics layer, I'm going to be showing some of this throughout
+
+76
+00:05:29,560 --> 00:05:31,040
+my talk.
+
+77
+00:05:31,040 --> 00:05:34,920
+But what I'm really going to be focusing on is this top layer where we talk about sort
+
+78
+00:05:34,920 --> 00:05:40,240
+of this agentic brain or these other memory tools that wrap around the database.
+
+79
+00:05:40,240 --> 00:05:44,480
+So just know that as I go through, I'm going to be showing you data being loaded into the
+
+80
+00:05:44,480 --> 00:05:45,480
+database.
+
+81
+00:05:45,480 --> 00:05:47,000
+That's going to constitute our knowledge layer.
+
+82
+00:05:47,000 --> 00:05:50,480
+It's going to come from multiple different sources.
+
+83
+00:05:50,480 --> 00:05:54,840
+But a lot of the sort of extensions of that tooling and some of the experimental things
+
+84
+00:05:54,840 --> 00:05:59,200
+that I'm going to show you exist as sort of this graph AI that hooks into that and loads
+
+85
+00:05:59,200 --> 00:06:02,900
+data in and out of that thing.
+
+86
+00:06:02,900 --> 00:06:07,560
+So what we're doing at Neo4j and kind of how we're thinking about this, we start with this
+
+87
+00:06:07,560 --> 00:06:13,760
+concept of a context graph, which has different types of memory from short-term memory, which
+
+88
+00:06:13,760 --> 00:06:19,360
+is going to be like your conversation history, your long-term memory being entities that
+
+89
+00:06:19,360 --> 00:06:24,360
+are extracted from that or from your data, and then reasoning or decision traces inside
+
+90
+00:06:24,360 --> 00:06:25,840
+of that.
+
+91
+00:06:25,840 --> 00:06:30,240
+And one of the interesting things that we've been looking at from a research perspective
+
+92
+00:06:30,240 --> 00:06:35,520
+and this really started out not so much at that graph, but actually at individual skill
+
+93
+00:06:35,520 --> 00:06:36,520
+level.
+
+94
+00:06:36,520 --> 00:06:41,640
+There was a paper that we wrote earlier this year that we published in a workshop, and we
+
+95
+00:06:41,640 --> 00:06:46,440
+were really trying to ask the question, can we take procedural knowledge, whether it be
+
+96
+00:06:46,440 --> 00:06:51,960
+from past decisions or even something like a skill like we have here, and compile it
+
+97
+00:06:51,960 --> 00:06:53,800
+down to a graph.
+
+98
+00:06:53,800 --> 00:06:59,200
+And what we came up with was a process of taking written material, often a skill MD file and
+
+99
+00:06:59,200 --> 00:07:04,640
+the scripts and the references and assets, and moving that into an actual graph structure,
+
+100
+00:07:04,640 --> 00:07:07,520
+which is what you see on that other side.
+
+101
+00:07:07,520 --> 00:07:12,240
+And the result of doing this and giving the agent the access to that graph structure,
+
+102
+00:07:12,240 --> 00:07:18,200
+which has different nodes, again representing inside of the skill decisions, different routing
+
+103
+00:07:18,240 --> 00:07:24,160
+points, different scripts that have to be executed, taking pros and compiling them down
+
+104
+00:07:24,160 --> 00:07:26,680
+to deterministic scripts.
+
+105
+00:07:26,680 --> 00:07:32,320
+When we do that and we force the agent to sort of run that graph, what we see is increases
+
+106
+00:07:32,320 --> 00:07:34,920
+in task reward and performance.
+
+107
+00:07:34,920 --> 00:07:41,480
+So this was from a while ago, I am still working on updating it to the latest models, but we
+
+108
+00:07:41,480 --> 00:07:43,960
+were able to use a smaller model.
+
+109
+00:07:43,960 --> 00:07:49,400
+In this case, I think it was Sonnet, and now we are on to Haiku, as a matter of fact.
+
+110
+00:07:49,400 --> 00:07:55,200
+But we were seeing, even for really challenging tasks over diverse fields in physics and computer
+
+111
+00:07:55,200 --> 00:08:04,520
+science and various security, physical training, a whole ton of things, is this overall increase
+
+112
+00:08:04,520 --> 00:08:10,920
+in task reward performance when we were able to switch over to this.
+
+113
+00:08:11,040 --> 00:08:16,400
+And our PMs, Will Lyne, who works on our labs team, actually took this idea and said,
+
+114
+00:08:16,400 --> 00:08:22,160
+well, if we can do that with skills, maybe we can do it too with these memory graphs.
+
+115
+00:08:22,160 --> 00:08:27,400
+So you can actually take that context graph that I was showing you earlier and distill
+
+116
+00:08:27,400 --> 00:08:33,960
+a skill from that and have it still be connected in the same graph over to all of your past
+
+117
+00:08:33,960 --> 00:08:35,960
+decision traces and data.
+
+118
+00:08:35,960 --> 00:08:39,880
+And so then you get those performance benefits, but you also have all this provenance that
+
+119
+00:08:39,920 --> 00:08:41,440
+goes back from every step.
+
+120
+00:08:41,440 --> 00:08:45,840
+It's versioned, it's tracked, and you have governance over time where you can assess
+
+121
+00:08:45,840 --> 00:08:50,480
+drift, you can understand where certain tool calls are coming from in their history.
+
+122
+00:08:50,480 --> 00:08:55,360
+A human can go through, actually, inside of NAMS, Neo4j agent memory service, which is
+
+123
+00:08:55,360 --> 00:08:57,040
+our reference architecture for this.
+
+124
+00:08:57,040 --> 00:09:02,680
+There's a QR code there, and there will be another one at the end, and be able to understand
+
+125
+00:09:02,680 --> 00:09:08,360
+exactly how this works, edit it, change it, do all sorts of cool stuff with it.
+
+126
+00:09:08,400 --> 00:09:12,160
+So again, what we're talking about now are these artifacts that you can move around.
+
+127
+00:09:12,160 --> 00:09:14,720
+I mean, this thing makes a skill, right?
+
+128
+00:09:14,720 --> 00:09:18,840
+And so any agent harness that can take that skill can now be running these graphs and
+
+129
+00:09:18,840 --> 00:09:22,600
+doing all of this logic.
+
+130
+00:09:22,600 --> 00:09:29,360
+And we have various customers that are using us for graph engineering types of tasks.
+
+131
+00:09:29,360 --> 00:09:34,120
+I'll go quickly because we're starting to run out of time.
+
+132
+00:09:34,120 --> 00:09:40,600
+And even though they may not be using exactly the LABS project that we have, we have consultancies
+
+133
+00:09:40,600 --> 00:09:45,600
+which are working with other asset managers for tough problems in compliance.
+
+134
+00:09:45,600 --> 00:09:49,480
+So being able to write audit reports, for example, where you have data that might come
+
+135
+00:09:49,480 --> 00:09:51,240
+from multiple sources.
+
+136
+00:09:51,240 --> 00:09:54,800
+How do you automate that, but do it in a way that's governed and trustworthy?
+
+137
+00:09:54,800 --> 00:09:59,400
+So you have compliance documentation, you might have entities with different ticker symbols
+
+138
+00:09:59,400 --> 00:10:03,280
+and names from different databases, and those all need to be resolved.
+
+139
+00:10:03,280 --> 00:10:08,760
+And so giving your agent these graphs that express the logic that you need to do on besides
+
+140
+00:10:08,760 --> 00:10:13,920
+the data basically allows you to automate those things in a trustworthy way.
+
+141
+00:10:13,920 --> 00:10:19,080
+And we have other people, such as Uber, that do this with configuration graphs.
+
+142
+00:10:19,080 --> 00:10:24,920
+So basically, you can imagine if you have drivers across the country, compliance and
+
+143
+00:10:24,920 --> 00:10:30,620
+regulations for different areas geographically very greatly, and they come from this sprawl
+
+144
+00:10:30,620 --> 00:10:34,220
+of microservices that you need to pull data from to figure out, like, okay, well, what
+
+145
+00:10:34,220 --> 00:10:39,140
+is it for each area, for each component of a car, for example.
+
+146
+00:10:39,140 --> 00:10:44,100
+And so being able to express that logic and have it sit aside the data also helps them
+
+147
+00:10:44,100 --> 00:10:47,420
+operationalize some of these things effectively.
+
+148
+00:10:47,420 --> 00:10:50,540
+So I'm going to jump to a demo now.
+
+149
+00:10:50,540 --> 00:10:53,940
+I'm going to warn you in advance it's going to be quite a lot, and I'm going to jump through
+
+150
+00:10:53,940 --> 00:10:55,660
+it kind of quickly.
+
+151
+00:10:55,660 --> 00:11:00,600
+But it's very interesting, and what I'm going to show you is how we can use that AIP library
+
+152
+00:11:00,880 --> 00:11:06,120
+that I was talking about before to compile a skill and actually get a task that was not
+
+153
+00:11:06,120 --> 00:11:12,360
+governed very well and took very long to run, basically cut its cost by like 100% and then
+
+154
+00:11:12,360 --> 00:11:15,000
+run it a lot, lot faster.
+
+155
+00:11:15,000 --> 00:11:19,160
+And of course, it's a demo, it's not a formal research proposal, but you can go there and
+
+156
+00:11:19,160 --> 00:11:20,160
+look at the code.
+
+157
+00:11:20,160 --> 00:11:22,760
+It's all very transparent.
+
+158
+00:11:22,760 --> 00:11:29,500
+So this is going to be an example for a loan, a loan approval process.
+
+159
+00:11:29,500 --> 00:11:34,660
+So in the side of a loan approval process, there's lots of policies that have to be followed,
+
+160
+00:11:34,660 --> 00:11:35,660
+obviously.
+
+161
+00:11:35,660 --> 00:11:39,180
+I'm not a financial expert, but many of you in the room are.
+
+162
+00:11:39,180 --> 00:11:43,140
+And so there's probably going to be a policy doc, there's going to be a systems of steps
+
+163
+00:11:43,140 --> 00:11:46,980
+that have to be followed exactly, and then you need your agent to be able to explain
+
+164
+00:11:46,980 --> 00:11:51,460
+those steps very clearly, articulate them, and really get the answer right as if it was
+
+165
+00:11:51,460 --> 00:11:53,580
+a human reviewing.
+
+166
+00:11:53,580 --> 00:11:57,480
+And the first thing you can do, like I was saying before, and I don't have time to probably
+
+167
+00:11:57,480 --> 00:12:00,560
+run this all live and the internet's going to be slow.
+
+168
+00:12:00,560 --> 00:12:03,820
+So luckily, I have this preloaded.
+
+169
+00:12:03,820 --> 00:12:08,360
+And basically, the question that was asked was, should we approve this new loan for this
+
+170
+00:12:08,360 --> 00:12:10,120
+roses bakery business?
+
+171
+00:12:10,120 --> 00:12:17,600
+And in this case, we have a business plan that's in a PDF that was uploaded.
+
+172
+00:12:17,600 --> 00:12:22,920
+And that is, let's see, the business plan is the orange data.
+
+173
+00:12:22,920 --> 00:12:26,560
+So if I was to scroll out here, you can see it here in the graph.
+
+174
+00:12:26,600 --> 00:12:32,040
+That connects also to data that we pulled from data breaks, from past transactions, lending
+
+175
+00:12:32,040 --> 00:12:36,320
+policy data, and past decisions that were actually made.
+
+176
+00:12:36,320 --> 00:12:42,200
+And with that, the agent can crawl over all that information and basically realize that
+
+177
+00:12:42,200 --> 00:12:47,880
+this person either had a loan before or there was a mistake before, something happened before,
+
+178
+00:12:47,880 --> 00:12:54,440
+and come up with an audit trail for that and basically post a solution very, very quickly.
+
+179
+00:12:54,440 --> 00:12:56,160
+And this is a great start.
+
+180
+00:12:56,160 --> 00:13:00,120
+In terms of like resolving data and being able to follow policies and understand how
+
+181
+00:13:00,120 --> 00:13:03,000
+things connect, this is great.
+
+182
+00:13:03,000 --> 00:13:07,480
+One of the issues with this is, and I can show you a graph kind of of what this looks
+
+183
+00:13:07,480 --> 00:13:08,480
+like.
+
+184
+00:13:08,480 --> 00:13:12,040
+This is an example of me running more of these policies.
+
+185
+00:13:12,040 --> 00:13:19,280
+And if I zoom in, I have a conversation here, and then I have my reasoning trace that exists
+
+186
+00:13:19,280 --> 00:13:20,280
+inside of this graph.
+
+187
+00:13:20,280 --> 00:13:24,200
+And all of these steps are time stamped, and they have tool calls.
+
+188
+00:13:24,200 --> 00:13:33,960
+What can happen is, if I look at this happening twice, I think this is the right query.
+
+189
+00:13:33,960 --> 00:13:36,600
+This is two decision chains, so it's going to be a little bit hard to see.
+
+190
+00:13:36,600 --> 00:13:39,160
+Let me zoom in.
+
+191
+00:13:39,160 --> 00:13:41,480
+There are different lengths, you'll notice.
+
+192
+00:13:41,480 --> 00:13:44,480
+So one is longer than the other.
+
+193
+00:13:44,480 --> 00:13:48,760
+In this case, it was because it found a president in one, basically something else that had
+
+194
+00:13:48,760 --> 00:13:50,360
+happened before.
+
+195
+00:13:50,760 --> 00:13:55,120
+The problem with this is that, if you run these over and over again, there's nothing
+
+196
+00:13:55,120 --> 00:13:59,040
+actually enforcing that the agent follows an exact path.
+
+197
+00:13:59,040 --> 00:14:02,920
+You might have a skill or something that will say, like, do these things.
+
+198
+00:14:02,920 --> 00:14:06,400
+But then there's other problems where it's like there's these decision steps where it's
+
+199
+00:14:06,400 --> 00:14:11,040
+approve or deny is a simple one, or approve or send to a human to review.
+
+200
+00:14:11,040 --> 00:14:15,200
+And those decision steps as well come with confidence scores.
+
+201
+00:14:15,200 --> 00:14:18,760
+Or you say, like, if you're confident about it, if you're not confident about something,
+
+202
+00:14:18,760 --> 00:14:21,160
+but those decisions aren't calibrated.
+
+203
+00:14:21,160 --> 00:14:24,480
+So it would be great to, like, even take some of this incentive to something like a type
+
+204
+00:14:24,480 --> 00:14:30,280
+safe, you know, JEV type of model as well, to be able to do some of those things.
+
+205
+00:14:30,280 --> 00:14:35,320
+So what you can do is you can scrape all of this and you can compile it into a graph-shaped
+
+206
+00:14:35,320 --> 00:14:37,720
+skill, which is what we did here.
+
+207
+00:14:37,720 --> 00:14:42,200
+And that graph-shaped skill, if I go here, you're not going to be able to see it.
+
+208
+00:14:42,200 --> 00:14:45,640
+But that's okay that you don't see a lot of the detail here.
+
+209
+00:14:45,640 --> 00:14:50,740
+The important part is that we sort of compiled all the information down from those successful
+
+210
+00:14:50,740 --> 00:14:54,000
+runs that we did, even though they were a little bit inconsistent.
+
+211
+00:14:54,000 --> 00:14:58,440
+And we put them into this graph YAML shape inside of this skill.
+
+212
+00:14:58,440 --> 00:15:03,080
+And this skill, even though you probably have trouble seeing, has scripts.
+
+213
+00:15:03,080 --> 00:15:05,640
+It has assets here.
+
+214
+00:15:05,640 --> 00:15:08,000
+It has sometimes other reference resources.
+
+215
+00:15:08,000 --> 00:15:09,840
+It doesn't for this one.
+
+216
+00:15:09,840 --> 00:15:14,920
+It also has source documentation around the policy that you're supposed to do for the
+
+217
+00:15:15,800 --> 00:15:19,800
+So there's basically a ton of stuff in here for traceability, but then also telling the
+
+218
+00:15:19,800 --> 00:15:21,720
+agent how to run this skill.
+
+219
+00:15:21,720 --> 00:15:26,760
+But the great thing is, once the skill is in this YAML format, we can port it into all
+
+220
+00:15:26,760 --> 00:15:30,840
+this different tooling, including inside of a graph, because it's all sort of this deterministic
+
+221
+00:15:30,840 --> 00:15:32,800
+format.
+
+222
+00:15:32,800 --> 00:15:37,160
+And in a graph, it looks kind of like this thing here.
+
+223
+00:15:37,160 --> 00:15:42,720
+So let me, actually let me just run this sucker again.
+
+224
+00:15:42,720 --> 00:15:44,680
+This is kind of what it looks like.
+
+225
+00:15:44,680 --> 00:15:50,480
+So you have all of these steps out here, and then basically what I just did is I wrapped
+
+226
+00:15:50,480 --> 00:15:54,600
+a small client around this so the agent can say, hey, run the skill.
+
+227
+00:15:54,600 --> 00:15:59,720
+And instead of the agent deciding all the routing steps, it's just done programmatically.
+
+228
+00:15:59,720 --> 00:16:05,640
+We took a lot of that policy down and we put a lot of it into these execution scripts.
+
+229
+00:16:05,640 --> 00:16:11,280
+Basically what's happening here, if I was just to sum it up, there's an execution that
+
+230
+00:16:11,280 --> 00:16:17,360
+basically looks at, hey, do we meet certain hard rules around policies?
+
+231
+00:16:17,360 --> 00:16:18,840
+After that, it's routed.
+
+232
+00:16:18,840 --> 00:16:23,760
+If it's not auto-approved or denied based on that, it's routed to a decision model,
+
+233
+00:16:23,760 --> 00:16:26,640
+like JAV or TypeSafe.
+
+234
+00:16:26,640 --> 00:16:31,920
+And I can even probably show you a little bit of a clear view here.
+
+235
+00:16:31,920 --> 00:16:36,040
+And it's given that that model is given a risk to your choice.
+
+236
+00:16:37,040 --> 00:16:38,440
+Let me make that a little bigger.
+
+237
+00:16:38,440 --> 00:16:38,960
+Hold on.
+
+238
+00:16:42,880 --> 00:16:47,440
+Whether or not there's some exposure material and then an outcome of whether or not you're
+
+239
+00:16:47,440 --> 00:16:49,240
+approving or denying.
+
+240
+00:16:49,240 --> 00:16:54,320
+And then the rest of this will basically follow down into writing a report.
+
+241
+00:16:54,320 --> 00:16:58,000
+Whether or not you need to escalate to a human review is this router.
+
+242
+00:16:58,000 --> 00:17:00,760
+And then if not, basically the agent's going to write a report.
+
+243
+00:17:00,760 --> 00:17:05,400
+And there's a circulation here to sort of check and lint that report.
+
+244
+00:17:05,400 --> 00:17:10,400
+So once you do this, and you sort of get the model going where, OK, now we have this
+
+245
+00:17:10,400 --> 00:17:13,160
+client that we can just run this thing in.
+
+246
+00:17:13,160 --> 00:17:19,720
+Well, now I can go in here and then maybe I can probably don't have time to run this
+
+247
+00:17:19,720 --> 00:17:24,760
+whole thing again, but I will give it a shot.
+
+248
+00:17:24,760 --> 00:17:26,600
+I'll see if it goes and picks this up.
+
+249
+00:17:26,600 --> 00:17:29,400
+It takes about two minutes to run.
+
+250
+00:17:29,400 --> 00:17:34,640
+But the idea, I guess, while this is running, and it should pick up the AIP skill, which
+
+251
+00:17:34,640 --> 00:17:40,960
+it is here, once you have it in this format, not only can you have the agent run this very
+
+252
+00:17:40,960 --> 00:17:43,920
+quickly, you can track the runs.
+
+253
+00:17:43,920 --> 00:17:51,680
+So for example, if I was to look at a single run, I can run this again.
+
+254
+00:17:51,680 --> 00:17:55,520
+I could basically persist the runs inside of the graph.
+
+255
+00:17:55,520 --> 00:18:00,920
+So this is a run of that skill with individual steps that it ran.
+
+256
+00:18:00,920 --> 00:18:03,560
+And then I can just persist these over time.
+
+257
+00:18:03,560 --> 00:18:05,200
+I can examine how well they work.
+
+258
+00:18:05,200 --> 00:18:09,760
+So from a governance perspective, I have a little inspector here that I built really
+
+259
+00:18:09,760 --> 00:18:10,760
+quickly.
+
+260
+00:18:10,760 --> 00:18:13,080
+You can look at the status of all these.
+
+261
+00:18:13,080 --> 00:18:17,600
+You can look at how a specific one ran, what was approved, what was denied inside of the
+
+262
+00:18:17,600 --> 00:18:20,560
+process, what branches it took.
+
+263
+00:18:20,560 --> 00:18:23,960
+And then once you have a graph, you can even do these cool observability things where you
+
+264
+00:18:23,960 --> 00:18:29,560
+can ask, well, like what branches were taken and which branches weren't taken, which is
+
+265
+00:18:29,560 --> 00:18:34,680
+very interesting from a governance perspective, it failed ever, all these cool different things.
+
+266
+00:18:34,680 --> 00:18:38,760
+And all of that is stored besides your data.
+
+267
+00:18:38,760 --> 00:18:43,560
+And so in none of this, we're not creating a loop inside of our agent.
+
+268
+00:18:43,560 --> 00:18:48,840
+All we're doing here is basically giving it a client to run this programmatic skill that
+
+269
+00:18:48,840 --> 00:18:54,000
+we compiled from documentation, or in this case, from our memory graph.
+
+270
+00:18:54,000 --> 00:18:59,440
+And this might take a while to run just because of the internet.
+
+271
+00:18:59,640 --> 00:19:05,000
+What I will show you is we ran this a few times.
+
+272
+00:19:05,000 --> 00:19:09,840
+And what we saw is just running, I was using Fable, so my organization already yells at
+
+273
+00:19:09,840 --> 00:19:13,000
+me for this enough, spending a bunch of money.
+
+274
+00:19:13,000 --> 00:19:18,720
+But just using Fable alone on the graph, and it was correct pretty much every time, but
+
+275
+00:19:18,720 --> 00:19:20,960
+it took 2.7 minutes.
+
+276
+00:19:20,960 --> 00:19:24,840
+When we had the procedure, it almost cut in half just using AIP.
+
+277
+00:19:24,840 --> 00:19:28,600
+And then because we had the procedure, we can use a simpler model like Haiku, and then
+
+278
+00:19:28,600 --> 00:19:32,880
+we can cut the model time down even more, and then of course, the cost just goes way
+
+279
+00:19:32,880 --> 00:19:33,880
+down.
+
+280
+00:19:33,880 --> 00:19:38,160
+So because you're taking all of that load of having to figure out all the routing, all
+
+281
+00:19:38,160 --> 00:19:41,600
+the stuff you're doing, you're putting into these execution scripts, these jev models,
+
+282
+00:19:41,600 --> 00:19:47,280
+and everything, which makes everything just much, much more efficient.
+
+283
+00:19:47,280 --> 00:19:52,720
+And this is going to take too long to run, it's mostly internet.
+
+284
+00:19:52,720 --> 00:19:56,480
+You can see here about half a minute or two minutes wall clock on average down from like
+
+285
+00:19:56,480 --> 00:19:57,880
+seven and a half.
+
+286
+00:19:58,400 --> 00:20:02,000
+All right, so anyway, I'll end it here.
+
+287
+00:20:02,000 --> 00:20:07,160
+So I want to give you some resources to check out if you're interested in this type of stuff.
+
+288
+00:20:07,160 --> 00:20:11,120
+Aura is our cloud service offering where you can get the database that I was showing you
+
+289
+00:20:11,120 --> 00:20:14,000
+before, you get $100 of free credits.
+
+290
+00:20:14,000 --> 00:20:18,680
+We have nodes coming up, which is a speakers event, there's a startup program, and then
+
+291
+00:20:18,680 --> 00:20:22,800
+all the code that I was referencing and the other projects that I was using to hook up
+
+292
+00:20:22,800 --> 00:20:25,920
+to your agent memory, all that sort of stuff is down there.
+
+293
+00:20:25,920 --> 00:20:29,520
+So I'll leave this up for a second until someone kicks me off.
+
+294
+00:20:29,520 --> 00:20:31,160
+And I guess that's it for me for now.

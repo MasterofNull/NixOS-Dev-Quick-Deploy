@@ -91,13 +91,13 @@ jobs:
       - name: Start systemd user manager (cgroup scope limits)
         run: |
           uid="$(id -u)"
-          sudo loginctl enable-linger "$USER" || true
-          sudo systemctl start "user@${uid}.service" || true
+          sudo loginctl enable-linger "$USER" || true  # NON-GATING: best-effort; the systemd-run scope probe below is the gate
+          sudo systemctl start "user@${uid}.service" || true  # NON-GATING: best-effort; the systemd-run scope probe below is the gate
           for _ in $(seq 1 20); do [ -S "/run/user/${uid}/bus" ] && break; sleep 0.5; done
           echo "XDG_RUNTIME_DIR=/run/user/${uid}" >> "$GITHUB_ENV"
           echo "DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/${uid}/bus" >> "$GITHUB_ENV"
           export XDG_RUNTIME_DIR="/run/user/${uid}" DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/${uid}/bus"
-          cat "/sys/fs/cgroup/user.slice/user-${uid}.slice/user@${uid}.service/cgroup.controllers" 2>&1 || true
+          cat "/sys/fs/cgroup/user.slice/user-${uid}.slice/user@${uid}.service/cgroup.controllers" 2>&1 || true  # NON-GATING: diagnostic print only
           if ! systemd-run --user --scope --quiet -p MemoryMax=64M -p TasksMax=64 -- true; then
             echo "::error::cannot create a systemd user scope with memory/pids limits on this runner; aq-confine fails closed without it"
             exit 1
