@@ -23,6 +23,26 @@ from pathlib import Path
 from typing import Any
 
 DEFAULT_STORE = ".agents/plans/frontier-evidence-intake/BACKLOG.jsonl"
+# Runtime home for what the scheduled scan writes (P1.10: a timer must not dirty the checkout).
+# Mirrors deployment.mutableSpaces.aiStackFrontierDir in nix/modules/core/options.nix; FRONTIER_STATE_DIR overrides.
+# The tracked BACKLOG.jsonl / scan-state.json stay the curated store and the first-read seed.
+DEFAULT_STATE_DIR = "/var/lib/nixos-ai-stack/frontier"
+RUNTIME_BACKLOG = "BACKLOG.jsonl"
+RUNTIME_SCAN_STATE = "scan-state.json"
+
+
+def state_dir() -> Path | None:
+    """Runtime state dir, or None when absent/unwritable (fresh clone, CI): callers then use the tracked files."""
+    d = Path(os.environ.get("FRONTIER_STATE_DIR") or DEFAULT_STATE_DIR)
+    return d if d.is_dir() and os.access(d, os.W_OK) else None
+
+
+def overlay_for(store: str | os.PathLike) -> Path | None:
+    """Runtime candidate overlay for the tracked default store; None for any other store (tests, temp stores)."""
+    d = state_dir()
+    if d is None or not str(store).replace(os.sep, "/").endswith(DEFAULT_STORE):
+        return None
+    return d / RUNTIME_BACKLOG
 
 VERDICTS = ("adopt", "monitor", "drop", "corrected")
 # Lifecycle: a finding is PROPOSED (new), routed to the multi-expert team (in_review),
@@ -42,7 +62,7 @@ def add_verdict(store: str | os.PathLike, item_id: str, lane: str, stance: str,
         return {"ok": False, "error": f"stance must be one of {STANCES}"}
     if not lane:
         return {"ok": False, "error": "lane is required (the reviewing expert)"}
-    records = load(store)
+    records = _load_for_write(store, item_id)
     found = False
     for r in records:
         if r.get("id") == item_id:
@@ -80,8 +100,21 @@ def _iso(now: float | None) -> str:
     return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(now if now is not None else time.time()))
 
 
-def load(store: str | os.PathLike = DEFAULT_STORE) -> list[dict[str, Any]]:
-    """Return all records. Fail-safe: missing store -> []; a corrupt line is skipped."""
+def load(store: str | os.PathLike = DEFAULT_STORE, *, overlay: bool = True) -> list[dict[str, Any]]:
+    """Return all records. Fail-safe: missing store -> []; a corrupt line is skipped.
+
+    For the tracked default store, runtime scan candidates (overlay) not already in it are appended.
+    Mutators pass overlay=False so they never absorb unreviewed candidates into the tracked file.
+    """
+    out = _read(store)
+    ov = overlay_for(store) if overlay else None
+    if ov is not None:
+        have = {r["id"] for r in out}
+        out += [r for r in _read(ov) if r["id"] not in have]
+    return out
+
+
+def _read(store: str | os.PathLike) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
     try:
         text = Path(store).read_text(encoding="utf-8")
@@ -125,6 +158,14 @@ def _rewrite(store: str | os.PathLike, records: list[dict[str, Any]]) -> None:
             os.unlink(tmp)
 
 
+def _load_for_write(store: str | os.PathLike, item_id: str) -> list[dict[str, Any]]:
+    """Tracked records, plus the one runtime candidate being triaged (promotion happens on first touch)."""
+    records = load(store, overlay=False)
+    if not any(r.get("id") == item_id for r in records):
+        records += [r for r in load(store) if r.get("id") == item_id]
+    return records
+
+
 def add(store: str | os.PathLike, record: dict[str, Any], *, now: float | None = None) -> dict[str, Any]:
     """Add a candidate unless an identical (technique, claim) already exists."""
     err = _validate(record)
@@ -149,7 +190,7 @@ def add(store: str | os.PathLike, record: dict[str, Any], *, now: float | None =
 def set_status(store: str | os.PathLike, item_id: str, status: str) -> dict[str, Any]:
     if status not in STATUSES:
         return {"ok": False, "error": f"status must be one of {STATUSES}"}
-    records = load(store)
+    records = _load_for_write(store, item_id)
     found = False
     for r in records:
         if r.get("id") == item_id:

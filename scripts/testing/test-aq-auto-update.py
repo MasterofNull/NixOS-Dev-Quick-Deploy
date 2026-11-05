@@ -164,6 +164,7 @@ def t_health_fail_rolls_back_to_recorded_closure():
         check(fx.calls().index("STOP_LLAMA") < fx.calls().index("BUILD") < fx.calls().index("SWITCH"), fx.calls())
         check((fx.repo / "flake.lock").read_text() == '{"v":1}', "flake.lock not restored")
         check("REBOOT" not in " ".join(fx.calls()), fx.calls())
+        check("FLAKE_UPDATE" not in fx.calls() and not fx.lines("PIN_WATCH"), fx.calls())
 
 
 def t_kernel_change_records_pending_reboot():
@@ -208,11 +209,11 @@ def t_repo_helpers_run_as_owner():
     fake = lambda argv, **kw: (calls.append(argv), subprocess.CompletedProcess(argv, 0, "", ""))[1]
     with mock.patch.dict(_os.environ, {"AQ_AUTO_UPDATE_RUN_AS": "owner"}), mock.patch.object(mod.subprocess, "run", fake):
         ctx = mod.Ctx()
-        for name in ("FLAKE_UPDATE", "PIN_WATCH", "QA", "RSI"):
+        for name in ("PIN_WATCH", "QA", "RSI"):
             ctx.cmd(name, ["helper"], side_effect=False)
         ctx.cmd("BUILD", ["nixos-rebuild", "build"], side_effect=False)
-    assert all(c[:4] == ["runuser", "-u", "owner", "--"] for c in calls[:4]), calls
-    assert calls[4][0] == "nixos-rebuild", calls[4]
+    assert all(c[:4] == ["runuser", "-u", "owner", "--"] for c in calls[:3]), calls
+    assert calls[3][0] == "nixos-rebuild", calls[3]
 
 
 def t_check_escalates_running_kernel_past_reboot_sla():

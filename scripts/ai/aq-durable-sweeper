@@ -263,21 +263,18 @@ def sweep_local_sources(state: Dict[str, Any], scan_radar: bool = False) -> int:
     backlog_path = repo_root / ".agents/plans/frontier-evidence-intake/BACKLOG.jsonl"
     if backlog_path.is_file():
         try:
-            with open(backlog_path, "r", encoding="utf-8") as f:
-                for line in f:
-                    line = line.strip()
-                    if not line:
-                        continue
-                    try:
-                        doc = json.loads(line)
-                        title = doc.get("technique") or doc.get("id") or "Untitled"
-                        source = doc.get("source") or "frontier-backlog"
-                        content = f"{doc.get('claim', '')} {doc.get('proposed_slice', '')}"
-                        res = process_item(state, title, source, content)
-                        if res.get("status") == "processed":
-                            ingested += 1
-                    except Exception:
-                        continue
+            sys.path.insert(0, str(repo_root / "scripts" / "ai" / "lib"))
+            import frontier_backlog  # tracked store plus the runtime scan overlay
+            for doc in frontier_backlog.load(backlog_path):
+                try:
+                    title = doc.get("technique") or doc.get("id") or "Untitled"
+                    source = doc.get("source") or "frontier-backlog"
+                    content = f"{doc.get('claim', '')} {doc.get('proposed_slice', '')}"
+                    res = process_item(state, title, source, content)
+                    if res.get("status") == "processed":
+                        ingested += 1
+                except Exception:
+                    continue
         except Exception as e:
             sys.stderr.write(f"[aq-durable-sweeper] Warning: failed reading backlog: {e}\n")
 

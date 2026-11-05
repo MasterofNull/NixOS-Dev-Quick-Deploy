@@ -24,7 +24,10 @@ def _queue_path() -> Path:
 
 
 def _incidents_path() -> Path:
-    return Path(os.getenv("PRSI_INCIDENTS_FILE", str(REPO_ROOT / ".agent" / "collaboration" / "rsi-incidents.json")))
+    if str(Path(__file__).resolve().parent) not in sys.path:
+        sys.path.insert(0, str(Path(__file__).resolve().parent))
+    import rsi_paths
+    return rsi_paths.incidents_read_path(REPO_ROOT)
 
 
 def _inbox_dir() -> Path:
