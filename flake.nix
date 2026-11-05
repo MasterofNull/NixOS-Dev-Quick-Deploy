@@ -434,6 +434,16 @@
         };
         overlays = [(import ./nix/lib/overlays/osint-tools.nix)];
       };
+      # devSystems includes aarch64-linux, where some tools cannot be evaluated
+      # (ghdl-llvm -> gnat-bootstrap throws "Unsupported system", rocmPackages
+      # -> clang-rocm is x86_64-only). meta.platforms does not catch these
+      # transitive throws, so on non-default systems drop packages whose
+      # derivation fails to evaluate. The default system stays strict: a real
+      # breakage there must fail evaluation, not silently shrink the shell.
+      onHost =
+        if system' == defaultSystem
+        then lib.id
+        else lib.filter (p: (builtins.tryEval (builtins.seq p.drvPath true)).success);
     in {
       default = pkgs'.mkShell {
         packages = with pkgs'; [
@@ -518,7 +528,7 @@
 
       # embedded-hardware domain: HDL, simulation, cross-compile, debug
       embedded = pkgs'.mkShell {
-        packages = with pkgs'; [
+        packages = onHost (with pkgs'; [
           verilator
           ghdl-llvm
           yosys
@@ -528,7 +538,7 @@
           qemu
           gdb
           minicom
-        ];
+        ]);
         shellHook = ''
           export EMBEDDED_DOMAIN_SHELL=1
           export AIDB_NAMESPACE=embedded-hardware-patterns
@@ -703,7 +713,7 @@
 
       # ml-ai domain: model training, inference optimization, ROCm/CUDA
       ml-ai = pkgs'.mkShell {
-        packages = with pkgs'; [
+        packages = onHost (with pkgs'; [
           (python3.withPackages (ps:
             with ps; [
               torch
@@ -714,7 +724,7 @@
           # ROCm tools for AMD hardware
           rocmPackages.rocminfo
           rocmPackages.rocm-smi
-        ];
+        ]);
         shellHook = ''
           export ML_AI_DOMAIN_SHELL=1
           export AIDB_NAMESPACE=ml-ai-patterns
@@ -745,7 +755,7 @@
       # DOMAIN_SHELL=full and auto-selects tools based on intent classification.
       # Usage: nix develop .#full
       full = pkgs'.mkShell {
-        packages = with pkgs'; [
+        packages = onHost (with pkgs'; [
           # Nix / systems
           statix
           deadnix
@@ -835,7 +845,7 @@
           # Phase 66.1: Wasmtime — WASM sandbox tier (L2) below nsjail cost
           # Staged here (devShells.full only); not in hybridPython coordinator env
           wasmtime
-        ];
+        ]);
         shellHook = ''
           export DOMAIN_SHELL=full
           export FULL_STACK_SHELL=1
