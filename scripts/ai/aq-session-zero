@@ -22,12 +22,11 @@ set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 ENDPOINTS_FILE="${REPO_ROOT}/config/service-endpoints.sh"
-BRIEF=false
 JSON_MODE=false
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --brief) BRIEF=true; shift ;;
+    --brief) shift ;;
     --json)  JSON_MODE=true; shift ;;
     -h|--help)
       echo "Usage: aq-session-zero [--brief] [--json]"
@@ -57,8 +56,6 @@ HARNESS_URL="${HYBRID_URL:-http://127.0.0.1:8003}"
 # ── Step 2: Health check ─────────────────────────────────────────────────────
 
 HEALTH_RESPONSE=""
-HTTP_CODE=""
-declare -A SUBSYSTEMS=()
 
 if command -v curl &>/dev/null; then
   HEALTH_RESPONSE=$(curl -sf --max-time 5 "${HARNESS_URL}/health" 2>/dev/null) || true

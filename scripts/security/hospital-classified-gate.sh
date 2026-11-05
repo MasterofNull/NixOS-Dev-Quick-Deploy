@@ -59,8 +59,9 @@ add_evidence() {
     
     # Use jq to append to checks array if available, otherwise just use a placeholder
     if command -v jq >/dev/null; then
-        local entry=$(jq -n --arg n "$name" --arg s "$status" --arg d "$detail" \
-            '{name: $n, status: $s, detail: $d}')
+        local entry
+        entry=$(jq -n --arg n "$name" --arg s "$status" --arg d "$detail" \
+            '{name: $n, status: $s, detail: $d}') || true
         jq ".checks += [$entry]" "$EVIDENCE_FILE" > "$EVIDENCE_FILE.tmp" && mv "$EVIDENCE_FILE.tmp" "$EVIDENCE_FILE"
     fi
 }

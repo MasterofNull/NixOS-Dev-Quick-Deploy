@@ -35,9 +35,8 @@ def _queue_path() -> Path:
 
 
 def _incidents_path() -> Path:
-    runtime = os.getenv("RSI_RUNTIME_DIR")
-    default = Path(runtime) / "rsi-incidents.json" if runtime else REPO_ROOT / ".agent" / "collaboration" / "rsi-incidents.json"
-    return Path(os.getenv("PRSI_INCIDENTS_FILE", str(default)))
+    import rsi_paths
+    return rsi_paths.incidents_read_path(REPO_ROOT)
 
 
 def _load(path: Path):

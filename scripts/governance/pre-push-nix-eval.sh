@@ -23,7 +23,7 @@ changed_files=""
 if git rev-parse --verify "${BASE_REF}" >/dev/null 2>&1; then
   changed_files="$(git diff --name-only "${BASE_REF}"..."${HEAD_REF}" 2>/dev/null || true)"
 else
-  changed_files="$(git diff --name-only "${HEAD_REF}~1"..."${HEAD_REF}" 2>/dev/null || true)"
+  changed_files="$(git diff --name-only "${HEAD_REF}~1...${HEAD_REF}" 2>/dev/null || true)"
 fi
 
 # Check if any Nix-impacting paths were modified

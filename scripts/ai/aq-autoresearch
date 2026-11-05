@@ -36,7 +36,6 @@ EOF
 COMMAND="run"
 CHAT_VARIANTS=3
 EMBED_VARIANTS=3
-MAX_EXPERIMENTS=5
 FORMAT="text"
 
 # Parse arguments
@@ -55,7 +54,6 @@ while [[ $# -gt 0 ]]; do
             shift 2
             ;;
         --max-experiments)
-            MAX_EXPERIMENTS="$2"
             shift 2
             ;;
         --format)

@@ -187,6 +187,7 @@ check_path_absent "scripts/automation/run-dashboard-collector-full.sh" 'Low-sign
 check_path_absent "scripts/automation/run-dashboard-collector-lite.sh" 'Low-signal deprecated run-dashboard-collector-lite shim has been removed'
 check_path_absent "scripts/deploy/fast-rebuild.sh" 'Low-signal deprecated fast-rebuild shim has been removed'
 check_path_absent "scripts/governance/comprehensive-mcp-search.py" 'Low-signal deprecated comprehensive-mcp-search stub has been removed'
+# shellcheck disable=SC2088  # literal tilde: this is the text the guide must contain, not a path
 check_pattern "docs/development/SECRETS-MANAGEMENT-GUIDE.md" '~/.local/share/nixos-quick-deploy/secrets/<host>/secrets\.sops\.yaml' 'Secrets guide documents external bundle location'
 check_pattern "docs/development/SECRETS-MANAGEMENT-GUIDE.md" 'manage-secrets\.sh bootstrap --host' 'Secrets guide documents delegated quick-deploy bootstrap flow'
 check_pattern "docs/development/SECRETS-MANAGEMENT-GUIDE.md" 'manage-secrets\.sh doctor --host' 'Secrets guide documents doctor-based readiness workflow'

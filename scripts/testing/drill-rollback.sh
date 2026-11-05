@@ -145,7 +145,7 @@ FLEET_COUNT=$(echo "$FLEET_RESP" | python3 -c "import json,sys; d=json.load(sys.
 [[ "$FLEET_COUNT" -ge 1 ]] || fail "Stage 2 FAILED: fleet summary shows 0 runtimes after register"
 pass "Fleet summary shows ${FLEET_COUNT} runtime(s)"
 
-GET_RESP=$(http_get "${COORDINATOR_URL}/control/runtimes/${REGISTERED_ID}") \
+http_get "${COORDINATOR_URL}/control/runtimes/${REGISTERED_ID}" >/dev/null \
   || fail "Stage 2 FAILED: GET /control/runtimes/${REGISTERED_ID} returned error"
 pass "Drill runtime individually fetchable"
 

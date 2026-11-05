@@ -14,6 +14,7 @@ TRACKER = ROOT / "scripts" / "ai" / "aq-pm-tracker"
 spec = util.spec_from_loader("aq_pm_tracker", machinery.SourceFileLoader("aq_pm_tracker", str(TRACKER)))
 mod = util.module_from_spec(spec)
 spec.loader.exec_module(mod)
+mod._cap_unactivated = lambda item, status, pct, reason: (status, pct)  # activation cap is covered by test-pm-tracker-activation-cap.py
 
 HEAD = "a" * 40
 CFG = {"lanes": [{"name": "gemini-antigravity", "pr_numbers": [10, 11], "reason": "test", "since": "2026-10-27"}],

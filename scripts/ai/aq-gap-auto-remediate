@@ -20,7 +20,6 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 
 # shellcheck source=../../config/service-endpoints.sh
 source "${SCRIPT_DIR}/../../config/service-endpoints.sh"
@@ -188,7 +187,8 @@ main() {
 
     # Read postgres password
     if [[ -r "$PG_PASS_FILE" ]]; then
-        export PGPASSWORD=$(tr -d '[:space:]' < "$PG_PASS_FILE")
+        PGPASSWORD=$(tr -d '[:space:]' < "$PG_PASS_FILE") || true
+        export PGPASSWORD
     fi
 
     # Fetch gaps

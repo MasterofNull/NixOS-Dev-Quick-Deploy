@@ -6,7 +6,6 @@
 set -euo pipefail
 
 TAG="[tier0.d/check-sops-sync]"
-MODE="${1:---pre-commit}"
 REPO_ROOT="$(git rev-parse --show-toplevel)"
 cd "${REPO_ROOT}"
 

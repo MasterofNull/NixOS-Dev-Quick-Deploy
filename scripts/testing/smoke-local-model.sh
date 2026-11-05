@@ -50,10 +50,8 @@ print(v)
 
 LLAMA_URL="${LLAMA_CPP_BASE_URL:-http://127.0.0.1:8080}"
 EMBED_URL="${EMBED_BASE_URL:-http://127.0.0.1:8081}"
-COORD_URL="${HYBRID_COORDINATOR_URL:-http://127.0.0.1:8003}"
 
 HEALTH_TIMEOUT=$(_yaml_val "performance_targets.health_timeout_s" "5")
-TTFT_MAX=$(_yaml_val "performance_targets.ttft_warm_max_s" "10")
 TTFT_COLD_MAX=$(_yaml_val "performance_targets.ttft_cold_max_s" "30")
 TOKENS_MIN=$(_yaml_val "performance_targets.tokens_per_sec_min" "0.5")
 EMBED_MAX_MS=$(_yaml_val "performance_targets.embed_latency_max_ms" "500")
@@ -88,7 +86,7 @@ _info() {
 # Gate 1: llama-server health
 # ---------------------------------------------------------------------------
 _gate_llama_health() {
-  local resp http_code status
+  local resp status
   resp=$(curl -s --max-time "${HEALTH_TIMEOUT}" "${LLAMA_URL}/health" 2>/dev/null || true)
   status=$(echo "${resp}" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('status',''))" 2>/dev/null || true)
   if [[ "${status}" == "ok" ]]; then
@@ -102,7 +100,7 @@ _gate_llama_health() {
 # Gate 2: Chat completion — TTFT, tokens/sec, thinking-mode guard
 # ---------------------------------------------------------------------------
 _gate_chat_completion() {
-  local payload t_start t_end content tok_count elapsed ttfb_ms tokens_per_sec
+  local payload t_start t_end content tok_count elapsed
 
   payload='{"model":"local","messages":[{"role":"user","content":"Reply with exactly: SMOKE_OK"}],"max_tokens":20,"temperature":0,"stream":false,"chat_template_kwargs":{"enable_thinking":false}}'
 

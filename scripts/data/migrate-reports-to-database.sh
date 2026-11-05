@@ -56,6 +56,7 @@ is_system_doc() {
     local file="$1"
 
     for pattern in "${SYSTEM_DOCS_PATTERNS[@]}"; do
+        # shellcheck disable=SC2053  # patterns in SYSTEM_DOCS_PATTERNS are intentional globs
         if [[ "$file" == $pattern ]]; then
             return 0
         fi

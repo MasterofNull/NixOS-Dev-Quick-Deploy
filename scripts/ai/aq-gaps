@@ -32,7 +32,7 @@ should_ignore_gap() {
     case "$text" in
         test|nix|ping|health) return 0 ;;
         analysis\ only\ task*|analysis\ only:*|analysis\ task*|analyze\ docs/*|please\ analyze\ and\ summarize\ docs/*|analyze\ and\ summarize\ docs/*|summarize\ docs/*|nixos-rag-test-probe-unique-sentinel*|fetch\ http://127.0.0.1*|fetch\ https://127.0.0.1*|fetch\ http://localhost*|curl\ http://127.0.0.1*|curl\ http://localhost*|get\ http://127.0.0.1*|get\ http://localhost*) return 0 ;;
-        *lib\ mkforce*|*lib\ mkif*|*flake\ inputs\ follows*|*nixos\ module\ options*|*nixos\ systemd\ service\ options*|*configure\ nixos\ services*|*how\ do\ i\ configure\ a\ nixos\ systemd\ service*|*postgresql\ nixos\ module\ setup*|*tc3\ feedback\ validation*|*how\ does\ the\ hybrid\ coordinator\ route\ queries*|*what\ is\ nixos*|*explain\ what\ nixos\ is*|*nixos\ flake*|*nixos\ flake\ build\ system*|*create\ a\ workflow\ plan\ for\ diagnosing\ continue\ chat\ hangs*|*verify\ switchboard\ response\ headers\ for\ profile\ routing*|*reduce\ token\ overhead\ through\ progressive\ disclosure\ defaults*|*intent\ contract\ fields\ for\ workflow\ start*|*show\ workflow\ run\ start\ intent\ contract\ requirements*|*how\ to\ configure\ qdrant\ and\ hybrid\ routing\ in\ this\ repo*) return 0 ;;
+        *lib\ mkforce*|*lib\ mkif*|*flake\ inputs\ follows*|*nixos\ module\ options*|*nixos\ systemd\ service\ options*|*configure\ nixos\ services*|*how\ do\ i\ configure\ a\ nixos\ systemd\ service*|*postgresql\ nixos\ module\ setup*|*tc3\ feedback\ validation*|*how\ does\ the\ hybrid\ coordinator\ route\ queries*|*what\ is\ nixos*|*explain\ what\ nixos\ is*|*nixos\ flake*|*create\ a\ workflow\ plan\ for\ diagnosing\ continue\ chat\ hangs*|*verify\ switchboard\ response\ headers\ for\ profile\ routing*|*reduce\ token\ overhead\ through\ progressive\ disclosure\ defaults*|*intent\ contract\ fields\ for\ workflow\ start*|*show\ workflow\ run\ start\ intent\ contract\ requirements*|*how\ to\ configure\ qdrant\ and\ hybrid\ routing\ in\ this\ repo*) return 0 ;;
     esac
     return 1
 }
@@ -51,7 +51,8 @@ done
 
 # Read postgres password
 if [[ -r "$PG_PASS_FILE" ]]; then
-    export PGPASSWORD=$(tr -d '[:space:]' < "$PG_PASS_FILE")
+    PGPASSWORD=$(tr -d '[:space:]' < "$PG_PASS_FILE") || true
+    export PGPASSWORD
 fi
 
 # Build WHERE clause
