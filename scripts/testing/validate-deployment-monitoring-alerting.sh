@@ -63,7 +63,8 @@ record_scenario_result() {
   local status="$2"
   local details="$3"
 
-  local entry="{
+  local entry
+  entry="{
     \"name\": \"${scenario}\",
     \"status\": \"${status}\",
     \"details\": \"${details}\",
@@ -113,7 +114,8 @@ init_report
 
 test_happy_path() {
   local scenario="happy_path"
-  local deployment_id="phase41-happy-$(date +%s)"
+  local deployment_id
+  deployment_id="phase41-happy-$(date +%s)"
   local test_passed=true
 
   echo "Testing Scenario 1: Happy Path (Deploy → Monitoring → No alerts)"
@@ -176,7 +178,8 @@ test_happy_path() {
 
 test_alert_trigger() {
   local scenario="alert_trigger"
-  local deployment_id="phase41-alert-$(date +%s)"
+  local deployment_id
+  deployment_id="phase41-alert-$(date +%s)"
   local test_passed=true
 
   echo "Testing Scenario 2: Alert Trigger (Deploy → Inject fault → Alert fires)"
@@ -263,7 +266,8 @@ test_alert_trigger() {
 
 test_auto_remediation() {
   local scenario="auto_remediation"
-  local deployment_id="phase41-remediate-$(date +%s)"
+  local deployment_id
+  deployment_id="phase41-remediate-$(date +%s)"
   local test_passed=true
 
   echo "Testing Scenario 3: Auto Remediation (Deploy → Fault → Alert → Auto-fix → Recover)"
@@ -292,7 +296,8 @@ test_auto_remediation() {
 
   # 3d. Simulate alert and execute remediation
   echo "  3d. Simulating alert and executing remediation..."
-  local alert_id="test-alert-$(date +%s)"
+  local alert_id
+  alert_id="test-alert-$(date +%s)"
   local service="llama-cpp"
   if execute_remediation_for_alert "${alert_id}" "${service}" "service_health"; then
     pass "Remediation executed successfully"
@@ -328,7 +333,8 @@ test_auto_remediation() {
 
 test_manual_escalation() {
   local scenario="manual_escalation"
-  local deployment_id="phase41-escalate-$(date +%s)"
+  local deployment_id
+  deployment_id="phase41-escalate-$(date +%s)"
   local test_passed=true
 
   echo "Testing Scenario 4: Manual Escalation (Deploy → Critical fault → Alert → Manual notification)"
@@ -342,7 +348,8 @@ test_manual_escalation() {
 
   # 4b. Simulate critical alert
   echo "  4b. Simulating critical alert..."
-  local alert_id="critical-alert-$(date +%s)"
+  local alert_id
+  alert_id="critical-alert-$(date +%s)"
   local service="ai-aidb"
 
   if escalate_alert "${alert_id}" "${service}" "critical_database_failure"; then
@@ -375,7 +382,8 @@ test_manual_escalation() {
 
 test_rollback_safety() {
   local scenario="rollback_safety"
-  local deployment_id="phase41-rollback-$(date +%s)"
+  local deployment_id
+  deployment_id="phase41-rollback-$(date +%s)"
   local test_passed=true
 
   echo "Testing Scenario 5: Rollback Safety (Deploy bad config → Health check fails → Rollback)"

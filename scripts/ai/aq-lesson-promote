@@ -12,7 +12,6 @@
 
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 COORD_URL="${HYBRID_COORDINATOR_URL:-http://127.0.0.1:8003}"
 
 key=""

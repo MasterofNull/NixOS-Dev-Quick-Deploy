@@ -19,8 +19,11 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
+if str(Path(__file__).resolve().parent) not in sys.path:
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+import rsi_paths  # noqa: E402
 # Env overrides exist so CLIs and tests can target an isolated ledger; unset = canonical paths.
-_RUNTIME = Path(os.environ.get("RSI_RUNTIME_DIR") or _REPO_ROOT / ".agent" / "collaboration")
+_RUNTIME = rsi_paths.runtime_dir(_REPO_ROOT)
 _BACKLOG = Path(os.environ.get("RSI_BACKLOG_FILE") or _REPO_ROOT / ".agent" / "memory" / "issues-backlog.md")
 _WORKAROUNDS = Path(os.environ.get("RSI_WORKAROUNDS_FILE") or _REPO_ROOT / ".agent" / "WORKAROUND-REGISTER.md")
 
@@ -54,7 +57,7 @@ def _event(agent: str, event_type: str, payload: dict[str, str], subject: str) -
 
 def check(repo_root: Path = _REPO_ROOT) -> tuple[bool, str]:
     """Verify that operational state has a writable canonical home."""
-    runtime = repo_root / ".agent" / "collaboration"
+    runtime = _RUNTIME if repo_root == _REPO_ROOT else repo_root / ".agent" / "collaboration"
     memory = repo_root / ".agent" / "memory"
     try:
         runtime.mkdir(parents=True, exist_ok=True)
@@ -122,7 +125,9 @@ def failure(agent: str, subject: str, producer: str, path: str, authority: str,
     ledger = _RUNTIME / "rsi-incidents.json"
     with (_RUNTIME / "rsi-incidents.lock").open("a") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
-        state = json.loads(ledger.read_text()) if ledger.exists() else {"version": 1, "incidents": {}}
+        seeded = rsi_paths.seed_text(ledger, _REPO_ROOT)
+        state = json.loads(rsi_paths.read_ledger_text(ledger, _REPO_ROOT)) if ledger.exists() else (
+            json.loads(seeded) if seeded else {"version": 1, "incidents": {}})
         incidents = state["incidents"]
         previous = incidents.get(slug)
         if previous is None and len(incidents) >= 1000:
@@ -160,7 +165,7 @@ def resolve(incident_id: str, root_cause: str, regression: str, validation: str)
     ledger = _RUNTIME / "rsi-incidents.json"
     with (_RUNTIME / "rsi-incidents.lock").open("a") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
-        state = json.loads(ledger.read_text())
+        state = json.loads(rsi_paths.read_ledger_text(ledger, _REPO_ROOT))
         incident = state["incidents"][incident_id]
         incident.update(status="resolved", resolved_at=_now(),
                         resolution=dict(zip(("root_cause", "regression", "validation"),
@@ -197,7 +202,7 @@ def annotate(incident_id: str, note: str) -> None:
     ledger = _RUNTIME / "rsi-incidents.json"
     with (_RUNTIME / "rsi-incidents.lock").open("a") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
-        state = json.loads(ledger.read_text())
+        state = json.loads(rsi_paths.read_ledger_text(ledger, _REPO_ROOT))
         state["incidents"][incident_id]["note"] = _clean(note)
         _save(ledger, state)
 

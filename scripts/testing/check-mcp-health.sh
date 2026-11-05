@@ -32,16 +32,15 @@ FAIL=0
 
 # ── Colour helpers ────────────────────────────────────────────────────────────
 if [[ -t 1 ]]; then
-  GREEN='\033[0;32m'; RED='\033[0;31m'; YELLOW='\033[0;33m'; RESET='\033[0m'
+  GREEN='\033[0;32m'; RED='\033[0;31m'; RESET='\033[0m'
 else
-  GREEN=''; RED=''; YELLOW=''; RESET=''
+  GREEN=''; RED=''; RESET=''
 fi
 
 check_http() {
   local tier="$1"   # REQUIRED | OPTIONAL | INFRA
   local label="$2"
   local url="$3"
-  local required_tier="${4:-REQUIRED}"  # unused, kept for symmetry
 
   local http_code
   http_code=$(curl -sS -o /dev/null -w "%{http_code}" \

@@ -58,7 +58,8 @@ setup_directories() {
 # Generate backup filename with timestamp
 get_backup_filename() {
     local type="$1"
-    local timestamp=$(date +%Y%m%d-%H%M%S)
+    local timestamp
+    timestamp=$(date +%Y%m%d-%H%M%S)
     local filename="${DB_NAME}-${type}-${timestamp}"
 
     case "$COMPRESSION" in
@@ -84,10 +85,12 @@ get_backup_filename() {
 backup_full() {
     log "Starting full backup of $DB_NAME"
 
-    local backup_file="$BACKUP_DIR/daily/$(get_backup_filename full)"
+    local backup_file
+    backup_file="$BACKUP_DIR/daily/$(get_backup_filename full)" || true
     local temp_file="${backup_file}.tmp"
 
-    local start_time=$(date +%s)
+    local start_time
+    start_time=$(date +%s)
 
     # pg_dump with optimal settings
     if ! pg_dump \
@@ -107,9 +110,11 @@ backup_full() {
 
     mv "$temp_file" "$backup_file"
 
-    local end_time=$(date +%s)
+    local end_time
+    end_time=$(date +%s)
     local duration=$((end_time - start_time))
-    local size=$(stat -f%z "$backup_file" 2>/dev/null || stat -c%s "$backup_file")
+    local size
+    size=$(stat -f%z "$backup_file" 2>/dev/null || stat -c%s "$backup_file") || true
 
     log "Full backup completed: $backup_file"
     log "  Size: $(numfmt --to=iec-i --suffix=B $size)"
@@ -211,7 +216,8 @@ archive_wal() {
 
     # Archive completed WAL segments
     find "$wal_dir" -type f -name "*.ready" | while read ready_file; do
-        local wal_file=$(basename "$ready_file" .ready)
+        local wal_file
+        wal_file=$(basename "$ready_file" .ready)
         local wal_path="$wal_dir/$wal_file"
         local archive_path="$archive_dir/${wal_file}.gz"
 
@@ -227,9 +233,11 @@ rotate_backups() {
     log "Rotating backups (retention: ${RETENTION_DAYS}d/${RETENTION_WEEKS}w/${RETENTION_MONTHS}m)"
 
     # Promote daily to weekly (keep last backup of each week)
-    local last_weekly=$(date -d "1 week ago" +%Y%m%d)
+    local last_weekly
+    last_weekly=$(date -d "1 week ago" +%Y%m%d)
     find "$BACKUP_DIR/daily" -type f -name "${DB_NAME}-*" -mtime +7 | while read backup; do
-        local backup_date=$(basename "$backup" | grep -oP '\d{8}' | head -1)
+        local backup_date
+        backup_date=$(basename "$backup" | grep -oP '\d{8}' | head -1) || true
         if [[ "$backup_date" -ge "$last_weekly" ]]; then
             mv "$backup" "$BACKUP_DIR/weekly/"
             log "Promoted to weekly: $(basename $backup)"
@@ -237,9 +245,11 @@ rotate_backups() {
     done
 
     # Promote weekly to monthly (keep last backup of each month)
-    local last_monthly=$(date -d "1 month ago" +%Y%m%d)
+    local last_monthly
+    last_monthly=$(date -d "1 month ago" +%Y%m%d)
     find "$BACKUP_DIR/weekly" -type f -name "${DB_NAME}-*" -mtime +30 | while read backup; do
-        local backup_date=$(basename "$backup" | grep -oP '\d{8}' | head -1)
+        local backup_date
+        backup_date=$(basename "$backup" | grep -oP '\d{8}' | head -1) || true
         if [[ "$backup_date" -ge "$last_monthly" ]]; then
             mv "$backup" "$BACKUP_DIR/monthly/"
             log "Promoted to monthly: $(basename $backup)"
@@ -265,7 +275,8 @@ update_metrics() {
     local size="$4"
     local status="$5"
 
-    local timestamp=$(date +%s)
+    local timestamp
+    timestamp=$(date +%s)
 
     cat > "$METRICS_FILE" <<EOF
 # HELP postgres_backup_last_success_timestamp Unix timestamp of last successful backup

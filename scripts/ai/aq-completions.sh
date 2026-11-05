@@ -26,16 +26,16 @@ _aq_hints_complete() {
     local prev="${COMP_WORDS[COMP_CWORD-1]}"
 
     case "$prev" in
-        --format)  COMPREPLY=( $(compgen -W "json text shell-complete" -- "$cur") ); return ;;
-        --agent)   COMPREPLY=( $(compgen -W "human claude codex qwen aider continue" -- "$cur") ); return ;;
-        --context) COMPREPLY=( $(compgen -W ".nix .py .sh nixos python systemd rag aider" -- "$cur") ); return ;;
+        --format)  mapfile -t COMPREPLY < <(compgen -W "json text shell-complete" -- "$cur"); return ;;
+        --agent)   mapfile -t COMPREPLY < <(compgen -W "human claude codex qwen aider continue" -- "$cur"); return ;;
+        --context) mapfile -t COMPREPLY < <(compgen -W ".nix .py .sh nixos python systemd rag aider" -- "$cur"); return ;;
         --max)     COMPREPLY=(); return ;;
     esac
 
     # Flag completions
     if [[ "$cur" == --* ]]; then
-        COMPREPLY=( $(compgen -W \
-            "--format --agent --context --max" -- "$cur") )
+        mapfile -t COMPREPLY < <(compgen -W \
+            "--format --agent --context --max" -- "$cur")
         return
     fi
 
@@ -43,7 +43,7 @@ _aq_hints_complete() {
     if [[ -n "$_AQ_HINTS_BIN" && -x "$_AQ_HINTS_BIN" ]]; then
         local candidates
         candidates=$("$_AQ_HINTS_BIN" "$cur" --format=shell-complete 2>/dev/null)
-        COMPREPLY=( $(compgen -W "$candidates" -- "$cur") )
+        mapfile -t COMPREPLY < <(compgen -W "$candidates" -- "$cur")
     fi
 }
 
@@ -54,11 +54,11 @@ _aq_report_complete() {
     local cur="${COMP_WORDS[COMP_CWORD]}"
     local prev="${COMP_WORDS[COMP_CWORD-1]}"
     case "$prev" in
-        --format)  COMPREPLY=( $(compgen -W "md text json" -- "$cur") ); return ;;
-        --since)   COMPREPLY=( $(compgen -W "1d 7d 14d 30d 90d 1h 12h" -- "$cur") ); return ;;
+        --format)  mapfile -t COMPREPLY < <(compgen -W "md text json" -- "$cur"); return ;;
+        --since)   mapfile -t COMPREPLY < <(compgen -W "1d 7d 14d 30d 90d 1h 12h" -- "$cur"); return ;;
     esac
     if [[ "$cur" == --* ]]; then
-        COMPREPLY=( $(compgen -W "--since --format --aidb-import" -- "$cur") )
+        mapfile -t COMPREPLY < <(compgen -W "--since --format --aidb-import" -- "$cur")
     fi
 }
 
@@ -74,12 +74,12 @@ _aq_prompt_eval_complete() {
             if [[ -n "$_AQ_HINTS_BIN" && -x "$_AQ_HINTS_BIN" ]]; then
                 local ids
                 ids=$("$_AQ_HINTS_BIN" --format=shell-complete 2>/dev/null | grep -v ' ')
-                COMPREPLY=( $(compgen -W "$ids" -- "$cur") )
+                mapfile -t COMPREPLY < <(compgen -W "$ids" -- "$cur")
             fi
             return ;;
     esac
     if [[ "$cur" == --* ]]; then
-        COMPREPLY=( $(compgen -W "--dry-run --id --verbose --model" -- "$cur") )
+        mapfile -t COMPREPLY < <(compgen -W "--dry-run --id --verbose --model" -- "$cur")
     fi
 }
 
@@ -89,7 +89,7 @@ _aq_prompt_eval_complete() {
 _aq_generic_complete() {
     local cur="${COMP_WORDS[COMP_CWORD]}"
     if [[ "$cur" == --* ]]; then
-        COMPREPLY=( $(compgen -W "--help" -- "$cur") )
+        mapfile -t COMPREPLY < <(compgen -W "--help" -- "$cur")
     fi
 }
 
@@ -100,10 +100,10 @@ _aq_chat_complete() {
     local cur="${COMP_WORDS[COMP_CWORD]}"
     local prev="${COMP_WORDS[COMP_CWORD-1]}"
     case "$prev" in
-        --profile) COMPREPLY=( $(compgen -W "local remote_free remote_coding remote_reasoning" -- "$cur") ); return ;;
+        --profile) mapfile -t COMPREPLY < <(compgen -W "local remote_free remote_coding remote_reasoning" -- "$cur"); return ;;
     esac
     if [[ "$cur" == --* ]]; then
-        COMPREPLY=( $(compgen -W "--profile --llama-url --hybrid-url --temperature" -- "$cur") )
+        mapfile -t COMPREPLY < <(compgen -W "--profile --llama-url --hybrid-url --temperature" -- "$cur")
     fi
 }
 
@@ -118,7 +118,7 @@ _aq_router_complete() {
     if [[ "$COMP_CWORD" -eq 1 ]]; then
         local _aq_bin="${AQ_BIN:-$(command -v aq 2>/dev/null)}"
         [[ -z "$_aq_bin" ]] && return
-        COMPREPLY=( $(compgen -W "$("$_aq_bin" --commands 2>/dev/null)" -- "$cur") )
+        mapfile -t COMPREPLY < <(compgen -W "$("$_aq_bin" --commands 2>/dev/null)" -- "$cur")
     fi
 }
 

@@ -58,8 +58,17 @@ _WORKFLOW_DEVIATIONS = Path(os.getenv(
 # RSI failures are recorded locally by rsi_lifecycle.  This reader deliberately
 # projects only a small, inert candidate into PRSI; it never forwards the raw
 # error text to an optimizer or an agent task.
-_RSI_INCIDENTS = Path(os.getenv("PRSI_INCIDENTS_FILE", str(REPO_ROOT / ".agent" / "collaboration" / "rsi-incidents.json")))
+import rsi_paths  # noqa: E402
+
+_RSI_INCIDENTS = rsi_paths.incidents_path(REPO_ROOT)
 _MAX_RSI_INCIDENTS_PER_SYNC = 50
+
+
+def _incidents_file() -> Path:
+    """Ledger to read: the runtime ledger, else the tracked seed until the first runtime write."""
+    if _RSI_INCIDENTS.exists() or rsi_paths.seed_text(_RSI_INCIDENTS, REPO_ROOT) is None:
+        return _RSI_INCIDENTS
+    return rsi_paths.seed_dir(REPO_ROOT) / rsi_paths.LEDGER
 _RSI_INCIDENT_ID_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,127}")
 _RSI_SEVERITIES = {"low", "medium", "high", "critical"}
 _RSI_DISPATCH_LOCK = QUEUE_PATH.with_name("rsi-dispatch.lock")
@@ -491,7 +500,7 @@ def _fetch_rsi_incident_actions() -> List[Dict[str, Any]]:
     ``shadow_only`` keeps the row outside approval and optimizer execution
     paths, preventing repair failures from recursively dispatching work.
     """
-    payload = _read_json(_RSI_INCIDENTS, {})
+    payload = _read_json(_incidents_file(), {})
     if not isinstance(payload, dict) or payload.get("version") != 1:
         return []
     incidents = payload.get("incidents")
@@ -810,7 +819,7 @@ def _rsi_summary(queue: Dict[str, Any]) -> Dict[str, Any]:
 
 def _rsi_open_incident_ids() -> Tuple[bool, set[str]]:
     """Return valid open lifecycle ids; an unreadable ledger never resolves work."""
-    payload = _read_json(_RSI_INCIDENTS, {})
+    payload = _read_json(_incidents_file(), {})
     incidents = payload.get("incidents") if isinstance(payload, dict) else None
     if not isinstance(payload, dict) or payload.get("version") != 1 or not isinstance(incidents, dict):
         return False, set()
@@ -1064,7 +1073,7 @@ def _reconcile_stale_rsi_running(queue: Dict[str, Any], timeout_seconds: int) ->
 
 def _rsi_gate_filter(eligible: List[Dict[str, Any]], cfg: Dict[str, Any], apply: bool) -> Tuple[List[Dict[str, Any]], Dict[str, int]]:
     """Drop rows lacking a valid bound owner approval (policy rsi.approval_binding_enabled)."""
-    incidents = (_read_json(_RSI_INCIDENTS, {}) or {}).get("incidents", {})
+    incidents = (_read_json(_incidents_file(), {}) or {}).get("incidents", {})
     authorities = tuple(cfg.get("approval_authorities") or ("owner",))
     scope = "apply" if apply else "diagnose"
     allowed: List[Dict[str, Any]] = []
@@ -1084,7 +1093,7 @@ def _rsi_gate_filter(eligible: List[Dict[str, Any]], cfg: Dict[str, Any], apply:
 
 def _rsi_non_agentic_filter(eligible: List[Dict[str, Any]], cfg: Dict[str, Any]) -> Tuple[List[Dict[str, Any]], Dict[str, int]]:
     """Drop rows whose incident producer is in the non_agentic_producers list (handled by deterministic scripts)."""
-    incidents = (_read_json(_RSI_INCIDENTS, {}) or {}).get("incidents", {})
+    incidents = (_read_json(_incidents_file(), {}) or {}).get("incidents", {})
     non_agentic = cfg.get("non_agentic_producers")
     if not isinstance(non_agentic, list):
         non_agentic = []

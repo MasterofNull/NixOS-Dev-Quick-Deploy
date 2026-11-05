@@ -16,7 +16,6 @@ source "${SCRIPT_DIR}/../../config/service-endpoints.sh"
 
 PYTHON_BIN="${SEED_ROUTING_PYTHON_BIN:-${POST_DEPLOY_PYTHON_BIN:-python3}}"
 
-COUNT="${1:-}"
 QUERY_COUNT=20
 REPLAY_COUNT=1
 INCLUDE_GAPS="${SEED_ROUTING_INCLUDE_GAPS:-true}"
@@ -115,7 +114,8 @@ if [[ "${INCLUDE_GAPS}" == "true" ]] && command -v psql >/dev/null 2>&1; then
   PG_USER="${POSTGRES_USER:-aidb}"
   PG_DB="${POSTGRES_DB:-aidb}"
   if [[ -r "${PG_PASS_FILE}" ]]; then
-    export PGPASSWORD="$(tr -d '[:space:]' < "${PG_PASS_FILE}")"
+    PGPASSWORD="$(tr -d '[:space:]' < "${PG_PASS_FILE}")" || true
+    export PGPASSWORD
   fi
   GAP_ROWS="$(psql -h "${PG_HOST}" -p "${PG_PORT}" -U "${PG_USER}" -d "${PG_DB}" -t -A \
     -c "SELECT query_text FROM query_gaps GROUP BY query_text ORDER BY COUNT(*) DESC LIMIT 6;" \
@@ -140,7 +140,6 @@ for q in "${DYNAMIC_GAP_QUERIES[@]}"; do
 done
 
 printf 'seed-routing-traffic: sending %d queries x %d replay through hybrid-coordinator (parallel)...\n' "$QUERY_COUNT" "$REPLAY_COUNT"
-PASS=0; FAIL=0
 MAX_JOBS=4
 ACTIVE_JOBS=0
 

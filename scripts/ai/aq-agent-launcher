@@ -172,6 +172,7 @@ check_session_token_safety() {
     local project_dir="$HOME/.claude/projects/$encoded_pwd"
     if [ -d "$project_dir" ]; then
       local latest_session
+      # shellcheck disable=SC2010  # ls -t supplies mtime ordering; names are session ids
       latest_session="$(ls -t "$project_dir"/*.jsonl 2>/dev/null | grep -v "/archive/" | head -1 || true)"
       if [ -n "$latest_session" ] && [ -f "$latest_session" ]; then
         local size_bytes

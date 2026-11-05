@@ -122,7 +122,7 @@ main() {
 
     # VSCode settings
     if sync_config \
-        "~/.config/VSCodium/User/settings.json" \
+        "$HOME/.config/VSCodium/User/settings.json" \
         "${TEMPLATES_DIR}/vscode/settings.json"; then
         ((synced++))
         if check_secrets "${TEMPLATES_DIR}/vscode/settings.json"; then
@@ -139,7 +139,7 @@ main() {
 
     # Claude Code MCP config
     if sync_config \
-        "~/.claude-code/mcp_servers.json" \
+        "$HOME/.claude-code/mcp_servers.json" \
         "${TEMPLATES_DIR}/vscode/claude-code/mcp_servers.json"; then
         ((synced++))
         if check_secrets "${TEMPLATES_DIR}/vscode/claude-code/mcp_servers.json"; then

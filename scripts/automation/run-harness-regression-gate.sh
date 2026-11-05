@@ -42,7 +42,6 @@ total="$(jq '.cases | length' "$CASES_FILE")"
 ok=0
 
 for i in $(seq 0 $((total - 1))); do
-  query="$(jq -r ".cases[$i].query" "$CASES_FILE")"
   payload="$(jq -c ".cases[$i]" "$CASES_FILE")"
   if curl -fsS "${curl_auth_args[@]}" -H 'Content-Type: application/json' "${HYB_URL}/harness/eval" --data "$payload" | jq -e '.passed == true or .status == "ok"' >/dev/null; then
     ok=$((ok + 1))

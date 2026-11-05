@@ -4,12 +4,9 @@
 # Identifies high-frequency patterns for integration into hints/RAG
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 
 # Default paths
 HINT_AUDIT_PATH="${HINT_AUDIT_LOG_PATH:-/var/log/nixos-ai-stack/hint-audit.jsonl}"
-TOOL_AUDIT_PATH="${TOOL_AUDIT_LOG_PATH:-/var/log/nixos-ai-stack/tool-audit.jsonl}"
 GAPS_PATH="${GAPS_JSONL:-/var/lib/ai-stack/query_gaps.jsonl}"
 OUTPUT_FORMAT="text"
 MIN_OCCURRENCES=3

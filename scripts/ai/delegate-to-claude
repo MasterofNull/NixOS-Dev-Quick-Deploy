@@ -482,7 +482,7 @@ ${prompt}"
         wait "$HEARTBEAT_PID" 2>/dev/null || true
         HEARTBEAT_PID=""; PROVIDER_PID=""; TAIL_PID=""
         if [[ "$exit_code" -eq 0 ]]; then
-            record_terminal done 0 "completed"
+            record_terminal "done" 0 "completed"
             audit_event_end "claude" "$id" "success" "0" "completed: ${prompt:0:100}" "$role" || true
             audit_save_session "claude" "$id" "$prompt" "$output_file" || true
             info "Task $id completed successfully."
