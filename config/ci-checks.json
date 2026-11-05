@@ -132,6 +132,19 @@
       "ci_workflow": ".github/workflows/test.yml#syntax"
     },
     {
+      "id": "pm-tracker-activation-cap",
+      "cmd": "scripts/testing/test-pm-tracker-activation-cap.py",
+      "paths": [
+        "scripts/ai/aq-pm-tracker",
+        "scripts/testing/test-pm-tracker-activation-cap.py"
+      ],
+      "needs": [
+        "python3",
+        "git"
+      ],
+      "ci_workflow": ".github/workflows/test.yml#syntax"
+    },
+    {
       "id": "pm-tracker-owner-acceptance",
       "cmd": "scripts/testing/test-pm-tracker-owner-acceptance.py",
       "paths": [
@@ -1563,8 +1576,6 @@
         "scripts/testing/test-prm-steering.py",
         "scripts/testing/test-progressive-disclosure-implementation.py",
         "scripts/testing/test-prompt-eval-transport-guard.py",
-        "scripts/testing/test-radar-ingest.py",
-        "scripts/testing/test-runtime-state-out-of-tracked-config.py",
         "scripts/testing/test-provider-projection.py",
         "scripts/testing/test-prsi-budget-reservation.py",
         "scripts/testing/test-prsi-queue-fail-closed.py",
@@ -1583,6 +1594,7 @@
         "scripts/testing/test-quick-deploy-target-discovery.py",
         "scripts/testing/test-quickstart.py",
         "scripts/testing/test-race-harness.py",
+        "scripts/testing/test-radar-ingest.py",
         "scripts/testing/test-rag-posture-diagnosis.py",
         "scripts/testing/test-ragas-autoscoring-wiring.py",
         "scripts/testing/test-ragas-faithfulness-guard.py",
@@ -1613,6 +1625,7 @@
         "scripts/testing/test-routing-history.py",
         "scripts/testing/test-routing-profile-registry.py",
         "scripts/testing/test-rsi-adapters.py",
+        "scripts/testing/test-rsi-gate.py",
         "scripts/testing/test-rsi-hung-delegate.py",
         "scripts/testing/test-rsi-intake-code-scanning.py",
         "scripts/testing/test-rsi-lane-quota.py",
@@ -1623,7 +1636,8 @@
         "scripts/testing/test-rsi-sweep.py",
         "scripts/testing/test-run-ci-checks-maintenance.py",
         "scripts/testing/test-run-event-metrics.py",
-        "scripts/testing/test-rsi-gate.py"
+        "scripts/testing/test-runtime-state-out-of-tracked-config.py",
+        "scripts/testing/test-runtime-writers-leave-checkout-clean.py"
       ],
       "needs": [
         "python3",
@@ -1723,7 +1737,8 @@
         "scripts/testing/test-rsi-sweep.py",
         "scripts/testing/test-run-ci-checks-maintenance.py",
         "scripts/testing/test-run-event-metrics.py",
-        "scripts/testing/test-runtime-state-out-of-tracked-config.py"
+        "scripts/testing/test-runtime-state-out-of-tracked-config.py",
+        "scripts/testing/test-runtime-writers-leave-checkout-clean.py"
       ]
     },
     {
