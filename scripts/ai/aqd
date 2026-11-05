@@ -920,10 +920,6 @@ cmd_workflows_primer() {
   local ts
   ts="$(iso_utc_now)"
 
-  local agent_meta=""
-  if [[ -d "$target_dir/.agent" ]]; then
-    agent_meta="$(capture_limited_lines 200 find "$target_dir/.agent" -type f -printf '%P\t%TY-%Tm-%TdT%TH:%TM:%TS\n')"
-  fi
   local git_status=""
   if [[ -d "$target_dir/.git" ]]; then
     git_status="$(git -C "$target_dir" status --short 2>/dev/null || true)"
@@ -1968,7 +1964,7 @@ main() {
     policy:evaluate) cmd_policy_evaluate "$@" ;;
     reasoning:route)  cmd_reasoning_route "$@" ;;
     logic:search)     cmd_logic_search "$@" ;;
-    topology)         cmd_topology ;;
+    topology:*)       cmd_topology ;;
     reasoning:list)   cmd_reasoning_list "$@" ;;
     reasoning:get)    cmd_reasoning_get "$@" ;;
     reasoning:apply)  cmd_reasoning_apply "$@" ;;

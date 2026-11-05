@@ -193,7 +193,7 @@ if [[ "$CURRENT_BRANCH" == "main" ]]; then
   fi
 else
   # Not on main — warn if ahead/behind but don't block
-  UPSTREAM="origin/$(git for-each-ref --format='%(upstream:short)' $(git symbolic-ref -q HEAD) 2>/dev/null || echo 'main')"
+  UPSTREAM="origin/$(git for-each-ref --format='%(upstream:short)' "$(git symbolic-ref -q HEAD)" 2>/dev/null || echo 'main')"
   if [[ "$UPSTREAM" != "origin/" ]] 2>/dev/null; then
     COMMITS_BEHIND=$(git rev-list --count "HEAD..$UPSTREAM" 2>/dev/null || echo 0)
     if [[ $COMMITS_BEHIND -gt 0 ]]; then

@@ -24,6 +24,9 @@ _loader.exec_module(tracker)
 CLOSURE = "/nix/store/aaaa-nixos-system-1"
 SHA = "a" * 64
 BASE = "b" * 64
+# P0.9 activation evidence for fixture items: a wired caller present in the repo plus a registered test file
+WIRED_CALLER = {"file": "scripts/ai/aq-pm-tracker", "pattern": "def main"}
+TESTS = ["scripts/testing/test-activation-chain.py"]
 
 
 def pub_hex(k):
@@ -315,7 +318,8 @@ class TrackerTests(unittest.TestCase):
     def test_service_item_with_verified_grant_is_activated(self):
         tracker._SYSTEMD_CACHE["x.service"] = {"ActiveState": "active"}
         self.addCleanup(tracker._SYSTEMD_CACHE.pop, "x.service", None)
-        item = {"id": "i1", "detection": {"activation_subject": "p:i1", "systemd_unit": "x.service"}}
+        item = {"id": "i1", "detection": {"activation_subject": "p:i1", "systemd_unit": "x.service",
+                                          "wired_caller": WIRED_CALLER, "tests": TESTS}}
         self.assertEqual(run_item(item, self.ctx())[0], "IN-PROGRESS")
         self.grant()
         self.assertEqual(run_item(item, self.ctx()), ("ACTIVATED", 100))
@@ -379,8 +383,10 @@ class TrackerTests(unittest.TestCase):
         self.assertNotEqual(run_item(item, nosigners)[0], "ACTIVATED")
 
     def test_stale_and_unverified_reporting_through_projector(self):
-        unit = {"id": "i1", "detection": {"activation_subject": "p:i1", "systemd_unit": "x.service"}}
-        owner = {"id": "i2", "kind": "task", "detection": {"activation_subject": "p:i2", "blocker_note": "owner acts"}}
+        unit = {"id": "i1", "detection": {"activation_subject": "p:i1", "systemd_unit": "x.service",
+                                          "wired_caller": WIRED_CALLER, "tests": TESTS}}
+        owner = {"id": "i2", "kind": "task", "detection": {"activation_subject": "p:i2", "blocker_note": "owner acts",
+                                                           "wired_caller": WIRED_CALLER, "tests": TESTS}}
         tracker._SYSTEMD_CACHE["x.service"] = {"ActiveState": "active"}
         self.addCleanup(tracker._SYSTEMD_CACHE.pop, "x.service", None)
         self.grant("i1")
@@ -410,7 +416,8 @@ class TrackerTests(unittest.TestCase):
         self.assertEqual(tracker._activation_flags(owner, "p", bad), {"activation_stale": False, "grants_unverified": True})
 
     def test_generic_item_stale_projects_shipped(self):
-        plain = {"id": "i1", "phase": "build", "detection": {"activation_subject": "p:i1"}}
+        plain = {"id": "i1", "phase": "build", "detection": {"activation_subject": "p:i1",
+                                                             "wired_caller": WIRED_CALLER, "tests": TESTS}}
         self.grant()
         self.assertEqual(run_item(plain, self.ctx()), ("ACTIVATED", 100))
         stale = self.ctx("/nix/store/other")
@@ -429,7 +436,8 @@ class TrackerTests(unittest.TestCase):
         plan = self.td / "p"
         plan.mkdir()
         mk = lambda i: {"id": i, "name": i, "phase": "ph", "goal": "g", "validation_goal": "v", "kind": "task",
-                        "detection": {"activation_subject": f"p:{i}", "blocker_note": "owner acts"}}
+                        "detection": {"activation_subject": f"p:{i}", "blocker_note": "owner acts",
+                                      "wired_caller": WIRED_CALLER, "tests": TESTS}}
         (plan / "tracker.json").write_text(json.dumps({"plan": {"title": "p"}, "phases": [{"id": "ph", "name": "ph"}],
                                                        "items": [mk("i1"), mk("i2"), mk("i3")]}))
         ctx = self.real_ctx("dep1")
@@ -476,11 +484,13 @@ class TrackerTests(unittest.TestCase):
 
     def test_false_shipped_command_and_freeze(self):
         acc = {"status": "accepted", "by": "hyperd", "date": "2026-10-30"}
-        cmd = {"id": "c", "acceptance": acc, "detection": {"command": "sh", "commit_match": ["never-appears-xyz"]}}
+        cmd = {"id": "c", "acceptance": acc, "detection": {"command": "sh", "commit_match": ["never-appears-xyz"],
+                                                           "wired_caller": WIRED_CALLER, "tests": TESTS}}
         self.assertEqual(run_item(cmd, None, gitlog="abc unrelated")[0], "IN-PROGRESS")
         self.assertEqual(run_item(cmd, None, gitlog="abc never-appears-xyz (#1)")[0], "SHIPPED")
         # freeze record + commit hit, not accepted: not SHIPPED
-        fr = {"id": "f", "detection": {"freeze_record": "README.md", "commit_match": ["hit-me"]}}
+        fr = {"id": "f", "detection": {"freeze_record": "README.md", "commit_match": ["hit-me"],
+                                       "wired_caller": WIRED_CALLER, "tests": TESTS}}
         self.assertEqual(run_item(fr, None, gitlog="abc hit-me (#1)")[0], "IN-PROGRESS")
         fr["acceptance"] = acc
         self.assertEqual(run_item(fr, None, gitlog="abc hit-me (#1)")[0], "SHIPPED")

@@ -9,7 +9,7 @@ Subcommands:
 
 Every external command is overridable for tests with AQ_AUTO_UPDATE_CMD_<NAME>
 (shlex-split; placeholders {repo} {attr} {closure} {state_dir} are substituted):
-  FLAKE_UPDATE PIN_WATCH STOP_LLAMA START_LLAMA BUILD SET_PROFILE SWITCH DIFF
+  PIN_WATCH STOP_LLAMA START_LLAMA BUILD SET_PROFILE SWITCH DIFF
   FAILED_UNITS QA RSI WATCHDOG_ARM WATCHDOG_DISARM
 Other injection points:
   AQ_AUTO_UPDATE_REPO, _STATE_DIR, _FLAKE_ATTR, _NOW (ISO-8601 UTC), _CURRENT_SYSTEM,
@@ -54,7 +54,7 @@ def in_window(t):
     return t.weekday() == 6 and 2 <= t.hour < 4
 
 
-OWNER_CMDS = frozenset({"FLAKE_UPDATE", "PIN_WATCH", "QA", "RSI"})
+OWNER_CMDS = frozenset({"PIN_WATCH", "QA", "RSI"})
 
 
 class Ctx:
@@ -407,33 +407,14 @@ def cmd_run(ctx):
     ctx.status["previous_closure"] = prev
     ctx.log(f"rollback target recorded: {prev}")
 
-    lock_bak = ctx.state_dir / "flake.lock.bak"
-    if not ctx.dry:
-        try:
-            shutil.copy2(ctx.repo / "flake.lock", lock_bak)
-        except OSError as exc:
-            return ctx.finish("deferred", f"cannot back up flake.lock: {exc}")
-
-    def restore_inputs():
-        if not ctx.dry and lock_bak.exists():
-            shutil.copy2(lock_bak, ctx.repo / "flake.lock")
-
-    rc, out = ctx.cmd("FLAKE_UPDATE", ["nix", "flake", "update"])
-    if rc != 0:
-        restore_inputs()
-        report_incident(ctx, f"flake update failed: {out[-400:]}")
-        return ctx.finish("failed", "flake update failed", 1)
-    rc, out = ctx.cmd("PIN_WATCH", [str(ctx.repo / "scripts/maintenance/aq-pin-watch"), "apply",
-                                    "--root", str(ctx.repo)])
-    if rc != 0:
-        restore_inputs()
-        report_incident(ctx, f"aq-pin-watch apply failed: {out[-400:]}")
-        return ctx.finish("failed", "pin-watch apply failed", 1)
+    # Root cause (P1.10): an in-place `nix flake update` + pin-watch apply left uncommitted edits in the
+    # owner checkout that no commit describes. Inputs and pins are now only whatever HEAD records; refreshed
+    # locks arrive through the flake-refresh PR lane (P1.9), never from this runtime job.
+    ctx.log("flake inputs and pins are NOT refreshed in the checkout; building exactly what HEAD pins (refresh via flake-refresh PR)")
 
     # Atomic recheck inside the lease: inference must be provably idle right before it is stopped.
     active, unknown = activity_signals(ctx)
     if active or unknown:
-        restore_inputs()
         return ctx.finish("deferred", f"lease lost before llama stop: {active or unknown}")
 
     ctx.cmd("STOP_LLAMA", ["systemctl", "stop", "llama-cpp"])
@@ -444,14 +425,12 @@ def cmd_run(ctx):
     new = os.path.realpath(str(ctx.state_dir / "result")) if not ctx.dry else "<dry-run-built-closure>"
     if rc != 0 or not new:
         ctx.cmd("START_LLAMA", ["systemctl", "start", "llama-cpp"])
-        restore_inputs()
         report_incident(ctx, f"nixos-rebuild build failed for {ctx.attr}: {out[-400:]}")
         return ctx.finish("failed", "build failed; nothing switched", 1)
     ctx.status["new_closure"] = new
 
     if not in_window(now_utc()):
         ctx.cmd("START_LLAMA", ["systemctl", "start", "llama-cpp"])
-        restore_inputs()
         return ctx.finish("refused", "window closed before switch; nothing switched")
 
     _, diff = ctx.cmd("DIFF", ["nix", "store", "diff-closures", prev, new], side_effect=False)
@@ -479,7 +458,6 @@ def cmd_run(ctx):
         if rrc == 0 and not ctx.dry:
             rh, _ = health_gate(ctx, baseline)
         ctx.status["rollback_healthy"] = rh
-        restore_inputs()
         if not ctx.dry and not rh:
             (ctx.state_dir / "halted").write_text(now_utc().isoformat())
         report_incident(ctx, f"unattended update to {new} failed ({why}); rolled back to {prev} "

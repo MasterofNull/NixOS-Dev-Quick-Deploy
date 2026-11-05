@@ -197,6 +197,7 @@ done
 for nixos_target in "${nixos_targets[@]}"; do
   [[ -z "$nixos_target" ]] && continue
   count="$(printf '%s\n' "$nixos_json" | jq -r --arg target "$nixos_target" '.[$target].systemPackages')"
+  # shellcheck disable=SC2034  # read via nameref in emit_map_entries
   system_counts["$nixos_target"]="$count"
   system_total=$((system_total + count))
   system_count=$((system_count + 1))
@@ -221,6 +222,7 @@ for nixos_target in "${nixos_targets[@]}"; do
   fi
 
   combined=$((count + home_count_for_target))
+  # shellcheck disable=SC2034  # read via nameref in emit_map_entries
   combined_counts["$nixos_target"]="$combined"
   combined_total=$((combined_total + combined))
   combined_count=$((combined_count + 1))

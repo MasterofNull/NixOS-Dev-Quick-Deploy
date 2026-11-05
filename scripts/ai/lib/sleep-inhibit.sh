@@ -7,6 +7,7 @@ aq_sleep_inhibit_prefix() {
     local task_id="${1:-unknown}"
     AQ_INHIBIT_PREFIX=()
     if command -v systemd-inhibit >/dev/null 2>&1; then
+        # shellcheck disable=SC2034  # read by delegate-to-{local,claude,codex,gemini} after sourcing this file
         AQ_INHIBIT_PREFIX=(systemd-inhibit --what=idle --who=aq-delegate
             "--why=delegated task ${task_id} running" --mode=block)
     else

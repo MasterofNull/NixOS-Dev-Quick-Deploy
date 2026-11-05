@@ -45,7 +45,9 @@ def acc(note="n", **over):
 def tracker_doc(items):
     out = []
     for iid, a in items.items():
-        it = {"id": iid, "name": iid, "phase": "p1", "goal": "g", "validation_goal": "v"}
+        it = {"id": iid, "name": iid, "phase": "p1", "goal": "g", "validation_goal": "v",
+              "detection": {"wired_caller": {"file": "scripts/ai/aq-pm-tracker", "pattern": "def main"},
+                            "tests": ["scripts/ai/aq-pm-tracker"]}}  # P0.9: SHIPPED needs activation signal + test
         if a is not None:
             it["acceptance"] = a
         out.append(it)
@@ -76,6 +78,7 @@ class Tree:
         return p
 
     def plan(self, plan, items):
+        self.write("scripts/ai/aq-pm-tracker", "def main(): pass\n")
         self.write(f".agents/plans/{plan}/tracker.json", json.dumps(tracker_doc(items)))
         return self.root / ".agents" / "plans" / plan
 

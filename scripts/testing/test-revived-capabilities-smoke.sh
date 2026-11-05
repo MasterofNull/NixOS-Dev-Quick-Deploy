@@ -3,7 +3,7 @@
 # No DB, AIDB, Qdrant or inference calls: syntax checks, --help, and tmp-dir dry-runs only.
 set -uo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-cd "$ROOT"
+cd "$ROOT" || exit 1
 fail=0
 ok() { printf 'PASS %s\n' "$1"; }
 bad() { printf 'FAIL %s\n' "$1"; fail=1; }

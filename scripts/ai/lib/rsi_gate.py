@@ -21,8 +21,11 @@ SCOPES = ("diagnose", "apply")  # apply covers diagnose
 
 
 def _store_dir() -> Path:
-    env = os.environ.get("RSI_GATE_DIR") or os.environ.get("RSI_RUNTIME_DIR")
-    return Path(env) if env else Path(__file__).resolve().parents[3] / ".agent" / "collaboration"
+    env = os.environ.get("RSI_GATE_DIR")
+    if env:
+        return Path(env)
+    import rsi_paths
+    return rsi_paths.runtime_dir()
 
 
 def _now() -> datetime:
