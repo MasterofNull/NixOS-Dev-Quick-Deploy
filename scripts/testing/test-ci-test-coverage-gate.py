@@ -12,13 +12,16 @@ GATE = REPO / "scripts/governance/tier0.d/check-ci-test-coverage.sh"
 ENV = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
 
 
-def run(root: Path, manifest: dict, invoked_skip=None):
+def run(root: Path, manifest: dict, invoked_skip=None, wf_text=None):
     mf = root / "config" / "ci-checks.json"
     mf.parent.mkdir(parents=True, exist_ok=True)
     mf.write_text(json.dumps(manifest))
     wf = root / "wf"
     wf.mkdir(exist_ok=True)
-    (wf / "t.yml").write_text("".join(f"run: x --only {c['id']}\n" for c in manifest["checks"] if c["id"] not in (invoked_skip or ())))
+    if wf_text is None:
+        wf_text = "".join(f"run: ./scripts/governance/run-ci-checks.sh --all --only {c['id']}\n"
+                          for c in manifest["checks"] if c["id"] not in (invoked_skip or ()))
+    (wf / "t.yml").write_text(wf_text)
     p = subprocess.run(["bash", str(GATE)], capture_output=True, text=True,
                        env={**ENV, "CI_TEST_ROOT": str(root), "CI_MANIFEST_FILE": str(mf), "CI_WORKFLOW_DIR": str(wf)})
     return p.returncode, p.stderr + p.stdout
@@ -61,6 +64,14 @@ def main() -> int:
                              "test_exempt": [{"script": "scripts/testing/test-b.sh", "reason": "r", "class": "whatever"}]})
         assert rc == 1 and "class" in out, (rc, out)
         rc, out = run(root, {"checks": [check("scripts/testing/test-a.py"), check("scripts/testing/test-b.sh")]}, invoked_skip={"x"})
+        assert rc == 1 and "no workflow invokes" in out, (rc, out)
+        # the id only in a YAML comment: not an invocation
+        rc, out = run(root, {"checks": [check("scripts/testing/test-a.py")]},
+                      wf_text="# run: ./scripts/governance/run-ci-checks.sh --all --only x\nrun: echo ok\n")
+        assert rc == 1 and "no workflow invokes" in out, (rc, out)
+        # the id only in a name: or an echo string: not an invocation
+        rc, out = run(root, {"checks": [check("scripts/testing/test-a.py")]},
+                      wf_text="name: run-ci-checks.sh --only x\nrun: |\n  echo \"./scripts/governance/run-ci-checks.sh --only x\"\n")
         assert rc == 1 and "no workflow invokes" in out, (rc, out)
     # a red declared test must fail the runner; a green one must pass it
     with tempfile.TemporaryDirectory() as d:
