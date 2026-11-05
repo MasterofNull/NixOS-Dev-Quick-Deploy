@@ -21,7 +21,9 @@ TIMEOUT = 120
 
 def run_one(test: str):
     interp = "python3" if test.endswith(".py") else "bash"
-    with tempfile.TemporaryDirectory(prefix="aq-test-group-") as d:
+    # dir=/tmp: local-agent file tools only write under /tmp, ~/Documents or ~/.local/share/nixos-ai-stack, and a
+    # hosted runner's default TMPDIR (RUNNER_TEMP under /home/runner/work) is none of those.
+    with tempfile.TemporaryDirectory(prefix="aq-test-group-", dir="/tmp") as d:
         # PYTHONPATH is dropped: operator shells point it at the MAIN checkout, which shadows this tree's modules.
         # CI_CHECKS_* is dropped: ci-merge-parity exports CI_CHECKS_CHANGED_FILES for its own runner, and tests
         # of that runner must not inherit it.

@@ -95,3 +95,13 @@ Only the real runner can confirm:
 - the uv install on Python 3.13.
 
 Detail: `.agents/delegation/outputs/p05-all-tests/runner-fix/REPORT.md`.
+
+## Follow-up: second real runner run
+
+The second real run (job 127024578611) passed 31 of 33 checks. Three tests remained, and each failure was reproduced locally before it was fixed:
+
+- **`test-aqos-guided-install.py`:** `hash_password` falls back to stdlib `crypt` when `mkpasswd` is absent, and Python 3.13 removed `crypt`. The job now installs apt `whois`, which provides `mkpasswd`.
+- **`test-security-audit-gate.sh`:** the "covered clean scan" case ran the real `dashboard-security-scan.sh` against a live dashboard on 127.0.0.1:8889. It now uses the `ok-dashboard.sh` and `ok-secrets.sh` stubs the test already defines. The pip-audit coverage assertion is unchanged.
+- **`test-write-region.py`:** the local-agent file tools only allow writes under /tmp, ~/Documents and ~/.local/share. `scripts/testing/run-test-group.py` built per-test dirs under the runner's TMPDIR, `/home/runner/work/_temp`. They are now created under /tmp.
+
+Local stripped-env simulation, using `env -i`, Python 3.13, TMPDIR outside /tmp and a dead dashboard URL: `run-ci-checks.sh --changed` passes 37 of 37.
