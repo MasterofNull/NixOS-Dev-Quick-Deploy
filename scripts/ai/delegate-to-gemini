@@ -460,7 +460,8 @@ ${prompt}"
             info "Task $id failed (exit $exit_code, meaningful ${meaningful_bytes}B — below ${GEMINI_MIN_CONTENT_BYTES}B threshold)."
             if _gemini_sunset_error "$output_file"; then
                 info "SUNSET_ERROR: cloudcode-pa.googleapis.com/onboardUser rejected individual access (2026-06-18 sunset). This is PERMANENT, not a transient quota hit."
-                info "  Bypass: export GEMINI_API_KEY=<key> from https://aistudio.google.com/apikey"
+                info "  Re-authenticate (OAuth): run 'gemini' interactively and sign in with your Google account."
+                info "  If the error was a quota/capacity limit: retry later or pass a different --model."
                 info "  See: .agent/memory/issues-backlog.md (antigravity-cli-migration-pending)"
             fi
             return "$exit_code"

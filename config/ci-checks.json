@@ -157,6 +157,8 @@
       ],
       "ci_workflow": ".github/workflows/test.yml#syntax"
     },
+    {"id": "workflow-failure-masks", "cmd": "scripts/governance/check-workflow-masks.py", "paths": [".github/workflows/**", "scripts/governance/check-workflow-masks.py"], "needs": ["python3"], "ci_workflow": ".github/workflows/test.yml#syntax"},
+    {"id": "check-workflow-masks-test", "cmd": "scripts/testing/test-check-workflow-masks.py", "paths": [], "needs": ["python3"], "ci_workflow": ".github/workflows/test.yml#syntax"},
     {
       "id": "validate-echo-colors",
       "cmd": "scripts/testing/validate-echo-colors.sh",
