@@ -306,7 +306,8 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.cmd == "scan-due":  # W3-S5 — bounded, cadence-driven, review-gated (owner-approved 2026-10-14)
-        out = fsc.scan_due(fs.load_catalog(CATALOG), state_path=str(REPO / fsc.DEFAULT_STATE), store=STORE,
+        scan_state, scan_store = fsc.runtime_paths(REPO)
+        out = fsc.scan_due(fs.load_catalog(CATALOG), state_path=scan_state, store=scan_store,
                            fetcher=fsc.guarded_fetch, dry_run=args.dry_run, max_sources=args.max_sources,
                            per_fetch_timeout=args.timeout, total_budget=args.budget)
         if args.json:

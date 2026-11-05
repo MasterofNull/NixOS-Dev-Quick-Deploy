@@ -25,12 +25,10 @@ QUEUE_PATH = Path(
     )
 )
 # For testing: allow PRSI_INCIDENTS_FILE override
-INCIDENTS_FILE = Path(
-    __import__("os").getenv(
-        "PRSI_INCIDENTS_FILE",
-        str(REPO_ROOT / ".agent" / "collaboration" / "rsi-incidents.json")
-    )
-)
+sys.path.insert(0, str(REPO_ROOT / "scripts" / "ai" / "lib"))
+import rsi_paths  # noqa: E402
+
+INCIDENTS_FILE = rsi_paths.incidents_read_path(REPO_ROOT)
 
 
 def load_queue():
