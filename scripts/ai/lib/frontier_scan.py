@@ -32,6 +32,24 @@ MAX_BYTES = 2_000_000
 MAX_REDIRECTS = 3
 
 
+def runtime_paths(repo: Path) -> tuple[str, str]:
+    """(state_path, candidate_store) for the scheduled scan.
+
+    With a runtime state dir the scan never touches the checkout: the tracked scan-state.json seeds the
+    first run (so cadence survives the move) and candidates land in the runtime overlay that
+    frontier_backlog.load() merges into the tracked store. Without a state dir (fresh clone) it
+    falls back to the tracked files, as before.
+    """
+    tracked_state = repo / DEFAULT_STATE
+    sd = fb.state_dir()
+    if sd is None:
+        return str(tracked_state), str(repo / fb.DEFAULT_STORE)
+    state = sd / fb.RUNTIME_SCAN_STATE
+    if not state.exists() and tracked_state.is_file():
+        state.write_bytes(tracked_state.read_bytes())
+    return str(state), str(sd / fb.RUNTIME_BACKLOG)
+
+
 def _iso(t: float) -> str:
     return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(t))
 

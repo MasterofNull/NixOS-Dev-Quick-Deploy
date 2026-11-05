@@ -28,7 +28,8 @@ fi
 # Check if password is available
 if [[ -z "${POSTGRES_PASSWORD:-}" ]]; then
     if [[ -r "/run/secrets/postgres_password" ]]; then
-        export PGPASSWORD="$(tr -d '[:space:]' < /run/secrets/postgres_password)"
+        PGPASSWORD="$(tr -d '[:space:]' < /run/secrets/postgres_password)" || true
+        export PGPASSWORD
     else
         echo "⚠️  POSTGRES_PASSWORD not set and /run/secrets/postgres_password not readable"
         echo "   Attempting connection without password (may fail)"

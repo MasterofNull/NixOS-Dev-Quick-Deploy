@@ -78,8 +78,10 @@ create_snapshot() {
     local collection="$1"
     log "Creating snapshot for collection: $collection"
 
-    local response=$(qdrant_curl POST "/collections/$collection/snapshots")
-    local snapshot_name=$(echo "$response" | jq -r '.result.name' 2>/dev/null)
+    local response
+    response=$(qdrant_curl POST "/collections/$collection/snapshots") || true
+    local snapshot_name
+    snapshot_name=$(echo "$response" | jq -r '.result.name' 2>/dev/null) || true
 
     if [[ -z "$snapshot_name" || "$snapshot_name" == "null" ]]; then
         error "Failed to create snapshot for $collection"
@@ -109,14 +111,16 @@ download_snapshot() {
         return 1
     fi
 
-    local http_code=$(cat "$http_code_file")
+    local http_code
+    http_code=$(cat "$http_code_file") || true
     if [[ "$http_code" != "200" ]]; then
         error "HTTP error $http_code downloading snapshot"
         rm -f "$output_file"
         return 1
     fi
 
-    local size=$(stat -f%z "$output_file" 2>/dev/null || stat -c%s "$output_file")
+    local size
+    size=$(stat -f%z "$output_file" 2>/dev/null || stat -c%s "$output_file") || true
     log "✓ Snapshot downloaded: $(numfmt --to=iec-i --suffix=B $size)"
 }
 
@@ -136,14 +140,17 @@ backup_collection() {
 
     log "Backing up collection: $collection"
 
-    local timestamp=$(date +%Y%m%d-%H%M%S)
+    local timestamp
+    timestamp=$(date +%Y%m%d-%H%M%S)
     local backup_file="$BACKUP_DIR/$backup_subdir/${collection}-${timestamp}.snapshot"
     local temp_file="${backup_file}.tmp"
 
-    local start_time=$(date +%s)
+    local start_time
+    start_time=$(date +%s)
 
     # Create snapshot
-    local snapshot_name=$(create_snapshot "$collection")
+    local snapshot_name
+    snapshot_name=$(create_snapshot "$collection") || true
     if [[ -z "$snapshot_name" ]]; then
         return 1
     fi
@@ -160,9 +167,11 @@ backup_collection() {
     # Move to final location
     mv "$temp_file" "$backup_file"
 
-    local end_time=$(date +%s)
+    local end_time
+    end_time=$(date +%s)
     local duration=$((end_time - start_time))
-    local size=$(stat -f%z "$backup_file" 2>/dev/null || stat -c%s "$backup_file")
+    local size
+    size=$(stat -f%z "$backup_file" 2>/dev/null || stat -c%s "$backup_file") || true
 
     log "✓ Backup completed: $backup_file"
     log "  Size: $(numfmt --to=iec-i --suffix=B $size)"
@@ -183,7 +192,8 @@ backup_collection() {
 backup_all() {
     log "Starting backup of all Qdrant collections"
 
-    local collections=$(get_collections)
+    local collections
+    collections=$(get_collections) || true
     if [[ -z "$collections" ]]; then
         error "No collections found or cannot connect to Qdrant"
         return 1
@@ -263,7 +273,8 @@ restore_collection() {
     log "From backup: $backup_file"
 
     # Upload snapshot to Qdrant
-    local snapshot_name=$(basename "$backup_file")
+    local snapshot_name
+    snapshot_name=$(basename "$backup_file")
 
     log "Uploading snapshot to Qdrant..."
     local tmp_root="${TMPDIR:-/${TMP_FALLBACK:-tmp}}"
@@ -276,7 +287,8 @@ restore_collection() {
         return 1
     fi
 
-    local http_code=$(cat "$http_code_file")
+    local http_code
+    http_code=$(cat "$http_code_file") || true
     if [[ "$http_code" != "200" && "$http_code" != "201" ]]; then
         error "HTTP error $http_code uploading snapshot"
         return 1
@@ -318,7 +330,8 @@ update_metrics() {
     local size="$4"
     local status="$5"
 
-    local timestamp=$(date +%s)
+    local timestamp
+    timestamp=$(date +%s)
 
     cat >> "$METRICS_FILE" <<EOF
 # HELP qdrant_backup_last_success_timestamp Unix timestamp of last successful backup
@@ -356,15 +369,19 @@ list_backups() {
 # List collections in Qdrant
 list_collections() {
     echo "Collections in Qdrant:"
-    local collections=$(get_collections)
+    local collections
+    collections=$(get_collections) || true
     if [[ -z "$collections" ]]; then
         echo "  (none or cannot connect)"
     else
         echo "$collections" | while read collection; do
             # Get collection info
-            local info=$(qdrant_curl GET "/collections/$collection")
-            local vectors_count=$(echo "$info" | jq -r '.result.vectors_count // 0')
-            local points_count=$(echo "$info" | jq -r '.result.points_count // 0')
+            local info
+            info=$(qdrant_curl GET "/collections/$collection") || true
+            local vectors_count
+            vectors_count=$(echo "$info" | jq -r '.result.vectors_count // 0') || true
+            local points_count
+            points_count=$(echo "$info" | jq -r '.result.points_count // 0') || true
             echo "  $collection: $points_count points, $vectors_count vectors"
         done
     fi

@@ -28,8 +28,8 @@ latency_ms=$(( end_ms - start_ms ))
 if [[ "$exit_code" -eq 0 ]]; then
     bash "$audit_helper" "$coord_url" task_completed gemini success "$latency_ms" "$task_id" \
         "completed: $prompt_brief" "$role" "$prompt" "$output_file" || true
-    set_status done
-    "$pending_update" done "$task_id" 2>/dev/null || true
+    set_status "done"
+    "$pending_update" "done" "$task_id" 2>/dev/null || true
 else
     meaningful_bytes="$(grep -Ev '^Warning:|^YOLO mode|^Attempt [0-9]+ failed|An unexpected critical|FetchError|ETIMED|EAI_AGAIN|ENOTFOUND|retrying with backoff|^\s+at |node_modules|googleapis|GaxiosError|AbortSignal|errorRedactor|paramsSerializer|validateStatus|Symbol\(|response: undefined|^\s+[a-zA-Z_]+: |^\s+'\''[^'\'']+'\'': |^\s*[{}],*\s*$' "$output_file" 2>/dev/null | wc -c || true)"
     if [[ "$meaningful_bytes" -gt "$min_bytes" ]]; then

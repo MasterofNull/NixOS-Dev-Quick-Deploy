@@ -85,7 +85,8 @@ cmd_analyze() {
 
     echo -e "${BLUE}Running meta-optimization analysis (${days} days)...${NC}"
 
-    export POSTGRES_PASSWORD="$(get_postgres_password)"
+    POSTGRES_PASSWORD="$(get_postgres_password)" || true
+    export POSTGRES_PASSWORD
 
     cd "$META_OPT_DIR"
     python3 -c "
@@ -132,7 +133,8 @@ cmd_proposals() {
         esac
     done
 
-    export POSTGRES_PASSWORD="$(get_postgres_password)"
+    POSTGRES_PASSWORD="$(get_postgres_password)" || true
+    export POSTGRES_PASSWORD
     export PGPASSWORD="$POSTGRES_PASSWORD"
 
     local query="SELECT id, target, priority, title, estimated_improvement_pct, confidence_score, status, created_at FROM harness_improvement_proposals"
@@ -162,7 +164,8 @@ cmd_approve() {
 
     echo -e "${YELLOW}Approving proposal: $proposal_id${NC}"
 
-    export POSTGRES_PASSWORD="$(get_postgres_password)"
+    POSTGRES_PASSWORD="$(get_postgres_password)" || true
+    export POSTGRES_PASSWORD
     export PGPASSWORD="$POSTGRES_PASSWORD"
 
     psql -h "${POSTGRES_HOST:-127.0.0.1}" \
@@ -177,7 +180,8 @@ cmd_approve() {
 cmd_baselines() {
     echo -e "${BLUE}Capturing performance baselines...${NC}"
 
-    export POSTGRES_PASSWORD="$(get_postgres_password)"
+    POSTGRES_PASSWORD="$(get_postgres_password)" || true
+    export POSTGRES_PASSWORD
 
     cd "$META_OPT_DIR"
     python3 -c "
@@ -221,7 +225,8 @@ cmd_summary() {
 
     echo -e "${BLUE}Evolution Summary (last ${days} days):${NC}"
 
-    export POSTGRES_PASSWORD="$(get_postgres_password)"
+    POSTGRES_PASSWORD="$(get_postgres_password)" || true
+    export POSTGRES_PASSWORD
 
     cd "$META_OPT_DIR"
     python3 -c "
@@ -246,7 +251,8 @@ asyncio.run(main())
 cmd_stats() {
     echo -e "${BLUE}Meta-Optimization Statistics:${NC}"
 
-    export POSTGRES_PASSWORD="$(get_postgres_password)"
+    POSTGRES_PASSWORD="$(get_postgres_password)" || true
+    export POSTGRES_PASSWORD
     export PGPASSWORD="$POSTGRES_PASSWORD"
 
     psql -h "${POSTGRES_HOST:-127.0.0.1}" \

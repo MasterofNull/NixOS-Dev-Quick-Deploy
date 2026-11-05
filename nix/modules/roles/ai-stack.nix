@@ -47,6 +47,8 @@ let
   dataDir = "/var/lib/llama-cpp";
   mutableOptimizerDir = cfg.deployment.mutableSpaces.aiStackOptimizerDir;
   mutableLogDir = cfg.deployment.mutableSpaces.aiStackLogDir;
+  mutableRsiDir = cfg.deployment.mutableSpaces.aiStackRsiDir;
+  mutableFrontierDir = cfg.deployment.mutableSpaces.aiStackFrontierDir;
   promptEvalPython = pkgs.python3.withPackages (ps:
     with ps; [
       pyyaml
@@ -2012,7 +2014,12 @@ in {
         # ReadWritePaths of ai-capability-audit must exist before its mount namespace is built.
         "d ${cfg.mcpServers.repoPath}/.agents/reports/capability-audit 0755 ${cfg.primaryUser} users -"
         "d ${cfg.mcpServers.repoPath}/.agents/archive/capability-audit 0755 ${cfg.primaryUser} users -"
-        "d ${cfg.mcpServers.repoPath}/.agents/plans/frontier-evidence-intake 0755 ${cfg.primaryUser} users -"
+        # Runtime state written by services as primaryUser; kept out of the checkout (P1.10).
+        "d ${mutableRsiDir} 0755 ${cfg.primaryUser} users -"
+        "d ${mutableFrontierDir} 0755 ${cfg.primaryUser} users -"
+        # File-level ReadWritePaths of ai-rsi-sweep must exist before its mount namespace is built (gitignored logs).
+        "f ${cfg.mcpServers.repoPath}/.agent/collaboration/a2a-events.jsonl 0644 ${cfg.primaryUser} users -"
+        "f ${cfg.mcpServers.repoPath}/.agent/collaboration/a2a-events-fallback.jsonl 0644 ${cfg.primaryUser} users -"
       ];
 
       # Agent-agnostic discovery manifest at well-known location.
@@ -2484,12 +2491,14 @@ in {
           ReadWritePaths = [
             mutableOptimizerDir
             mutableLogDir
+            mutableRsiDir
           ];
           Environment = [
             "PRSI_ACTION_QUEUE_PATH=${mutableOptimizerDir}/prsi/action-queue.json"
             "PRSI_ACTIONS_LOG_PATH=${mutableLogDir}/prsi-actions.jsonl"
             "PRSI_POLICY_FILE=${cfg.mcpServers.repoPath}/config/runtime-prsi-policy.json"
             "PRSI_STATE_PATH=${mutableOptimizerDir}/prsi/runtime-state.json"
+            "RSI_STATE_DIR=${mutableRsiDir}"
           ];
         };
       };
@@ -2530,6 +2539,7 @@ in {
           ReadWritePaths = [
             mutableOptimizerDir
             mutableLogDir
+            mutableRsiDir
             "${cfg.mcpServers.repoPath}/.git"
             "${cfg.mcpServers.repoPath}/.agent/collaboration"
             "${cfg.mcpServers.repoPath}/.agent/memory/issues-backlog.md"
@@ -2543,6 +2553,7 @@ in {
             "PRSI_ACTIONS_LOG_PATH=${mutableLogDir}/prsi-actions.jsonl"
             "PRSI_POLICY_FILE=${cfg.mcpServers.repoPath}/config/runtime-prsi-policy.json"
             "PRSI_STATE_PATH=${mutableOptimizerDir}/prsi/runtime-state.json"
+            "RSI_STATE_DIR=${mutableRsiDir}"
           ];
         };
       };
@@ -2551,7 +2562,7 @@ in {
         description = "Dispatch PRSI when a new incident is recorded";
         wantedBy = ["multi-user.target"];
         pathConfig = {
-          PathChanged = "${cfg.mcpServers.repoPath}/.agent/collaboration/rsi-incidents.json";
+          PathChanged = "${mutableRsiDir}/rsi-incidents.json";
           Unit = "ai-prsi-rsi-dispatch.service";
         };
       };
@@ -2602,8 +2613,15 @@ in {
           ProtectHome = "read-only";
           PrivateTmp = true;
           MemoryMax = "512M";
+          Environment = ["RSI_STATE_DIR=${mutableRsiDir}"];
+          # The ledger lives in mutableRsiDir; the only thing the sweep still writes under
+          # .agent/collaboration is the a2a event log (rsi_lifecycle._event -> event_log.append,
+          # canonical file, or the spool on EROFS/EACCES). Bind those two files, not the directory,
+          # so the kernel keeps the rest of the checkout's collaboration dir read-only.
           ReadWritePaths = [
-            "${cfg.mcpServers.repoPath}/.agent/collaboration"
+            mutableRsiDir
+            "${cfg.mcpServers.repoPath}/.agent/collaboration/a2a-events.jsonl"
+            "${cfg.mcpServers.repoPath}/.agent/collaboration/a2a-events-fallback.jsonl"
             "${cfg.mcpServers.repoPath}/.agent/memory/issues-backlog.md"
             "${cfg.mcpServers.repoPath}/.agent/WORKAROUND-REGISTER.md"
           ];
@@ -2684,7 +2702,8 @@ in {
           ProtectHome = "read-only";
           PrivateTmp = true;
           MemoryMax = "512M";
-          ReadWritePaths = ["${cfg.mcpServers.repoPath}/.agents/plans/frontier-evidence-intake"];
+          Environment = ["FRONTIER_STATE_DIR=${mutableFrontierDir}"];
+          ReadWritePaths = [mutableFrontierDir];
         };
       };
 

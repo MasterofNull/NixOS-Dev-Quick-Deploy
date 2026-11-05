@@ -39,8 +39,6 @@ jobs:
             --exclude=SC2086
             --exclude=SC2046
             --shell=bash
-        # KNOWN-FAILING: ludeeus shellcheck at severity error exits 1 (SC2068 errors, run 41875000366); tracked CI-MASK-SHELLCHECK-SHELLCHECK-ANALYSIS
-        continue-on-error: true
       
       - name: ShellCheck Summary
         if: always()

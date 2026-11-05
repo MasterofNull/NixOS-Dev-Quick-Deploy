@@ -150,10 +150,10 @@ for result in "${E2E_RESULTS[@]}"; do
   size="${result%%:*}"
   e2e="${result##*:}"
   
-  ttft="${TTFT_RESULTS[@]// /$'\n'}"
+  ttft="${TTFT_RESULTS[*]// /$'\n'}"
   ttft_val=$(echo "$ttft" | grep "^${size}:" | cut -d: -f2)
   
-  tps="${TPS_RESULTS[@]// /$'\n'}"
+  tps="${TPS_RESULTS[*]// /$'\n'}"
   tps_val=$(echo "$tps" | grep "^${size}:" | cut -d: -f2)
   
   printf "%-10s | %-10s | %-10s | %-10s\n" "$size" "$e2e" "${ttft_val:-N/A}" "${tps_val:-N/A}"

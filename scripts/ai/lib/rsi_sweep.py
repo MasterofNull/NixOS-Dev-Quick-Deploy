@@ -761,7 +761,7 @@ def reconcile(alerts=None, dry_run=False, as_json=False) -> int:
             return 2
     ledger = rsi_lifecycle._RUNTIME / "rsi-incidents.json"
     try:
-        incidents = json.loads(ledger.read_text()).get("incidents", {})
+        incidents = json.loads(rsi_lifecycle.rsi_paths.read_ledger_text(ledger)).get("incidents", {})
     except (OSError, json.JSONDecodeError) as exc:
         print(f"UNKNOWN: incident ledger unreadable: {exc}", file=sys.stderr)
         return 2
@@ -783,7 +783,7 @@ def reconcile(alerts=None, dry_run=False, as_json=False) -> int:
 def _open_incidents():
     import rsi_lifecycle
     try:
-        incidents = json.loads((rsi_lifecycle._RUNTIME / "rsi-incidents.json").read_text()).get("incidents", {})
+        incidents = json.loads(rsi_lifecycle.rsi_paths.read_ledger_text(rsi_lifecycle._RUNTIME / "rsi-incidents.json")).get("incidents", {})
     except (OSError, json.JSONDecodeError):
         return {}
     return {k: v for k, v in incidents.items() if isinstance(v, dict)}

@@ -214,7 +214,6 @@ DASHBOARD_HTML_OK=0
 if (set +o pipefail; curl -sf "$DASHBOARD_URL/" 2>/dev/null | grep -q "section-model-lifecycle"); then
   DASHBOARD_HTML_OK=1
 fi
-DASHBOARD_HTML="x"  # placeholder so downstream checks work
 if [[ "$DASHBOARD_HTML_OK" -eq 1 ]]; then
   _pass 10 "dashboard panel (section-model-lifecycle) present in HTML"
 else

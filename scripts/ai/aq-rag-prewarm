@@ -207,9 +207,6 @@ if (( ${#SELECTED_PROMPT_IDS[@]} == 0 )); then
   exit 0
 fi
 
-PASS=0
-FAIL=0
-declare -a RESULTS=()
 MAX_JOBS=4
 ACTIVE_JOBS=0
 

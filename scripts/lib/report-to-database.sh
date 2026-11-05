@@ -22,8 +22,6 @@ REPORT_TYPE_DEPLOYMENT="deployment"
 REPORT_TYPE_FIX="fix"
 REPORT_TYPE_UPGRADE="upgrade"
 REPORT_TYPE_ERROR="error"
-REPORT_TYPE_DEBUG="debug"
-REPORT_TYPE_SUMMARY="summary"
 REPORT_TYPE_SESSION="session"
 
 # Check if psql is available
@@ -56,7 +54,8 @@ store_report() {
     fi
 
     # Add automatic metadata
-    local full_metadata=$(cat <<EOF
+    local full_metadata
+    full_metadata=$(cat <<EOF
 {
     "report_type": "$report_type",
     "created_by": "nixos-quick-deploy",
@@ -106,8 +105,10 @@ fallback_to_file() {
     local report_dir="${PROJECT_ROOT}/.reports/${report_type}"
     mkdir -p "$report_dir"
 
-    local filename=$(echo "$title" | sed 's/[^a-zA-Z0-9-]/-/g' | tr '[:upper:]' '[:lower:]')
-    local filepath="${report_dir}/${filename}-$(date +%Y%m%d-%H%M%S).md"
+    local filename
+    filename=$(echo "$title" | sed 's/[^a-zA-Z0-9-]/-/g' | tr '[:upper:]' '[:lower:]') || true
+    local filepath
+    filepath="${report_dir}/${filename}-$(date +%Y%m%d-%H%M%S).md"
 
     cat > "$filepath" <<EOF
 # $title
@@ -140,7 +141,8 @@ store_fix_report() {
     local metadata="${4:-{}}"
 
     # Add issue to metadata
-    local enhanced_metadata=$(echo "$metadata" | jq ". + {\"issue_fixed\": \"$issue_fixed\"}" 2>/dev/null || echo "{\"issue_fixed\": \"$issue_fixed\"}")
+    local enhanced_metadata
+    enhanced_metadata=$(echo "$metadata" | jq ". + {\"issue_fixed\": \"$issue_fixed\"}" 2>/dev/null || echo "{\"issue_fixed\": \"$issue_fixed\"}")
 
     store_report "$title" "$content" "$REPORT_TYPE_FIX" "$enhanced_metadata"
 }
@@ -154,7 +156,8 @@ store_upgrade_report() {
     local to_version="$4"
     local metadata="${5:-{}}"
 
-    local enhanced_metadata=$(echo "$metadata" | jq ". + {\"from_version\": \"$from_version\", \"to_version\": \"$to_version\"}" 2>/dev/null || echo "{\"from_version\": \"$from_version\", \"to_version\": \"$to_version\"}")
+    local enhanced_metadata
+    enhanced_metadata=$(echo "$metadata" | jq ". + {\"from_version\": \"$from_version\", \"to_version\": \"$to_version\"}" 2>/dev/null || echo "{\"from_version\": \"$from_version\", \"to_version\": \"$to_version\"}")
 
     store_report "$title" "$content" "$REPORT_TYPE_UPGRADE" "$enhanced_metadata"
 }
@@ -167,7 +170,8 @@ store_error_report() {
     local stack_trace="$3"
     local metadata="${4:-{}}"
 
-    local content=$(cat <<EOF
+    local content
+    content=$(cat <<EOF
 ## Error
 
 $error_message
@@ -180,7 +184,8 @@ $stack_trace
 EOF
 )
 
-    local enhanced_metadata=$(echo "$metadata" | jq ". + {\"error\": \"$error_message\"}" 2>/dev/null || echo "{\"error\": \"$error_message\"}")
+    local enhanced_metadata
+    enhanced_metadata=$(echo "$metadata" | jq ". + {\"error\": \"$error_message\"}" 2>/dev/null || echo "{\"error\": \"$error_message\"}")
 
     store_report "$title" "$content" "$REPORT_TYPE_ERROR" "$enhanced_metadata"
 }
@@ -318,8 +323,10 @@ migrate_markdown_to_database() {
         return 1
     fi
 
-    local title=$(basename "$file" .md | sed 's/-/ /g' | sed 's/\b\(.\)/\u\1/g')
-    local content=$(cat "$file")
+    local title
+    title=$(basename "$file" .md | sed 's/-/ /g' | sed 's/\b\(.\)/\u\1/g') || true
+    local content
+    content=$(cat "$file") || true
 
     # Extract metadata from filename if possible
     local metadata="{}"

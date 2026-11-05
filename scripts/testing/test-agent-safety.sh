@@ -15,7 +15,6 @@ set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 SCE_DIR="${REPO_ROOT}/ai-stack/mcp-servers/hybrid-coordinator"
-VERBOSE="${1:-}"
 
 PASS=0
 FAIL=0
