@@ -70,3 +70,18 @@ Derived from the REPORT facts: revert the staged changes on fix/rebuild-path-tra
 
 ## Hint Feedback
 Not recorded in REPORT.md.
+
+## Follow-up commit (review fixes)
+
+Gemini review `gemini-20261104-160524-hbvam3` returned PASS_WITH_FOLLOWUPS on c0868a2f. All three findings are fixed in the follow-up commit:
+
+- **MEDIUM, fail closed.** `scripts/ai/lib/rsi_paths.py` now raises `StateDirError`, naming the path, when `RSI_STATE_DIR` or `RSI_RUNTIME_DIR` is set but not an existing writable directory. It does the same when the parent of `PRSI_INCIDENTS_FILE` is missing. `scripts/ai/lib/frontier_backlog.py` applies the same rule to `FRONTIER_STATE_DIR`. The checkout fallback remains only when no explicit env is set (dev, CI, fresh clone).
+- **LOW, sweep sandbox.** `ai-rsi-sweep` no longer has `.agent/collaboration` in `ReadWritePaths`. It keeps only the a2a event log and its fallback spool, which tmpfiles `f` rules create before the mount namespace is built. `ai-prsi-rsi-dispatch` keeps the directory because its delegation chain writes PENDING/HANDOFF, inbox receipts and the a2a log there.
+- **INFO, derived defaults.** `aiStackRsiDir` and `aiStackFrontierDir` now default to `${aiStackStateDir}/rsi` and `${aiStackStateDir}/frontier`.
+
+Validation:
+- `scripts/testing/test-runtime-writers-leave-checkout-clean.py`: 10/10, including new fail-closed cases.
+- `scripts/testing/test-aq-auto-update.py`: 8/8.
+- `nix eval` of `hyperd-ai-dev` shows the narrowed ReadWritePaths, both env vars resolving to `/var/lib/nixos-ai-stack/{rsi,frontier}`, the path unit watching the state ledger, and the tmpfiles `d` and `f` rules.
+
+Full detail is in `.agents/delegation/outputs/p110-rebuild-path/REPORT-fix.md`.

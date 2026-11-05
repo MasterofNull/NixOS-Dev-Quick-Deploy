@@ -1,4 +1,4 @@
-{lib, ...}: {
+{lib, config, ...}: {
   options.mySystem = {
     hostName = lib.mkOption {
       type = lib.types.str;
@@ -378,22 +378,22 @@
 
         aiStackRsiDir = lib.mkOption {
           type = lib.types.str;
-          default = "/var/lib/nixos-ai-stack/rsi";
+          default = "${config.mySystem.deployment.mutableSpaces.aiStackStateDir}/rsi";
           description = ''
             Runtime home of the RSI incident ledger (rsi-incidents.json) and its gate files.
             Kept out of the git checkout so sweeps and dispatch never dirty the owner tree;
             the tracked .agent/collaboration/rsi-incidents.json is only the first-read seed.
-            Mirrored as DEFAULT_STATE_DIR in scripts/ai/lib/rsi_paths.py (overridden by RSI_STATE_DIR).
+            Derived from aiStackStateDir; the units export it as RSI_STATE_DIR. DEFAULT_STATE_DIR in scripts/ai/lib/rsi_paths.py mirrors the default.
           '';
         };
 
         aiStackFrontierDir = lib.mkOption {
           type = lib.types.str;
-          default = "/var/lib/nixos-ai-stack/frontier";
+          default = "${config.mySystem.deployment.mutableSpaces.aiStackStateDir}/frontier";
           description = ''
             Runtime home of the frontier-evidence backlog and scan state written by ai-frontier-scan.
             The tracked .agents/plans/frontier-evidence-intake/{BACKLOG.jsonl,scan-state.json} are
-            first-read seeds only. Mirrored as the FRONTIER_STATE_DIR default in scripts/ai/lib/frontier_backlog.py.
+            first-read seeds only. Derived from aiStackStateDir; the scan unit exports it as FRONTIER_STATE_DIR. DEFAULT_STATE_DIR in scripts/ai/lib/frontier_backlog.py mirrors the default.
           '';
         };
 

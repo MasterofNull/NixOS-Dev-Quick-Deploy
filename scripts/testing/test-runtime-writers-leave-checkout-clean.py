@@ -79,12 +79,55 @@ class RuntimeWritersLeaveCheckoutClean(unittest.TestCase):
         self.assertEqual(len(ledger), 2)          # plus the new incident
         self.assertEqual(json.loads((self.co / ".agent/collaboration/rsi-incidents.json").read_text()), SEED_INCIDENT)
 
-    def test_rsi_without_state_dir_still_works_in_checkout(self):
-        env = clean_env(RSI_STATE_DIR=str(self.tmp / "missing"))
+    def test_rsi_unset_env_without_system_dir_falls_back_to_checkout(self):
+        env = clean_env()
         run_py(self.co, (
-            "import sys; sys.path.insert(0, 'scripts/ai/lib'); import rsi_lifecycle as r;"
-            "r.failure('agent','subj','prod','/p','auth','boom')"), env)
+            "import sys; sys.path.insert(0, 'scripts/ai/lib'); import rsi_paths;"
+            "rsi_paths.DEFAULT_STATE_DIR = %r; import rsi_lifecycle as r;"
+            "r.failure('agent','subj','prod','/p','auth','boom')" % str(self.tmp / "no-system-dir")), env)
         self.assertIn("rsi-incidents.json", git(self.co, "status", "--porcelain"))
+
+    def _fails_closed(self, code, **env_extra):
+        p = subprocess.run([sys.executable, "-c", code], cwd=str(self.co), env=clean_env(**env_extra),
+                           capture_output=True, text=True)
+        self.assertNotEqual(p.returncode, 0)
+        self.assertIn("StateDirError", p.stderr)
+        return p.stderr
+
+    def test_rsi_explicit_missing_state_dir_fails_closed(self):
+        missing = str(self.tmp / "missing")
+        err = self._fails_closed(
+            "import sys; sys.path.insert(0, 'scripts/ai/lib'); import rsi_lifecycle", RSI_STATE_DIR=missing)
+        self.assertIn(missing, err)
+        self.assertEqual(git(self.co, "status", "--porcelain"), "")
+
+    def test_rsi_explicit_unwritable_state_dir_fails_closed(self):
+        ro = self.tmp / "ro"
+        ro.mkdir()
+        ro.chmod(0o500)
+        try:
+            if os.access(ro, os.W_OK):
+                self.skipTest("running as a user that bypasses DAC")
+            self._fails_closed("import sys; sys.path.insert(0, 'scripts/ai/lib'); import rsi_lifecycle",
+                               RSI_STATE_DIR=str(ro))
+        finally:
+            ro.chmod(0o700)
+
+    def test_rsi_explicit_runtime_dir_and_incidents_file_fail_closed(self):
+        code = "import sys; sys.path.insert(0, 'scripts/ai/lib'); import rsi_paths; rsi_paths.%s()"
+        self._fails_closed(code % "runtime_dir", RSI_RUNTIME_DIR=str(self.tmp / "nope"))
+        self._fails_closed(code % "incidents_path", PRSI_INCIDENTS_FILE=str(self.tmp / "nope" / "l.json"))
+
+    def test_frontier_explicit_missing_state_dir_fails_closed(self):
+        self._fails_closed(
+            "import sys; sys.path.insert(0, 'scripts/ai/lib'); import frontier_backlog as fb; fb.load(fb.DEFAULT_STORE)",
+            FRONTIER_STATE_DIR=str(self.tmp / "missing"))
+
+    def test_frontier_unset_env_without_system_dir_falls_back(self):
+        out = run_py(self.co, (
+            "import sys; sys.path.insert(0, 'scripts/ai/lib'); import frontier_backlog as fb;"
+            "fb.DEFAULT_STATE_DIR = %r; print(fb.state_dir())" % str(self.tmp / "no-system-dir")), clean_env())
+        self.assertEqual(out.strip(), "None")
 
     def test_frontier_scan_writes_state_dir_and_overlay_is_visible(self):
         state = self.tmp / "frontier-state"

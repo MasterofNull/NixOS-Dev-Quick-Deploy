@@ -31,18 +31,26 @@ RUNTIME_BACKLOG = "BACKLOG.jsonl"
 RUNTIME_SCAN_STATE = "scan-state.json"
 
 
+class StateDirError(RuntimeError):
+    """FRONTIER_STATE_DIR was set explicitly but is missing or unwritable."""
+
+
 def state_dir() -> Path | None:
-    """Runtime state dir, or None when absent/unwritable (fresh clone, CI): callers then use the tracked files."""
-    d = Path(os.environ.get("FRONTIER_STATE_DIR") or DEFAULT_STATE_DIR)
+    """Runtime state dir. An explicit FRONTIER_STATE_DIR that is unusable raises (fail closed, no checkout
+    fallback); with no env, None when the default is absent/unwritable (fresh clone, CI): callers use the tracked files."""
+    explicit = os.environ.get("FRONTIER_STATE_DIR")
+    d = Path(explicit or DEFAULT_STATE_DIR)
+    if explicit and not (d.is_dir() and os.access(d, os.W_OK | os.X_OK)):
+        raise StateDirError(f"FRONTIER_STATE_DIR={d} is not an existing writable directory; refusing to fall back to the checkout")
     return d if d.is_dir() and os.access(d, os.W_OK) else None
 
 
 def overlay_for(store: str | os.PathLike) -> Path | None:
     """Runtime candidate overlay for the tracked default store; None for any other store (tests, temp stores)."""
-    d = state_dir()
-    if d is None or not str(store).replace(os.sep, "/").endswith(DEFAULT_STORE):
+    if not str(store).replace(os.sep, "/").endswith(DEFAULT_STORE):
         return None
-    return d / RUNTIME_BACKLOG
+    d = state_dir()
+    return None if d is None else d / RUNTIME_BACKLOG
 
 VERDICTS = ("adopt", "monitor", "drop", "corrected")
 # Lifecycle: a finding is PROPOSED (new), routed to the multi-expert team (in_review),

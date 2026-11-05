@@ -2017,6 +2017,9 @@ in {
         # Runtime state written by services as primaryUser; kept out of the checkout (P1.10).
         "d ${mutableRsiDir} 0755 ${cfg.primaryUser} users -"
         "d ${mutableFrontierDir} 0755 ${cfg.primaryUser} users -"
+        # File-level ReadWritePaths of ai-rsi-sweep must exist before its mount namespace is built (gitignored logs).
+        "f ${cfg.mcpServers.repoPath}/.agent/collaboration/a2a-events.jsonl 0644 ${cfg.primaryUser} users -"
+        "f ${cfg.mcpServers.repoPath}/.agent/collaboration/a2a-events-fallback.jsonl 0644 ${cfg.primaryUser} users -"
       ];
 
       # Agent-agnostic discovery manifest at well-known location.
@@ -2611,9 +2614,14 @@ in {
           PrivateTmp = true;
           MemoryMax = "512M";
           Environment = ["RSI_STATE_DIR=${mutableRsiDir}"];
+          # The ledger lives in mutableRsiDir; the only thing the sweep still writes under
+          # .agent/collaboration is the a2a event log (rsi_lifecycle._event -> event_log.append,
+          # canonical file, or the spool on EROFS/EACCES). Bind those two files, not the directory,
+          # so the kernel keeps the rest of the checkout's collaboration dir read-only.
           ReadWritePaths = [
             mutableRsiDir
-            "${cfg.mcpServers.repoPath}/.agent/collaboration"
+            "${cfg.mcpServers.repoPath}/.agent/collaboration/a2a-events.jsonl"
+            "${cfg.mcpServers.repoPath}/.agent/collaboration/a2a-events-fallback.jsonl"
             "${cfg.mcpServers.repoPath}/.agent/memory/issues-backlog.md"
             "${cfg.mcpServers.repoPath}/.agent/WORKAROUND-REGISTER.md"
           ];
