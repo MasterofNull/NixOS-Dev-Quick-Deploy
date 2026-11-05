@@ -12,6 +12,7 @@ SWITCHBOARD_PATH = REPO_ROOT / "ai-stack" / "switchboard" / "switchboard.py"
 
 def load_switchboard():
     os.environ.setdefault("LLAMA_CTX_SIZE", "16384")
+    os.environ.setdefault("REPO_PATH", str(REPO_ROOT))  # switchboard defaults to the host checkout path
     spec = importlib.util.spec_from_file_location("switchboard_under_test", SWITCHBOARD_PATH)
     module = importlib.util.module_from_spec(spec)
     assert spec.loader is not None

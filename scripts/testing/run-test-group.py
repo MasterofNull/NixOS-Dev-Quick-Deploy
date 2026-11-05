@@ -2,7 +2,7 @@
 """Run the `tests` list of one config/ci-checks.json check (usage: run-test-group.py <check-id>).
 
 Each test gets a 120 s timeout, repo-locating GIT_* stripped, stdin closed and a private
-AQ_DELEGATION_DIR and no ambient PYTHONPATH so no test touches the shared delegation ledger. Fails if any test fails.
+AQ_DELEGATION_DIR and DASHBOARD_DATA_DIR and no ambient PYTHONPATH/PR-context vars so no test touches the shared delegation ledger. Fails if any test fails.
 """
 import json
 import os
@@ -25,8 +25,11 @@ def run_one(test: str):
         # PYTHONPATH is dropped: operator shells point it at the MAIN checkout, which shadows this tree's modules.
         # CI_CHECKS_* is dropped: ci-merge-parity exports CI_CHECKS_CHANGED_FILES for its own runner, and tests
         # of that runner must not inherit it.
-        env = {**{k: v for k, v in clean_git_env().items() if k != "PYTHONPATH" and not k.startswith("CI_CHECKS_")},
-               "TMPDIR": d, "AQ_DELEGATION_DIR": f"{d}/delegation"}
+        # GITHUB_{EVENT_NAME,BASE_REF,HEAD_REF}: a PR runner's ambient PR context flips branch-sensitive gates under test.
+        # DASHBOARD_DATA_DIR: dashboard modules default to /var/lib/nixos-system-dashboard, which only exists on the host.
+        env = {**{k: v for k, v in clean_git_env().items() if k != "PYTHONPATH" and not k.startswith("CI_CHECKS_")
+                  and k not in ("GITHUB_EVENT_NAME", "GITHUB_BASE_REF", "GITHUB_HEAD_REF")},
+               "TMPDIR": d, "AQ_DELEGATION_DIR": f"{d}/delegation", "DASHBOARD_DATA_DIR": f"{d}/dashboard"}
         try:
             r = subprocess.run([interp, test], cwd=REPO, env=env, stdin=subprocess.DEVNULL,
                                capture_output=True, text=True, timeout=TIMEOUT)

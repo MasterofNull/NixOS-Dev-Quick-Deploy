@@ -74,3 +74,24 @@ Revert the staged changes in the worktree. The changes are the gate script, `con
 
 ## Hint Feedback
 No hints were recorded in the source report.
+
+## Follow-up: first real GitHub runner run
+
+The first real run on PR #690 (run 41943848534) failed 12 of the 33 checks. The tests assumed the owner host, and the earlier "clean env" validation had run on that host. Fixes, with no masking:
+
+| Remedy | Count | What |
+|---|---|---|
+| Tool provided in the job | 11 | Nix, using the pinned action and config from `nix-build.yml`. gitleaks 8.24.3, pinned as in `gitleaks.yml`. `init.defaultBranch main`. The job also moves to Python 3.13, the production interpreter. Python 3.11 broke on 3.12+ f-strings in `aq-hints` and on `asyncio.wait_for` cancellation. |
+| Hermetic override | 17 | `DASHBOARD_DATA_DIR` is set per test in `scripts/testing/run-test-group.py`. The PR event vars are stripped from the per-test env. `CODEX_BIN` and `REPO_PATH` are set in 4 tests. |
+| Exempted with a class | 9 | live-service (5): the delegate tests that POST to the coordinator with the host secret. sandbox-env (4): tests that need the real Gemini MCP config, the local model weights, the installed Codex CLI, or bwrap containment. |
+| Test fix | 1 | `test-delegate-headless-budget.py` used `source` under dash. It now uses `bash -c`. |
+
+Local validation: a stripped-environment simulation (temp HOME, PR and CI env, Python 3.13 venv) passes every affected group with the tools present. Without nix and gitleaks, exactly the five items that need them fail. `run-ci-checks.sh --changed` passes 23 of 23.
+
+Only the real runner can confirm:
+- whether a cold `nix eval` fits the 120 s per-test timeout (it takes 23 s warm);
+- the gitleaks 8.24.3 behaviour;
+- the security-audit-gate fix, whose failure did not reproduce locally;
+- the uv install on Python 3.13.
+
+Detail: `.agents/delegation/outputs/p05-all-tests/runner-fix/REPORT.md`.

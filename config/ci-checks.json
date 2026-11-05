@@ -923,15 +923,12 @@
       "cmd": "scripts/testing/run-test-group.py tests-delegate",
       "paths": [
         "scripts/testing/run-test-group.py",
-        "scripts/testing/test-delegate-agent-mapping.py",
         "scripts/testing/test-delegate-antigravity-background-stdio.py",
         "scripts/testing/test-delegate-attention-queue-wiring.py",
         "scripts/testing/test-delegate-codex-quota-precheck.sh",
         "scripts/testing/test-delegate-codex-shared-writable.py",
-        "scripts/testing/test-delegate-coding.py",
         "scripts/testing/test-delegate-dir-env-override.py",
         "scripts/testing/test-delegate-failure-classification.py",
-        "scripts/testing/test-delegate-local-agent.py",
         "scripts/testing/test-delegate-response-budget-wiring.py",
         "scripts/testing/test-delegate-routing-profile-honoring.py",
         "scripts/testing/test-delegate-to-antigravity.py",
@@ -945,15 +942,12 @@
       ],
       "ci_workflow": ".github/workflows/test.yml#syntax",
       "tests": [
-        "scripts/testing/test-delegate-agent-mapping.py",
         "scripts/testing/test-delegate-antigravity-background-stdio.py",
         "scripts/testing/test-delegate-attention-queue-wiring.py",
         "scripts/testing/test-delegate-codex-quota-precheck.sh",
         "scripts/testing/test-delegate-codex-shared-writable.py",
-        "scripts/testing/test-delegate-coding.py",
         "scripts/testing/test-delegate-dir-env-override.py",
         "scripts/testing/test-delegate-failure-classification.py",
-        "scripts/testing/test-delegate-local-agent.py",
         "scripts/testing/test-delegate-response-budget-wiring.py",
         "scripts/testing/test-delegate-routing-profile-honoring.py",
         "scripts/testing/test-delegate-to-antigravity.py",
@@ -1087,7 +1081,6 @@
         "scripts/testing/test-analysis-only-stagnation-mode.py",
         "scripts/testing/test-anti-fabrication-lint.py",
         "scripts/testing/test-antigravity-claim-receipt.py",
-        "scripts/testing/test-antigravity-env-strengthening.py",
         "scripts/testing/test-antigravity-health-credential-check.py",
         "scripts/testing/test-antigravity-health-quota.sh",
         "scripts/testing/test-antigravity-implementer-lane.py",
@@ -1136,7 +1129,6 @@
         "scripts/testing/test-ci-merge-parity.py",
         "scripts/testing/test-ci-skill-bundle-smoke.py",
         "scripts/testing/test-cockpit-telemetry.py",
-        "scripts/testing/test-codex-config-reconcile.py",
         "scripts/testing/test-collaborative-plan-persistence.py",
         "scripts/testing/test-commit-review-disposition-hook.py",
         "scripts/testing/test-complexity-lane-routing.py",
@@ -1183,7 +1175,6 @@
         "scripts/testing/test-analysis-only-stagnation-mode.py",
         "scripts/testing/test-anti-fabrication-lint.py",
         "scripts/testing/test-antigravity-claim-receipt.py",
-        "scripts/testing/test-antigravity-env-strengthening.py",
         "scripts/testing/test-antigravity-health-credential-check.py",
         "scripts/testing/test-antigravity-health-quota.sh",
         "scripts/testing/test-antigravity-implementer-lane.py",
@@ -1232,7 +1223,6 @@
         "scripts/testing/test-ci-merge-parity.py",
         "scripts/testing/test-ci-skill-bundle-smoke.py",
         "scripts/testing/test-cockpit-telemetry.py",
-        "scripts/testing/test-codex-config-reconcile.py",
         "scripts/testing/test-collaborative-plan-persistence.py",
         "scripts/testing/test-commit-review-disposition-hook.py",
         "scripts/testing/test-complexity-lane-routing.py",
@@ -1258,11 +1248,9 @@
       "paths": [
         "scripts/testing/run-test-group.py",
         "scripts/testing/test-decompose-loop.py",
-        "scripts/testing/test-delegate.py",
         "scripts/testing/test-delegated-prompt-failure-history.py",
         "scripts/testing/test-delegated-prompt-failure-trend.py",
         "scripts/testing/test-delegation-feedback-contract.py",
-        "scripts/testing/test-delegation-local-gemini.py",
         "scripts/testing/test-dependency-hygiene-ladder.py",
         "scripts/testing/test-deploy-source-guard.py",
         "scripts/testing/test-deployment-causality-clustering.py",
@@ -1311,7 +1299,6 @@
         "scripts/testing/test-frontier-scan-due.py",
         "scripts/testing/test-frontier-scan-topic.py",
         "scripts/testing/test-frontier-sources.py",
-        "scripts/testing/test-functional-prompt-eval.py",
         "scripts/testing/test-gate-checkout.py",
         "scripts/testing/test-gepa-prompt-compile.py",
         "scripts/testing/test-gitleaks-ci-parity.py",
@@ -1348,11 +1335,9 @@
       "ci_workflow": ".github/workflows/test.yml#syntax",
       "tests": [
         "scripts/testing/test-decompose-loop.py",
-        "scripts/testing/test-delegate.py",
         "scripts/testing/test-delegated-prompt-failure-history.py",
         "scripts/testing/test-delegated-prompt-failure-trend.py",
         "scripts/testing/test-delegation-feedback-contract.py",
-        "scripts/testing/test-delegation-local-gemini.py",
         "scripts/testing/test-dependency-hygiene-ladder.py",
         "scripts/testing/test-deploy-source-guard.py",
         "scripts/testing/test-deployment-causality-clustering.py",
@@ -1401,7 +1386,6 @@
         "scripts/testing/test-frontier-scan-due.py",
         "scripts/testing/test-frontier-scan-topic.py",
         "scripts/testing/test-frontier-sources.py",
-        "scripts/testing/test-functional-prompt-eval.py",
         "scripts/testing/test-gate-checkout.py",
         "scripts/testing/test-gepa-prompt-compile.py",
         "scripts/testing/test-gitleaks-ci-parity.py",
@@ -1476,7 +1460,6 @@
         "scripts/testing/test-microarchitectural-isolation.py",
         "scripts/testing/test-modal-task-profiles.py",
         "scripts/testing/test-model-budget.py",
-        "scripts/testing/test-model-catalog-freshness.py",
         "scripts/testing/test-model-optimization-implementation.py",
         "scripts/testing/test-model-probe-freshness.py",
         "scripts/testing/test-model-symlink-verification.sh",
@@ -1532,7 +1515,6 @@
         "scripts/testing/test-microarchitectural-isolation.py",
         "scripts/testing/test-modal-task-profiles.py",
         "scripts/testing/test-model-budget.py",
-        "scripts/testing/test-model-catalog-freshness.py",
         "scripts/testing/test-model-optimization-implementation.py",
         "scripts/testing/test-model-probe-freshness.py",
         "scripts/testing/test-model-symlink-verification.sh",
@@ -2192,6 +2174,11 @@
       "reason": "host-only: needs a live local service (switchboard/dashboard/coordinator/AIDB); last output: Is the server running on that host and accepting TCP/IP connections?"
     },
     {
+      "script": "scripts/testing/test-antigravity-env-strengthening.py",
+      "class": "sandbox-env",
+      "reason": "host-only: asserts the real user's ~/.gemini/config/mcp_config.json exists; a CI runner has no Gemini/Antigravity install"
+    },
+    {
       "script": "scripts/testing/test-approval-recovery.py",
       "class": "known-failing",
       "reason": "fails on main: ModuleNotFoundError 'fido2' (sys.path/dependency not available), tracked in backlog"
@@ -2295,6 +2282,11 @@
       "script": "scripts/testing/test-claude-dispatch-payload-safety.py",
       "class": "known-failing",
       "reason": "fails on main (rc=1): FAILED (failures=2), tracked in backlog"
+    },
+    {
+      "script": "scripts/testing/test-codex-config-reconcile.py",
+      "class": "sandbox-env",
+      "reason": "host-only: needs the installed Codex CLI (`codex mcp list --json`) to validate the rendered config; the runner has no Codex and an unpinned npm install would test a different version"
     },
     {
       "script": "scripts/testing/test-codex-subagent-configuration.py",
@@ -2417,9 +2409,24 @@
       "reason": "slow: exceeds the 120s timeout"
     },
     {
+      "script": "scripts/testing/test-delegate-agent-mapping.py",
+      "class": "live-service",
+      "reason": "host-only: needs a live local service (switchboard/dashboard/coordinator/AIDB); POSTs to the coordinator at 127.0.0.1:8003 with the host secret /run/secrets/hybrid_coordinator_api_key"
+    },
+    {
       "script": "scripts/testing/test-delegate-claude-model-routing.py",
       "class": "known-failing",
       "reason": "fails on main (rc=1): FAILED (errors=2), tracked in backlog"
+    },
+    {
+      "script": "scripts/testing/test-delegate-coding.py",
+      "class": "live-service",
+      "reason": "host-only: needs a live local service (switchboard/dashboard/coordinator/AIDB); POSTs to the coordinator at 127.0.0.1:8003 with the host secret /run/secrets/hybrid_coordinator_api_key"
+    },
+    {
+      "script": "scripts/testing/test-delegate-local-agent.py",
+      "class": "live-service",
+      "reason": "host-only: needs a live local service (switchboard/dashboard/coordinator/AIDB); POSTs to the coordinator at 127.0.0.1:8003 with the host secret /run/secrets/hybrid_coordinator_api_key"
     },
     {
       "script": "scripts/testing/test-delegate-timeout-config.py",
@@ -2435,6 +2442,11 @@
       "script": "scripts/testing/test-delegate-wrapper-shell-safety.py",
       "class": "known-failing",
       "reason": "fails on main: references missing file /tmp/tmp.ayXCQN4za0/delegate-shell-safety-wqyw6_ho/.agents/delegation/registry.jsonl, tracked in backlog"
+    },
+    {
+      "script": "scripts/testing/test-delegate.py",
+      "class": "live-service",
+      "reason": "host-only: needs a live local service (switchboard/dashboard/coordinator/AIDB); POSTs to the coordinator at 127.0.0.1:8003 with the host secret /run/secrets/hybrid_coordinator_api_key"
     },
     {
       "script": "scripts/testing/test-delegated-prompt-efficiency-integration.py",
@@ -2455,6 +2467,11 @@
       "script": "scripts/testing/test-delegation-feedback.py",
       "class": "known-failing",
       "reason": "fails on main (rc=1): subprocess.TimeoutExpired: Command '['/home/hyperd/.nix-profile/bin/python3', '/home/hyper, tracked in backlog"
+    },
+    {
+      "script": "scripts/testing/test-delegation-local-gemini.py",
+      "class": "live-service",
+      "reason": "host-only: needs a live local service (switchboard/dashboard/coordinator/AIDB); POSTs to the coordinator at 127.0.0.1:8003 with the host secret /run/secrets/hybrid_coordinator_api_key"
     },
     {
       "script": "scripts/testing/test-deployment-dashboard.py",
@@ -2490,6 +2507,11 @@
       "script": "scripts/testing/test-factory-gate-readiness.py",
       "class": "slow",
       "reason": "slow: 60s wall serial, over the 45s budget for a gated test; run on demand"
+    },
+    {
+      "script": "scripts/testing/test-functional-prompt-eval.py",
+      "class": "sandbox-env",
+      "reason": "host-only: sandbox_hardening asserts bwrap containment ('host write not contained') and fails on the hosted runner's namespace/bwrap behaviour; containment is exercised on the host and by the confine-tests workflow"
     },
     {
       "script": "scripts/testing/test-harness-delegation-live.py",
@@ -2545,6 +2567,11 @@
       "script": "scripts/testing/test-meta-learning-integration.py",
       "class": "known-failing",
       "reason": "fails on main: references missing file ai-stack/mcp-servers/hybrid-coordinator/http_server.py, tracked in backlog"
+    },
+    {
+      "script": "scripts/testing/test-model-catalog-freshness.py",
+      "class": "sandbox-env",
+      "reason": "host-only: asserts the active llama.cpp model file (profile model_path under /var/lib) exists; a CI runner has no local model weights"
     },
     {
       "script": "scripts/testing/test-model-optimization-advanced-runtime.py",

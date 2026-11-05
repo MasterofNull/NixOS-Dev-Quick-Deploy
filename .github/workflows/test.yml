@@ -525,16 +525,38 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6
         with:
-          python-version: "3.11"
+          # 3.13 is the production interpreter (NixOS python3.13); sources use 3.12+ syntax (PEP 701 f-strings)
+          # and 3.11's wait_for cancellation semantics differ from what the dashboard code is written for.
+          python-version: "3.13"
 
       - name: Set up uv
         uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e  # v6
+
+      - name: Install Nix
+        # Same pinned action/config as nix-build.yml. Tests evaluate the flake (`nix eval`, `nix build --expr`).
+        uses: cachix/install-nix-action@08dcb3a5e62fa31e2da3d490afc4176ef55ecd72  # v30
+        with:
+          nix_path: nixpkgs=channel:nixos-25.11
+          extra_nix_config: |
+            experimental-features = nix-command flakes
+            substituters = https://cache.nixos.org https://nix-community.cachix.org https://cosmic.cachix.org
+            trusted-public-keys = cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY= nix-community.cachix.org-1:mB9FSh9qf2dCimDSUo8Zy7bkq5CX+/rkCWyvRCYg3Fs= cosmic.cachix.org-1:Dya9IyXD4xdBehWjrkPv6rtxpmMdRel02smYzA85dPE=
+
+      - name: Install gitleaks
+        # Same pinned release as gitleaks.yml (test-gitleaks-ci-parity asserts parity with CI's gitleaks).
+        run: |
+          GITLEAKS_VERSION=8.24.3
+          curl -sSfL "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" \
+            | tar -xz gitleaks
+          sudo install -m 0755 gitleaks /usr/local/bin/gitleaks
 
       - name: Install test dependencies
         run: |
           uv pip install --system -r config/ci-test-requirements.txt
           git config --global user.name ci
           git config --global user.email ci@localhost
+          # Tests build throwaway repos and push "main"; git's default branch on the runner is master.
+          git config --global init.defaultBranch main
 
       - name: Run every declared test (a red test fails the job)
         run: |
