@@ -14,7 +14,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
-SOURCES_FILE="$REPO_ROOT/ai-stack/data/knowledge-sources.yaml"
+SOURCES_FILE="${KNOWLEDGE_SOURCES_FILE:-$REPO_ROOT/ai-stack/data/knowledge-sources.yaml}"
 AIDB_URL="${AIDB_URL:-http://127.0.0.1:${AI_AIDB_PORT:-${AIDB_PORT:-8002}}}"
 AIDB_IMPORT_ENDPOINT="${AIDB_IMPORT_ENDPOINT:-/documents}"
 AIDB_KEY_FILE="${AIDB_API_KEY_FILE:-/run/secrets/aidb_api_key}"
@@ -76,7 +76,7 @@ except ImportError:
     sys.exit(1)
 
 sources_file, filter_id, dry_run_str, aidb_url, aidb_import_endpoint, aidb_key, cache_dir = sys.argv[1:8]
-dry_run = dry_run_str == "True"
+dry_run = dry_run_str.strip().lower() in ("1", "true", "yes")
 cache_dir = Path(cache_dir)
 max_doc_bytes = int(os.getenv("AIDB_IMPORT_MAX_BYTES", "200000"))
 import_delay_ms = int(os.getenv("AIDB_IMPORT_DELAY_MS", "75"))
