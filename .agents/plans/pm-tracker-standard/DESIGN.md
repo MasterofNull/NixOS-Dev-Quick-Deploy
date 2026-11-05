@@ -55,8 +55,7 @@ to (2), and (2)'s items roll up from ground truth.
   "issues": [{"title","sev","note"}]
 }
 ```
-Status precedence (projected): ACTIVATED > SHIPPED(done) > BLOCKED > FROZEN(active) >
-IN-PROGRESS(active) > DESIGNED > NOT-STARTED.
+Status precedence (projected): ACTIVATED > SHIPPED > BUILT > BLOCKED > FROZEN > IN-PROGRESS > DESIGNED > NOT-STARTED.
 **Activation cap (P0.9):** an item that would project SHIPPED projects BUILT (80%) unless it has BOTH an activation
 signal (`systemd_unit`/`command` live projection, a verified-or-stale activation grant, or a matching
 `wired_caller`) AND `detection.tests` (every path exists). ACTIVATED (verified grant) and the UNVERIFIED hold are unaffected.

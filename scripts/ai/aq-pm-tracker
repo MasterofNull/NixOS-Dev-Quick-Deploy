@@ -508,25 +508,48 @@ def _untrusted_hold(item: dict, gitlog: str, untrusted: dict | None, plan: str =
                       f"{'' if listed else ' or a later trusted commit'}"}
 
 
+def _repo_file(p) -> Path | None:
+    """Repo-contained file path from a manifest value, or None. Non-str, absolute, `..`, or any path
+    resolving (symlinks included) outside REPO does not count."""
+    if not isinstance(p, str) or not p or p.startswith("/") or ".." in Path(p).parts:
+        return None
+    try:
+        resolved = (REPO / p).resolve()
+        resolved.relative_to(REPO.resolve())
+    except (OSError, ValueError, RuntimeError):
+        return None
+    return resolved
+
+
+def _detection(item: dict) -> dict:
+    det = item.get("detection")
+    return det if isinstance(det, dict) else {}
+
+
 def _activation_signal(item: dict, grant_signal: bool) -> bool:
     """Activation evidence from data the projector already reads: live systemd/command projection, an activation
     grant, or a wired caller (a repo file that matches a pattern). Never probes the live system beyond those."""
-    det = item.get("detection") or {}
+    det = _detection(item)
     if grant_signal or det.get("systemd_unit") or det.get("command"):
         return True
     wc = det.get("wired_caller")
     if isinstance(wc, dict) and wc.get("file") and wc.get("pattern"):
-        f = REPO / wc["file"]
+        f = _repo_file(wc.get("file"))
+        pattern = wc.get("pattern")
+        if f is None or not isinstance(pattern, str):
+            return False
         try:
-            return f.is_file() and re.search(wc["pattern"], f.read_text(errors="replace")) is not None
+            return f.is_file() and re.search(pattern, f.read_text(errors="replace")) is not None
         except (OSError, re.error):
             return False
     return False
 
 
 def _registered_test(item: dict) -> bool:
-    tests = (item.get("detection") or {}).get("tests") or []
-    return bool(tests) and all((REPO / t).is_file() for t in tests)
+    tests = _detection(item).get("tests")
+    if not isinstance(tests, list) or not tests:
+        return False
+    return all((f := _repo_file(t)) is not None and f.is_file() for t in tests)
 
 
 def _cap_unactivated(item: dict, status: str, pct: int | None, reason: str) -> tuple[str, int | None]:

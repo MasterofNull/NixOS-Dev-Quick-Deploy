@@ -42,6 +42,21 @@ def test_all():
     assert status({"id": "d", "name": "D", "detection": {}}) == "DESIGNED"
 
 
+def test_untrusted_paths_fail_closed():
+    # activation signal present in each case, so only the path/type check decides
+    # absolute test path outside the repo -> not a registered test
+    assert status(item(wired_caller=WIRED, tests=["/bin/sh"])) == "BUILT"
+    # parent-directory escape -> not a registered test
+    assert status(item(wired_caller=WIRED, tests=["../outside.py"])) == "BUILT"
+    # absolute wired_caller file outside the repo -> no activation signal
+    assert status(item(wired_caller={"file": "/etc/hostname", "pattern": "."}, tests=[THIS_TEST])) == "BUILT"
+    # non-str wired_caller pattern -> no activation signal, no crash
+    assert status(item(wired_caller={**WIRED, "pattern": 123}, tests=[THIS_TEST])) == "BUILT"
+    # non-str test element -> not registered, no crash
+    assert status(item(wired_caller=WIRED, tests=[None])) == "BUILT"
+
+
 if __name__ == "__main__":
     test_all()
+    test_untrusted_paths_fail_closed()
     print("PASS: test-pm-tracker-activation-cap")
