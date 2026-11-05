@@ -46,6 +46,11 @@ def run_one(test: str):
                "PRSI_INCIDENTS_FILE": f"{d}/rsi/rsi-incidents.json",
                "AQ_ONCALL_STATE_DIR": f"{d}/oncall", "AQ_TRIAGE_STATE_DIR": f"{d}/triage",
                "PULSE_LOG_PATH": f"{d}/PULSE.log", "RESUME_JSON_PATH": f"{d}/RESUME.json"}
+        # rsi_paths.py fails closed on a missing explicitly-set state dir, so the dirs must exist before the test runs.
+        for key in ("AQ_DELEGATION_DIR", "RSI_RUNTIME_DIR", "AQ_ONCALL_STATE_DIR", "AQ_TRIAGE_STATE_DIR"):
+            Path(env[key]).mkdir(parents=True, exist_ok=True)
+        for key in ("RSI_BACKLOG_FILE", "PRSI_INCIDENTS_FILE", "PULSE_LOG_PATH", "RESUME_JSON_PATH"):
+            Path(env[key]).parent.mkdir(parents=True, exist_ok=True)
         try:
             r = subprocess.run([interp, test], cwd=REPO, env=env, stdin=subprocess.DEVNULL,
                                capture_output=True, text=True, timeout=TIMEOUT)

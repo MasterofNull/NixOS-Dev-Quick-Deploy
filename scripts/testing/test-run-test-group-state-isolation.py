@@ -29,7 +29,7 @@ def run_group(tests: dict[str, str]):
 
 
 MUTATE = "open('.agent-state.txt', 'w').write('x')\n"
-CLEAN = "import os, pathlib\npathlib.Path(os.environ['RSI_RUNTIME_DIR']).mkdir(parents=True)\n"
+CLEAN = "import os, pathlib\npathlib.Path(os.environ['RSI_RUNTIME_DIR']).mkdir(parents=True, exist_ok=True)\n"
 
 bad = run_group({"t_mutate.py": MUTATE})
 assert bad.returncode == 1, bad
