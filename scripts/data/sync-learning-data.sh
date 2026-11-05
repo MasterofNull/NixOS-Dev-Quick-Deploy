@@ -67,7 +67,8 @@ extract_patterns() {
     # Extract error solutions
     if jq -c 'select(.error_type != null and .solution != null and .confidence_score >= 0.7)' "$source" >> "$dest_errors" 2>/dev/null; then
         sort -u "$dest_errors" -o "$dest_errors"
-        local error_count=$(wc -l < "$dest_errors" 2>/dev/null || echo 0)
+        local error_count
+        error_count=$(wc -l < "$dest_errors" 2>/dev/null || echo 0)
         log_success "Extracted $error_count error solutions"
     fi
 }
@@ -91,16 +92,19 @@ sync_finetuning() {
     cp "$source" "$dest"
 
     # Create versioned snapshot
-    local version=$(date +%Y-%m-%d)
+    local version
+    version=$(date +%Y-%m-%d)
     cp "$source" "$snapshot_dir/${version}.jsonl"
 
     # Update latest symlink
     ln -sf "${version}.jsonl" "$snapshot_dir/latest.jsonl"
 
-    local lines=$(wc -l < "$dest" 2>/dev/null || echo 0)
+    local lines
+    lines=$(wc -l < "$dest" 2>/dev/null || echo 0)
     log_success "Synced fine-tuning dataset ($lines samples)"
 
     # Keep only last 5 snapshots
+    # shellcheck disable=SC2010  # ls -t supplies mtime ordering; names are date-stamped snapshots
     ls -t "$snapshot_dir"/*.jsonl 2>/dev/null | grep -v latest | tail -n +6 | xargs rm -f 2>/dev/null || true
 }
 
@@ -111,7 +115,8 @@ snapshot_telemetry() {
     log_info "Creating telemetry snapshot..."
 
     local source="$RUNTIME_DATA/telemetry/hybrid-events.jsonl"
-    local dest="$REPO_DATA/telemetry/snapshots/$(date +%Y-%m-%d).jsonl"
+    local dest
+    dest="$REPO_DATA/telemetry/snapshots/$(date +%Y-%m-%d).jsonl"
 
     if [[ ! -f "$source" ]]; then
         log_warning "No telemetry found at $source"
@@ -129,7 +134,8 @@ snapshot_telemetry() {
         return
     }
 
-    local lines=$(wc -l < "$dest" 2>/dev/null || echo 0)
+    local lines
+    lines=$(wc -l < "$dest" 2>/dev/null || echo 0)
     log_success "Created telemetry snapshot ($lines events)"
 
     # Keep only last 30 days of snapshots
@@ -142,9 +148,12 @@ snapshot_telemetry() {
 update_metrics() {
     log_info "Updating federation metrics..."
 
-    local metrics_file="$REPO_DATA/metrics/monthly/$(date +%Y-%m).json"
-    local patterns_count=$(wc -l < "$REPO_DATA/patterns/skills-patterns.jsonl" 2>/dev/null || echo 0)
-    local finetuning_count=$(wc -l < "$REPO_DATA/fine-tuning/dataset.jsonl" 2>/dev/null || echo 0)
+    local metrics_file
+    metrics_file="$REPO_DATA/metrics/monthly/$(date +%Y-%m).json"
+    local patterns_count
+    patterns_count=$(wc -l < "$REPO_DATA/patterns/skills-patterns.jsonl" 2>/dev/null || echo 0)
+    local finetuning_count
+    finetuning_count=$(wc -l < "$REPO_DATA/fine-tuning/dataset.jsonl" 2>/dev/null || echo 0)
 
     cat > "$metrics_file" <<EOF
 {

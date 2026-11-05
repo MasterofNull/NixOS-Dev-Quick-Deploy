@@ -70,7 +70,7 @@ fail() { echo "[harness-runner] ✗ $*" >&2; ((FAIL++)) || true; }
 skip() { echo "[harness-runner] - $*"; ((SKIP++)) || true; }
 
 run_gate() {
-  local name="$1"; shift
+  shift
   if $VERBOSE; then
     "$@"
   else

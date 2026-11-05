@@ -20,7 +20,6 @@ fi
 
 TMP_DIR="$(mktemp -d /tmp/review-acceptance-lesson-refs-XXXXXX)"
 trap 'rm -rf "${TMP_DIR}"' EXIT
-hdr=(-H "X-API-Key: ${HYBRID_API_KEY}")
 json_hdr=(-H "X-API-Key: ${HYBRID_API_KEY}" -H "Content-Type: application/json")
 
 cat > "${TMP_DIR}/start.json.payload" <<'EOF'

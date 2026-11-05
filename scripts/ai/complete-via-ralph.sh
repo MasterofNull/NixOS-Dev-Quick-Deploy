@@ -20,26 +20,31 @@ RALPH_API="${RALPH_URL}"
 TASK_DIR="ai-stack/ralph-tasks/completion-workflow"
 RUNTIME_DIR="${XDG_RUNTIME_DIR:-${TMPDIR:-/${TMP_FALLBACK:-tmp}}}"
 
-info() { echo -e "\033[0;34mℹ\033[0m $1"; }
-success() { echo -e "\033[0;32m✓\033[0m $1"; }
-error() { echo -e "\033[0;31m✗\033[0m $1"; }
+info() { echo -e "\033[0;34mℹ\033[0m $1"; }  # ok-raw-echo
+success() { echo -e "\033[0;32m✓\033[0m $1"; }  # ok-raw-echo
+error() { echo -e "\033[0;31m✗\033[0m $1"; }  # ok-raw-echo
 
 submit_task() {
     local task_file=$1
-    local task_name=$(basename "$task_file" .json)
+    local task_name
+    task_name=$(basename "$task_file" .json)
     
     info "Submitting task: $task_name"
     
     # Read task definition
-    local task_json=$(cat "$task_file")
+    local task_json
+    task_json=$(cat "$task_file") || true
     
     # Submit to Ralph
-    local response=$(curl -s --max-time 15 --connect-timeout 3 -X POST "${RALPH_API}/tasks" \
+    local response
+    response=$(curl -s --max-time 15 --connect-timeout 3 -X POST "${RALPH_API}/tasks" \
         -H "Content-Type: application/json" \
-        -d "$task_json")
+        -d "$task_json") || true
     
-    local task_id=$(echo "$response" | jq -r '.task_id')
-    local status=$(echo "$response" | jq -r '.status')
+    local task_id
+    task_id=$(echo "$response" | jq -r '.task_id') || true
+    local status
+    status=$(echo "$response" | jq -r '.status') || true
     
     if [[ "$status" == "queued" ]]; then
         success "Task queued: $task_id"
@@ -60,9 +65,12 @@ wait_for_task() {
     info "Waiting for task $task_name ($task_id) to complete..."
     
     while [[ $elapsed -lt $max_wait ]]; do
-        local status_response=$(curl -s --max-time 10 --connect-timeout 3 "${RALPH_API}/tasks/${task_id}")
-        local status=$(echo "$status_response" | jq -r '.status')
-        local iteration=$(echo "$status_response" | jq -r '.iteration // 0')
+        local status_response
+        status_response=$(curl -s --max-time 10 --connect-timeout 3 "${RALPH_API}/tasks/${task_id}") || true
+        local status
+        status=$(echo "$status_response" | jq -r '.status') || true
+        local iteration
+        iteration=$(echo "$status_response" | jq -r '.iteration // 0') || true
         
         if [[ "$status" == "completed" ]]; then
             success "Task $task_name completed (iterations: $iteration)"
@@ -84,8 +92,10 @@ wait_for_task() {
 
 check_ralph_health() {
     info "Checking Ralph health..."
-    local health=$(curl -s --max-time 5 --connect-timeout 3 "${RALPH_API}/health")
-    local status=$(echo "$health" | jq -r '.status')
+    local health
+    health=$(curl -s --max-time 5 --connect-timeout 3 "${RALPH_API}/health") || true
+    local status
+    status=$(echo "$health" | jq -r '.status') || true
     
     if [[ "$status" == "healthy" ]]; then
         success "Ralph is healthy"
@@ -140,7 +150,8 @@ main() {
     # Monitor tasks
     local i=0
     for task_id in "${task_ids[@]}"; do
-        local task_name=$(basename "${tasks[$i]}" .json)
+        local task_name
+        task_name=$(basename "${tasks[$i]}" .json)
         if ! wait_for_task "$task_id" "$task_name"; then
             error "Task $task_name failed. Check logs for details."
             # Continue with other tasks instead of exiting

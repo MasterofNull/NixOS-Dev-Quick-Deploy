@@ -208,7 +208,7 @@ install_flatpak_app() {
   local app="$1"
   local output=""
 
-  if output="$(${install_cmd[@]} "$app" 2>&1)"; then
+  if output="$("${install_cmd[@]}" "$app" 2>&1)"; then
     printf '%s\n' "$output"
     return 0
   fi
@@ -216,7 +216,7 @@ install_flatpak_app() {
   printf '%s\n' "$output" >&2
   if printf '%s\n' "$output" | grep -Fq "No remote refs found for"; then
     echo "    ↻ retrying after flathub remote repair" >&2
-    if ensure_flathub_remote && output="$(${install_cmd[@]} "$app" 2>&1)"; then
+    if ensure_flathub_remote && output="$("${install_cmd[@]}" "$app" 2>&1)"; then
       printf '%s\n' "$output"
       return 0
     fi

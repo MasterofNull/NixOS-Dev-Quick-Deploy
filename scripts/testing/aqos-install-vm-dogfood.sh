@@ -88,7 +88,8 @@ done
 # paying for the heavy partition/install/boot proof in Step B.
 # ---------------------------------------------------------------------------
 step_a() {
-  local layout="$1" host="aqos-install-vm-${layout}"
+  local layout="$1"
+  local host="aqos-install-vm-${layout}"
   local target=".#nixosConfigurations.${host}"
 
   if ! command -v nix >/dev/null 2>&1; then
@@ -123,7 +124,8 @@ ${errtext}
 # nix or qemu are unavailable.
 # ---------------------------------------------------------------------------
 step_b() {
-  local layout="$1" check="aqos-install-vm-disko-${layout}"
+  local layout="$1"
+  local check="aqos-install-vm-disko-${layout}"
   local target=".#checks.x86_64-linux.${check}"
 
   if [ "${FULL}" -ne 1 ]; then

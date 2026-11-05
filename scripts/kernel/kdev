@@ -3,8 +3,6 @@
 # Part of NixOS-Dev-Quick-Deploy kernel development infrastructure
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 KERNEL_DIR="${KERNEL_DIR:-$HOME/kernel}"
 LINUX_DIR="${KERNEL_DIR}/linux"
 PATCHES_DIR="${KERNEL_DIR}/patches"
@@ -15,15 +13,6 @@ LORE_DIR="${KERNEL_DIR}/lore"
 # AIDB configuration
 AIDB_ENDPOINT="${AIDB_ENDPOINT:-http://127.0.0.1:8002}"
 AIDB_API_KEY="${AIDB_API_KEY:-}"
-
-# Kernel mailing lists to monitor
-declare -A MAILING_LISTS=(
-    ["dri-devel"]="dri-devel@lists.freedesktop.org"
-    ["netdev"]="netdev@vger.kernel.org"
-    ["linux-fsdevel"]="linux-fsdevel@vger.kernel.org"
-    ["linux-security-module"]="linux-security-module@vger.kernel.org"
-    ["linux-hardening"]="linux-hardening@vger.kernel.org"
-)
 
 # Colors
 RED='\033[0;31m'
@@ -233,7 +222,8 @@ cmd_sparse() {
 
 cmd_format_patch() {
     cd "$LINUX_DIR"
-    local outdir="${PATCHES_DIR}/$(date +%Y%m%d)"
+    local outdir
+    outdir="${PATCHES_DIR}/$(date +%Y%m%d)"
     mkdir -p "$outdir"
 
     log_info "Generating patches to ${outdir}..."
@@ -354,8 +344,10 @@ cmd_cve_check() {
         # Try to detect version from built kernel or source
         if [[ -d "${LINUX_DIR}" && -f "${LINUX_DIR}/Makefile" ]]; then
             version=$(grep "^VERSION = " "${LINUX_DIR}/Makefile" | awk '{print $3}')
-            local patchlevel=$(grep "^PATCHLEVEL = " "${LINUX_DIR}/Makefile" | awk '{print $3}')
-            local sublevel=$(grep "^SUBLEVEL = " "${LINUX_DIR}/Makefile" | awk '{print $3}')
+            local patchlevel
+            patchlevel=$(grep "^PATCHLEVEL = " "${LINUX_DIR}/Makefile" | awk '{print $3}') || true
+            local sublevel
+            sublevel=$(grep "^SUBLEVEL = " "${LINUX_DIR}/Makefile" | awk '{print $3}') || true
             version="${version}.${patchlevel}.${sublevel}"
         else
             version=$(uname -r | cut -d- -f1)
@@ -369,11 +361,16 @@ cmd_cve_check() {
         -H "Content-Type: application/json" \
         -d "{\"hostname\": \"$(hostname)\", \"kernel_version\": \"${version}\", \"architecture\": \"$(uname -m)\"}" 2>/dev/null); then
 
-        local total=$(echo "$response" | jq -r '.total_cves // 0')
-        local critical=$(echo "$response" | jq -r '.critical // 0')
-        local high=$(echo "$response" | jq -r '.high // 0')
-        local medium=$(echo "$response" | jq -r '.medium // 0')
-        local low=$(echo "$response" | jq -r '.low // 0')
+        local total
+        total=$(echo "$response" | jq -r '.total_cves // 0') || true
+        local critical
+        critical=$(echo "$response" | jq -r '.critical // 0') || true
+        local high
+        high=$(echo "$response" | jq -r '.high // 0') || true
+        local medium
+        medium=$(echo "$response" | jq -r '.medium // 0') || true
+        local low
+        low=$(echo "$response" | jq -r '.low // 0') || true
 
         echo ""
         echo "CVE Summary for kernel ${version}:"
@@ -435,7 +432,8 @@ cmd_cve_list() {
 
     local response
     if response=$(curl -sf "${AIDB_ENDPOINT}/kernel/cves${params}" 2>/dev/null); then
-        local total=$(echo "$response" | jq -r '.total // 0')
+        local total
+        total=$(echo "$response" | jq -r '.total // 0') || true
 
         echo ""
         echo "Tracked Kernel CVEs (${total} total):"
@@ -530,7 +528,8 @@ cmd_sync_reviews() {
         if [[ -d "$tracking_dir" ]]; then
             for series_file in "${tracking_dir}"/*.json; do
                 if [[ -f "$series_file" ]]; then
-                    local name=$(basename "$series_file" .json)
+                    local name
+                    name=$(basename "$series_file" .json)
                     log_info "Checking reviews for ${name}..."
                 fi
             done

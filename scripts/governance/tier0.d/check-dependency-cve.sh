@@ -32,7 +32,7 @@ cve_found=0
 
 for manifest in "${MODIFIED_MANIFESTS[@]}"; do
   mdir="$(dirname "${REPO}/${manifest}")"
-  [[ " ${checked_dirs[*]} " =~ " ${mdir} " ]] && continue
+  [[ " ${checked_dirs[*]} " == *" ${mdir} "* ]] && continue
   checked_dirs+=("$mdir")
 
   if [[ -f "${mdir}/package-lock.json" ]]; then

@@ -23,7 +23,8 @@ check_file() {
     local min_lines="${2:-1}"
 
     if [ -f "$REPO_ROOT/$file" ]; then
-        local lines=$(wc -l < "$REPO_ROOT/$file")
+        local lines
+        lines=$(wc -l < "$REPO_ROOT/$file") || true
         if [ "$lines" -ge "$min_lines" ]; then
             log_success "$file ($lines lines)"
             ((passed++))
