@@ -65,7 +65,7 @@ jobs:
             include if exists <local/aq-confine-bwrap>
           }
           PROFILE
-            sudo apparmor_parser -r /etc/apparmor.d/aq-confine-bwrap || true
+            sudo apparmor_parser -r /etc/apparmor.d/aq-confine-bwrap || true  # NON-GATING: profile load is best-effort; confine tests fail on their own if bwrap is blocked
           fi
           python -m pip install --upgrade pip
           pip install pyyaml jsonschema pydantic httpx aiohttp requests pytest fastapi cryptography rich psutil
@@ -77,7 +77,7 @@ jobs:
           mkdir -p .agent/qa && chmod 700 .agent/qa
       - name: Make harness scripts executable
         run: |
-          chmod +x scripts/testing/*.sh scripts/governance/*.sh scripts/automation/*.sh scripts/ai/*.sh 2>/dev/null || true
+          chmod +x scripts/testing/*.sh scripts/governance/*.sh scripts/automation/*.sh scripts/ai/*.sh 2>/dev/null || true  # NON-GATING: unmatched glob is fine; missing exec bit fails the run step
       - name: Validate eval pack schema (PAR-002)
         run: |
           scripts/testing/harness-runner.sh --offline --skip-parity

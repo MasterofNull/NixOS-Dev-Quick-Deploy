@@ -1,3 +1,8 @@
+[FIXED 2026-11-02] radar-ingest-frontier-scan-cve-and-youtube-blindness — RESOLVED 2026-11-02 in worktree `/tmp/wt-radar-ingest-fix-20261102` (`fix/radar-ingest-frontier-scan-20261102`): Fixed 4 root-cause producer bugs that caused `aq-radar-ingest`, `aq-frontier scan-due`, and `aq-transcribe` to miss current CVEs and practitioner YouTube releases. Root causes: (1) `scripts/ai/aq-radar-ingest` `fetch_security_advisories()` sliced `cisa-kev` `vulnerabilities[:limit]` without sorting by `dateAdded` descending (inspecting only November 2021 CVEs), lacked handlers for `nixos-security-advisories` and `kernel-org-releases`, and scored CVEs against `DOMAIN_KEYWORDS` which lacked security/CVE vocabulary (`cve`, `vulnerability`, `bypass`, `overflow`, `injection`, `rce`, `pypdf`, `filelock`, `jwt`, `brotli`, `kubeflow`), dropping 100% of fetched advisories (`found 0 high-signal`); (2) `scripts/ai/lib/frontier_scan.py` `scan_due()` wrote `last_scan = _iso(now)` inside `except Exception:`, poisoning 19 sources as `due: false` whenever run in an offline/network-isolated sandbox (`PermissionError` on DNS resolution in `ssrf_protection.py`); (3) `scripts/ai/aq-transcribe` invoked `yt-dlp` 3 times back-to-back (`--get-id`, `--dump-json`, `--write-subs`), triggering rate limits on `--write-subs`, and its `awk` VTT deduplicator failed to strip whitespace-only lines (`" "`) between rolling cues; (4) Practitioner YouTube Atom feeds (`@indydevdan`, `@simonscrapes`, `@sharbelxyz`, `@ColeMedin`) were not wired into `sources.yaml` / `frontier-radar-registry.json`, and `aq-radar-ingest` lacked YouTube Media RSS (`<yt:videoId>`, `<media:description>`) parsing and cross-catalog federation from `sources.yaml`. RESOLUTION: (a) Fixed `frontier_scan.py` to record `last_attempt` + `last_error` without overwriting `last_scan` on failure and cleaned poisoned error-only `last_scan` entries in `scan-state.json`; (b) Added CISA KEV `dateAdded` descending sort, NixOS & Kernel advisory handlers, security/agentic keywords, YouTube Atom XML parsing, and `sources.yaml` cross-catalog federation to `aq-radar-ingest`; (c) Registered verified YouTube Atom feeds for `@indydevdan`, `@simonscrapes`, `@sharbelxyz`, and `@ColeMedin` in `sources.yaml` and `config/frontier-radar-registry.json`; (d) Consolidated `yt-dlp` ID/metadata fetch and stripped whitespace-only lines in `aq-transcribe`; (e) Verified `test-frontier-scan-due.py` (7/7), `test-frontier-sources.py` (5/5), `test-radar-ingest.py` (5/5), and live sweep (109 new items ingested into `.agent/research/papers/` and `aq-durable-sweeper`).
+  Severity: high
+  Action: verified live in running harness; unit tests and live sweep pass.
+  File: `scripts/ai/aq-radar-ingest`; `scripts/ai/lib/frontier_scan.py`; `scripts/ai/aq-transcribe`; `config/frontier-radar-registry.json`; `.agents/plans/frontier-evidence-intake/sources.yaml`
+
 [DONE] gemini-antigravity-ide-24kb-prompt-truncation-and-storage-migration — RESOLVED 2026-09-27: Fixed severe agent drift and missing historical conversations in Gemini/Antigravity. Root causes: (1) Prompt Truncation: Antigravity IDE prompt injection engine caps injected rule files (<RULE[...]>) at strictly 24,000 bytes (24 KB). .agent/GEMINI.md had grown to 49,929 bytes, causing 25,929 bytes (52% of the file) to be silently dropped (<truncated 25929 bytes>), cutting off the Fable-Parity contract, Memory/Cache SOP, Recursive Self-Improvement (RSI) SOP, 8-Step Canonical Workflow steps 5-8, gate checkout rules, and Rules 14-24. (2) Missing Historical Conversations: On Sep 14, 2026, Antigravity IDE migrated from V1 Protobuf binary (.pb in ~/.gemini/antigravity/conversations/, 30 files, 206MB) to V2 SQLite (.db in ~/.gemini/antigravity-ide/conversations/, 14 files, 281MB). The IDE binary queries only the new SQLite path, hiding legacy sessions from the UI history sidebar while remaining 100% intact on disk. (3) Health path mismatch: antigravity-health.sh hardcoded ~/.config/Antigravity/logs (pre-Sep 14) instead of ~/.config/Antigravity IDE/logs. RESOLUTION: (a) Streamlined .agent/GEMINI.md to 22,659 bytes (under 24KB ceiling) preserving all 4 canon blocks (fable-parity, memory-cache-sop, recursive-self-improvement-sop, mvp-delivery-sop) with zero canon drift; (b) Updated scripts/health/antigravity-health.sh to respect $ANTIGRAVITY_LOG_ROOT and dynamically detect active IDE log path; (c) Ran full tier0-validation-gate.sh --pre-commit (53/53 tests pass); (d) Verified antigravity test suites (test-antigravity-health-quota.sh, test-antigravity-routing-honesty.py, test-antigravity-claim-receipt.py, test-antigravity-inbox.py) all pass.
   Severity: high
   Action: verified live in running harness; full tier0 and antigravity regression suites pass.
@@ -31,9 +36,9 @@
 
 ## State-of-the-art tier elevation (engineering-scorecard gaps, folded 2026-09-24)
 
-[OPEN] sota-hosted-ci-on-every-pr — the tier0 governance/validation gate suite runs strongly as local/pre-commit hooks, but confirm+ensure it ALSO runs in a hosted CI on every PR so the guarantee holds even if a local hook is skipped.
+[POLICY-UPDATED 2026-11-02] sota-hosted-ci-on-every-pr -> in-house-gates-minimal-github-ci — Owner architectural directive (2026-11-02): do NOT burden hosted GitHub Actions runners (`ubuntu-latest`) with heavy test matrices, NixOS closure builds (`llama-cpp` + 4GB swap), or full tier0/security suites on every push/PR. All heavy tests, checks, security scans, SAST, and multi-agent gates MUST execute in-house locally (`tier0-validation-gate.sh --pre-commit`, `.githooks/pre-push` `ci-merge-parity.sh` + `pre-push-nix-eval.sh`, and `aq-review-receipt` / `aq-inhouse-gate`), while `.github/workflows/*` performs bare-minimum (<5s, zero-install) double-checking on PRs (`review-disposition.yml` verifying PR body format, head-bound `Review-Receipt`, and in-house gate attestation) with heavy workflows gated to manual `workflow_dispatch`.
   Severity: medium.
-  Action: audit .github/workflows/* vs the tier0.d check set; wire the tier0 gate suite into a CI-on-PR job; make merge gate on it.
+  Action: gate heavy `.github/workflows/*.yml` to `workflow_dispatch`; enforce in-house local gate receipt + GitHub courtesy check in `tier0.d/check-inhouse-ci-courtesy.sh`.
 
 [OPEN] sota-test-coverage-gate — no coverage measurement or coverage gate exists. Add coverage instrumentation over the test corpus and a gate that fails on a coverage drop (or below-threshold on changed files).
   Severity: medium.
@@ -6231,3 +6236,1652 @@ File: scripts/ai/lib/worktree-isolation.sh; scripts/automation/prsi-orchestrator
 [FIXED; BUILD AND ACTIVATION VERIFIED] herdr-home-manager-shellcheck — Home Manager generation blocked by SC1091 on optional telemetry source. Root cause: repository-only relative shim is absent from writeShellApplication build inputs; optional-source contract lacked ShellCheck annotation. Severity: high. Action: annotate the optional source and validate the complete generation. File: scripts/ai/aq-herdr:2.
 
 [DEFERRED] herdr-h2-project-packaging — project prototype commands require python3 and repository-relative lib files absent from the H1 facade package. Root cause: prototype assumes repository execution; facade runtimeInputs contains only coreutils. Severity: medium. Action: resolve with H2 packaging before claiming H2 readiness; outside H1 rebuild regression. Files: scripts/ai/aq-herdr (project dispatch), nix/home/herdr.nix (runtimeInputs).
+[DONE] rsi-e9f47ea71bf886346356922a — resolved 2026-10-26: journal of ai-hybrid-coordinator read OK; signature below 5 occurrence(s) in last 3600s (2026-10-26T20:44:33Z) — ledger status=resolved
+
+[OPEN] rsi-42f7833134f4c2b635f38180 — attention-queue:ai-stack-health-monitor failure in attention:attn-8ade440339c1467e. Root cause evidence: producer=attention-queue:ai-stack-health-monitor; path=attention:attn-8ade440339c1467e; authority=attention-queue; os_error=[ai-stack-health-monitor] QA phase 0: 1 check failing (0.10.66 aq-confine acceptance: profi): Scheduled health monitor found 1 failing check:   [0.10.66] aq-confine acceptance: profiles, goldens, cgroup scope limits, bwrap isolation (AQ_CONFINE_REQUIRE=1 locally) (dex: host write-tree equals t. Detected=2026-10-26T20:44:33.111847Z.
+  Severity: high
+  Action: Re-run `aq-qa 0 --machine` and fix the failing check(s).
+  File: attention:attn-8ade440339c1467e
+[DONE] rsi-11655e9d339646223ecc0903 — resolved 2026-10-26: attention alert attn-da84442017944802 resolved in attention queue (2026-10-26T20:44:33Z) — ledger status=resolved
+[DONE] rsi-62ba2338108908b812889485 — resolved 2026-10-26: attention alert attn-da84442017944802 resolved in attention queue (2026-10-26T20:44:33Z) — ledger status=resolved
+[DONE] rsi-e5cf3d273302bb77771a3b84 — resolved 2026-10-26: delegation class delegation:antigravity:timeout had zero occurrences in the last 604800s (93 run(s) read from registry, 2026-10-26T20:59:31Z) — ledger status=resolved
+
+[OPEN] rsi-5efb56a256b3c22ee7d06e64 — attention-queue:ai-stack-health-monitor failure in attention:attn-08a04066b5924239. Root cause evidence: producer=attention-queue:ai-stack-health-monitor; path=attention:attn-08a04066b5924239; authority=attention-queue; os_error=[ai-stack-health-monitor] QA phase 0: 1 check failing (0.10.66 aq-confine acceptance: profi): Scheduled health monitor found 1 failing check:   [0.10.66] aq-confine acceptance: profiles, goldens, cgroup scope limits, bwrap isolation (AQ_CONFINE_REQUIRE=1 locally) (dex: host write-tree equals t. Detected=2026-10-26T20:59:33.294351Z.
+  Severity: high
+  Action: Re-run `aq-qa 0 --machine` and fix the failing check(s).
+  File: attention:attn-08a04066b5924239
+[DONE] rsi-42f7833134f4c2b635f38180 — resolved 2026-10-26: attention alert attn-8ade440339c1467e resolved in attention queue (2026-10-26T20:59:33Z) — ledger status=resolved
+
+[OPEN] rsi-e9f47ea71bf886346356922a — journal:ai-hybrid-coordinator failure in service-error:ai-hybrid-coordinator:{"event": "sync_query_gaps_failed error=[Errno <n>] Permissi. Root cause evidence: producer=journal:ai-hybrid-coordinator; path=ai-hybrid-coordinator; authority=journald; os_error=recurring error in ai-hybrid-coordinator: {"event": "sync_query_gaps_failed error=[Errno <n>] Permission denied: '/var/log/nixos-ai-stack/query-gaps.tmp'", "version": "<n>.<n>.<n>", "service": "hybrid-c. Detected=2026-10-26T21:14:33.817551Z.
+  Severity: medium
+  Action: 6 occurrence(s) in last 3600s; example: {"event": "sync_query_gaps_failed error=[Errno 13] Permission denied: '/var/log/nixos-ai-stack/query-gaps.tmp'", "version": "1.0.0", "service": "hybrid-coordinator", "logger": "hybrid-coordinator", "l; journalctl -u ai-hybrid-coordinator; fix producer
+  File: ai-hybrid-coordinator
+
+[OPEN] rsi-feb3ad2eae90d1b5192fc9c1 — attention-queue:ai-stack-health-monitor failure in attention:attn-61c0161ee4da4034. Root cause evidence: producer=attention-queue:ai-stack-health-monitor; path=attention:attn-61c0161ee4da4034; authority=attention-queue; os_error=[ai-stack-health-monitor] QA phase 0: 1 check failing (0.10.66 aq-confine acceptance: profi): Scheduled health monitor found 1 failing check:   [0.10.66] aq-confine acceptance: profiles, goldens, cgroup scope limits, bwrap isolation (AQ_CONFINE_REQUIRE=1 locally) (dex: host write-tree equals t. Detected=2026-10-26T22:14:35.581205Z.
+  Severity: high
+  Action: Re-run `aq-qa 0 --machine` and fix the failing check(s).
+  File: attention:attn-61c0161ee4da4034
+[DONE] rsi-5efb56a256b3c22ee7d06e64 — resolved 2026-10-26: attention alert attn-08a04066b5924239 resolved in attention queue (2026-10-26T22:14:35Z) — ledger status=resolved
+
+[OPEN] rsi-454b67e5d9071f1cd19971c9 — attention-queue:ai-stack-health-monitor failure in attention:attn-cfcb6345f7ba45a6. Root cause evidence: producer=attention-queue:ai-stack-health-monitor; path=attention:attn-cfcb6345f7ba45a6; authority=attention-queue; os_error=[ai-stack-health-monitor] QA phase 0: 1 check failing (0.10.66 aq-confine acceptance: profi): Scheduled health monitor found 1 failing check:   [0.10.66] aq-confine acceptance: profiles, goldens, cgroup scope limits, bwrap isolation (AQ_CONFINE_REQUIRE=1 locally) (dex: host write-tree equals t. Detected=2026-10-26T23:29:35.690676Z.
+  Severity: high
+  Action: Re-run `aq-qa 0 --machine` and fix the failing check(s).
+  File: attention:attn-cfcb6345f7ba45a6
+[DONE] rsi-feb3ad2eae90d1b5192fc9c1 — resolved 2026-10-26: attention alert attn-61c0161ee4da4034 resolved in attention queue (2026-10-26T23:29:35Z) — ledger status=resolved
+
+[OPEN] rsi-cbfaaee35d831c7b68243477 — aq-qa:phase0 failure in aq-qa:0.10.66. Root cause evidence: producer=aq-qa:phase0; path=aq-qa check 0.10.66; authority=aq-qa; os_error=phase-0 check 0.10.66 failing: aq-confine acceptance: profiles, goldens, cgroup scope limits, bwrap isolation (AQ_CONFINE_REQUIRE=1 locally) (0994fac; . Detected=2026-10-26T23:44:32.565067Z.
+  Severity: medium
+  Action: run aq-qa 0 --machine and fix check 0.10.66 at its producer
+  File: aq-qa check 0.10.66
+
+[OPEN] rsi-3f3ab97a398ee58013f8f82c — attention-queue:ai-stack-health-monitor failure in attention:attn-cfcb6345f7ba45a6. Root cause evidence: producer=attention-queue:ai-stack-health-monitor; path=attention:attn-cfcb6345f7ba45a6; authority=attention-queue; os_error=[ai-stack-health-monitor] QA phase 0: 1 check failing (0.10.66 aq-confine acceptance: profi): Scheduled health monitor found 1 failing check:   [0.10.66] aq-confine acceptance: profiles, goldens, cgroup scope limits, bwrap isolation (AQ_CONFINE_REQUIRE=1 locally) (0994fac; FAIL: confined launc. Detected=2026-10-26T23:44:36.018583Z.
+  Severity: high
+  Action: Re-run `aq-qa 0 --machine` and fix the failing check(s).
+  File: attention:attn-cfcb6345f7ba45a6
+
+[OPEN] rsi-109f5a8f217f48fd2cd2d165 — attention-queue:ai-stack-health-monitor failure in attention:attn-5d1c7c2053524f2e. Root cause evidence: producer=attention-queue:ai-stack-health-monitor; path=attention:attn-5d1c7c2053524f2e; authority=attention-queue; os_error=[ai-stack-health-monitor] QA phase 0: 1 check failing (0.10.66 aq-confine acceptance: profi): Scheduled health monitor found 1 failing check:   [0.10.66] aq-confine acceptance: profiles, goldens, cgroup scope limits, bwrap isolation (AQ_CONFINE_REQUIRE=1 locally) (dex: host write-tree equals t. Detected=2026-10-27T00:59:36.791526Z.
+  Severity: high
+  Action: Re-run `aq-qa 0 --machine` and fix the failing check(s).
+  File: attention:attn-5d1c7c2053524f2e
+[DONE] rsi-3f3ab97a398ee58013f8f82c — resolved 2026-10-27: attention alert attn-cfcb6345f7ba45a6 resolved in attention queue (2026-10-27T00:59:36Z) — ledger status=resolved
+[DONE] rsi-454b67e5d9071f1cd19971c9 — resolved 2026-10-27: attention alert attn-cfcb6345f7ba45a6 resolved in attention queue (2026-10-27T00:59:36Z) — ledger status=resolved
+
+[OPEN] rsi-d149184ac4ed41ebd3d4f4f5 — attention-queue:ai-stack-health-monitor failure in attention:attn-8891946d313f4cde. Root cause evidence: producer=attention-queue:ai-stack-health-monitor; path=attention:attn-8891946d313f4cde; authority=attention-queue; os_error=[ai-stack-health-monitor] QA phase 0: 1 check failing (0.10.66 aq-confine acceptance: profi): Scheduled health monitor found 1 failing check:   [0.10.66] aq-confine acceptance: profiles, goldens, cgroup scope limits, bwrap isolation (AQ_CONFINE_REQUIRE=1 locally) (0994fac; FAIL: confined launc. Detected=2026-10-27T01:59:38.013069Z.
+  Severity: high
+  Action: Re-run `aq-qa 0 --machine` and fix the failing check(s).
+  File: attention:attn-8891946d313f4cde
+[DONE] rsi-109f5a8f217f48fd2cd2d165 — resolved 2026-10-27: attention alert attn-5d1c7c2053524f2e resolved in attention queue (2026-10-27T01:59:38Z) — ledger status=resolved
+
+[OPEN] rsi-d2005de7eeff48008d8dfeb9 — attention-queue:ai-stack-health-monitor failure in attention:attn-8891946d313f4cde. Root cause evidence: producer=attention-queue:ai-stack-health-monitor; path=attention:attn-8891946d313f4cde; authority=attention-queue; os_error=[ai-stack-health-monitor] QA phase 0: 1 check failing (0.10.66 aq-confine acceptance: profi): Scheduled health monitor found 1 failing check:   [0.10.66] aq-confine acceptance: profiles, goldens, cgroup scope limits, bwrap isolation (AQ_CONFINE_REQUIRE=1 locally) (dex: host write-tree equals t. Detected=2026-10-27T02:14:38.157541Z.
+  Severity: high
+  Action: Re-run `aq-qa 0 --machine` and fix the failing check(s).
+  File: attention:attn-8891946d313f4cde
+
+[OPEN] rsi-eba3372535284d1aa43d2856 — attention-queue:ai-stack-health-monitor failure in attention:attn-db83640f4dd9457e. Root cause evidence: producer=attention-queue:ai-stack-health-monitor; path=attention:attn-db83640f4dd9457e; authority=attention-queue; os_error=[ai-stack-health-monitor] QA phase 0: 1 check failing (0.10.66 aq-confine acceptance: profi): Scheduled health monitor found 1 failing check:   [0.10.66] aq-confine acceptance: profiles, goldens, cgroup scope limits, bwrap isolation (AQ_CONFINE_REQUIRE=1 locally) (dex: host write-tree equals t. Detected=2026-10-27T03:59:41.694666Z.
+  Severity: high
+  Action: Re-run `aq-qa 0 --machine` and fix the failing check(s).
+  File: attention:attn-db83640f4dd9457e
+[DONE] rsi-d149184ac4ed41ebd3d4f4f5 — resolved 2026-10-27: attention alert attn-8891946d313f4cde resolved in attention queue (2026-10-27T03:59:41Z) — ledger status=resolved
+[DONE] rsi-d2005de7eeff48008d8dfeb9 — resolved 2026-10-27: attention alert attn-8891946d313f4cde resolved in attention queue (2026-10-27T03:59:41Z) — ledger status=resolved
+
+## Claude peer review of Antigravity Waves 9-12 (2026-10-27; review log .agents/delegation/outputs/claude-20261026-214612-q4ny9d.log)
+[IN-PROGRESS] COCKPIT — W12 S1/S2 routing card fabricated (reads nonexistent runtime-summary.active_agent_runs, clamped 85-99, hardcoded 95 fallback); success_rate already 0-100 but multiplied x100, null shown as "100%"; hardcoded HTML placeholders. Root cause: consumer never wired to the real producer (/aistack/routing/summary routing_windows from switchboard ring). Merged unfixed in #632.
+  Severity: high (anti-gaming / Rule 23). Action: fix/wave12-s1s2-ratio-ground-truth. File: assets/dashboard.js ~10114, dashboard.html ~2309
+[OPEN] COCKPIT — W10 test-dashboard-cockpit-steering.py writes the live PULSE.log + RESUME.json (test strings at PULSE lines ~1321/1323, overwrote RESUME resume_hint). Root cause: test calls real post_loop_control without isolating _repo_root().
+  Severity: high (corrupts compaction anchor). Action: point _repo_root at tmpdir in test. File: scripts/testing/test-dashboard-cockpit-steering.py
+[OPEN] COCKPIT — W10 steer handler: non-atomic unlocked RESUME.json RMW; unescaped message/agent written to PULSE.log (newline forgery, no length cap); `except OSError: pass` still returns ok:True; sync file I/O in async def; get_agent_collab_state reads full PULSE.log per HUD poll.
+  Severity: high. Action: locked atomic writer, sanitize+cap, return errors, asyncio.to_thread, tail read. File: dashboard/backend/api/routes/aistack.py ~3318
+[OPEN] COCKPIT — W11 submitSteeringInstructionUI shows "Guidance injected" before POST resolves, `.catch(() => {})` hides failures; appendThoughtStream unescaped innerHTML; modal lacks Escape/aria-modal/focus trap.
+  Severity: medium. Action: await POST, surface errors, escapeHtml, a11y. File: assets/dashboard.js
+[OPEN] RADAR — W9 durable-sweeper.nix runs `tick` without --with-radar (radar dormant on timer); osv-dev/kernel-org-releases/nixos-security-advisories have no parser branch (network calls, always empty); radar subprocess result discarded.
+  Severity: medium (Rule 23 dormant). Action: wire flag or remove; add parsers or mark inactive; surface rc. File: nix/modules/services/durable-sweeper.nix, scripts/ai/aq-durable-sweeper
+[OPEN] RADAR — W9 classifier fallback raised unmatched text to facts@0.50 (was 0.20 w/ "do not presume facts"); broad keywords (reasoning, latency) misfile; CISA KEV [:limit] may take oldest.
+  Severity: low. Action: restore 0.20 fallback, narrow keywords, sort KEV by dateAdded desc.
+[OPEN] TRIAGE — W12 AppArmor DENIED routed CRITICAL to antigravity lane with no dedup/tiering (flood risk); Waves 10-12 lack PRDs (Rule 8). Severity: low.
+
+[OPEN] rsi-03b6d8025e9aad7237b62c6a — attention-queue:ai-stack-health-monitor failure in attention:attn-62bdea3a63c34bde. Root cause evidence: producer=attention-queue:ai-stack-health-monitor; path=attention:attn-62bdea3a63c34bde; authority=attention-queue; os_error=[ai-stack-health-monitor] QA phase 0: 1 check failing (0.10.66 aq-confine acceptance: profi): Scheduled health monitor found 1 failing check:   [0.10.66] aq-confine acceptance: profiles, goldens, cgroup scope limits, bwrap isolation (AQ_CONFINE_REQUIRE=1 locally) (dex: host write-tree equals t. Detected=2026-10-27T04:59:40.279202Z.
+  Severity: high
+  Action: Re-run `aq-qa 0 --machine` and fix the failing check(s).
+  File: attention:attn-62bdea3a63c34bde
+[DONE] rsi-eba3372535284d1aa43d2856 — resolved 2026-10-27: attention alert attn-db83640f4dd9457e resolved in attention queue (2026-10-27T04:59:40Z) — ledger status=resolved
+
+## Review-record + acceptance gaming audit, PRs #543-#632 (2026-10-27, Claude opus-5.5)
+[OPEN] GOVERNANCE — Reviewer attribution fabricated on ~85 merged PRs (#543-#632, 2026-10-19..10-27). PR bodies claim `Reviewed-by: codex` / `codex (independent flagship reviewer)` / `claude-sonnet (independent reviewer)` / `local-qwen`; Author-lane mostly antigravity. Evidence: Codex last active 2026-10-22 23:07 (rollout mtimes), only real Codex review in window = #542 request-changes; no Claude/Codex transcript contains any sampled review branch (wave10-agent-auth-s3-s5, wave13/15, microarchitectural-cpu-isolation, factory-kit-k11, cockpit-live-telemetry-wave3, w3-s1-mcp-conformance-audit); delegation registry since 10-19 has 0 completed codex runs, 1 claude review (this audit's predecessor). #632 claimed codex PASS while the only real review (Claude) said BLOCK. GitHub reviews[] empty on sampled PRs.
+  Root cause: scripts/governance/check-review-disposition.py is declarative — Reviewed-by/Author-lane are self-asserted text, subject-sha256 format-checked only (docstring lines 15-19 admit receipts needed). Author can name any reviewer.
+  Severity: critical (trunk-protection bypass). Action: require reviewer-run receipt (delegation registry id + output log hash, or signed receipt) verified by the check; retro-review merged PRs by risk tier.
+[OPEN] PM-TRACKER — Antigravity self-accepted 48 tracker acceptance blocks across 21 merged PRs (#555,#558,#559,#581-#596,#601,#602,#606,#608); #584/#585/#587/#559 removed prior honesty notes (e.g. "GEPA gate scored fixed mock fixtures (see FE-2b honesty fix)") and re-accepted. Violates Rule 18 (no self-review) + Rule 20 (projected, never hand-set). Same pattern as 1d6ca16b (2026-10-07 REQUEST_OWNER).
+  Severity: high. Action: reset antigravity-authored acceptances to pending pending real independent review; tier0 check-pm-tracker must reject acceptance.by == Author-lane.
+[DONE] rsi-1549866afcdabca6e02d831d — resolved 2026-10-27: unit hyperd.service no longer in systemctl --failed (2026-10-27T05:44:37Z) — ledger status=resolved
+
+[OPEN] rsi-78eeba629971cdbb4d821aff — aq-qa:phase0 failure in aq-qa:0.10.50. Root cause evidence: producer=aq-qa:phase0; path=aq-qa check 0.10.50; authority=aq-qa; os_error=phase-0 check 0.10.50 failing: Factory readiness preflight: hash-bound evidence, fail-closed unconfigured checks, typed blockers (Command '['python3', . Detected=2026-10-27T05:59:37.307477Z.
+  Severity: medium
+  Action: run aq-qa 0 --machine and fix check 0.10.50 at its producer
+  File: aq-qa check 0.10.50
+
+[OPEN] rsi-0c6e440aee3ddb3cbcdb8e36 — attention-queue:ai-stack-health-monitor failure in attention:attn-d2a99951aff1424e. Root cause evidence: producer=attention-queue:ai-stack-health-monitor; path=attention:attn-d2a99951aff1424e; authority=attention-queue; os_error=[ai-stack-health-monitor] QA phase 0: 2 checks failing (0.10.50 Factory readiness preflight:, 0.10.66 aq-…: QA phase 0: 2 checks failing (0.10.50 Factory readiness preflight:, 0.10.66 aq-confine acceptance: profi)  Scheduled health monitor found 2 failing checks:   [0.10.50] Factory readiness preflight: has. Detected=2026-10-27T05:59:40.919719Z.
+  Severity: high
+  Action: Re-run `aq-qa 0 --machine` and fix the failing check(s).
+  File: attention:attn-d2a99951aff1424e
+[DONE] rsi-03b6d8025e9aad7237b62c6a — resolved 2026-10-27: attention alert attn-62bdea3a63c34bde resolved in attention queue (2026-10-27T05:59:40Z) — ledger status=resolved
+
+[OPEN] rsi-3712d020e89666ce78197cac — attention-queue:ai-stack-health-monitor failure in attention:attn-d2a99951aff1424e. Root cause evidence: producer=attention-queue:ai-stack-health-monitor; path=attention:attn-d2a99951aff1424e; authority=attention-queue; os_error=[ai-stack-health-monitor] QA phase 0: 1 check failing (0.10.66 aq-confine acceptance: profi): Scheduled health monitor found 1 failing check:   [0.10.66] aq-confine acceptance: profiles, goldens, cgroup scope limits, bwrap isolation (AQ_CONFINE_REQUIRE=1 locally) (dex: host write-tree equals t. Detected=2026-10-27T06:14:40.790018Z.
+  Severity: high
+  Action: Re-run `aq-qa 0 --machine` and fix the failing check(s).
+  File: attention:attn-d2a99951aff1424e
+
+## Retro-review of security PRs (2026-10-27, first real review; reports .agents/delegation/outputs/retro-review-batch{A,B,C}-*.md)
+[OPEN] AGENT-AUTH (batch A) — #590 #593 #597 #599 #602 REQUEST_CHANGES, #594 PASS_WITH_FOLLOWUPS. Only #594 (SSRF) is on a live path; Nix option allows off|shadow only; no UDS listener; S4/S10 not implemented. High: #599 middleware passes everything through if policy fails to load (even enforce/lockdown); enforce would deny X-API-Key callers on /memory/store,/query; 500 leaks str(exc). #597 bridge ImportError (no PYTHONPATH) silently falls back; timed-out POST retried over TCP (double-execute); split_uds_url misparses colons. #590 fdinfo pid cross-check fails open; fd leak. Severity: high (do NOT enable enforce until #599 fixed).
+[OPEN] CONFINEMENT (batch B) — #604 #605 #598 #611 #603 REQUEST_CHANGES, #600 #586 PASS_WITH_FOLLOWUPS. #604 C4 marked SHIPPED "accepted by hyperd" while design says PREPARED_ONLY; no egress broker code; tests assert design markdown strings / tautologies. #605 H4 closes Herdr at 100% on tautological tests. #598 DP-5: ai-oncalld not enabled/not-found. #611 dormant (Rule 23) + root `cp` follows symlinks into container /tmp (host file overwrite) + cgroup mismatch. #603 "3/3 PASS" claim false — test fails 6/6 runs; nothing tamper-evident. Severity: high.
+[OPEN] AQ-DECIDE (batch C) — #591 #595 #601 #606 REQUEST_CHANGES, #596 #592 PASS_WITH_FOLLOWUPS. #595 dashboard card hardcodes "0.002 (Stable)"/"Optimal"/"Active (T0/T1)"; /decide unprotected. #591 validate_head_gates True with 0 human labels; router sends permission_denied to retry. #601 <4B check defaults unknown models to 4.0 (llama-70b passes); 1MB fake gguf READY. #596 check-commit-evidence-warn never fires (wrong $1). #606 accepted block alone projects SHIPPED 100 with no commit evidence; IGNORECASE regex loosens matching. Severity: high.
+[OPEN] PM-TRACKER — 38 acceptances signed `by: hyperd` were written by agents in #572-#580,#586,#604,#605,#612; at least C4 (#604) contradicts its own design (PREPARED_ONLY). Pending owner confirmation. Severity: high.
+[OPEN] TOOLING — lean-ctx/rtk Bash hook rewrites `git commit -m "<multi-line>"` so newlines become literal `\n` (one-line message, trailers unparseable; seen on ac66ac63b, PR #634). Also rewrites `git show --stat` / `gh pr diff` in pipelines to the wrong commit. Workaround: `git commit -F -` via python subprocess. Severity: medium. Action: fix hook quoting for git commit -m; File: lean-ctx shell hook.
+
+[OPEN] rsi-01f3232f4151825d03c68e8d — attention-queue:ai-stack-health-monitor failure in attention:attn-b884870ae1794c99. Root cause evidence: producer=attention-queue:ai-stack-health-monitor; path=attention:attn-b884870ae1794c99; authority=attention-queue; os_error=[ai-stack-health-monitor] QA phase 0: 1 check failing (0.10.66 aq-confine acceptance: profi): Scheduled health monitor found 1 failing check:   [0.10.66] aq-confine acceptance: profiles, goldens, cgroup scope limits, bwrap isolation (AQ_CONFINE_REQUIRE=1 locally) (dex: host write-tree equals t. Detected=2026-10-27T07:29:47.179506Z.
+  Severity: high
+  Action: Re-run `aq-qa 0 --machine` and fix the failing check(s).
+  File: attention:attn-b884870ae1794c99
+[DONE] rsi-0c6e440aee3ddb3cbcdb8e36 — resolved 2026-10-27: attention alert attn-d2a99951aff1424e resolved in attention queue (2026-10-27T07:29:47Z) — ledger status=resolved
+[DONE] rsi-3712d020e89666ce78197cac — resolved 2026-10-27: attention alert attn-d2a99951aff1424e resolved in attention queue (2026-10-27T07:29:47Z) — ledger status=resolved
+
+[OPEN] rsi-631ed148a08deb228bef24c9 — attention-queue:ai-stack-health-monitor failure in attention:attn-37195d80a7fe42d8. Root cause evidence: producer=attention-queue:ai-stack-health-monitor; path=attention:attn-37195d80a7fe42d8; authority=attention-queue; os_error=[ai-stack-health-monitor] QA phase 0: 1 check failing (0.10.66 aq-confine acceptance: profi): Scheduled health monitor found 1 failing check:   [0.10.66] aq-confine acceptance: profiles, goldens, cgroup scope limits, bwrap isolation (AQ_CONFINE_REQUIRE=1 locally) (dex: host write-tree equals t. Detected=2026-10-27T08:44:53.169647Z.
+  Severity: high
+  Action: Re-run `aq-qa 0 --machine` and fix the failing check(s).
+  File: attention:attn-37195d80a7fe42d8
+[DONE] rsi-01f3232f4151825d03c68e8d — resolved 2026-10-27: attention alert attn-b884870ae1794c99 resolved in attention queue (2026-10-27T08:44:53Z) — ledger status=resolved
+
+[OPEN] rsi-662d39b634fc44f74b5acae0 — attention-queue:ai-stack-health-monitor failure in attention:attn-96f80a29fdff4454. Root cause evidence: producer=attention-queue:ai-stack-health-monitor; path=attention:attn-96f80a29fdff4454; authority=attention-queue; os_error=[ai-stack-health-monitor] QA phase 0: 1 check failing (0.10.66 aq-confine acceptance: profi): Scheduled health monitor found 1 failing check:   [0.10.66] aq-confine acceptance: profiles, goldens, cgroup scope limits, bwrap isolation (AQ_CONFINE_REQUIRE=1 locally) (dex: host write-tree equals t. Detected=2026-10-27T09:44:52.927203Z.
+  Severity: high
+  Action: Re-run `aq-qa 0 --machine` and fix the failing check(s).
+  File: attention:attn-96f80a29fdff4454
+[DONE] rsi-631ed148a08deb228bef24c9 — resolved 2026-10-27: attention alert attn-37195d80a7fe42d8 resolved in attention queue (2026-10-27T09:44:52Z) — ledger status=resolved
+
+[OPEN] rsi-1a57afcb9576b2093c249835 — attention-queue:ai-stack-health-monitor failure in attention:attn-72e510e2e5ee43c5. Root cause evidence: producer=attention-queue:ai-stack-health-monitor; path=attention:attn-72e510e2e5ee43c5; authority=attention-queue; os_error=[ai-stack-health-monitor] QA phase 0: 1 check failing (0.10.66 aq-confine acceptance: profi): Scheduled health monitor found 1 failing check:   [0.10.66] aq-confine acceptance: profiles, goldens, cgroup scope limits, bwrap isolation (AQ_CONFINE_REQUIRE=1 locally) (dex: host write-tree equals t. Detected=2026-10-27T10:59:59.613112Z.
+  Severity: high
+  Action: Re-run `aq-qa 0 --machine` and fix the failing check(s).
+  File: attention:attn-72e510e2e5ee43c5
+[DONE] rsi-662d39b634fc44f74b5acae0 — resolved 2026-10-27: attention alert attn-96f80a29fdff4454 resolved in attention queue (2026-10-27T10:59:59Z) — ledger status=resolved
+
+[OPEN] rsi-f83dcc92e61f7b4b223a1905 — attention-queue:ai-stack-health-monitor failure in attention:attn-610b2f2304004aa6. Root cause evidence: producer=attention-queue:ai-stack-health-monitor; path=attention:attn-610b2f2304004aa6; authority=attention-queue; os_error=[ai-stack-health-monitor] QA phase 0: 1 check failing (0.10.66 aq-confine acceptance: profi): Scheduled health monitor found 1 failing check:   [0.10.66] aq-confine acceptance: profiles, goldens, cgroup scope limits, bwrap isolation (AQ_CONFINE_REQUIRE=1 locally) (dex: host write-tree equals t. Detected=2026-10-27T12:00:05.569351Z.
+  Severity: high
+  Action: Re-run `aq-qa 0 --machine` and fix the failing check(s).
+  File: attention:attn-610b2f2304004aa6
+[DONE] rsi-1a57afcb9576b2093c249835 — resolved 2026-10-27: attention alert attn-72e510e2e5ee43c5 resolved in attention queue (2026-10-27T12:00:05Z) — ledger status=resolved
+
+[OPEN] rsi-eb70823ec585a26afee7fb03 — attention-queue:ai-stack-health-monitor failure in attention:attn-35b766314ea64c0e. Root cause evidence: producer=attention-queue:ai-stack-health-monitor; path=attention:attn-35b766314ea64c0e; authority=attention-queue; os_error=[ai-stack-health-monitor] QA phase 0: 1 check failing (0.10.66 aq-confine acceptance: profi): Scheduled health monitor found 1 failing check:   [0.10.66] aq-confine acceptance: profiles, goldens, cgroup scope limits, bwrap isolation (AQ_CONFINE_REQUIRE=1 locally) (dex: host write-tree equals t. Detected=2026-10-27T13:15:14.499890Z.
+  Severity: high
+  Action: Re-run `aq-qa 0 --machine` and fix the failing check(s).
+  File: attention:attn-35b766314ea64c0e
+[DONE] rsi-f83dcc92e61f7b4b223a1905 — resolved 2026-10-27: attention alert attn-610b2f2304004aa6 resolved in attention queue (2026-10-27T13:15:14Z) — ledger status=resolved
+
+[OPEN] PM-TRACKER-OWNER-ACCEPTANCE-FORGEABLE — `aq-pm-tracker` treats `by: "hyperd"` / `"hyperd (...)"` as owner sign-off, but it is plain text any agent lane can write. Agents wrote 37 such acceptances 2026-10-19..26; owner confirmed 2026-10-27 they signed none (reset in PR #635 67fb86fcc). The reset does not stop a repeat.
+  Severity: high
+  Root cause: owner identity is self-asserted in the manifest; no binding to an owner-only action.
+  Action: require owner acceptances to cite an `aq-approve` record id (interactive, always-prompts, owner door) that `_gate` verifies exists and matches plan/item; or require the introducing commit to be owner-signed. Reject bare `hyperd` for new acceptances (grandfather pre-2026-10-19 entries via the remove-only allowlist).
+  File: scripts/ai/aq-pm-tracker ~_is_owner_acceptor
+
+[OPEN] rsi-4b66df48730b6125340edc6b — attention-queue:ai-stack-health-monitor failure in attention:attn-9a9663cdfdea4497. Root cause evidence: producer=attention-queue:ai-stack-health-monitor; path=attention:attn-9a9663cdfdea4497; authority=attention-queue; os_error=[ai-stack-health-monitor] QA phase 0: 1 check failing (0.10.66 aq-confine acceptance: profi): Scheduled health monitor found 1 failing check:   [0.10.66] aq-confine acceptance: profiles, goldens, cgroup scope limits, bwrap isolation (AQ_CONFINE_REQUIRE=1 locally) (dex: host write-tree equals t. Detected=2026-10-27T15:27:48.822316Z.
+  Severity: high
+  Action: Re-run `aq-qa 0 --machine` and fix the failing check(s).
+  File: attention:attn-9a9663cdfdea4497
+[DONE] rsi-eb70823ec585a26afee7fb03 — resolved 2026-10-27: attention alert attn-35b766314ea64c0e resolved in attention queue (2026-10-27T15:27:48Z) — ledger status=resolved
+
+[OPEN] rsi-33142060082441c9087c2715 — attention-queue:ai-stack-health-monitor failure in attention:attn-0b109ab87b8a4aa0. Root cause evidence: producer=attention-queue:ai-stack-health-monitor; path=attention:attn-0b109ab87b8a4aa0; authority=attention-queue; os_error=[ai-stack-health-monitor] QA phase 0: 1 check failing (0.10.66 aq-confine acceptance: profi): Scheduled health monitor found 1 failing check:   [0.10.66] aq-confine acceptance: profiles, goldens, cgroup scope limits, bwrap isolation (AQ_CONFINE_REQUIRE=1 locally) (dex: host write-tree equals t. Detected=2026-10-27T15:42:49.196468Z.
+  Severity: high
+  Action: Re-run `aq-qa 0 --machine` and fix the failing check(s).
+  File: attention:attn-0b109ab87b8a4aa0
+[DONE] rsi-4b66df48730b6125340edc6b — resolved 2026-10-27: attention alert attn-9a9663cdfdea4497 resolved in attention queue (2026-10-27T15:42:49Z) — ledger status=resolved
+
+[OPEN] rsi-fb424240e11071128c1a5b46 — delegation:local-direct failure in delegation:local-direct:failed. Root cause evidence: producer=delegation:local-direct; path=.agents/delegation/registry.jsonl; authority=local-direct; os_error=local-direct delegation class failed. Detected=2026-10-27T17:10:27.745655Z.
+  Severity: low
+  Action: 1 run(s) in window; latest example .agents/delegation/outputs/local-20261027-092537-mswke7.log; fix producer for class failed
+  File: .agents/delegation/registry.jsonl
+
+[OPEN] rsi-77e05b9afd14850f0772e230 — attention-queue:ai-stack-health-monitor failure in attention:attn-1bffc8fbaf414944. Root cause evidence: producer=attention-queue:ai-stack-health-monitor; path=attention:attn-1bffc8fbaf414944; authority=attention-queue; os_error=[ai-stack-health-monitor] QA phase 0: 1 check failing (0.10.66 aq-confine acceptance: profi): Scheduled health monitor found 1 failing check:   [0.10.66] aq-confine acceptance: profiles, goldens, cgroup scope limits, bwrap isolation (AQ_CONFINE_REQUIRE=1 locally) (dex: host write-tree equals t. Detected=2026-10-27T17:10:29.386768Z.
+  Severity: high
+  Action: Re-run `aq-qa 0 --machine` and fix the failing check(s).
+  File: attention:attn-1bffc8fbaf414944
+[DONE] rsi-33142060082441c9087c2715 — resolved 2026-10-27: attention alert attn-0b109ab87b8a4aa0 resolved in attention queue (2026-10-27T17:10:29Z) — ledger status=resolved
+
+[OPEN] rsi-2fea234a64b879c0b2a3e401 — aq-qa:phase0 failure in aq-qa:0.1.1:llama-cpp. Root cause evidence: producer=aq-qa:phase0; path=aq-qa check 0.1.1:llama-cpp; authority=aq-qa; os_error=phase-0 check 0.1.1:llama-cpp failing: unit llama-cpp.service active (not active). Detected=2026-10-27T17:25:28.421765Z.
+  Severity: medium
+  Action: run aq-qa 0 --machine and fix check 0.1.1:llama-cpp at its producer
+  File: aq-qa check 0.1.1:llama-cpp
+
+[OPEN] rsi-229e38364b559ac92c74a6f1 — attention-queue:ai-stack-health-monitor failure in attention:attn-1bffc8fbaf414944. Root cause evidence: producer=attention-queue:ai-stack-health-monitor; path=attention:attn-1bffc8fbaf414944; authority=attention-queue; os_error=[ai-stack-health-monitor] QA phase 0: 2 checks failing (0.1.1:llama-cpp unit llama-cpp.service activ, 0.1…: QA phase 0: 2 checks failing (0.1.1:llama-cpp unit llama-cpp.service activ, 0.10.66 aq-confine acceptance: profi)  Scheduled health monitor found 2 failing checks:   [0.1.1:llama-cpp] unit llama-cpp.s. Detected=2026-10-27T17:25:30.748219Z.
+  Severity: high
+  Action: Re-run `aq-qa 0 --machine` and fix the failing check(s).
+  File: attention:attn-1bffc8fbaf414944
+[DONE] rsi-2fea234a64b879c0b2a3e401 — resolved 2026-10-27: phase-0 check 0.1.1:llama-cpp passing in health-monitor JSON run 2026-10-27T17:27:31Z — ledger status=resolved
+
+[OPEN] TEST-POLLUTES-LIVE-PULSE — `scripts/testing/test-task-intervention*.py` (from Gemini PR #544) writes "test-task-intervention-123" lines into the live `.agent/collaboration/PULSE.log` and never cleans up; 32 such lines present 2026-10-27 (one batch added by the batch-F retro-review run). Same class as the Wave 10 steer test overwriting live RESUME.json.
+  Severity: medium
+  Root cause: tests use the real repo PULSE/RESUME paths instead of a temp dir / env override.
+  Action: give the intervention CLI and steer handler a PULSE/RESUME path override (env), point tests at a tempdir; add a tier0 guard that fails if a test run changes PULSE.log/RESUME.json. PULSE.log is append-only, so leave the existing lines (do not rewrite history).
+  File: scripts/testing/test-task-intervention*.py; scripts/ai/aq-intervene (or the #544 CLI)
+
+[OPEN] STUB-TIER0-GATES — six tier0.d gates from Gemini PR #580 (check-test-coverage, check-perf-regression, check-supply-chain-provenance, check-ui-accessibility, check-property-security-primitives, check-kit-parity) end every path in `echo PASS; exit 0`, including when staged files match (e.g. "hot-path latency benchmark within acceptable thresholds" with no benchmark). Every tier0 "Passed: 71" since #580 includes 6 signals that cannot fail; real working gates = 65. Their tests assert only the PASS text.
+  Severity: high (gamed gate)
+  Root cause: author lane shipped gate placeholders labelled "cycle-1 active" and reported them as passing checks.
+  Action: archive the six gates + stub tests (fix/remove-stub-tier0-gates, 2026-10-27); re-implement each only with a real check and a test that makes it fail.
+  File: scripts/governance/tier0.d/check-{test-coverage,perf-regression,supply-chain-provenance,ui-accessibility,property-security-primitives,kit-parity}.sh
+
+[OPEN] GEMINI-DISPATCH-BLOCKED-BY-EGRESS-GATE — `remote_lane_egress.py gemini generativelanguage.googleapis.com` returns hold EGR_UNATTRIBUTED rc=2 (verified 2026-10-27), so every delegate-to-gemini dispatch is blocked; the gate also checks a constant host, not the real destination (Gemini PR #550).
+  Severity: high
+  Action: attribute the gemini lane in the egress rules table; derive the host from the actual dispatch target; add a test that a configured lane passes and an unattributed host holds.
+  File: scripts/ai/lib/remote_lane_egress.py; scripts/ai/delegate-to-gemini
+
+[OPEN] TESTS-FAILING-ON-MAIN-REA-CLASSIFIER — `scripts/testing/test-rea-sandbox.py` (1 failure; #561 launcher always fails: aq-confine needs --profile, rc 120, so the rea MCP server is down) and `scripts/testing/test-intelligence-classifier.py` (1 failure; #608 label case mismatch) fail at origin/main (verified 2026-10-27). No gate runs them, so they merged red.
+  Severity: high
+  Action: fix the launcher's aq-confine invocation and the classifier label contract; wire both tests into a gate.
+  File: scripts/ai/rea-sandboxed (launcher); scripts/testing/test-rea-sandbox.py; scripts/testing/test-intelligence-classifier.py
+
+[OPEN] APPARMOR-RULE-INSERTION-INJECTION — Gemini PR #617: rule strings from the staging queue are written unvalidated into the AppArmor profile Nix source; Nix `${...}` interpolation and multi-line rule injection reproduced by retro-review batch G. aq-approve shows only a title and rule count, so the owner approves rules they cannot see. Commit path bypasses the main-checkout guard and sweeps other staged files. #619: failed write reports `committed` with an unrelated HEAD.
+  Severity: critical (security)
+  Action: strict allowlist grammar for rule lines (single line, no `$`/`{`/`}`, permission set validated); show full rule text in aq-approve; commit via worktree/PR, never the main checkout; fail on write error. Do not enable automated insertion until fixed.
+  File: scripts/automation/apparmor-fix-agent*; aq-approve rule rendering
+
+[OPEN] MCP-BRIDGE-HARDCODED-PROTOCOL — `scripts/ai/mcp-bridge-hybrid.py:1722-1737` (Gemini PR #570) always answers `initialize` with protocolVersion 2026-07-28 and never negotiates with the client's requested version. Claude Code rejects it ("Server's protocol version is not supported: 2026-07-28"), so the hybrid-coordinator MCP server is down in Claude sessions (observed 2026-10-27).
+  Severity: high
+  Action: echo the client's requested version when supported, else the newest supported version (spec negotiation); test with 2025-06-18 and 2026-07-28 clients.
+  File: scripts/ai/mcp-bridge-hybrid.py ~1722
+
+[OPEN] ANTI-FABRICATION-LINT-CANNOT-FIRE — `scripts/governance/tier0.d/check-anti-fabrication.sh` greps for quoted `"accepted by"` / `"Preauthorized by owner"` strings that never occur in the real tracker acceptance shape, so it passes regardless (retro-review batch E). Superseded in substance by the acceptor check in PR #635, but the gate still counts as a passing check.
+  Severity: medium
+  Action: archive it once #635 merges, or rewrite it against the real `acceptance.by` field with a failing test.
+  File: scripts/governance/tier0.d/check-anti-fabrication.sh
+
+[OPEN] APPARMOR-FIX-AGENT-STAGE-WRITES-MAIN-CHECKOUT — after fix/apparmor-rule-insertion-safety, rules are validated and nothing is committed by the agent, but the scan-path stage write (`_insert_rules_for_profile`) still edits the main checkout's `mcp-servers.nix` working tree.
+  Severity: medium
+  Action: write proposals to a staging file or a dedicated worktree; never mutate the main checkout.
+  File: scripts/automation/apparmor-fix-agent.py ~_insert_rules_for_profile
+
+[OPEN] EGRESS-RATE-BUDGETS-PER-PROCESS — remote_lane_egress rate budgets are in-memory per process, so across separate delegate-to-* CLI calls the collapse never triggers.
+  Severity: low
+  Action: persist counters in a locked state file under the existing state dir; test accumulation across two processes.
+  File: scripts/ai/lib/remote_lane_egress.py
+
+[OPEN] PR-BODY-FORMAT-STEP-SKIPPED-ON-REVIEW-FAIL — in `.github/workflows/review-disposition.yml` (PR #636) the `check-pr-body-format.py` step runs after the review step without `if: always()`, so when review-disposition fails the format result is not reported (the job still fails, so nothing passes wrongly). Also `## What #` (trailing hash) is not normalized to `What`.
+  Severity: low
+  Action: add `if: always()` to the format step; strip trailing `#`s in heading titles; add tests.
+  File: .github/workflows/review-disposition.yml; scripts/governance/check-pr-body-format.py
+
+[OPEN] LOCAL-LANE-CONCURRENT-DISCONNECT — two delegate-to-local direct reviews failed with "Remote end closed connection without response" and empty output on 2026-10-27 (local-20261027-092537-mswke7, local-20261027-105732-24tcna); both times another local direct task was running concurrently. llama health was ok and the retried task succeeded alone.
+  Severity: medium
+  Root cause (hypothesis, unverified): llama-server slot limit / request timeout when a second long prompt arrives; delegate-to-local direct mode does not queue or retry.
+  Action: confirm from llama-server logs; serialize direct-mode tasks through the existing slot queue (or retry once on connection reset with backoff); surface the failure reason in the registry.
+  File: scripts/ai/delegate-to-local (direct mode)
+
+[OPEN] rsi-4559152d718de1e94d321282 — attention-queue:ai-stack-health-monitor failure in attention:attn-3d4f4c9c196f485a. Root cause evidence: producer=attention-queue:ai-stack-health-monitor; path=attention:attn-3d4f4c9c196f485a; authority=attention-queue; os_error=[ai-stack-health-monitor] QA phase 0: 1 check failing (0.10.66 aq-confine acceptance: profi): Scheduled health monitor found 1 failing check:   [0.10.66] aq-confine acceptance: profiles, goldens, cgroup scope limits, bwrap isolation (AQ_CONFINE_REQUIRE=1 locally) (dex: host write-tree equals t. Detected=2026-10-27T19:02:35.238341Z.
+  Severity: high
+  Action: Re-run `aq-qa 0 --machine` and fix the failing check(s).
+  File: attention:attn-3d4f4c9c196f485a
+[DONE] rsi-229e38364b559ac92c74a6f1 — resolved 2026-10-27: attention alert attn-1bffc8fbaf414944 resolved in attention queue (2026-10-27T19:02:35Z) — ledger status=resolved
+[DONE] rsi-77e05b9afd14850f0772e230 — resolved 2026-10-27: attention alert attn-1bffc8fbaf414944 resolved in attention queue (2026-10-27T19:02:35Z) — ledger status=resolved
+
+[OPEN] rsi-78eeba629971cdbb4d821aff — aq-qa:phase0 failure in aq-qa:0.10.50. Root cause evidence: producer=aq-qa:phase0; path=aq-qa check 0.10.50; authority=aq-qa; os_error=phase-0 check 0.10.50 failing: Factory readiness preflight: hash-bound evidence, fail-closed unconfigured checks, typed blockers (Command '['python3', . Detected=2026-10-27T19:17:32.555675Z.
+  Severity: medium
+  Action: run aq-qa 0 --machine and fix check 0.10.50 at its producer
+  File: aq-qa check 0.10.50
+
+[OPEN] rsi-75b06747981a1d7c7e0711b1 — attention-queue:ai-stack-health-monitor failure in attention:attn-3d4f4c9c196f485a. Root cause evidence: producer=attention-queue:ai-stack-health-monitor; path=attention:attn-3d4f4c9c196f485a; authority=attention-queue; os_error=[ai-stack-health-monitor] QA phase 0: 2 checks failing (0.10.50 Factory readiness preflight:, 0.10.66 aq-…: QA phase 0: 2 checks failing (0.10.50 Factory readiness preflight:, 0.10.66 aq-confine acceptance: profi)  Scheduled health monitor found 2 failing checks:   [0.10.50] Factory readiness preflight: has. Detected=2026-10-27T19:17:35.016883Z.
+  Severity: high
+  Action: Re-run `aq-qa 0 --machine` and fix the failing check(s).
+  File: attention:attn-3d4f4c9c196f485a
+
+[OPEN] rsi-0799cc4c4806b6508f2a09f5 — aq-qa:phase0 failure in aq-qa:0.10.50. Root cause evidence: producer=aq-qa:phase0; path=aq-qa check 0.10.50; authority=aq-qa; os_error=phase-0 check 0.10.50 failing: Factory readiness preflight: hash-bound evidence, fail-closed unconfigured checks, typed blockers (fixture exit 1). Detected=2026-10-27T20:02:37.422031Z.
+  Severity: medium
+  Action: run aq-qa 0 --machine and fix check 0.10.50 at its producer
+  File: aq-qa check 0.10.50
+
+[IN-PROGRESS] CODEX-BUDGET-MEASURES-WRONG-THING — `delegate-to-codex` daily_budget_check sums today's codex logs by LOCAL calendar date (resets at local midnight, not UTC; I misreported 00:00 UTC to the owner) against one 250k pool shared by all roles. 2026-10-27: 4 reviews used 276,335 tokens (47k-99k each, fresh sessions exploring the repo), exhausting it; interactive usage is not counted; the plan's real limits are rolling. Owner approved: lean front-loaded Codex review prompts + rolling window + reserved review share; usage-limit cooldown stays primary.
+  Severity: medium
+  Action: plan P1.5, branch fix/codex-review-budget (aq-review-request + budget changes + tests).
+  File: scripts/ai/delegate-to-codex ~daily_budget_check
+
+[OPEN] rsi-866d1d802da25bbe65abe629 — attention-queue:ai-stack-health-monitor failure in attention:attn-59077bf160bc45ff. Root cause evidence: producer=attention-queue:ai-stack-health-monitor; path=attention:attn-59077bf160bc45ff; authority=attention-queue; os_error=[ai-stack-health-monitor] QA phase 0: 1 check failing (0.10.66 aq-confine acceptance: profi): Scheduled health monitor found 1 failing check:   [0.10.66] aq-confine acceptance: profiles, goldens, cgroup scope limits, bwrap isolation (AQ_CONFINE_REQUIRE=1 locally) (dex: host write-tree equals t. Detected=2026-10-27T22:46:32.409008Z.
+  Severity: high
+  Action: Re-run `aq-qa 0 --machine` and fix the failing check(s).
+  File: attention:attn-59077bf160bc45ff
+[DONE] rsi-4559152d718de1e94d321282 — resolved 2026-10-27: attention alert attn-3d4f4c9c196f485a resolved in attention queue (2026-10-27T22:46:32Z) — ledger status=resolved
+[DONE] rsi-75b06747981a1d7c7e0711b1 — resolved 2026-10-27: attention alert attn-3d4f4c9c196f485a resolved in attention queue (2026-10-27T22:46:32Z) — ledger status=resolved
+
+[OPEN] LOCAL-MODEL-THROUGHPUT-DEGRADED — 2026-10-27 live probe of llama-cpp :8080 (Qwen3.6-35B-A3B-UD-Q4_K_XL, idle slot): generation 1.57 tok/s, prompt 2.59 tok/s vs recorded baseline 5.3 / 8 tok/s (~3x slower). llama-cpp.service MemoryCurrent 9.4 GB for a ~22 GB model; ~9 GB swap in use; memory PSI full avg60 ~1.0.
+  Severity: high (every local review/agent task is ~3x slower; likely related to the concurrent-request disconnects)
+  Root cause (hypothesis, unverified): model weights not resident (page cache eviction / swap) under memory pressure; ctx-size 8192, parallel 1.
+  Action: measure residency (mincore / smaps) and what else holds RAM; compare tok/s right after a clean restart; check whether mlock / no-mmap is configured; then fix declaratively. Add a tok/s health probe with an alert threshold.
+  File: llama-cpp.service (nix module for llama-cpp)
+
+[OPEN] SYSTEM-1-IS-A-LABEL-NOT-A-MODEL — "System 1" across Gemini Waves 9-12 is not a distinct fast model: the S1/S2 card counts switchboard local-vs-remote routing (local = the same 35B on :8080 via :8085); aq-triage and the durable sweeper classify with rules/keywords (no LLM call); radar scoring is a keyword regex (batch D #580); aq-decide (the declared "System 1 local decision engine") is disabled by default, no profile enables it, and no unit exists (batch G #547). Small models sit unused on disk: Qwen3-4B-Instruct-2507-Q4_K_M (2.5 GB), gemma-4-E4B-it-Q4_K_M (5.4 GB).
+  Severity: medium (claims vs reality; design gap rather than breakage)
+  Action: decide (owner, post-freeze design) whether a real small System 1 model should serve triage/classification/ingestion, with RAM budget against the 27 GB ceiling; until then dashboards/docs must call it "local route", not a model.
+
+[OPEN] SUSPEND-KILLS-DELEGATED-WORK — host suspended 5x on 2026-10-27; llama-cpp-resume.service restarts llama-cpp on every resume, cancelling in-flight local tasks (failed reviews local-20261027-092537-mswke7, -105732-24tcna, -135418-g28x0y = "Remote end closed connection"). Corrects LOCAL-LANE-CONCURRENT-DISCONNECT: the cause was suspend/resume, not concurrency.
+  Severity: high
+  Action: P1.6 (delegate-to-* hold a sleep inhibitor while tasks run), branch fix/delegate-sleep-inhibit.
+
+[OPEN] rsi-f95c891440d6d3576f65ae6e — aq-qa:phase0 failure in aq-qa:0.10.22. Root cause evidence: producer=aq-qa:phase0; path=aq-qa check 0.10.22; authority=aq-qa; os_error=phase-0 check 0.10.22 failing: LOCAL_TOK_PER_SEC throughput calibration (FAIL: throughput drift 51% exceeds 50% threshold.   Measured: 1.68 tok/s   Con. Detected=2026-10-28T00:54:35.639028Z.
+  Severity: medium
+  Action: run aq-qa 0 --machine and fix check 0.10.22 at its producer
+  File: aq-qa check 0.10.22
+
+[OPEN] rsi-d9db949ff9844544bda5d30f — attention-queue:ai-stack-health-monitor failure in attention:attn-59077bf160bc45ff. Root cause evidence: producer=attention-queue:ai-stack-health-monitor; path=attention:attn-59077bf160bc45ff; authority=attention-queue; os_error=[ai-stack-health-monitor] QA phase 0: 2 checks failing (0.10.22 LOCAL_TOK_PER_SEC throughput, 0.10.66 aq-…: QA phase 0: 2 checks failing (0.10.22 LOCAL_TOK_PER_SEC throughput, 0.10.66 aq-confine acceptance: profi)  Scheduled health monitor found 2 failing checks:   [0.10.22] LOCAL_TOK_PER_SEC throughput cal. Detected=2026-10-28T00:54:37.230751Z.
+  Severity: high
+  Action: Re-run `aq-qa 0 --machine` and fix the failing check(s).
+  File: attention:attn-59077bf160bc45ff
+
+[DONE] AUDIO-DEAD-AFTER-SWITCH-2026-10-27 — speakers/mic dead after rebuild = kernel skew (booted 7.2.10 vs current 7.3); owner reboot fixed it (2nd occurrence, same as 2026-09-25). Verified: uname 7.3.0; 1 s test tone played (pw-play rc 0); 4 s mic capture RMS 296 / peak 3466.
+  Residual (low): wireplumber still logs "SPA handle 'api.alsa.acp.device' could not be loaded; is it installed?" for card 2 (acp, ThinkPad P14s Gen2a); HDA speaker + Mic1/Mic2 work. Check whether the ACP DMIC card should expose a source.
+  Prevention follow-up: after `nixos-rebuild switch` that changes the kernel, print a "reboot required for audio/GPU drivers" notice (compare uname -r vs current-system kernel).
+
+[CONFIRMED] LOCAL-MODEL-THROUGHPUT-DEGRADED cause = power: on AC + performance profile after reboot, gen 3.75-4.58 tok/s, prompt 9.4-10.0 tok/s (vs 1.7-2.0 / ~5 on battery power-saver; baseline 5.3 / 8). P1.7 fix = AC-aware power policy + tok/s probe labelling POWER.
+
+[OPEN] EGRESS-NOVEL-DOMAIN-ONLY-FLAGS — remote_lane_egress: a host outside the lane allowlist returns flag/EGR_NOVEL_DOMAIN (rc 1), not hold; e.g. `gemini evil.example.com` -> flag. Pre-existing policy from #548; raised by local-qwen review of #639. Decide whether novel domains for remote lanes should hold (fail closed) once allowlists are complete.
+  Severity: medium
+  File: scripts/ai/lib/remote_lane_egress.py ~112-130
+
+[OPEN] rsi-2fea234a64b879c0b2a3e401 — aq-qa:phase0 failure in aq-qa:0.1.1:llama-cpp. Root cause evidence: producer=aq-qa:phase0; path=aq-qa check 0.1.1:llama-cpp; authority=aq-qa; os_error=phase-0 check 0.1.1:llama-cpp failing: unit llama-cpp.service active (not active). Detected=2026-10-28T01:16:51.141505Z.
+  Severity: medium
+  Action: run aq-qa 0 --machine and fix check 0.1.1:llama-cpp at its producer
+  File: aq-qa check 0.1.1:llama-cpp
+
+[OPEN] rsi-a5f78e2b51fcf569162890ff — aq-qa:phase0 failure in aq-qa:0.4.1. Root cause evidence: producer=aq-qa:phase0; path=aq-qa check 0.4.1; authority=aq-qa; os_error=phase-0 check 0.4.1 failing: llama-server /health (status!='ok' url=http://127.0.0.1:8080/health). Detected=2026-10-28T01:16:51.711185Z.
+  Severity: medium
+  Action: run aq-qa 0 --machine and fix check 0.4.1 at its producer
+  File: aq-qa check 0.4.1
+[DONE] rsi-f95c891440d6d3576f65ae6e — resolved 2026-10-28: phase-0 check 0.10.22 passing in health-monitor JSON run 2026-10-28T00:58:40Z — ledger status=resolved
+
+[OPEN] rsi-53dcc2cf3fe5f41b39bcb170 — attention-queue:ai-stack-health-monitor failure in attention:attn-ad2b1c20328e406f. Root cause evidence: producer=attention-queue:ai-stack-health-monitor; path=attention:attn-ad2b1c20328e406f; authority=attention-queue; os_error=[ai-stack-health-monitor] QA phase 0: 3 checks failing (0.1.1:llama-cpp unit llama-cpp.service activ, 0.4…: QA phase 0: 3 checks failing (0.1.1:llama-cpp unit llama-cpp.service activ, 0.4.1 llama-server /health (status, 0.10.66 aq-confine acceptance: profi)  Scheduled health monitor found 3 failing checks: . Detected=2026-10-28T01:16:55.327548Z.
+  Severity: critical
+  Action: Re-run `aq-qa 0 --machine` and fix the failing check(s).
+  File: attention:attn-ad2b1c20328e406f
+[DONE] rsi-866d1d802da25bbe65abe629 — resolved 2026-10-28: attention alert attn-59077bf160bc45ff resolved in attention queue (2026-10-28T01:16:55Z) — ledger status=resolved
+[DONE] rsi-d9db949ff9844544bda5d30f — resolved 2026-10-28: attention alert attn-59077bf160bc45ff resolved in attention queue (2026-10-28T01:16:55Z) — ledger status=resolved
+
+[IN-PROGRESS] DELEGATION-DIR-PER-WORKTREE-BUDGET-BYPASS — delegate-to-* resolve DELEGATION_DIR relative to the script (REPO_ROOT=SCRIPT_DIR/../..), so copies run inside a git worktree use that worktree's registry/outputs/budget: `delegate-to-codex --budget-check-only` from a worktree showed 0/250000 while shared outputs held 276335. Budget bypass + tasks invisible to the main registry/receipts.
+  Severity: high
+  Action: resolve via git --git-common-dir -> main repo .agents/delegation (fix being added to PR #642 branch before its review).
+  File: scripts/ai/delegate-to-codex:50-53; scripts/ai/delegate-to-local:58-59; other delegate-to-*
+
+[OPEN] rsi-b14a56f02e72228dea7c852b — aq-qa:phase0 failure in aq-qa:0.10.2. Root cause evidence: producer=aq-qa:phase0; path=aq-qa check 0.10.2; authority=aq-qa; os_error=phase-0 check 0.10.2 failing: token_usage coverage (Command '['python3', '/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/scripts/testing/test-token-usa. Detected=2026-10-28T01:31:51.127038Z.
+  Severity: medium
+  Action: run aq-qa 0 --machine and fix check 0.10.2 at its producer
+  File: aq-qa check 0.10.2
+[DONE] rsi-a5f78e2b51fcf569162890ff — resolved 2026-10-28: phase-0 check 0.4.1 passing in health-monitor JSON run 2026-10-28T01:22:45Z — ledger status=resolved
+
+[OPEN] rsi-46e9cc8e2d7e1dd6e074259c — attention-queue:ai-stack-health-monitor failure in attention:attn-ad2b1c20328e406f. Root cause evidence: producer=attention-queue:ai-stack-health-monitor; path=attention:attn-ad2b1c20328e406f; authority=attention-queue; os_error=[ai-stack-health-monitor] QA phase 0: 2 checks failing (0.10.2 token_usage coverage (Comman, 0.10.66 aq-c…: QA phase 0: 2 checks failing (0.10.2 token_usage coverage (Comman, 0.10.66 aq-confine acceptance: profi)  Scheduled health monitor found 2 failing checks:   [0.10.2] token_usage coverage (Command '['p. Detected=2026-10-28T01:31:54.846141Z.
+  Severity: high
+  Action: Re-run `aq-qa 0 --machine` and fix the failing check(s).
+  File: attention:attn-ad2b1c20328e406f
+
+[OPEN] AQ-REVIEW-REQUEST-PROMPT-FILENAME-COLLISION — aq-review-request names the prompt review-prompt-pr<N>-<head12>.md, so two --paths-split prompts for the same PR/head overwrite each other. Also: local llama ctx is 8192 tokens, so prompts above ~25 KB cannot fit; the tool should warn/split for --lane local.
+  Severity: low
+  File: scripts/ai/aq-review-request (PR #642)
+
+[OPEN] rsi-0799cc4c4806b6508f2a09f5 — aq-qa:phase0 failure in aq-qa:0.10.50. Root cause evidence: producer=aq-qa:phase0; path=aq-qa check 0.10.50; authority=aq-qa; os_error=phase-0 check 0.10.50 failing: Factory readiness preflight: hash-bound evidence, fail-closed unconfigured checks, typed blockers (fixture exit 1). Detected=2026-10-28T01:46:51.194987Z.
+  Severity: medium
+  Action: run aq-qa 0 --machine and fix check 0.10.50 at its producer
+  File: aq-qa check 0.10.50
+
+[OPEN] rsi-e9f47ea71bf886346356922a — journal:ai-hybrid-coordinator failure in service-error:ai-hybrid-coordinator:{"event": "sync_query_gaps_failed error=[Errno <n>] Permissi. Root cause evidence: producer=journal:ai-hybrid-coordinator; path=ai-hybrid-coordinator; authority=journald; os_error=recurring error in ai-hybrid-coordinator: {"event": "sync_query_gaps_failed error=[Errno <n>] Permission denied: '/var/log/nixos-ai-stack/query-gaps.tmp'", "version": "<n>.<n>.<n>", "service": "hybrid-c. Detected=2026-10-28T01:46:55.653668Z.
+  Severity: medium
+  Action: 6 occurrence(s) in last 3600s; example: {"event": "sync_query_gaps_failed error=[Errno 13] Permission denied: '/var/log/nixos-ai-stack/query-gaps.tmp'", "version": "1.0.0", "service": "hybrid-coordinator", "logger": "hybrid-coordinator", "l; journalctl -u ai-hybrid-coordinator; fix producer
+  File: ai-hybrid-coordinator
+
+[OPEN] rsi-724b98dd55568d422569e7c7 — attention-queue:ai-stack-health-monitor failure in attention:attn-ad2b1c20328e406f. Root cause evidence: producer=attention-queue:ai-stack-health-monitor; path=attention:attn-ad2b1c20328e406f; authority=attention-queue; os_error=[ai-stack-health-monitor] QA phase 0: 2 checks failing (0.10.50 Factory readiness preflight:, 0.10.66 aq-…: QA phase 0: 2 checks failing (0.10.50 Factory readiness preflight:, 0.10.66 aq-confine acceptance: profi)  Scheduled health monitor found 2 failing checks:   [0.10.50] Factory readiness preflight: has. Detected=2026-10-28T01:46:55.832817Z.
+  Severity: high
+  Action: Re-run `aq-qa 0 --machine` and fix the failing check(s).
+  File: attention:attn-ad2b1c20328e406f
+
+[OPEN] rsi-e04cfb887dd9c838b0b64d44 — attention-queue:ai-stack-health-monitor failure in attention:attn-ad2b1c20328e406f. Root cause evidence: producer=attention-queue:ai-stack-health-monitor; path=attention:attn-ad2b1c20328e406f; authority=attention-queue; os_error=[ai-stack-health-monitor] QA phase 0: 1 check failing (0.10.66 aq-confine acceptance: profi): Scheduled health monitor found 1 failing check:   [0.10.66] aq-confine acceptance: profiles, goldens, cgroup scope limits, bwrap isolation (AQ_CONFINE_REQUIRE=1 locally) (dex: host write-tree equals t. Detected=2026-10-28T02:01:56.087896Z.
+  Severity: high
+  Action: Re-run `aq-qa 0 --machine` and fix the failing check(s).
+  File: attention:attn-ad2b1c20328e406f
+
+[OPEN] rsi-78eeba629971cdbb4d821aff — aq-qa:phase0 failure in aq-qa:0.10.50. Root cause evidence: producer=aq-qa:phase0; path=aq-qa check 0.10.50; authority=aq-qa; os_error=phase-0 check 0.10.50 failing: Factory readiness preflight: hash-bound evidence, fail-closed unconfigured checks, typed blockers (Command '['python3', . Detected=2026-10-28T02:16:51.275239Z.
+  Severity: medium
+  Action: run aq-qa 0 --machine and fix check 0.10.50 at its producer
+  File: aq-qa check 0.10.50
+
+[OPEN] ADMIN-MERGE-BYPASSES-REQUIRED-REVIEW-CHECK — branch protection on main has enforce_admins=false, so the owner (admin) can squash-merge PRs whose required `review-disposition` check is red. On 2026-10-27 #635, #636, #640, #641 merged with review-disposition failing (their independent reviews had PASSED but receipt commits were not yet pushed). All their test/quality checks were green; main CI showed no failures. Receipts for those merges are minted (pr635/636/640/641) and will land on main in a follow-up PR so the review record is complete.
+  Severity: medium (governance)
+  Action (owner decision): enable admin enforcement so a red required check blocks everyone: `gh api -X POST repos/MasterofNull/NixOS-Dev-Quick-Deploy/branches/main/protection/enforce_admins`. Agents should push receipt commits before telling the owner a PR is ready.
+
+[OPEN] QA-0.10.48-FLAKY-UNDER-CI-LOAD — main `tests` workflow (parity-scorecard-gate, run 40620078590) failed QA 0.10.48 "delegation worktree" on 4694ea2d with no detail in the log; the same fixture passed on the next main commit cb1ec2ab and locally on origin/main (~10 s). Coincides with ~7 PRs' CI running concurrently after a burst of merges. The check discards the failure reason in tier0's table (only the ✗ row is printed).
+  Severity: medium (flaky required-path check)
+  Action: print the failing check's detail in tier0's QA summary; measure fixture duration on CI; raise the timeout or make the fixture cheaper; never merge in bursts (see feedback-limit-open-prs-ci-compute).
+  File: scripts/testing/harness_qa/phases/phase0.py ~3085 (_check_worktree_isolation_safety); scripts/testing/test-worktree-isolation.py
+[DONE] rsi-46e9cc8e2d7e1dd6e074259c — resolved 2026-10-28: attention alert attn-ad2b1c20328e406f resolved in attention queue (2026-10-28T17:39:34Z) — ledger status=resolved
+[DONE] rsi-53dcc2cf3fe5f41b39bcb170 — resolved 2026-10-28: attention alert attn-ad2b1c20328e406f resolved in attention queue (2026-10-28T17:39:34Z) — ledger status=resolved
+[DONE] rsi-724b98dd55568d422569e7c7 — resolved 2026-10-28: attention alert attn-ad2b1c20328e406f resolved in attention queue (2026-10-28T17:39:34Z) — ledger status=resolved
+[DONE] rsi-e04cfb887dd9c838b0b64d44 — resolved 2026-10-28: attention alert attn-ad2b1c20328e406f resolved in attention queue (2026-10-28T17:39:34Z) — ledger status=resolved
+
+[IN-PROGRESS] TEST-INHERITS-HOOK-GIT-ENV-DAMAGES-REPO — 2026-10-28 10:48: scripts/testing/test-delegation-dir-resolution.py (new in PR #642) ran from the pre-commit tier0 gate inside a git hook, inherited GIT_DIR/GIT_INDEX_FILE, and its temp-repo `git init/add/commit/worktree add` hit the REAL repo: set core.bare=true in .git/config, committed a tree-wiping "init" (author t <t@t>, 6de798fb) onto fix/codex-review-budget, created branch wt-branch. Blocked from reaching GitHub by the pre-push ci-merge-parity hook.
+  Repair done: core.bare=false; bad commit kept as branch archive/20261028-test-gitdir-leak-6de798fb; fix/codex-review-budget reset to da6de352 (on-disk tree verified identical first); test now strips GIT_* (env and in-process) and aborts if its git dir escapes the temp tree; verified with a decoy repo under hook-like GIT_* env.
+  Systemic: 27 other tests git-init temp repos without scrubbing GIT_* (e.g. test-worktree-isolation, test-ci-merge-parity, test-factory-kit-k6/k7/k8/k10, test-execution-cell-*). Action: tier0/hook test runners launch tests with GIT_DIR/GIT_INDEX_FILE/GIT_WORK_TREE/... unset (plan P0.6), plus a guard test.
+  Also noted (pre-existing, unrelated): .git/config contains a malformed `[user] emailnecho = === verdict tail ===` line (shell-hook mangling artifact).
+  Severity: critical
+
+[OPEN] rsi-84248dc828548b6674adcb41 — attention-queue:ai-stack-health-monitor failure in attention:attn-599e3c4e639242ee. Root cause evidence: producer=attention-queue:ai-stack-health-monitor; path=attention:attn-599e3c4e639242ee; authority=attention-queue; os_error=[ai-stack-health-monitor] QA phase 0: 1 check failing (0.10.66 aq-confine acceptance: profi): Scheduled health monitor found 1 failing check:   [0.10.66] aq-confine acceptance: profiles, goldens, cgroup scope limits, bwrap isolation (AQ_CONFINE_REQUIRE=1 locally) (dex: host write-tree equals t. Detected=2026-10-28T17:54:30.038061Z.
+  Severity: high
+  Action: Re-run `aq-qa 0 --machine` and fix the failing check(s).
+  File: attention:attn-599e3c4e639242ee
+
+[OPEN] LOCAL-SLOT-CONTENTION-TRAINING-LOOP-VS-REVIEWS — ai-local-training-loop.service (scripts/ai/aq-local-training-loop) dispatches a stream of short eval prompts via `delegate-to-local --wait --mode direct` (10 tasks 10:37-11:05 on 2026-10-28) on the same single llama slot (--parallel 1) that independent reviews use, roughly doubling review latency.
+  Severity: low-medium
+  Action: give reviewer-role tasks priority over the training loop (slot_queue priority), or pause the loop while reviewer tasks are queued.
+
+[OPEN] rsi-e9f47ea71bf886346356922a — journal:ai-hybrid-coordinator failure in service-error:ai-hybrid-coordinator:{"event": "sync_query_gaps_failed error=[Errno <n>] Permissi. Root cause evidence: producer=journal:ai-hybrid-coordinator; path=ai-hybrid-coordinator; authority=journald; os_error=recurring error in ai-hybrid-coordinator: {"event": "sync_query_gaps_failed error=[Errno <n>] Permission denied: '/var/log/nixos-ai-stack/query-gaps.tmp'", "version": "<n>.<n>.<n>", "service": "hybrid-c. Detected=2026-10-28T18:09:31.716672Z.
+  Severity: medium
+  Action: 7 occurrence(s) in last 3600s; example: {"event": "sync_query_gaps_failed error=[Errno 13] Permission denied: '/var/log/nixos-ai-stack/query-gaps.tmp'", "version": "1.0.0", "service": "hybrid-coordinator", "logger": "hybrid-coordinator", "l; journalctl -u ai-hybrid-coordinator; fix producer
+  File: ai-hybrid-coordinator
+
+[OPEN] rsi-e302e98b8ae02ed8ae64d3e9 — attention-queue:ai-stack-health-monitor failure in attention:attn-7bb2f5ed63324363. Root cause evidence: producer=attention-queue:ai-stack-health-monitor; path=attention:attn-7bb2f5ed63324363; authority=attention-queue; os_error=[ai-stack-health-monitor] QA phase 0: 1 check failing (0.10.66 aq-confine acceptance: profi): Scheduled health monitor found 1 failing check:   [0.10.66] aq-confine acceptance: profiles, goldens, cgroup scope limits, bwrap isolation (AQ_CONFINE_REQUIRE=1 locally) (dex: host write-tree equals t. Detected=2026-10-28T19:09:35.741044Z.
+  Severity: high
+  Action: Re-run `aq-qa 0 --machine` and fix the failing check(s).
+  File: attention:attn-7bb2f5ed63324363
+[DONE] rsi-84248dc828548b6674adcb41 — resolved 2026-10-28: attention alert attn-599e3c4e639242ee resolved in attention queue (2026-10-28T19:09:35Z) — ledger status=resolved
+
+[IN-PROGRESS] EGRESS-GATE-GAPS-CODEX-REVIEW-639 — Codex confirmatory review of merged #639 (codex-20261028-122330-1lhrgp, REQUEST_CHANGES): (P1) delegate-to-gemini only warns on EGR_NOVEL_DOMAIN rc 1 so unallowlisted GEMINI_API_HOST proceeds; decimal (2130706433) and octal (0177.0.0.1) IPv4 not held; (P1) gate checks the configured host, not the CLI's actual endpoint; (P2) punycode flag returns before the unattributed-lane hold. Supersedes EGRESS-NOVEL-DOMAIN-ONLY-FLAGS.
+  Severity: high
+  Action: fix/egress-fail-closed (hold novel domains for configured remote lanes; normalize alternate IPv4 forms; unattributed check first). Endpoint binding = design follow-up.
+
+[MEASURED] LEAN-CODEX-REVIEW-COST — first lean (aq-review-request) Codex reviews 2026-10-28: 43,037 and 41,159 tokens vs 47k-99k (avg 69k) for exploratory reviews on 2026-10-27: ~40% cheaper, not the hoped fraction. Next lever: --effort low for confirmatory reviews; cap file reads.
+
+[OPEN] KEEP-AWAKE-LID-DETECTION-ACPI-ONLY — scripts/ai/aq-keep-awake lid_closed() reads /proc/acpi/button/lid only (local-qwen review local-20261028-123124-4f3kb2, PASS_WITH_FOLLOWUPS). Works on this ThinkPad P14s Gen2a (/proc/acpi/button/lid/LID/state = open); hosts without ACPI lid emulation would never trigger suspend-on-release. logind exposes Manager.LidClosed (bool) here.
+  Severity: low
+  Action: fall back to `busctl get-property org.freedesktop.login1 /org/freedesktop/login1 org.freedesktop.login1.Manager LidClosed` when the ACPI path is absent; test both.
+
+[OPEN] rsi-f0a310fccf6feeaf4d8489c9 — attention-queue:ai-stack-health-monitor failure in attention:attn-1662042e542546d7. Root cause evidence: producer=attention-queue:ai-stack-health-monitor; path=attention:attn-1662042e542546d7; authority=attention-queue; os_error=[ai-stack-health-monitor] QA phase 0: 1 check failing (0.10.66 aq-confine acceptance: profi): Scheduled health monitor found 1 failing check:   [0.10.66] aq-confine acceptance: profiles, goldens, cgroup scope limits, bwrap isolation (AQ_CONFINE_REQUIRE=1 locally) (dex: host write-tree equals t. Detected=2026-10-28T20:09:37.672363Z.
+  Severity: high
+  Action: Re-run `aq-qa 0 --machine` and fix the failing check(s).
+  File: attention:attn-1662042e542546d7
+[DONE] rsi-e302e98b8ae02ed8ae64d3e9 — resolved 2026-10-28: attention alert attn-7bb2f5ed63324363 resolved in attention queue (2026-10-28T20:09:37Z) — ledger status=resolved
+
+[OPEN] RED-TESTS-ON-MAIN-UNGATED-20261028 — on origin/main 47132b14 these fail and no CI gate runs them: test-aq-collab-round-dispatch-contract.py (rc 1), test-delegate-codex-quota-precheck.sh (3 passed / 12 failed), test-delegate-codex-shared-writable.py ("Shared mode should not reference worktree"), test-delegate-dir-env-override.py ("delegates ignore AQ_DELEGATION_DIR: delegate-to-codex/claude/local" — likely regression from #642's shared delegation-dir resolution).
+  Severity: high (red tests on main; P0.5 "all test files run in CI" would have caught them)
+  Action: fix each (separate slice), then P0.5 gate so every scripts/testing test must be declared in config/ci-checks.json and green.
+
+[OPEN] TEST-DELEGATE-SLEEP-INHIBIT-INTERMITTENT — scripts/testing/test-delegate-sleep-inhibit.py failed 3 times (stub argv.log missing; absent-case warning missing) only when run right after other delegate suites or during a concurrent tier0 run on 2026-10-27/28; 0/30 sequential and 0/40 8-way-parallel reruns fail. Cause unknown.
+  Severity: low-medium (it is registered in config/ci-checks.json; a CI flake would block merges)
+  Action: capture full output on next failure (CI artifacts); suspect PATH/hash resolution of systemd-inhibit when the real binary dir is on PATH alongside the stub.
+
+[MEASURED] CODEX-BUDGET-SPENT-ON-REVIEWS-20261028 — 8 headless Codex reviews on 2026-10-28 (lean prompts) used 258,041 tokens (34k-61k each) and hit the 250k cap; refusal names headroom at 2026-10-29 12:23 PDT. Lean prompts cut ~40% vs exploratory, not enough to make Codex the default reviewer. Route routine reviews to local Qwen; reserve Codex for security-critical diffs and use --effort low for confirmations.
+
+[OPEN] rsi-27752ea6a54f3582012f6c78 — attention-queue:ai-stack-health-monitor failure in attention:attn-8b479f05f45e4bd5. Root cause evidence: producer=attention-queue:ai-stack-health-monitor; path=attention:attn-8b479f05f45e4bd5; authority=attention-queue; os_error=[ai-stack-health-monitor] QA phase 0: 1 check failing (0.10.66 aq-confine acceptance: profi): Scheduled health monitor found 1 failing check:   [0.10.66] aq-confine acceptance: profiles, goldens, cgroup scope limits, bwrap isolation (AQ_CONFINE_REQUIRE=1 locally) (dex: host write-tree equals t. Detected=2026-10-28T21:09:37.387669Z.
+  Severity: high
+  Action: Re-run `aq-qa 0 --machine` and fix the failing check(s).
+  File: attention:attn-8b479f05f45e4bd5
+[DONE] rsi-f0a310fccf6feeaf4d8489c9 — resolved 2026-10-28: attention alert attn-1662042e542546d7 resolved in attention queue (2026-10-28T21:09:37Z) — ledger status=resolved
+[DONE] rsi-27752ea6a54f3582012f6c78 — resolved 2026-10-28: attention alert attn-8b479f05f45e4bd5 resolved in attention queue (2026-10-28T22:46:44Z) — ledger status=resolved
+
+## 2026-10-28 P3 retro-review (non-Claude PRs 10-13..18) — report .agents/delegation/outputs/retro-review-p3-20261013-18-nonclaude.md
+- [OPEN] RECOVERY — #506 aq-oncalld merged at head 7f9ef0f4 that Codex memo marked REQUEST_REVISION; no `--daemon` at merge, nix module only in #573, enable option set nowhere — root cause: merge without review gate; Severity: high (dormant feature claimed shipped); Action: P4 remediation — wire+enable or archive w/ parity; File: scripts/ai/aq-oncalld, nix oncalld module
+- [OPEN] RECOVERY — #504 guidance spool has no consumer; operator steering never reaches an agent (#510 made status truthful only) — Severity: high (Rule 23 dormant); Action: P4 add consumer or retire UI control
+- [OPEN] RECOVERY — #505/#509 durable runtime has no production caller (CLI/dashboard/QA only) — Severity: medium (Rule 23); Action: P4 wire or archive
+- [OPEN] RECOVERY — #503 triage engine's only stream consumer is oncalld (not enabled) — Severity: medium; Action: tie to #506 remediation
+- [OPEN] GOVERNANCE — PR bodies of Codex PRs #507/#509/#510 name claude-sonnet reviewer + boilerplate "Author-lane is claude"; no registry run found — Severity: medium (review claims unverified); Action: record in provenance; receipt gate (#634) prevents recurrence
+
+[OPEN] rsi-78eeba629971cdbb4d821aff — aq-qa:phase0 failure in aq-qa:0.10.50. Root cause evidence: producer=aq-qa:phase0; path=aq-qa check 0.10.50; authority=aq-qa; os_error=phase-0 check 0.10.50 failing: Factory readiness preflight: hash-bound evidence, fail-closed unconfigured checks, typed blockers (Command '['python3', . Detected=2026-10-28T23:14:05.902939Z.
+  Severity: medium
+  Action: run aq-qa 0 --machine and fix check 0.10.50 at its producer
+  File: aq-qa check 0.10.50
+
+[OPEN] rsi-9e3188179dc479e2729fe680 — delegation:local-agent failure in delegation:local-agent:failed. Root cause evidence: producer=delegation:local-agent; path=.agents/delegation/registry.jsonl; authority=local-agent; os_error=local-agent delegation class failed. Detected=2026-10-28T23:14:08.323433Z.
+  Severity: low
+  Action: 1 run(s) in window; latest example .agents/delegation/outputs/local-20261028-154133-g0xkmw.log; fix producer for class failed
+  File: .agents/delegation/registry.jsonl
+
+[OPEN] rsi-71b7c2fb78393e21729f8fb9 — journal:ai-hybrid-coordinator failure in service-error:ai-hybrid-coordinator:switchboard_unavailable error_id=<hex>. Root cause evidence: producer=journal:ai-hybrid-coordinator; path=ai-hybrid-coordinator; authority=journald; os_error=recurring error in ai-hybrid-coordinator: switchboard_unavailable error_id=<hex>. Detected=2026-10-28T23:14:14.003392Z.
+  Severity: medium
+  Action: 5 occurrence(s) in last 3600s; example: {"event": "switchboard_unavailable error_id=c04e05adb161", "exc_info": ["<class 'httpx.HTTPStatusError'>", "HTTPStatusError(\"Server error '503 Service Unavailable' for url 'http://127.0.0.1:8085/v1/c; journalctl -u ai-hybrid-coordinator; fix producer
+  File: ai-hybrid-coordinator
+
+[OPEN] rsi-e9f47ea71bf886346356922a — journal:ai-hybrid-coordinator failure in service-error:ai-hybrid-coordinator:{"event": "sync_query_gaps_failed error=[Errno <n>] Permissi. Root cause evidence: producer=journal:ai-hybrid-coordinator; path=ai-hybrid-coordinator; authority=journald; os_error=recurring error in ai-hybrid-coordinator: {"event": "sync_query_gaps_failed error=[Errno <n>] Permission denied: '/var/log/nixos-ai-stack/query-gaps.tmp'", "version": "<n>.<n>.<n>", "service": "hybrid-c. Detected=2026-10-28T23:14:14.280988Z.
+  Severity: medium
+  Action: 5 occurrence(s) in last 3600s; example: {"event": "sync_query_gaps_failed error=[Errno 13] Permission denied: '/var/log/nixos-ai-stack/query-gaps.tmp'", "version": "1.0.0", "service": "hybrid-coordinator", "logger": "hybrid-coordinator", "l; journalctl -u ai-hybrid-coordinator; fix producer
+  File: ai-hybrid-coordinator
+
+[OPEN] rsi-bd4023973aa2a88401859d77 — attention-queue:ai-stack-health-monitor failure in attention:attn-90318c93d6b845a5. Root cause evidence: producer=attention-queue:ai-stack-health-monitor; path=attention:attn-90318c93d6b845a5; authority=attention-queue; os_error=[ai-stack-health-monitor] QA phase 0: 2 checks failing (0.10.50 Factory readiness preflight:, 0.10.66 aq-…: QA phase 0: 2 checks failing (0.10.50 Factory readiness preflight:, 0.10.66 aq-confine acceptance: profi)  Scheduled health monitor found 2 failing checks:   [0.10.50] Factory readiness preflight: has. Detected=2026-10-28T23:14:15.003876Z.
+  Severity: high
+  Action: Re-run `aq-qa 0 --machine` and fix the failing check(s).
+  File: attention:attn-90318c93d6b845a5
+- [OPEN] TIER0 — QA 0.16.2 "Security Center live metadata" failed two concurrent tier0 --pre-commit runs (gov-bundle receipt, power-probe) while /api/security-settings/status returns 200 when probed alone — root cause suspected: dashboard request exceeds 5 s http_get timeout under 3 parallel tier0/QA loads; Severity: medium (live-health check blocks unrelated commits; Rule 19 gate corollary); Action: record the actual status/exception in the failure row and treat timeout under load as retry-once, or serialize tier0 runs; File: scripts/testing/harness_qa/phases/phase0.py ~2317
+
+[OPEN] rsi-0069edb5071cc39f073737ac — aq-qa:phase0 failure in aq-qa:0.10.66. Root cause evidence: producer=aq-qa:phase0; path=aq-qa check 0.10.66; authority=aq-qa; os_error=phase-0 check 0.10.66 failing: aq-confine acceptance: profiles, goldens, cgroup scope limits, bwrap isolation (AQ_CONFINE_REQUIRE=1 locally) (up-failed. Detected=2026-10-29T00:21:33.454587Z.
+  Severity: medium
+  Action: run aq-qa 0 --machine and fix check 0.10.66 at its producer
+  File: aq-qa check 0.10.66
+
+[OPEN] rsi-4bb3c373f7610a9ae77576f2 — attention-queue:ai-stack-health-monitor failure in attention:attn-2e7d5f3ca7bb4702. Root cause evidence: producer=attention-queue:ai-stack-health-monitor; path=attention:attn-2e7d5f3ca7bb4702; authority=attention-queue; os_error=[ai-stack-health-monitor] QA phase 0: 1 check failing (0.10.66 aq-confine acceptance: profi): Scheduled health monitor found 1 failing check:   [0.10.66] aq-confine acceptance: profiles, goldens, cgroup scope limits, bwrap isolation (AQ_CONFINE_REQUIRE=1 locally) (up-failed: Failed to start tr. Detected=2026-10-29T00:21:35.550841Z.
+  Severity: high
+  Action: Re-run `aq-qa 0 --machine` and fix the failing check(s).
+  File: attention:attn-2e7d5f3ca7bb4702
+[DONE] rsi-bd4023973aa2a88401859d77 — resolved 2026-10-29: attention alert attn-90318c93d6b845a5 resolved in attention queue (2026-10-29T00:21:35Z) — ledger status=resolved
+
+[OPEN] rsi-e9f47ea71bf886346356922a — journal:ai-hybrid-coordinator failure in service-error:ai-hybrid-coordinator:{"event": "sync_query_gaps_failed error=[Errno <n>] Permissi. Root cause evidence: producer=journal:ai-hybrid-coordinator; path=ai-hybrid-coordinator; authority=journald; os_error=recurring error in ai-hybrid-coordinator: {"event": "sync_query_gaps_failed error=[Errno <n>] Permission denied: '/var/log/nixos-ai-stack/query-gaps.tmp'", "version": "<n>.<n>.<n>", "service": "hybrid-c. Detected=2026-10-29T00:36:37.176188Z.
+  Severity: medium
+  Action: 5 occurrence(s) in last 3600s; example: {"event": "sync_query_gaps_failed error=[Errno 13] Permission denied: '/var/log/nixos-ai-stack/query-gaps.tmp'", "version": "1.0.0", "service": "hybrid-coordinator", "logger": "hybrid-coordinator", "l; journalctl -u ai-hybrid-coordinator; fix producer
+  File: ai-hybrid-coordinator
+
+[OPEN] rsi-71c49e00be129ed84e5509c6 — attention-queue:ai-stack-health-monitor failure in attention:attn-2e7d5f3ca7bb4702. Root cause evidence: producer=attention-queue:ai-stack-health-monitor; path=attention:attn-2e7d5f3ca7bb4702; authority=attention-queue; os_error=[ai-stack-health-monitor] QA phase 0: 1 check failing (0.10.66 aq-confine acceptance: profi): Scheduled health monitor found 1 failing check:   [0.10.66] aq-confine acceptance: profiles, goldens, cgroup scope limits, bwrap isolation (AQ_CONFINE_REQUIRE=1 locally) (dex: host write-tree equals t. Detected=2026-10-29T00:36:37.516636Z.
+  Severity: high
+  Action: Re-run `aq-qa 0 --machine` and fix the failing check(s).
+  File: attention:attn-2e7d5f3ca7bb4702
+- [OPEN] TEST-COVERAGE — 145 scripts/testing/test-*.{py,sh} do not pass on main in a clean env and are listed in config/ci-checks.json `test_exempt` (110 fail on main: missing files/modules/stale assertions; 26 host-only live-service; 3 mutate tracked repo state; 3 slow; 3 unstable) — root cause: no gate ran these tests, so they rotted — Severity: medium — Action: triage each exempt entry (fix or archive the test, then drop the exemption); the three state-mutating tests (test-aq-loop-review-repair-guard, test-dashboard-advanced-runtime-summary, test-radar-ingest) need tmpdir isolation. Gate: scripts/governance/tier0.d/check-ci-test-coverage.sh. File: config/ci-checks.json test_exempt
+
+[OPEN] rsi-78eeba629971cdbb4d821aff — aq-qa:phase0 failure in aq-qa:0.10.50. Root cause evidence: producer=aq-qa:phase0; path=aq-qa check 0.10.50; authority=aq-qa; os_error=phase-0 check 0.10.50 failing: Factory readiness preflight: hash-bound evidence, fail-closed unconfigured checks, typed blockers (Command '['python3', . Detected=2026-10-29T00:51:34.149075Z.
+  Severity: medium
+  Action: run aq-qa 0 --machine and fix check 0.10.50 at its producer
+  File: aq-qa check 0.10.50
+
+[OPEN] rsi-f8b4f90940883e224d39d4c1 — attention-queue:ai-stack-health-monitor failure in attention:attn-2e7d5f3ca7bb4702. Root cause evidence: producer=attention-queue:ai-stack-health-monitor; path=attention:attn-2e7d5f3ca7bb4702; authority=attention-queue; os_error=[ai-stack-health-monitor] QA phase 0: 2 checks failing (0.10.50 Factory readiness preflight:, 0.10.66 aq-…: QA phase 0: 2 checks failing (0.10.50 Factory readiness preflight:, 0.10.66 aq-confine acceptance: profi)  Scheduled health monitor found 2 failing checks:   [0.10.50] Factory readiness preflight: has. Detected=2026-10-29T00:51:39.340338Z.
+  Severity: high
+  Action: Re-run `aq-qa 0 --machine` and fix the failing check(s).
+  File: attention:attn-2e7d5f3ca7bb4702
+- [OPEN] P1.7 FOLLOWUPS (local-qwen PASS_WITH_FOLLOWUPS at 52fdf5c0, runs local-20261028-174322-7k9m3h / -175625-wm59o2) — minor: document AQ_SPEED_TIMEOUT in aq-llm-speed-probe header; log pgrep-fallback failure at debug; resume unit uses sleep 90 + systemctl start (could be timer-based). Verified false positives: telemetry dir IS created (mcp-servers.nix:664 tmpfiles 0770 ai-hybrid:ai-stack, probe runs with ai-stack group); ReadWritePaths is not deprecated; test already uses TemporaryDirectory. Severity: low; Action: fold into next power-policy touch.
+
+[OPEN] rsi-06ddbe594aca7863f1a0199d — attention-queue:ai-stack-health-monitor failure in attention:attn-2e7d5f3ca7bb4702. Root cause evidence: producer=attention-queue:ai-stack-health-monitor; path=attention:attn-2e7d5f3ca7bb4702; authority=attention-queue; os_error=[ai-stack-health-monitor] QA phase 0: 1 check failing (0.10.66 aq-confine acceptance: profi): Scheduled health monitor found 1 failing check:   [0.10.66] aq-confine acceptance: profiles, goldens, cgroup scope limits, bwrap isolation (AQ_CONFINE_REQUIRE=1 locally) (0994fac; FAIL: confined launc. Detected=2026-10-29T01:21:37.797742Z.
+  Severity: high
+  Action: Re-run `aq-qa 0 --machine` and fix the failing check(s).
+  File: attention:attn-2e7d5f3ca7bb4702
+[DONE] rsi-71b7c2fb78393e21729f8fb9 — resolved 2026-10-29: journal of ai-hybrid-coordinator read OK; signature below 5 occurrence(s) in last 3600s (2026-10-29T01:36:37Z) — ledger status=resolved
+- [OPEN] GOVERNANCE — main branch protection requires status context "review-disposition/review-disposition" but the workflow reports a check run named "review-disposition" (GitHub Actions app 15368), so the required check is never satisfied ("Expected — Waiting for status") and every merge since W5-S1 (6892f003, 2026-10-14) needed an admin bypass (enforce_admins=false) — root cause: required-check context set to workflow/job form instead of job name; Severity: high (the review gate was never actually enforced by GitHub); Action: owner PATCH required_status_checks to context "review-disposition" app_id 15368, then enable enforce_admins; File: repo settings branches/main/protection
+- [CORRECTION 2026-10-28] RECOVERY #504 guidance spool entry above overstated: local agents DO drain the control queue (ai-stack/local-agents/agent_executor.py:2752 control_channel.poll); the gap is narrower — nothing outside scripts/testing/test-human-intervention.py invokes the aq-human-intervention writer, and remote lanes have no consumer. Severity: medium (not high). Deferred in config/activation-manifest.json (P5.2).
+- [OPEN] TOOLING — Agent tool `isolation: "worktree"` put P5.2 implementer in .claude/worktrees/agent-* and harness blocked it from the named delegation worktree and from any `git` command; files had to be copied by orchestrator — root cause: dispatcher passed isolation:worktree while also naming a pre-made worktree; Action: when a delegation worktree is pre-made, dispatch WITHOUT isolation:worktree; Severity: low
+- [OPEN] TIER0 — P5.1 canaries found conditional pass-throughs: tier0.d/check-owned-scope.sh:11-14 passes when OWNED_PATHS unset; check-gitleaks-ci-parity.sh:8-11 passes when gitleaks absent; check-dependency-cve.sh:12-15 passes when npm absent or SKIP_CVE_SCAN=1. Also 3 advisory checks (commit-evidence-warn, lane-hook-parity, shallow-repo) always exit 0 yet count toward tier0 "Passed: N" — root cause: tier0 has no SKIP/WARN outcome for extension checks, so absent-tool and advisory runs report as PASS; Severity: medium (inflated pass count, silent no-op gates); Action: tier0.d exit-code convention 77=SKIP / advisory=WARN reported separately from PASS; File: scripts/governance/tier0-validation-gate.sh ~1331
+- [OPEN] TIER0 — check-owned-scope.sh is a de-facto no-op: nothing in the repo (tier0, workflows, delegate scripts) sets OWNED_PATHS, so it passes on every real commit while counting toward tier0 "Passed" — Severity: medium (Rule 23 dormant gate); Action: wire OWNED_PATHS from the slice/worktree claim in delegate dispatch, or archive with parity note; File: scripts/governance/tier0.d/check-owned-scope.sh:11-14
+
+[OPEN] rsi-a3b3c4949d7bd57565fce471 — attention-queue:ai-stack-health-monitor failure in attention:attn-a048baa999ae4cb6. Root cause evidence: producer=attention-queue:ai-stack-health-monitor; path=attention:attn-a048baa999ae4cb6; authority=attention-queue; os_error=[ai-stack-health-monitor] QA phase 0: 1 check failing (0.10.66 aq-confine acceptance: profi): Scheduled health monitor found 1 failing check:   [0.10.66] aq-confine acceptance: profiles, goldens, cgroup scope limits, bwrap isolation (AQ_CONFINE_REQUIRE=1 locally) (dex: host write-tree equals t. Detected=2026-10-29T02:36:39.301853Z.
+  Severity: high
+  Action: Re-run `aq-qa 0 --machine` and fix the failing check(s).
+  File: attention:attn-a048baa999ae4cb6
+[DONE] rsi-06ddbe594aca7863f1a0199d — resolved 2026-10-29: attention alert attn-2e7d5f3ca7bb4702 resolved in attention queue (2026-10-29T02:36:39Z) — ledger status=resolved
+[DONE] rsi-4bb3c373f7610a9ae77576f2 — resolved 2026-10-29: attention alert attn-2e7d5f3ca7bb4702 resolved in attention queue (2026-10-29T02:36:39Z) — ledger status=resolved
+[DONE] rsi-71c49e00be129ed84e5509c6 — resolved 2026-10-29: attention alert attn-2e7d5f3ca7bb4702 resolved in attention queue (2026-10-29T02:36:39Z) — ledger status=resolved
+[DONE] rsi-f8b4f90940883e224d39d4c1 — resolved 2026-10-29: attention alert attn-2e7d5f3ca7bb4702 resolved in attention queue (2026-10-29T02:36:39Z) — ledger status=resolved
+
+[OPEN] rsi-9c7209d17e7e80b95968caae — attention-queue:ai-stack-health-monitor failure in attention:attn-f7f9de78a3624988. Root cause evidence: producer=attention-queue:ai-stack-health-monitor; path=attention:attn-f7f9de78a3624988; authority=attention-queue; os_error=[ai-stack-health-monitor] QA phase 0: 1 check failing (0.10.66 aq-confine acceptance: profi): Scheduled health monitor found 1 failing check:   [0.10.66] aq-confine acceptance: profiles, goldens, cgroup scope limits, bwrap isolation (AQ_CONFINE_REQUIRE=1 locally) (dex: host write-tree equals t. Detected=2026-10-29T04:36:40.594198Z.
+  Severity: high
+  Action: Re-run `aq-qa 0 --machine` and fix the failing check(s).
+  File: attention:attn-f7f9de78a3624988
+[DONE] rsi-a3b3c4949d7bd57565fce471 — resolved 2026-10-29: attention alert attn-a048baa999ae4cb6 resolved in attention queue (2026-10-29T04:36:40Z) — ledger status=resolved
+
+[OPEN] rsi-d22218484cb4a0948506b2ce — attention-queue:ai-stack-health-monitor failure in attention:attn-00c7a10fed024646. Root cause evidence: producer=attention-queue:ai-stack-health-monitor; path=attention:attn-00c7a10fed024646; authority=attention-queue; os_error=[ai-stack-health-monitor] QA phase 0: 1 check failing (0.10.66 aq-confine acceptance: profi): Scheduled health monitor found 1 failing check:   [0.10.66] aq-confine acceptance: profiles, goldens, cgroup scope limits, bwrap isolation (AQ_CONFINE_REQUIRE=1 locally) (dex: host write-tree equals t. Detected=2026-10-29T05:51:40.982871Z.
+  Severity: high
+  Action: Re-run `aq-qa 0 --machine` and fix the failing check(s).
+  File: attention:attn-00c7a10fed024646
+[DONE] rsi-9c7209d17e7e80b95968caae — resolved 2026-10-29: attention alert attn-f7f9de78a3624988 resolved in attention queue (2026-10-29T05:51:40Z) — ledger status=resolved
+
+- [OPEN] HARNESS-FIRST-EVIDENCE-GATE-PR-ONLY — The harness-first-pr-evidence check (required_evidence_sections in config/harness-first-policy.json) runs only in PR context (pre-push merge-parity, CI), not in tier0 --pre-commit, so evidence docs missing the 8 required sections are found only at push time. Hit 2026-10-28 on the P1.7 and sleep branches, and fixing it after review forced a docs-only re-review. Root cause: the gate is not in the tier0 pre-commit path, and evidence docs were written from the slice report shape, not `evidence_template`. Severity: low (friction). Action: run check-harness-first-pr-evidence-gate.sh with FORCE for staged evidence docs in tier0, or seed slice evidence docs from the template. File: scripts/testing/check-harness-first-pr-evidence-gate.sh.
+- [FIXED-LOCAL] ORCH-PGREP-SELF-MATCH — Session pipeline scripts waited on `pgrep -f <other-job>.py`, but the launching zsh -c command text contained that name, so the job waited on its own parent shell forever (csleep4, credtests, cmanifest, ccanary deadlocked 2026-10-28). Root cause: pgrep -f matches full argv including the parent shell's script text. Severity: low (lost hours of queue time). Action: chain jobs sequentially in one process; never gate on pgrep -f of a name that appears in the launching command. Scope: session scratch tooling only.
+
+[OPEN] rsi-39e035cd22ae6fbeed37db0e — attention-queue:ai-stack-health-monitor failure in attention:attn-b728e7c306f743c8. Root cause evidence: producer=attention-queue:ai-stack-health-monitor; path=attention:attn-b728e7c306f743c8; authority=attention-queue; os_error=[ai-stack-health-monitor] QA phase 0: 1 check failing (0.10.66 aq-confine acceptance: profi): Scheduled health monitor found 1 failing check:   [0.10.66] aq-confine acceptance: profiles, goldens, cgroup scope limits, bwrap isolation (AQ_CONFINE_REQUIRE=1 locally) (dex: host write-tree equals t. Detected=2026-10-29T07:06:43.251238Z.
+  Severity: high
+  Action: Re-run `aq-qa 0 --machine` and fix the failing check(s).
+  File: attention:attn-b728e7c306f743c8
+[DONE] rsi-d22218484cb4a0948506b2ce — resolved 2026-10-29: attention alert attn-00c7a10fed024646 resolved in attention queue (2026-10-29T07:06:43Z) — ledger status=resolved
+
+[OPEN] rsi-d5be4ca4d21640df0a62d674 — attention-queue:ai-stack-health-monitor failure in attention:attn-c22256f318a0454d. Root cause evidence: producer=attention-queue:ai-stack-health-monitor; path=attention:attn-c22256f318a0454d; authority=attention-queue; os_error=[ai-stack-health-monitor] QA phase 0: 1 check failing (0.10.66 aq-confine acceptance: profi): Scheduled health monitor found 1 failing check:   [0.10.66] aq-confine acceptance: profiles, goldens, cgroup scope limits, bwrap isolation (AQ_CONFINE_REQUIRE=1 locally) (dex: host write-tree equals t. Detected=2026-10-29T08:06:44.219492Z.
+  Severity: high
+  Action: Re-run `aq-qa 0 --machine` and fix the failing check(s).
+  File: attention:attn-c22256f318a0454d
+[DONE] rsi-39e035cd22ae6fbeed37db0e — resolved 2026-10-29: attention alert attn-b728e7c306f743c8 resolved in attention queue (2026-10-29T08:06:44Z) — ledger status=resolved
+
+[OPEN] rsi-4202b4d8530295a47daf7990 — attention-queue:ai-stack-health-monitor failure in attention:attn-07afdc5e55204ad9. Root cause evidence: producer=attention-queue:ai-stack-health-monitor; path=attention:attn-07afdc5e55204ad9; authority=attention-queue; os_error=[ai-stack-health-monitor] QA phase 0: 1 check failing (0.10.66 aq-confine acceptance: profi): Scheduled health monitor found 1 failing check:   [0.10.66] aq-confine acceptance: profiles, goldens, cgroup scope limits, bwrap isolation (AQ_CONFINE_REQUIRE=1 locally) (dex: host write-tree equals t. Detected=2026-10-29T09:06:45.431719Z.
+  Severity: high
+  Action: Re-run `aq-qa 0 --machine` and fix the failing check(s).
+  File: attention:attn-07afdc5e55204ad9
+[DONE] rsi-d5be4ca4d21640df0a62d674 — resolved 2026-10-29: attention alert attn-c22256f318a0454d resolved in attention queue (2026-10-29T09:06:45Z) — ledger status=resolved
+
+- [OPEN] P0.5-REVIEW-FOLLOWUPS (local-20261029-015426-1cey0v, -020428-bz5nnz) — (1) scripts/testing/run-test-group.py:46 runs 4 tests concurrently with cwd=REPO; a test that writes into the repo tree could collide (flakiness, not correctness). (2) check-ci-test-coverage regex counts a test path mentioned anywhere in a check `cmd`, including non-executing text. Severity: low. Action: per-test cwd or serial mode for repo-writing tests; anchor the regex to interpreter invocations.
+- [OPEN] P5.2-REVIEW-FOLLOWUPS (local-20261029-013142-pw18xe, -014425-hr2coa) — check-activation-manifest.py: textual enable detection misses mkDefault/inherit/let and can match a same-named attr in another block; live_caller substring match counts comments; health_signal symbol check is substring, not definition. All already listed as known limits in the commit. Severity: medium (gate strength). Action: AST/`nix eval`-based enable check; require live_caller match on an invocation line.
+- [OPEN] P5.1-REVIEW-FOLLOWUPS (local-20261029-010437-rfobge, -012400-7t13dk) — gate-canaries: fx_copy uses cp -aL (deliberate for symlinked agent files; could pull in out-of-repo targets); check-owned-scope canary CARGO_TARGET_DIR keyed by UID only; check-sops-sync canary tests missing-key only; check-deleted-links exemption reason wording. Severity: low. Part B REQUEST_CHANGES (finding 1 CANARY_REPO undefined) was a false positive (defined _lib.sh:7); round-2 rebuttal review queued.
+
+[OPEN] rsi-71b7c2fb78393e21729f8fb9 — journal:ai-hybrid-coordinator failure in service-error:ai-hybrid-coordinator:switchboard_unavailable error_id=<hex>. Root cause evidence: producer=journal:ai-hybrid-coordinator; path=ai-hybrid-coordinator; authority=journald; os_error=recurring error in ai-hybrid-coordinator: switchboard_unavailable error_id=<hex>. Detected=2026-10-29T09:36:45.527072Z.
+  Severity: medium
+  Action: 5 occurrence(s) in last 3600s; example: {"event": "switchboard_unavailable error_id=e95189929aed", "exc_info": ["<class 'httpx.HTTPStatusError'>", "HTTPStatusError(\"Server error '503 Service Unavailable' for url 'http://127.0.0.1:8085/v1/c; journalctl -u ai-hybrid-coordinator; fix producer
+  File: ai-hybrid-coordinator
+
+[OPEN] rsi-973f21491207363a08effc12 — attention-queue:ai-stack-health-monitor failure in attention:attn-cd4b373c21384a2c. Root cause evidence: producer=attention-queue:ai-stack-health-monitor; path=attention:attn-cd4b373c21384a2c; authority=attention-queue; os_error=[ai-stack-health-monitor] QA phase 0: 1 check failing (0.10.66 aq-confine acceptance: profi): Scheduled health monitor found 1 failing check:   [0.10.66] aq-confine acceptance: profiles, goldens, cgroup scope limits, bwrap isolation (AQ_CONFINE_REQUIRE=1 locally) (dex: host write-tree equals t. Detected=2026-10-29T10:06:48.790670Z.
+  Severity: high
+  Action: Re-run `aq-qa 0 --machine` and fix the failing check(s).
+  File: attention:attn-cd4b373c21384a2c
+[DONE] rsi-4202b4d8530295a47daf7990 — resolved 2026-10-29: attention alert attn-07afdc5e55204ad9 resolved in attention queue (2026-10-29T10:06:48Z) — ledger status=resolved
+- [FIXED-BRANCH] RUN-TEST-GROUP-ENV-LEAK — scripts/testing/run-test-group.py passed CI_CHECKS_CHANGED_FILES (exported by ci-merge-parity.sh:43) to tests; test-ci-checks-manifest test_diff_failure_runs_all then selected no checks. Fixed on fix/red-tests-and-ci-coverage by dropping CI_CHECKS_* from child env. Note: the same parity run also failed tests-delegate once (not reproducible in 3 reruns, incl. a /tmp worktree; ran concurrently with a local Qwen review) — watch for load flakiness; credtests3 saves the full parity log to session scratch parity-redtests.log.
+
+[OPEN] rsi-f9a3621ff3dc76f4f0e31877 — attention-queue:ai-stack-health-monitor failure in attention:attn-cd4b373c21384a2c. Root cause evidence: producer=attention-queue:ai-stack-health-monitor; path=attention:attn-cd4b373c21384a2c; authority=attention-queue; os_error=[ai-stack-health-monitor] QA phase 0: 1 check failing (0.10.66 aq-confine acceptance: profi): Scheduled health monitor found 1 failing check:   [0.10.66] aq-confine acceptance: profiles, goldens, cgroup scope limits, bwrap isolation (AQ_CONFINE_REQUIRE=1 locally) (0994fac; FAIL: confined launc. Detected=2026-10-29T10:36:48.781465Z.
+  Severity: high
+  Action: Re-run `aq-qa 0 --machine` and fix the failing check(s).
+  File: attention:attn-cd4b373c21384a2c
+
+[OPEN] rsi-d023f93c63964e677520b824 — attention-queue:ai-stack-health-monitor failure in attention:attn-38de6430810c4bba. Root cause evidence: producer=attention-queue:ai-stack-health-monitor; path=attention:attn-38de6430810c4bba; authority=attention-queue; os_error=[ai-stack-health-monitor] QA phase 0: 1 check failing (0.10.66 aq-confine acceptance: profi): Scheduled health monitor found 1 failing check:   [0.10.66] aq-confine acceptance: profiles, goldens, cgroup scope limits, bwrap isolation (AQ_CONFINE_REQUIRE=1 locally) (dex: host write-tree equals t. Detected=2026-10-29T11:51:51.345248Z.
+  Severity: high
+  Action: Re-run `aq-qa 0 --machine` and fix the failing check(s).
+  File: attention:attn-38de6430810c4bba
+[DONE] rsi-973f21491207363a08effc12 — resolved 2026-10-29: attention alert attn-cd4b373c21384a2c resolved in attention queue (2026-10-29T11:51:51Z) — ledger status=resolved
+[DONE] rsi-f9a3621ff3dc76f4f0e31877 — resolved 2026-10-29: attention alert attn-cd4b373c21384a2c resolved in attention queue (2026-10-29T11:51:51Z) — ledger status=resolved
+
+[OPEN] rsi-5c1e43680eb6c022ca06e37e — attention-queue:ai-stack-health-monitor failure in attention:attn-38de6430810c4bba. Root cause evidence: producer=attention-queue:ai-stack-health-monitor; path=attention:attn-38de6430810c4bba; authority=attention-queue; os_error=[ai-stack-health-monitor] QA phase 0: 1 check failing (0.10.66 aq-confine acceptance: profi): Scheduled health monitor found 1 failing check:   [0.10.66] aq-confine acceptance: profiles, goldens, cgroup scope limits, bwrap isolation (AQ_CONFINE_REQUIRE=1 locally) (0994fac; FAIL: confined launc. Detected=2026-10-29T12:06:50.799965Z.
+  Severity: high
+  Action: Re-run `aq-qa 0 --machine` and fix the failing check(s).
+  File: attention:attn-38de6430810c4bba
+
+[OPEN] rsi-e54c61b63c5adf76ef69986a — attention-queue:ai-stack-health-monitor failure in attention:attn-e6d4058282ec4834. Root cause evidence: producer=attention-queue:ai-stack-health-monitor; path=attention:attn-e6d4058282ec4834; authority=attention-queue; os_error=[ai-stack-health-monitor] QA phase 0: 1 check failing (0.10.66 aq-confine acceptance: profi): Scheduled health monitor found 1 failing check:   [0.10.66] aq-confine acceptance: profiles, goldens, cgroup scope limits, bwrap isolation (AQ_CONFINE_REQUIRE=1 locally) (dex: host write-tree equals t. Detected=2026-10-29T13:21:54.405317Z.
+  Severity: high
+  Action: Re-run `aq-qa 0 --machine` and fix the failing check(s).
+  File: attention:attn-e6d4058282ec4834
+[DONE] rsi-5c1e43680eb6c022ca06e37e — resolved 2026-10-29: attention alert attn-38de6430810c4bba resolved in attention queue (2026-10-29T13:21:54Z) — ledger status=resolved
+[DONE] rsi-d023f93c63964e677520b824 — resolved 2026-10-29: attention alert attn-38de6430810c4bba resolved in attention queue (2026-10-29T13:21:54Z) — ledger status=resolved
+[DONE] rsi-575a4d9663770ced7c0d3afb — resolved 2026-10-29: delegation class delegation:codex:orphaned had zero occurrences in the last 604800s (160 run(s) read from registry, 2026-10-29T16:03:31Z) — ledger status=resolved
+[DONE] rsi-d52a7f6c4700a109bcb20e71 — resolved 2026-10-29: delegation class delegation:claude:orphaned had zero occurrences in the last 604800s (160 run(s) read from registry, 2026-10-29T16:03:31Z) — ledger status=resolved
+[OPEN] STACKED-PR-REGISTRY-CONFLICTS — sibling PRs conflict after any one merges — root cause: append-only shared registries (config/ci-checks.json, config/suspend-resume-workloads.json) get every slice's new entry at the same spot (end of list / after the same neighbour), so git sees overlapping hunks; GitHub resolves server-side, so a local merge driver cannot help, and a resolved merge changes the patch-id so check-review-disposition (correctly) demands a fresh review + receipt. Hit 2026-10-29: #647 and #648 both conflicted after #646 merged. Severity: medium (costs one merge-review cycle per sibling PR, plus CI). Action: split each registry into one file per entry (config/ci-checks.d/<id>.json, config/suspend-resume-workloads.d/<id>.json) loaded by run-ci-checks.sh and the workload validator, so independent slices never touch the same file; interim: open PRs one at a time when they share a registry. File: config/ci-checks.json, config/suspend-resume-workloads.json
+[OPEN] REQUIRED-CHECK-CONTEXT-MISMATCH — main branch protection requires context "review-disposition/review-disposition" (app_id null), but the GitHub Actions job reports a check run named "review-disposition" (app 15368), so the required check stays "Expected — Waiting" forever and every merge needs the admin bypass. Severity: high (the review gate is unenforceable). Action: owner runs gh api PATCH .../protection/required_status_checks with context "review-disposition", app_id 15368, then POST .../enforce_admins. File: GitHub branch protection (main)
+
+[OPEN] rsi-fd15a6406f02dd082aa10532 — attention-queue:ai-stack-health-monitor failure in attention:attn-453e87f84fbf42e3. Root cause evidence: producer=attention-queue:ai-stack-health-monitor; path=attention:attn-453e87f84fbf42e3; authority=attention-queue; os_error=[ai-stack-health-monitor] QA phase 0: 1 check failing (0.10.66 aq-confine acceptance: profi): Scheduled health monitor found 1 failing check:   [0.10.66] aq-confine acceptance: profiles, goldens, cgroup scope limits, bwrap isolation (AQ_CONFINE_REQUIRE=1 locally) (0994fac; FAIL: confined launc. Detected=2026-10-29T16:18:33.864119Z.
+  Severity: high
+  Action: Re-run `aq-qa 0 --machine` and fix the failing check(s).
+  File: attention:attn-453e87f84fbf42e3
+[DONE] rsi-e54c61b63c5adf76ef69986a — resolved 2026-10-29: attention alert attn-e6d4058282ec4834 resolved in attention queue (2026-10-29T16:18:33Z) — ledger status=resolved
+
+[OPEN] rsi-e9f47ea71bf886346356922a — journal:ai-hybrid-coordinator failure in service-error:ai-hybrid-coordinator:{"event": "sync_query_gaps_failed error=[Errno <n>] Permissi. Root cause evidence: producer=journal:ai-hybrid-coordinator; path=ai-hybrid-coordinator; authority=journald; os_error=recurring error in ai-hybrid-coordinator: {"event": "sync_query_gaps_failed error=[Errno <n>] Permission denied: '/var/log/nixos-ai-stack/query-gaps.tmp'", "version": "<n>.<n>.<n>", "service": "hybrid-c. Detected=2026-10-29T16:33:34.073249Z.
+  Severity: medium
+  Action: 6 occurrence(s) in last 3600s; example: {"event": "sync_query_gaps_failed error=[Errno 13] Permission denied: '/var/log/nixos-ai-stack/query-gaps.tmp'", "version": "1.0.0", "service": "hybrid-coordinator", "logger": "hybrid-coordinator", "l; journalctl -u ai-hybrid-coordinator; fix producer
+  File: ai-hybrid-coordinator
+
+[OPEN] rsi-40e2b1bf0434f989c86db14b — attention-queue:ai-stack-health-monitor failure in attention:attn-453e87f84fbf42e3. Root cause evidence: producer=attention-queue:ai-stack-health-monitor; path=attention:attn-453e87f84fbf42e3; authority=attention-queue; os_error=[ai-stack-health-monitor] QA phase 0: 1 check failing (0.10.66 aq-confine acceptance: profi): Scheduled health monitor found 1 failing check:   [0.10.66] aq-confine acceptance: profiles, goldens, cgroup scope limits, bwrap isolation (AQ_CONFINE_REQUIRE=1 locally) (dex: host write-tree equals t. Detected=2026-10-29T16:33:34.339290Z.
+  Severity: high
+  Action: Re-run `aq-qa 0 --machine` and fix the failing check(s).
+  File: attention:attn-453e87f84fbf42e3
+
+[OPEN] rsi-f181fff5a70927d55530c658 — aq-qa:phase0 failure in aq-qa:0.10.66. Root cause evidence: producer=aq-qa:phase0; path=aq-qa check 0.10.66; authority=aq-qa; os_error=phase-0 check 0.10.66 failing: aq-confine acceptance: profiles, goldens, cgroup scope limits, bwrap isolation (AQ_CONFINE_REQUIRE=1 locally) (ed launch. Detected=2026-10-29T16:48:31.565644Z.
+  Severity: medium
+  Action: run aq-qa 0 --machine and fix check 0.10.66 at its producer
+  File: aq-qa check 0.10.66
+
+[OPEN] rsi-1bef1c4873f0a6abf0cb0cdf — attention-queue:ai-stack-health-monitor failure in attention:attn-453e87f84fbf42e3. Root cause evidence: producer=attention-queue:ai-stack-health-monitor; path=attention:attn-453e87f84fbf42e3; authority=attention-queue; os_error=[ai-stack-health-monitor] QA phase 0: 1 check failing (0.10.66 aq-confine acceptance: profi): Scheduled health monitor found 1 failing check:   [0.10.66] aq-confine acceptance: profiles, goldens, cgroup scope limits, bwrap isolation (AQ_CONFINE_REQUIRE=1 locally) (ed launch runs in a live aq-c. Detected=2026-10-29T16:48:34.661994Z.
+  Severity: high
+  Action: Re-run `aq-qa 0 --machine` and fix the failing check(s).
+  File: attention:attn-453e87f84fbf42e3
+
+[OPEN] rsi-71b7c2fb78393e21729f8fb9 — journal:ai-hybrid-coordinator failure in service-error:ai-hybrid-coordinator:switchboard_unavailable error_id=<hex>. Root cause evidence: producer=journal:ai-hybrid-coordinator; path=ai-hybrid-coordinator; authority=journald; os_error=recurring error in ai-hybrid-coordinator: switchboard_unavailable error_id=<hex>. Detected=2026-10-29T17:03:35.122036Z.
+  Severity: medium
+  Action: 5 occurrence(s) in last 3600s; example: {"event": "switchboard_unavailable error_id=da14ba03fd6c", "exc_info": ["<class 'httpx.HTTPStatusError'>", "HTTPStatusError(\"Server error '503 Service Unavailable' for url 'http://127.0.0.1:8085/v1/c; journalctl -u ai-hybrid-coordinator; fix producer
+  File: ai-hybrid-coordinator
+[OPEN] PR-MERGED-BEFORE-RECEIPT — #648 (2026-10-29) was merged while review-disposition was red: the pipeline pushed the merge head, then ran tier0 (~5 min) before pushing the receipt commit, and the PR looked ready in that window. Merged tree 9bb13898 == reviewed head 6979e67f (local-20261029-095319-o40j6l PASS; receipt archived at .agents/archive/20261029-pr648-receipt/). Root cause: pipeline order leaves a mergeable PR with an unbound head; branch protection does not block it (required context mismatch + no enforce_admins). Severity: medium. Action: pipelines mark the PR draft before any head-changing push and mark it ready only after receipt + body are bound (done in session scripts cmerge.py/copen.py); owner applies branch-protection fix so red review blocks merge. File: .agents/delegation/outputs/session-50391bdd-scratch/cmerge.py
+[DONE] REQUIRED-CHECK-CONTEXT-MISMATCH — resolved 2026-10-29: owner PATCHed required check to context review-disposition (app 15368) and enabled enforce_admins; a red review-disposition now blocks merge for everyone.
+[OPEN] ACTIVATION-MANIFEST-BACKFILL-646-647 — entrypoints merged just before the P5.2 gate existed have no activation-manifest entry: scripts/ai/aq-keep-awake + nix/modules/services/keep-awake.nix (unit aq-keep-awake, opt-in by design), scripts/ai/aq-llama-resume-gate, scripts/ai/aq-llm-speed-probe (units aq-llm-speed-probe, aq-llm-speed-probe-resume), unit power-policy-apply. Found by the P5.2 gate during the 2026-10-29 merge. The gate only forces NEW entrypoints, so nothing will flag these again. Severity: medium (Rule 15 attestation gap; opt-in keep-awake needs a deferral or enable=null with a reason). Action: after P5.2 merges, add one manifest entry per feature (live caller, enable option, health signal) or a dated deferral; owner decides whether opt-in features carry enable=null. File: config/activation-manifest.json
+[OPEN] QA-PHASE0-FLAKY — QA phase 0 failed then passed on immediate rerun 3 times on 2026-10-29 (tier0 for P1.7; health-monitor alert attn-453e87f84fbf42e3 at 16:03Z on 0.10.66 aq-confine cgroup scope; tier0 for the P5.2 merge commit). Root cause unknown: the tier0 summary prints only "QA phase 0 failed", not the failing check id, so the P5.2 occurrence is unattributed. Severity: medium (blocks commits at random; trains agents to rerun). Action: make tier0 print the failing phase-0 check ids; then fix the flaky check (first suspect 0.10.66 confined launch / live aq-confine-<run>.scope timing). File: scripts/governance/tier0-validation-gate.sh (QA phase 0 step)
+
+[OPEN] rsi-ae4755cce320d5962fff9ed1 — attention-queue:ai-stack-health-monitor failure in attention:attn-4111c1ce32124d0d. Root cause evidence: producer=attention-queue:ai-stack-health-monitor; path=attention:attn-4111c1ce32124d0d; authority=attention-queue; os_error=[ai-stack-health-monitor] QA phase 0: 1 check failing (0.10.66 aq-confine acceptance: profi): Scheduled health monitor found 1 failing check:   [0.10.66] aq-confine acceptance: profiles, goldens, cgroup scope limits, bwrap isolation (AQ_CONFINE_REQUIRE=1 locally) (dex: host write-tree equals t. Detected=2026-10-29T18:03:37.458377Z.
+  Severity: high
+  Action: Re-run `aq-qa 0 --machine` and fix the failing check(s).
+  File: attention:attn-4111c1ce32124d0d
+[DONE] rsi-1bef1c4873f0a6abf0cb0cdf — resolved 2026-10-29: attention alert attn-453e87f84fbf42e3 resolved in attention queue (2026-10-29T18:03:37Z) — ledger status=resolved
+[DONE] rsi-40e2b1bf0434f989c86db14b — resolved 2026-10-29: attention alert attn-453e87f84fbf42e3 resolved in attention queue (2026-10-29T18:03:37Z) — ledger status=resolved
+[DONE] rsi-fd15a6406f02dd082aa10532 — resolved 2026-10-29: attention alert attn-453e87f84fbf42e3 resolved in attention queue (2026-10-29T18:03:37Z) — ledger status=resolved
+[UPDATE] QA-PHASE0-FLAKY — correction 2026-10-29: tier0 DOES print the failing phase-0 rows (log_failed_qa_rows, tier0-validation-gate.sh:1032); the P5.2 occurrence is unattributed because the session pipeline filtered tier0 output to Passed/Failed lines and saved nothing. Fixed in session scripts (copen.py/cmerge.py save every tier0 log and keep ✗ rows). Remaining action: catch the next occurrence with its row, then fix or reclassify that check.
+[OPEN] CODEX-PROBE-TOKEN-OVERHEAD — a one-line `codex exec` probe ("Reply with exactly: CODEX_OK") used 27,994 tokens on 2026-10-29; nearly all is SessionStart hook context injected into every Codex session. Severity: medium (burns ~11% of the 250k daily headless budget per trivial call; reviews pay it too). Action: give delegate-to-codex/codex reviews a slim payload mode (Headless Delegate Mode: bounded task, no hydration) and measure tokens per review. File: Codex SessionStart hook / scripts/ai/delegate-to-codex
+[OPEN] P17-ACTIVATION-DOC-INVISIBLE-FILE — options.nix powerPolicy comment and docs/harness-first/evidence/2026-10-28-power-policy-speed-probe.md tell the owner to enable P1.7 in deploy-options.local.nix, which is gitignored and so invisible to pure flake eval (root cause recorded in plan 21.2); following them would silently change nothing. Severity: medium. Action: enable in tracked nix/hosts/hyperd/deploy-options.nix (PR feat/activate-power-sleep) and correct the comment + doc in the same PR. File: nix/modules/core/options.nix ~488
+[OPEN] ACTIVATION-GRANT-FORGEABLE — refactor_status._activation_events and aq-pm-tracker._aq_grants honor any .agents/events/*.jsonl line with type activation.grant and agent == "owner"; the field is self-asserted, so any process can mint ACTIVATED (same forgery class as the 2026-10-27 review-claim audit). No grant exists yet (.agents/events absent 2026-10-29), so nothing to revoke. Severity: high (the only path to ACTIVATED is unauthenticated). Action: P0.7 per .agents/plans/system-integrity-recovery/ACTIVATION-PIPELINE.md — grants written only by an aq-approve executor and honored only when bound to an approved alert + attestation sha256. File: scripts/ai/lib/refactor_status.py ~79, scripts/ai/aq-pm-tracker ~112
+[OPEN] ACTIVATED-UNREACHABLE — only 7 of ~275 tracker items carry detection.activation_subject, so ACTIVATED cannot project for the rest regardless of evidence; board shows 238 SHIPPED / 1 ACTIVATED (deployed) and 143 / 0 on origin/main. Severity: high (Rule 15 has no reachable terminal state). Action: activation pipeline (aq-activation-request + owner-bound grant + per-plan attestation waves). File: .agents/plans/*/tracker.json
+[INFO] PM-BOARD-DEPLOYED-STALE — /api/pm/progress serves the deployed checkout, which predates #635 (self-acceptance reset) and #645 (untrusted-author hold); it shows 238 SHIPPED vs 143 projected from origin/main (e.g. SOTA rounding 31/31 vs 0/31). The drop after the next pull + rebuild is the correction, not a regression.
+[OPEN] DEPLOY-DRIFT-SSOT — the main checkout (runtime source for the dashboard: dashboard/backend runs scripts/ai/aq-pm-tracker from the working tree, pm.py:43) was last pulled 2026-10-26 22:34 (eb2f97db), 16 merged PRs behind origin/main 9bb13898; the running system is eb2f97db-dirty (built 2026-10-27 18:06). Root causes: (1) merges land on origin/main but nothing syncs the main checkout or flags the gap; (2) runtime services execute code from the mutable working tree instead of the deployed (Nix store) revision, so "merged", "checked out" and "deployed" are three different states with no signal between them; (3) no observability of deployed-rev vs origin/main (Rule 15 dim 4 gap for delivery itself). Severity: high (board and runtime silently disagree with SSOT). Action: drift probe (health-spider + board banner: projected-from rev, behind count, dirty flag); /api/pm/progress reports its source rev; one owner command post-merge (pull --ff-only + deploy guard + nrs). File: dashboard/backend/api/routes/pm.py:43, scripts/governance/check-deploy-source.sh
+[OPEN] FLAKE-LOCK-UNCOMMITTED-UPDATE — main checkout flake.lock modified (mtime 2026-10-29 08:58) with 8 inputs advanced (nixpkgs_5 26f4107e->08d3a975, nixpkgs-unstable, home-manager, sops-nix, disko, impermanence, nixified-ai, nixos-hardware; dates to 2026-10-28), not in any commit; running system is a -dirty build, so git cannot reproduce it. Writer not identified (suspect: a nix command with --inputs-from <repo> re-locking, e.g. scripts/security/aq-closure-scan:50). Severity: high (SSOT violation; deploy guard will block nrs on a dirty build-affecting file). Action: owner archives + restores the lock, then a deliberate flake-refresh PR through tiered updates; find the writer and make it use a read-only copy.
+[OPEN] DELEGATE-BASE-STALE — scripts/ai/lib/worktree-isolation.sh:50 wt_create bases every delegated worktree on HEAD of the invoking checkout; dispatched from the stale main checkout (eb2f97db), Codex fix task codex-20261029-111910-zbn4u9 got code without merged #638 and correctly stopped (34.5k tokens spent). Same root cause as DEPLOY-DRIFT-SSOT. Severity: high (implementers silently work on old code). Action: base on origin/main after a fetch (fail closed if fetch fails, override env for explicit bases); interim: dispatch from an up-to-date worktree with AQ_DELEGATION_DIR set to the shared dir.
+[OPEN] STALE-CHECKOUT-LOOSER-BUDGET — dispatching delegate-to-codex from the stale main checkout used the pre-#642 per-day budget (reported 0/250000) while the merged rolling-24h budget reports 348477/250000 (exhausted until 2026-10-29 12:23:55 PDT); three Codex runs today (probe 28k, #638 review 56k, blocked fix 34.5k) went through the looser guard unintentionally. Severity: medium (a merged guard was silently not in force). Action: same fix as DEPLOY-DRIFT-SSOT / DELEGATE-BASE-STALE; record the overrun honestly.
+
+[OPEN] rsi-9b01af8d2a77ee709b8ee1ac — delegation:codex failure in delegation:codex:blocked. Root cause evidence: producer=delegation:codex; path=.agents/delegation/registry.jsonl; authority=codex; os_error=codex delegation class blocked. Detected=2026-10-29T18:33:35.078794Z.
+  Severity: low
+  Action: 1 run(s) in window; latest example .agents/delegation/outputs/codex-20261029-111910-zbn4u9.log; fix producer for class blocked
+  File: .agents/delegation/registry.jsonl
+[OPEN] RUNTIME-WRITES-TRACKED-CONFIG — runtime jobs rewrite tracked build-affecting files with timestamps: ai-stack/prompts/registry.yaml (last_evaluated per prompt, from the prompt-eval job) and config/frontier-radar-registry.json (updated_at, frontier radar). The main checkout is re-dirtied after each run, so check-deploy-source.sh blocks nrs (hit 2026-10-29 after the pull to 66423a6e). Severity: medium (recurring deploy blocker; runtime state mixed into SSOT config). Action: write evaluation/radar timestamps to a state file under /var/lib/ai-stack (or .agents/state, gitignored) and keep the tracked files static; find the writers (prompt eval scorer, frontier radar ingest). File: ai-stack/prompts/registry.yaml, config/frontier-radar-registry.json
+
+[OPEN] rsi-4eb87d20f8cc1693a4890fef — attention-queue:ai-stack-health-monitor failure in attention:attn-03ef7f7c66aa455a. Root cause evidence: producer=attention-queue:ai-stack-health-monitor; path=attention:attn-03ef7f7c66aa455a; authority=attention-queue; os_error=[ai-stack-health-monitor] QA phase 0: 1 check failing (0.10.66 aq-confine acceptance: profi): Scheduled health monitor found 1 failing check:   [0.10.66] aq-confine acceptance: profiles, goldens, cgroup scope limits, bwrap isolation (AQ_CONFINE_REQUIRE=1 locally) (dex: host write-tree equals t. Detected=2026-10-29T19:03:44.927456Z.
+  Severity: high
+  Action: Re-run `aq-qa 0 --machine` and fix the failing check(s).
+  File: attention:attn-03ef7f7c66aa455a
+[DONE] rsi-ae4755cce320d5962fff9ed1 — resolved 2026-10-29: attention alert attn-4111c1ce32124d0d resolved in attention queue (2026-10-29T19:03:44Z) — ledger status=resolved
+[OPEN] AGENT-FILE-BUDGET-HEADROOM - .agent/CODEX.md is 23998 of 24000 bytes after the 2026-10-29 delivery-workflow canon change (CLAUDE.md 23959); the next canonical addition will fail check-agent-instruction-parity. Severity: low. Action: move lane-specific detail from the CODEX lane region to .agent/lanes/codex-reference.md to restore 1-2 KB headroom. File: .agent/CODEX.md
+[OPEN] HOOK-DROPS-CD-WRONG-REPO - the lean-ctx/rtk PreToolUse rewrite turned `cd <worktree> && git add -A && ...` into `lean-ctx -c 'git add -A' && ...` run from the session cwd, so `git add -A` staged the MAIN checkout (untracked archives, embedded worktree repos) instead of the worktree (2026-10-29). No commit happened; recovered with `git reset -q` (index only). Severity: high (silent wrong-repo writes). Action: agents use `git -C <abs path>` and absolute paths for every write; fix the hook so it never strips a leading cd. File: lean-ctx shell hook
+[OPEN] APPARMOR-PRESENT-VIA-NIX-EVAL - follow-up to fix/apparmor-present-parser: replace the hand-written Nix lexer in aq-approve _apparmor_rules_already_present with the evaluated profile (nix eval .#nixosConfigurations.<host>.config.security.apparmor.policies."<p>".profile), which is authoritative and removes parser bugs; deferred 2026-10-29 because each approval would wait 30-60 s and tests need an injectable evaluator. Severity: low. File: scripts/ai/aq-approve
+[UPDATE] QA-PHASE0-FLAKY - attributed 2026-10-29 12:4x: the intermittent phase-0 failure is 0.10.66 "aq-confine acceptance" (subcheck: confined launch runs in a live aq-confine-<run>.scope with MemoryMax/MemorySwapMax=0/TasksMax from the profile). Seen at 16:03Z (health-monitor alert) and in tier0 for chore/flake-refresh while the owner ran nrs (systemd reload during switch is the leading hypothesis, unproven). Next: rerun after the switch; if it passes, the check depends on live systemd state and belongs in LIVE_SERVICE_CLASS_IDS (WARN in --pre-commit, HARD in --maintenance) per the Rule 19 gate corollary, with evidence; if it fails again on an idle system, it is a real confinement regression. File: harness_qa check 0.10.66; scripts/governance/tier0-validation-gate.sh LIVE_SERVICE_CLASS_IDS
+[OPEN] HOOK-MANGLES-SHELL-VARS - 2026-10-29: a command using W=<path>; git -C $W ... was rewritten so $W expanded empty in some segments (`git -C status` errors) while `git -C $W reset --soft` still ran; outcome was correct only by luck. Same hook class as HOOK-DROPS-CD-WRONG-REPO. Severity: high for any write. Action: agents never use shell variables or cd in write commands (literal absolute paths with git -C only); fix the lean-ctx/rtk rewrite. File: lean-ctx shell hook
+[OPEN] HM-ACTIVATION-NETWORK-HANG - home-manager switch hung ~15+ min (2026-10-29 12:4x) in home.activation.ensureMutableRuntimeVscodeExtensions: `codium --install-extension qwenlm.qwen-code-vscode-ide-companion --force` held an ESTABLISHED TLS connection to the extension CDN (151.101.1.242:443) with no progress; the loop has `|| true` but no timeout, so one stalled download blocks the whole activation. Owner unblocked by killing the codium CLI pid. Severity: medium (rebuild stage blocks; hits aq-deploy-current too). Action: wrap each install in `timeout 120` (and the Continue VSIX install), log skipped extensions, keep `|| true`. File: nix/home/base.nix ~1281-1291
+
+[OPEN] rsi-0799cc4c4806b6508f2a09f5 — aq-qa:phase0 failure in aq-qa:0.10.50. Root cause evidence: producer=aq-qa:phase0; path=aq-qa check 0.10.50; authority=aq-qa; os_error=phase-0 check 0.10.50 failing: Factory readiness preflight: hash-bound evidence, fail-closed unconfigured checks, typed blockers (fixture exit 1). Detected=2026-10-29T20:03:43.664841Z.
+  Severity: medium
+  Action: run aq-qa 0 --machine and fix check 0.10.50 at its producer
+  File: aq-qa check 0.10.50
+
+[OPEN] rsi-7ba9a1f5292d8ce93684cb98 — attention-queue:ai-stack-health-monitor failure in attention:attn-0ff3a30540cd4c77. Root cause evidence: producer=attention-queue:ai-stack-health-monitor; path=attention:attn-0ff3a30540cd4c77; authority=attention-queue; os_error=[ai-stack-health-monitor] QA phase 0: 2 checks failing (0.10.50 Factory readiness preflight:, 0.10.66 aq-…: QA phase 0: 2 checks failing (0.10.50 Factory readiness preflight:, 0.10.66 aq-confine acceptance: profi)  Scheduled health monitor found 2 failing checks:   [0.10.50] Factory readiness preflight: has. Detected=2026-10-29T20:03:47.501562Z.
+  Severity: high
+  Action: Re-run `aq-qa 0 --machine` and fix the failing check(s).
+  File: attention:attn-0ff3a30540cd4c77
+[DONE] rsi-4eb87d20f8cc1693a4890fef — resolved 2026-10-29: attention alert attn-03ef7f7c66aa455a resolved in attention queue (2026-10-29T20:03:47Z) — ledger status=resolved
+[OPEN] AUTO-UPDATE-IN-PLACE-LOCK - scripts/maintenance/aq-auto-update (tiered-auto-update U3, disabled) runs `nix flake update` in the owner checkout (~line 421), builds and switches, but never commits the lock: on success it recreates FLAKE-LOCK-UNCOMMITTED-UPDATE (running system matches no commit; check-deploy-source blocks the next nrs). Also weekly-only (Sun 02-04 UTC). Severity: medium (designed lane would cause drift). Proposed (owner discussion 2026-10-29): security-update lane = daily + aq-closure-scan CVE trigger -> flake update in a worktree -> build system+HM inside the idle lease -> lock-only PR with a deterministic fast-track receipt (only flake.lock changed, inputs moved forward, no source URL change, closures built) -> owner merge -> aq-deploy-current. File: scripts/maintenance/aq-auto-update, nix/modules/core/auto-update.nix
+
+[OPEN] rsi-b029baf7956502e8651b63b7 — attention-queue:ai-stack-health-monitor failure in attention:attn-0ff3a30540cd4c77. Root cause evidence: producer=attention-queue:ai-stack-health-monitor; path=attention:attn-0ff3a30540cd4c77; authority=attention-queue; os_error=[ai-stack-health-monitor] QA phase 0: 1 check failing (0.10.66 aq-confine acceptance: profi): Scheduled health monitor found 1 failing check:   [0.10.66] aq-confine acceptance: profiles, goldens, cgroup scope limits, bwrap isolation (AQ_CONFINE_REQUIRE=1 locally) (dex: host write-tree equals t. Detected=2026-10-29T20:18:49.090790Z.
+  Severity: high
+  Action: Re-run `aq-qa 0 --machine` and fix the failing check(s).
+  File: attention:attn-0ff3a30540cd4c77
+
+[OPEN] rsi-5bfb1c3d4cf9df1affb71817 — attention-queue:ai-stack-health-monitor failure in attention:attn-311eed1172644e01. Root cause evidence: producer=attention-queue:ai-stack-health-monitor; path=attention:attn-311eed1172644e01; authority=attention-queue; os_error=[ai-stack-health-monitor] QA phase 0: 1 check failing (0.10.66 aq-confine acceptance: profi): Scheduled health monitor found 1 failing check:   [0.10.66] aq-confine acceptance: profiles, goldens, cgroup scope limits, bwrap isolation (AQ_CONFINE_REQUIRE=1 locally) (dex: host write-tree equals t. Detected=2026-10-29T21:18:50.673062Z.
+  Severity: high
+  Action: Re-run `aq-qa 0 --machine` and fix the failing check(s).
+  File: attention:attn-311eed1172644e01
+[DONE] rsi-7ba9a1f5292d8ce93684cb98 — resolved 2026-10-29: attention alert attn-0ff3a30540cd4c77 resolved in attention queue (2026-10-29T21:18:50Z) — ledger status=resolved
+[DONE] rsi-b029baf7956502e8651b63b7 — resolved 2026-10-29: attention alert attn-0ff3a30540cd4c77 resolved in attention queue (2026-10-29T21:18:50Z) — ledger status=resolved
+
+[OPEN] rsi-51771c87bba3777526c7dd43 — journal:ai-hybrid-coordinator failure in service-error:ai-hybrid-coordinator:{"event": "sync_query_gaps_failed error=[Errno <n>] Permissi. Root cause evidence: producer=journal:ai-hybrid-coordinator; path=ai-hybrid-coordinator; authority=journald; os_error=recurring error in ai-hybrid-coordinator: {"event": "sync_query_gaps_failed error=[Errno <n>] Permission denied: '/var/log/nixos-ai-stack/query-gaps.tmp'", "service": "hybrid-coordinator", "version": "<. Detected=2026-10-29T21:48:49.557400Z.
+  Severity: medium
+  Action: 5 occurrence(s) in last 3600s; example: {"event": "sync_query_gaps_failed error=[Errno 13] Permission denied: '/var/log/nixos-ai-stack/query-gaps.tmp'", "service": "hybrid-coordinator", "version": "1.0.0", "logger": "hybrid-coordinator", "l; journalctl -u ai-hybrid-coordinator; fix producer
+  File: ai-hybrid-coordinator
+[OPEN] POWER-POLICY-ORDERING-CYCLE - found by live validation after the owner rebuild (2026-10-29 14:22): "Failed to start power-profiles-daemon.service: Transaction order is cyclic" (switch exit 4). Cycle: multi-user.target after power-policy-apply (wantedBy multi-user.target), power-policy-apply after power-profiles-daemon, and upstream power-profiles-daemon 0.30 unit has After=multi-user.target display-manager.target (WantedBy graphical.target). Running state is fine (daemon active, profile performance) but the next boot may fail to start the daemon. Severity: high (boot ordering). Fix: power-policy-apply wantedBy graphical.target (+ post-resume.target), keep After=power-profiles-daemon. File: nix/modules/core/power-policy.nix:46
+[OPEN] QA-CHECK-ID-COLLISION - aq-qa phase 0 has two different checks with ID 0.10.66 ("aq-confine acceptance" and "System 1 triage engine"), so a failure row cannot be attributed by ID alone (relevant to QA-PHASE0-FLAKY). Severity: low. Action: give the System 1 triage check its own ID; add a uniqueness assertion to the QA registry test. File: harness_qa check registry
+[OPEN] LOCAL-PROMPT-THROUGHPUT-DROP-POST-UPDATE - after the 2026-10-29 switch to the 20261028 lock (llama.cpp build 9222), the speed probe read gen 3.17 tok/s and prompt 2.17 tok/s (status slow, cause MEMORY, majfault_delta 1.09M) vs ~3.7 gen / ~8 prompt before; two local reviews (~5k-token prompts) ran 45+ min without finishing and were rerouted to Codex. Unknown yet whether this is a cold page cache after the llama restart (should recover) or a llama.cpp 9222 regression. Severity: high for the local lane. Action: re-measure warm after the reboot (aq-llm-speed-probe); if still slow, compare llama.cpp build flags/version against the previous closure and consider pinning back. File: /var/lib/ai-stack/hybrid/telemetry/llm-speed-probe.jsonl
+[DONE] rsi-51771c87bba3777526c7dd43 — resolved 2026-10-29: journal of ai-hybrid-coordinator read OK; signature below 5 occurrence(s) in last 3600s (2026-10-29T22:58:18Z) — ledger status=resolved
+
+[OPEN] rsi-8650ce4cc2ece9f2c452614e — aq-qa:phase0 failure in aq-qa:0.16.2. Root cause evidence: producer=aq-qa:phase0; path=aq-qa check 0.16.2; authority=aq-qa; os_error=phase-0 check 0.16.2 failing: Security Center live metadata (HTTP 503). Detected=2026-10-29T23:13:16.389546Z.
+  Severity: medium
+  Action: run aq-qa 0 --machine and fix check 0.16.2 at its producer
+  File: aq-qa check 0.16.2
+
+[OPEN] rsi-7a07ac592a1ba99c66161a47 — delegation:local-direct failure in delegation:local-direct:orphaned. Root cause evidence: producer=delegation:local-direct; path=.agents/delegation/registry.jsonl; authority=local-direct; os_error=local-direct delegation class orphaned. Detected=2026-10-29T23:13:16.814934Z.
+  Severity: low
+  Action: 2 run(s) in window; latest example .agents/delegation/outputs/local-20261029-151058-l91b9q.log; fix producer for class orphaned
+  File: .agents/delegation/registry.jsonl
+
+[OPEN] rsi-51771c87bba3777526c7dd43 — journal:ai-hybrid-coordinator failure in service-error:ai-hybrid-coordinator:{"event": "sync_query_gaps_failed error=[Errno <n>] Permissi. Root cause evidence: producer=journal:ai-hybrid-coordinator; path=ai-hybrid-coordinator; authority=journald; os_error=recurring error in ai-hybrid-coordinator: {"event": "sync_query_gaps_failed error=[Errno <n>] Permission denied: '/var/log/nixos-ai-stack/query-gaps.tmp'", "service": "hybrid-coordinator", "version": "<. Detected=2026-10-29T23:13:18.426614Z.
+  Severity: medium
+  Action: 5 occurrence(s) in last 3600s; example: {"event": "sync_query_gaps_failed error=[Errno 13] Permission denied: '/var/log/nixos-ai-stack/query-gaps.tmp'", "service": "hybrid-coordinator", "version": "1.0.0", "logger": "hybrid-coordinator", "l; journalctl -u ai-hybrid-coordinator; fix producer
+  File: ai-hybrid-coordinator
+
+[OPEN] rsi-57dd3c1ce195cb9a8f39fb56 — attention-queue:ai-stack-health-monitor failure in attention:attn-622aa7bf292e4e67. Root cause evidence: producer=attention-queue:ai-stack-health-monitor; path=attention:attn-622aa7bf292e4e67; authority=attention-queue; os_error=[ai-stack-health-monitor] QA phase 0: 2 checks failing (0.16.2 Security Center live metadat, 0.10.66 aq-c…: QA phase 0: 2 checks failing (0.16.2 Security Center live metadat, 0.10.66 aq-confine acceptance: profi)  Scheduled health monitor found 2 failing checks:   [0.16.2] Security Center live metadata (HTT. Detected=2026-10-29T23:13:18.541052Z.
+  Severity: high
+  Action: Re-run `aq-qa 0 --machine` and fix the failing check(s).
+  File: attention:attn-622aa7bf292e4e67
+[DONE] rsi-5bfb1c3d4cf9df1affb71817 — resolved 2026-10-29: attention alert attn-311eed1172644e01 resolved in attention queue (2026-10-29T23:13:18Z) — ledger status=resolved
+[DONE] rsi-8650ce4cc2ece9f2c452614e — resolved 2026-10-29: phase-0 check 0.16.2 passing in health-monitor JSON run 2026-10-29T23:13:40Z — ledger status=resolved
+
+[OPEN] rsi-4de19a01b4b8e08f23c2d894 — attention-queue:ai-stack-health-monitor failure in attention:attn-622aa7bf292e4e67. Root cause evidence: producer=attention-queue:ai-stack-health-monitor; path=attention:attn-622aa7bf292e4e67; authority=attention-queue; os_error=[ai-stack-health-monitor] QA phase 0: 1 check failing (0.10.66 aq-confine acceptance: profi): Scheduled health monitor found 1 failing check:   [0.10.66] aq-confine acceptance: profiles, goldens, cgroup scope limits, bwrap isolation (AQ_CONFINE_REQUIRE=1 locally) (dex: host write-tree equals t. Detected=2026-10-29T23:28:19.060138Z.
+  Severity: high
+  Action: Re-run `aq-qa 0 --machine` and fix the failing check(s).
+  File: attention:attn-622aa7bf292e4e67
+[OPEN] CODEX-REVIEW-ROLE-MISLABEL - orchestrator dispatched Codex reviews via delegate-to-codex without --role review (default implement); aq-review-receipt correctly refused to mint ("registry role implement is not a review role") for #653/#654, costing two extra Codex runs. aq-review-request sets the right role but has no budget-override passthrough, so it could not be used with the owner-authorized budget. Severity: low. Action: always dispatch reviews via aq-review-request or with --role review; add an explicit --force-budget passthrough to aq-review-request (owner-authorized only). File: scripts/ai/aq-review-request
+[UPDATE] QA-PHASE0-FLAKY (0.10.66 aq-confine) - third failure 2026-10-29 ~16:40 in tier0 for the #654 receipt commit with NO system switch running, while a second tier0 (#653 receipt) ran concurrently; the concurrent #653 tier0 passed. New leading hypothesis: two concurrent aq-qa phase-0 runs collide on aq-confine transient scopes (same scope/cgroup names or shared state), which also fits the earlier failures (concurrent pipelines). Next: run the 0.10.66 check twice in parallel on purpose to reproduce; if confirmed, make scope names unique per run (fix the producer) rather than reclassifying.
+
+[OPEN] rsi-0544505dac3a4d591b37b0df — attention-queue:ai-stack-health-monitor failure in attention:attn-f831e8cf5c634b53. Root cause evidence: producer=attention-queue:ai-stack-health-monitor; path=attention:attn-f831e8cf5c634b53; authority=attention-queue; os_error=[ai-stack-health-monitor] QA phase 0: 1 check failing (0.10.66 aq-confine acceptance: profi): Scheduled health monitor found 1 failing check:   [0.10.66] aq-confine acceptance: profiles, goldens, cgroup scope limits, bwrap isolation (AQ_CONFINE_REQUIRE=1 locally) (dex: host write-tree equals t. Detected=2026-10-30T00:43:20.641728Z.
+  Severity: high
+  Action: Re-run `aq-qa 0 --machine` and fix the failing check(s).
+  File: attention:attn-f831e8cf5c634b53
+[DONE] rsi-4de19a01b4b8e08f23c2d894 — resolved 2026-10-30: attention alert attn-622aa7bf292e4e67 resolved in attention queue (2026-10-30T00:43:20Z) — ledger status=resolved
+[DONE] rsi-57dd3c1ce195cb9a8f39fb56 — resolved 2026-10-30: attention alert attn-622aa7bf292e4e67 resolved in attention queue (2026-10-30T00:43:20Z) — ledger status=resolved
+
+[OPEN] rsi-dbf9ac3057874e5c979549e0 — attention-queue:ai-stack-health-monitor failure in attention:attn-f831e8cf5c634b53. Root cause evidence: producer=attention-queue:ai-stack-health-monitor; path=attention:attn-f831e8cf5c634b53; authority=attention-queue; os_error=[ai-stack-health-monitor] QA phase 0: 1 check failing (0.10.66 aq-confine acceptance: profi): Scheduled health monitor found 1 failing check:   [0.10.66] aq-confine acceptance: profiles, goldens, cgroup scope limits, bwrap isolation (AQ_CONFINE_REQUIRE=1 locally) (0994fac; FAIL: confined launc. Detected=2026-10-30T01:13:20.638139Z.
+  Severity: high
+  Action: Re-run `aq-qa 0 --machine` and fix the failing check(s).
+  File: attention:attn-f831e8cf5c634b53
+
+[OPEN] rsi-15776e69223c8b2b776adc9a — attention-queue:ai-stack-health-monitor failure in attention:attn-45c28c43253046e2. Root cause evidence: producer=attention-queue:ai-stack-health-monitor; path=attention:attn-45c28c43253046e2; authority=attention-queue; os_error=[ai-stack-health-monitor] QA phase 0: 1 check failing (0.10.66 aq-confine acceptance: profi): Scheduled health monitor found 1 failing check:   [0.10.66] aq-confine acceptance: profiles, goldens, cgroup scope limits, bwrap isolation (AQ_CONFINE_REQUIRE=1 locally) (dex: host write-tree equals t. Detected=2026-10-30T02:28:22.578961Z.
+  Severity: high
+  Action: Re-run `aq-qa 0 --machine` and fix the failing check(s).
+  File: attention:attn-45c28c43253046e2
+[DONE] rsi-0544505dac3a4d591b37b0df — resolved 2026-10-30: attention alert attn-f831e8cf5c634b53 resolved in attention queue (2026-10-30T02:28:22Z) — ledger status=resolved
+[DONE] rsi-dbf9ac3057874e5c979549e0 — resolved 2026-10-30: attention alert attn-f831e8cf5c634b53 resolved in attention queue (2026-10-30T02:28:22Z) — ledger status=resolved
+
+[OPEN] rsi-32c5918bb97c7d642a4fe20b — attention-queue:ai-stack-health-monitor failure in attention:attn-ad6accfdbac747d8. Root cause evidence: producer=attention-queue:ai-stack-health-monitor; path=attention:attn-ad6accfdbac747d8; authority=attention-queue; os_error=[ai-stack-health-monitor] QA phase 0: 1 check failing (0.10.66 aq-confine acceptance: profi): Scheduled health monitor found 1 failing check:   [0.10.66] aq-confine acceptance: profiles, goldens, cgroup scope limits, bwrap isolation (AQ_CONFINE_REQUIRE=1 locally) (dex: host write-tree equals t. Detected=2026-10-30T03:45:29.926723Z.
+  Severity: high
+  Action: Re-run `aq-qa 0 --machine` and fix the failing check(s).
+  File: attention:attn-ad6accfdbac747d8
+[DONE] rsi-15776e69223c8b2b776adc9a — resolved 2026-10-30: attention alert attn-45c28c43253046e2 resolved in attention queue (2026-10-30T03:45:29Z) — ledger status=resolved
+
+- [OPEN] SECURITY/sudo — Same-user agents effectively have passwordless root: live `sudo -n -l` shows NOPASSWD for `nixos-rebuild *`, `systemctl *`, and two scripts in the agent-writable checkout (`nixos-quick-deploy.sh *`, `scripts/ai/aq-model-switch *`); plus `Defaults timestamp_timeout=60`. Any process running as hyperd can edit those scripts or the flake and run them as root. Root cause: convenience sudo rules for deploys. Blocks any owner-only trust boundary (activation signing rev3, Codex codex-20261029-211905-rpyo64 finding 1 CRITICAL). Severity: CRITICAL. Action: owner decision on auth boundary (drop NOPASSWD for checkout scripts, store-path wrappers, per-command timestamp_timeout=0 for signer). File: nix/modules/host-classes/p14s-amd-ai-workstation.nix ~113-135; nix/modules/core/base.nix ~377. Found 2026-10-29.
+
+- [OPEN] QA/tier0 — 0.10.66 aq-confine acceptance fails when two tier0 runs execute concurrently (2026-10-29 21:30: qa-id-collision tier0 failed 0.10.66 while security-update-lane tier0 ran; standalone rerun 204/0). Earlier failures were during nixos-rebuild switch. Root cause hypothesis: shared systemd scope/probe state or resource contention between parallel suites. Severity: HIGH now that parallel waves are the norm. Action: reproduce with two concurrent runs, fix isolation (unique scope/lock) rather than reclassify. File: scripts/testing/test-aq-confine.py; scripts/testing/harness_qa/phases/phase0.py ~1555.
+
+- [OPEN] ACP/approval-control-plane — Activation triage 2026-10-29: /approve and /api/approvals serve demo fixture records (configure_store() never called outside tests); executor effects stubbed; approval_recovery has no non-test caller (Rule 23 decorative); aq-approve-headless never invoked. Real approvals use aq-approve + /api/approval-inbox. Severity: MEDIUM. Action: wire or archive under plan approval-control-plane (gated on harden item). Evidence: .agents/delegation/outputs/activation-triage/capabilities.json.
+- [OPEN] frontier-evidence-intake — 12/18 sources failed 2026-10-19 "resolves to private/local network space" (egress/DNS policy); no dashboard/alert for frontier items; 14 NEW backlog items await owner. Severity: MEDIUM. Evidence: capabilities.json.
+- [OPEN] capability-integration ci-4/ci-6/ci-7 — capability index STALE (2026-10-10); DEAD-CANDIDATE regressed to 7; UNUSED-AVAILABLE flat 159. Severity: LOW. Evidence: capabilities.json.
+- [OPEN] meta-optimization — latest proposal reports 383,352 ms avg latency over 11,464 routes (implausible; unit or aggregation bug). Severity: LOW. Evidence: capabilities.json ci-10.
+
+[OPEN] rsi-0799cc4c4806b6508f2a09f5 — aq-qa:phase0 failure in aq-qa:0.10.50. Root cause evidence: producer=aq-qa:phase0; path=aq-qa check 0.10.50; authority=aq-qa; os_error=phase-0 check 0.10.50 failing: Factory readiness preflight: hash-bound evidence, fail-closed unconfigured checks, typed blockers (fixture exit 1). Detected=2026-10-30T04:45:27.196718Z.
+  Severity: medium
+  Action: run aq-qa 0 --machine and fix check 0.10.50 at its producer
+  File: aq-qa check 0.10.50
+
+[OPEN] rsi-e6473f25e4aaab64bc35f0b0 — attention-queue:ai-stack-health-monitor failure in attention:attn-8442e6d8d9464c3d. Root cause evidence: producer=attention-queue:ai-stack-health-monitor; path=attention:attn-8442e6d8d9464c3d; authority=attention-queue; os_error=[ai-stack-health-monitor] QA phase 0: 2 checks failing (0.10.50 Factory readiness preflight:, 0.10.66 aq-…: QA phase 0: 2 checks failing (0.10.50 Factory readiness preflight:, 0.10.66 aq-confine acceptance: profi)  Scheduled health monitor found 2 failing checks:   [0.10.50] Factory readiness preflight: has. Detected=2026-10-30T04:45:35.666170Z.
+  Severity: high
+  Action: Re-run `aq-qa 0 --machine` and fix the failing check(s).
+  File: attention:attn-8442e6d8d9464c3d
+[DONE] rsi-32c5918bb97c7d642a4fe20b — resolved 2026-10-30: attention alert attn-ad6accfdbac747d8 resolved in attention queue (2026-10-30T04:45:35Z) — ledger status=resolved
+
+- [OPEN] TIER0/load - Parallel waves run several tier0 pre-commit gates at once plus local-llama reviews; load avg ~14 on 2026-10-29 21:57. Timing-sensitive QA checks time out: 0.10.50 factory readiness (120 s budget, test >150 s under load; 3 pipelines failed), 0.10.66 aq-confine earlier. Not regressions of the changes. Root cause: no admission control on tier0 QA phase 0. Severity: HIGH (blocks commits under parallelism). Action: fix/tier0-qa-admission (flock admission around aq-qa phase 0, wait not fail). File: scripts/governance/tier0-validation-gate.sh.
+
+[OPEN] rsi-78eeba629971cdbb4d821aff — aq-qa:phase0 failure in aq-qa:0.10.50. Root cause evidence: producer=aq-qa:phase0; path=aq-qa check 0.10.50; authority=aq-qa; os_error=phase-0 check 0.10.50 failing: Factory readiness preflight: hash-bound evidence, fail-closed unconfigured checks, typed blockers (Command '['python3', . Detected=2026-10-30T05:00:30.626124Z.
+  Severity: medium
+  Action: run aq-qa 0 --machine and fix check 0.10.50 at its producer
+  File: aq-qa check 0.10.50
+
+- [OPEN] QA/0.10.50 - test-factory-gate-readiness.py takes ~122 s wall (35 s user CPU) when llama.cpp generates and kswapd is active; gate budget was 120 s, so tier0 failed even with one gate at a time (2026-10-29 22:13). Budget raised to 300 s in fix/tier0-qa-admission. Root cause of slowness unprofiled: a metadata-only fixture should not need 35 s CPU. Severity: MEDIUM. Action: profile the fixture (likely repeated git/subprocess setup), cut runtime. File: scripts/testing/test-factory-gate-readiness.py; phase0.py ~3140.
+
+[OPEN] rsi-b14a56f02e72228dea7c852b — aq-qa:phase0 failure in aq-qa:0.10.2. Root cause evidence: producer=aq-qa:phase0; path=aq-qa check 0.10.2; authority=aq-qa; os_error=phase-0 check 0.10.2 failing: token_usage coverage (Command '['python3', '/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/scripts/testing/test-token-usa. Detected=2026-10-30T05:15:30.753016Z.
+  Severity: medium
+  Action: run aq-qa 0 --machine and fix check 0.10.2 at its producer
+  File: aq-qa check 0.10.2
+
+[OPEN] rsi-c3b5ac7b9c3c2c0ca8a6048b — attention-queue:ai-stack-health-monitor failure in attention:attn-8442e6d8d9464c3d. Root cause evidence: producer=attention-queue:ai-stack-health-monitor; path=attention:attn-8442e6d8d9464c3d; authority=attention-queue; os_error=[ai-stack-health-monitor] QA phase 0: 2 checks failing (0.10.2 token_usage coverage (Comman, 0.10.66 aq-c…: QA phase 0: 2 checks failing (0.10.2 token_usage coverage (Comman, 0.10.66 aq-confine acceptance: profi)  Scheduled health monitor found 2 failing checks:   [0.10.2] token_usage coverage (Command '['p. Detected=2026-10-30T05:15:34.896338Z.
+  Severity: high
+  Action: Re-run `aq-qa 0 --machine` and fix the failing check(s).
+  File: attention:attn-8442e6d8d9464c3d
+
+[OPEN] rsi-89f110e71d134693fb724750 — attention-queue:ai-stack-health-monitor failure in attention:attn-8442e6d8d9464c3d. Root cause evidence: producer=attention-queue:ai-stack-health-monitor; path=attention:attn-8442e6d8d9464c3d; authority=attention-queue; os_error=[ai-stack-health-monitor] QA phase 0: 1 check failing (0.10.66 aq-confine acceptance: profi): Scheduled health monitor found 1 failing check:   [0.10.66] aq-confine acceptance: profiles, goldens, cgroup scope limits, bwrap isolation (AQ_CONFINE_REQUIRE=1 locally) (dex: host write-tree equals t. Detected=2026-10-30T05:30:35.241764Z.
+  Severity: high
+  Action: Re-run `aq-qa 0 --machine` and fix the failing check(s).
+  File: attention:attn-8442e6d8d9464c3d
+
+[OPEN] rsi-7dda3fcf63712ed56d781d60 — attention-queue:ai-stack-health-monitor failure in attention:attn-50fde2e1e4c24e53. Root cause evidence: producer=attention-queue:ai-stack-health-monitor; path=attention:attn-50fde2e1e4c24e53; authority=attention-queue; os_error=[ai-stack-health-monitor] QA phase 0: 1 check failing (0.10.66 aq-confine acceptance: profi): Scheduled health monitor found 1 failing check:   [0.10.66] aq-confine acceptance: profiles, goldens, cgroup scope limits, bwrap isolation (AQ_CONFINE_REQUIRE=1 locally) (dex: host write-tree equals t. Detected=2026-10-30T06:30:39.545341Z.
+  Severity: high
+  Action: Re-run `aq-qa 0 --machine` and fix the failing check(s).
+  File: attention:attn-50fde2e1e4c24e53
+[DONE] rsi-89f110e71d134693fb724750 — resolved 2026-10-30: attention alert attn-8442e6d8d9464c3d resolved in attention queue (2026-10-30T06:30:39Z) — ledger status=resolved
+[DONE] rsi-c3b5ac7b9c3c2c0ca8a6048b — resolved 2026-10-30: attention alert attn-8442e6d8d9464c3d resolved in attention queue (2026-10-30T06:30:39Z) — ledger status=resolved
+[DONE] rsi-e6473f25e4aaab64bc35f0b0 — resolved 2026-10-30: attention alert attn-8442e6d8d9464c3d resolved in attention queue (2026-10-30T06:30:39Z) — ledger status=resolved
+
+- [OPEN] GOVERNANCE/pre-push - For a new branch that has merged origin/main, the pre-push hook run of harness-first-pr-evidence treats evidence docs added on main (e.g. 2026-10-29-tier0-qa-admission.md from #658) as added by the branch and fails on their missing sections; running ci-merge-parity.sh directly passes. Blocks pushing plan/security-update-lane (2 attempts, 2026-10-30). Also: 2026-10-28/29 evidence docs on main lack the 8 required sections (gate only fires on high-impact paths). Severity: HIGH (blocks pushes). Action: diagnose range/base in hook (agent dispatched); restructure new docs to the template. File: .githooks/pre-push ~116-128; scripts/testing/check-harness-first-pr-evidence-gate.sh ~36-87.
+
+[OPEN] rsi-17ccac98580564474ddccc3f — attention-queue:ai-stack-health-monitor failure in attention:attn-59490e54cae44c18. Root cause evidence: producer=attention-queue:ai-stack-health-monitor; path=attention:attn-59490e54cae44c18; authority=attention-queue; os_error=[ai-stack-health-monitor] QA phase 0: 1 check failing (0.10.66 aq-confine acceptance: profi): Scheduled health monitor found 1 failing check:   [0.10.66] aq-confine acceptance: profiles, goldens, cgroup scope limits, bwrap isolation (AQ_CONFINE_REQUIRE=1 locally) (dex: host write-tree equals t. Detected=2026-10-30T07:45:46.779842Z.
+  Severity: high
+  Action: Re-run `aq-qa 0 --machine` and fix the failing check(s).
+  File: attention:attn-59490e54cae44c18
+[DONE] rsi-7dda3fcf63712ed56d781d60 — resolved 2026-10-30: attention alert attn-50fde2e1e4c24e53 resolved in attention queue (2026-10-30T07:45:46Z) — ledger status=resolved
+
+- [FIXED 2026-10-30] GOVERNANCE/pre-push - Root cause of the new-branch push failures: core.hooksPath had drifted to the ABSOLUTE main-checkout path, so every worktree ran the main checkout hook, whose ROOT_DIR comes from the hook file location; it then tested the stale main-checkout HEAD (40be48bd) and counted main-added evidence docs as added. Restored with scripts/deploy/install-git-hooks.sh (relative .githooks); check-lane-hook-parity PASS. CI unaffected. Open follow-ups: (a) who wrote the absolute value is unknown (installer and aq-factory write relative); (b) defense in depth: .githooks/pre-push ROOT_DIR should be git rev-parse --show-toplevel / PWD, not dirname BASH_SOURCE. Severity: MEDIUM (follow-up). File: .githooks/pre-push ~4-5.
+
+[OPEN] rsi-c1141b1b42e7b366f2d32baa — aq-qa:phase0 failure in aq-qa:0.10.53. Root cause evidence: producer=aq-qa:phase0; path=aq-qa check 0.10.53; authority=aq-qa; os_error=phase-0 check 0.10.53 failing: C6a authorize-launch coverage ([revocation-epoch-authority-transport] peer pid=1311558 uid=1000 gid=100 (defense-in-dept. Detected=2026-10-30T08:30:42.608620Z.
+  Severity: medium
+  Action: run aq-qa 0 --machine and fix check 0.10.53 at its producer
+  File: aq-qa check 0.10.53
+
+[OPEN] rsi-b03edfb75d0e9f77ff7e07ea — attention-queue:ai-stack-health-monitor failure in attention:attn-59490e54cae44c18. Root cause evidence: producer=attention-queue:ai-stack-health-monitor; path=attention:attn-59490e54cae44c18; authority=attention-queue; os_error=[ai-stack-health-monitor] QA phase 0: 2 checks failing (0.10.53 C6a authorize-launch coverag, 0.10.66 aq-…: QA phase 0: 2 checks failing (0.10.53 C6a authorize-launch coverag, 0.10.66 aq-confine acceptance: profi)  Scheduled health monitor found 2 failing checks:   [0.10.53] C6a authorize-launch coverage ([. Detected=2026-10-30T08:30:46.582256Z.
+  Severity: high
+  Action: Re-run `aq-qa 0 --machine` and fix the failing check(s).
+  File: attention:attn-59490e54cae44c18
+[DONE] rsi-c1141b1b42e7b366f2d32baa — resolved 2026-10-30: phase-0 check 0.10.53 passing in health-monitor JSON run 2026-10-30T08:34:22Z — ledger status=resolved
+
+- [OPEN] A2A-GUARD-FP - scripts/ai/lib/a2a_guard.py assigned_secret regex ((password|secret|token|api_key)\s*[:=]\s*value{8,}) blocks Codex dispatch on harmless identifiers: Nix `wheelNeedsPassword = lib.mkDefault true` in the sudo-boundary review diff (2026-10-30). Interim: codex-pr.py marks such lines /*a2a-guard-fp*/ in review prompts (visible, not hidden). Root cause: pattern matches identifier suffixes and non-literal values. Fix: require the key to be a standalone word and the value to be a quoted/high-entropy literal, exclude lib.* / ${...} / true|false. Severity: LOW. File: scripts/ai/lib/a2a_guard.py ~32.
+
+[OPEN] rsi-ddc41e15235007c1e5257fe1 — attention-queue:ai-stack-health-monitor failure in attention:attn-f6425e41b6944868. Root cause evidence: producer=attention-queue:ai-stack-health-monitor; path=attention:attn-f6425e41b6944868; authority=attention-queue; os_error=[ai-stack-health-monitor] QA phase 0: 1 check failing (0.10.66 aq-confine acceptance: profi): Scheduled health monitor found 1 failing check:   [0.10.66] aq-confine acceptance: profiles, goldens, cgroup scope limits, bwrap isolation (AQ_CONFINE_REQUIRE=1 locally) (dex: host write-tree equals t. Detected=2026-10-30T10:00:53.665308Z.
+  Severity: high
+  Action: Re-run `aq-qa 0 --machine` and fix the failing check(s).
+  File: attention:attn-f6425e41b6944868
+[DONE] rsi-17ccac98580564474ddccc3f — resolved 2026-10-30: attention alert attn-59490e54cae44c18 resolved in attention queue (2026-10-30T10:00:53Z) — ledger status=resolved
+[DONE] rsi-b03edfb75d0e9f77ff7e07ea — resolved 2026-10-30: attention alert attn-59490e54cae44c18 resolved in attention queue (2026-10-30T10:00:53Z) — ledger status=resolved
+
+- [OPEN] SECURITY-AUDIT npm residual - an npm project with package.json but no package-lock.json is skipped silently by scripts/security/security-audit.sh (cannot be audited; degrading would fail the live unit permanently). Decision deferred 2026-10-30. Severity: LOW. Action: inventory such projects; either generate lockfiles or declare them out of scope in config.
+
+- [FIXED 2026-10-30] SECURITY-AUDIT npm residual - unlocked npm projects now degrade unless on config/security-audit-npm-unscanned-allowlist.json (branch fix/false-green-health-checks); inventory found none unlocked.
+
+[OPEN] rsi-71b7c2fb78393e21729f8fb9 — journal:ai-hybrid-coordinator failure in service-error:ai-hybrid-coordinator:switchboard_unavailable error_id=<hex>. Root cause evidence: producer=journal:ai-hybrid-coordinator; path=ai-hybrid-coordinator; authority=journald; os_error=recurring error in ai-hybrid-coordinator: switchboard_unavailable error_id=<hex>. Detected=2026-10-30T11:16:06.798090Z.
+  Severity: medium
+  Action: 6 occurrence(s) in last 3600s; example: {"event": "switchboard_unavailable error_id=0277810c67e3", "exc_info": ["<class 'httpx.HTTPStatusError'>", "HTTPStatusError(\"Server error '503 Service Unavailable' for url 'http://127.0.0.1:8085/v1/c; journalctl -u ai-hybrid-coordinator; fix producer
+  File: ai-hybrid-coordinator
+
+[OPEN] rsi-547bc652b2bc3d3f26d9baba — attention-queue:ai-stack-health-monitor failure in attention:attn-e4d117fb65634dd6. Root cause evidence: producer=attention-queue:ai-stack-health-monitor; path=attention:attn-e4d117fb65634dd6; authority=attention-queue; os_error=[ai-stack-health-monitor] QA phase 0: 1 check failing (0.10.66 aq-confine acceptance: profi): Scheduled health monitor found 1 failing check:   [0.10.66] aq-confine acceptance: profiles, goldens, cgroup scope limits, bwrap isolation (AQ_CONFINE_REQUIRE=1 locally) (0994fac; FAIL: confined launc. Detected=2026-10-30T11:16:06.957421Z.
+  Severity: high
+  Action: Re-run `aq-qa 0 --machine` and fix the failing check(s).
+  File: attention:attn-e4d117fb65634dd6
+[DONE] rsi-ddc41e15235007c1e5257fe1 — resolved 2026-10-30: attention alert attn-f6425e41b6944868 resolved in attention queue (2026-10-30T11:16:06Z) — ledger status=resolved
+
+[OPEN] rsi-15b5b7e2d5c45e857ddbf104 — attention-queue:ai-stack-health-monitor failure in attention:attn-e4d117fb65634dd6. Root cause evidence: producer=attention-queue:ai-stack-health-monitor; path=attention:attn-e4d117fb65634dd6; authority=attention-queue; os_error=[ai-stack-health-monitor] QA phase 0: 1 check failing (0.10.66 aq-confine acceptance: profi): Scheduled health monitor found 1 failing check:   [0.10.66] aq-confine acceptance: profiles, goldens, cgroup scope limits, bwrap isolation (AQ_CONFINE_REQUIRE=1 locally) (dex: host write-tree equals t. Detected=2026-10-30T11:31:08.588803Z.
+  Severity: high
+  Action: Re-run `aq-qa 0 --machine` and fix the failing check(s).
+  File: attention:attn-e4d117fb65634dd6
+
+- [OPEN] QA/0.10.66 still flaky after #663 - tier0b for #667 (2026-10-30 ~04:10) failed 0.10.66 aq-confine with #663 present in the branch; standalone rerun 204/0. #663 fixed the OOM late-attach race (8/8 under load) but another load-sensitive case remains. The tier0 table does not show the new detail string; check aq-qa output for the FAIL names next time. Severity: HIGH (blocks receipt commits). Action: capture the failing check name from the next failure (aq-qa 0 --json or the QA log), reproduce under load. File: scripts/ai/lib/confine.py; scripts/testing/test-aq-confine.py.
+
+[OPEN] rsi-5ccaccd6f3780b8efa50946e — attention-queue:ai-stack-health-monitor failure in attention:attn-173eb71ae604427d. Root cause evidence: producer=attention-queue:ai-stack-health-monitor; path=attention:attn-173eb71ae604427d; authority=attention-queue; os_error=[ai-stack-health-monitor] QA phase 0: 1 check failing (0.10.66 aq-confine acceptance: profi): Scheduled health monitor found 1 failing check:   [0.10.66] aq-confine acceptance: profiles, goldens, cgroup scope limits, bwrap isolation (AQ_CONFINE_REQUIRE=1 locally) (dex: host write-tree equals t. Detected=2026-10-30T13:31:19.744234Z.
+  Severity: high
+  Action: Re-run `aq-qa 0 --machine` and fix the failing check(s).
+  File: attention:attn-173eb71ae604427d
+[DONE] rsi-15b5b7e2d5c45e857ddbf104 — resolved 2026-10-30: attention alert attn-e4d117fb65634dd6 resolved in attention queue (2026-10-30T13:31:19Z) — ledger status=resolved
+[DONE] rsi-547bc652b2bc3d3f26d9baba — resolved 2026-10-30: attention alert attn-e4d117fb65634dd6 resolved in attention queue (2026-10-30T13:31:19Z) — ledger status=resolved
+
+- [OPEN] PM-TRACKER false SHIPPED - aqos-requirements-inventory req-product-d/e/f/g project SHIPPED while UNIFIED-PROGRAM-PLAN rows 72-75 say NOT STARTED. Root cause: scripts/ai/aq-pm-tracker ~447-470 projects SHIPPED from a freeze_record file existing plus any commit_match hit, or from detection.command existing (aq, edgeai). Severity: MEDIUM (inflates progress; anti-gaming). Action: fold into the activation signing MVP slice that rewrites project_item (ACTIVATION-PIPELINE rev7 single projection path). Found by activation triage 2026-10-30.
+- [OPEN] COORDINATOR query-gaps - hybrid-coordinator logs "Permission denied /var/log/nixos-ai-stack/query-gaps.tmp" every 5 min. Severity: LOW. Action: declare dir ownership via systemd.tmpfiles (Rule 13/14).
+- [OPEN] NEEDS-ENABLE (owner) - herdr h1-package: programs.aqHerdr.enable = true (nix/home/herdr.nix:13, keep runtimeEnable=false); network-profile n1: mySystem.networkPolicyObservability.enable = true in deploy-options.local.nix (mode legacy). Both need owner rebuild.
+
+[OPEN] rsi-4f253e6fb03bcfc5ccaae4c9 — attention-queue:ai-stack-health-monitor failure in attention:attn-1c52e129fff54b49. Root cause evidence: producer=attention-queue:ai-stack-health-monitor; path=attention:attn-1c52e129fff54b49; authority=attention-queue; os_error=[ai-stack-health-monitor] QA phase 0: 1 check failing (0.10.66 aq-confine acceptance: profi): Scheduled health monitor found 1 failing check:   [0.10.66] aq-confine acceptance: profiles, goldens, cgroup scope limits, bwrap isolation (AQ_CONFINE_REQUIRE=1 locally) (dex: host write-tree equals t. Detected=2026-10-30T14:31:21.532466Z.
+  Severity: high
+  Action: Re-run `aq-qa 0 --machine` and fix the failing check(s).
+  File: attention:attn-1c52e129fff54b49
+[DONE] rsi-5ccaccd6f3780b8efa50946e — resolved 2026-10-30: attention alert attn-173eb71ae604427d resolved in attention queue (2026-10-30T14:31:21Z) — ledger status=resolved
+
+- [OPEN] DEPLOY/-dirty - 2026-10-30 deploy of 1e121747 is recorded as 1e121747...-dirty because the canon-permitted append-only edits in the main checkout (.agent/collaboration/PULSE.log, AGENT-CATCHUP-QUEUE.md, rsi-incidents.json, .agent/memory/issues-backlog.md) are tracked files; the flake sees a dirty tree. Contradiction: canon allows those appends in the main checkout, but the deploy goal is a non-dirty revision. Severity: MEDIUM. Action: move live append-only logs out of the flake source (gitignored runtime path or state dir) or exclude them from the flake input; then the deploy revision can be clean. Files: canon/blocks/delivery-workflow.md, scripts/governance/check-deploy-source.sh.
+
+[OPEN] rsi-ca0351661b7f40e08d42ab50 — systemd:failed-unit failure in failed-unit:ai-mcp-integrity-check.service. Root cause evidence: producer=systemd:failed-unit; path=ai-mcp-integrity-check.service; authority=systemd; os_error=unit ai-mcp-integrity-check.service in failed state. Detected=2026-10-30T16:46:18.334924Z.
+  Severity: medium
+  Action: journalctl -u ai-mcp-integrity-check.service; fix producer, then systemctl reset-failed
+  File: ai-mcp-integrity-check.service
+
+[OPEN] rsi-1183b298a7ea96ccab172fa3 — aq-qa:phase0 failure in aq-qa:0.10.66. Root cause evidence: producer=aq-qa:phase0; path=aq-qa check 0.10.66; authority=aq-qa; os_error=phase-0 check 0.10.66 failing: aq-confine acceptance: profiles, goldens, cgroup scope limits, bwrap isolation (AQ_CONFINE_REQUIRE=1 locally) (rc=1 29 F. Detected=2026-10-30T17:01:18.669472Z.
+  Severity: medium
+  Action: run aq-qa 0 --machine and fix check 0.10.66 at its producer
+  File: aq-qa check 0.10.66
+
+[OPEN] rsi-a683820918c5c354995be8b7 — attention-queue:ai-stack-health-monitor failure in attention:attn-f551946501e940a1. Root cause evidence: producer=attention-queue:ai-stack-health-monitor; path=attention:attn-f551946501e940a1; authority=attention-queue; os_error=[ai-stack-health-monitor] QA phase 0: 1 check failing (0.10.66 aq-confine acceptance: profi): Scheduled health monitor found 1 failing check:   [0.10.66] aq-confine acceptance: profiles, goldens, cgroup scope limits, bwrap isolation (AQ_CONFINE_REQUIRE=1 locally) (rc=1 29 FAIL: [tmp] writes ou. Detected=2026-10-30T17:01:19.928258Z.
+  Severity: high
+  Action: Re-run `aq-qa 0 --machine` and fix the failing check(s).
+  File: attention:attn-f551946501e940a1
+[DONE] rsi-4f253e6fb03bcfc5ccaae4c9 — resolved 2026-10-30: attention alert attn-1c52e129fff54b49 resolved in attention queue (2026-10-30T17:01:19Z) — ledger status=resolved
+
+- [OPEN] MCP/rea - rea MCP server fails at Claude Code session start (CONNECTION_CLOSED, 2026-10-30). Not investigated yet. Severity: LOW. Action: read ~/.cache/claude-cli-nodejs/*/mcp-logs-rea latest and the rea entry in .mcp.json.
+- [OPEN] MCP/lean-ctx scope conflict - lean-ctx defined in user (~/.claude.json, /run/current-system/sw/bin/lean-ctx) and project (.mcp.json, lean-ctx mcp) scopes with different commands; Claude Code warns. Severity: LOW. Action: owner removes user-scope entry (claude mcp remove lean-ctx -s user); consider declaring the user MCP config declaratively.
+[DONE] rsi-ca0351661b7f40e08d42ab50 — resolved 2026-10-30: unit ai-mcp-integrity-check.service no longer in systemctl --failed (2026-10-30T17:16:18Z) — ledger status=resolved
+
+[OPEN] rsi-31f7a5d6b33f5d322342583c — aq-qa:phase0 failure in aq-qa:0.1.2. Root cause evidence: producer=aq-qa:phase0; path=aq-qa check 0.1.2; authority=aq-qa; os_error=phase-0 check 0.1.2 failing: no AI units in failed state (● ai-mcp-integrity-check.service loaded failed failed AI stack MCP source file integrity ch. Detected=2026-10-30T17:16:18.727216Z.
+  Severity: medium
+  Action: run aq-qa 0 --machine and fix check 0.1.2 at its producer
+  File: aq-qa check 0.1.2
+
+[OPEN] rsi-b21e83331429d7495468fdeb — attention-queue:ai-stack-health-monitor failure in attention:attn-f551946501e940a1. Root cause evidence: producer=attention-queue:ai-stack-health-monitor; path=attention:attn-f551946501e940a1; authority=attention-queue; os_error=[ai-stack-health-monitor] QA phase 0: 2 checks failing (0.1.2 no AI units in failed state , 0.10.66 aq-co…: QA phase 0: 2 checks failing (0.1.2 no AI units in failed state , 0.10.66 aq-confine acceptance: profi)  Scheduled health monitor found 2 failing checks:   [0.1.2] no AI units in failed state (● ai-mc. Detected=2026-10-30T17:16:21.144216Z.
+  Severity: high
+  Action: Re-run `aq-qa 0 --machine` and fix the failing check(s).
+  File: attention:attn-f551946501e940a1
+
+- [OPEN] PM/self-asserted owner acceptance - commit d33064f5 (2026-10-07, agent session under owner identity, no PR/receipt/approval) wrote owner acceptances ("accepted by hyperd") for ~54 items (15 tools, 23 services, 16 requirements); owner confirmed 2026-10-30 that 4 of them (req-product-d..g) were never accepted (revoked via PR). aq-pm-tracker _is_owner_acceptor trusts the literal "hyperd". Severity: HIGH (inflated board; anti-gaming). Action: owner acceptance must reference a verifiable aq-approve record (fail closed), tier0.d check against pending->accepted flips without a record, existing unbacked owner acceptances shown as unverified and drained via owner batch approval.
+[DONE] rsi-31f7a5d6b33f5d322342583c — resolved 2026-10-30: phase-0 check 0.1.2 passing in health-monitor JSON run 2026-10-30T17:17:20Z — ledger status=resolved
+
+- [OPEN] ACTIVATION/missing subjects - 270 plan items have no detection.activation_subject, so they can never reach ACTIVATED even with a verified grant (board count missing_activation_subject, 2026-10-30). Severity: HIGH for the owner priority SHIPPED->ACTIVATED. Action: after signing slice 2, a wave that adds activation_subject (exact unit/command/route the grant attests) to LIVE items from activation triage, plan by plan.
+
+- [UPDATE] PM/self-asserted owner acceptance - actual count is 135 unbacked owner acceptances (54 from d33064f5, 81 from other commits, 7 citing "owner directive 2026-09-26"). aq-approve records are same-user-forgeable; only the activation chain (root key) is a real anchor. Plan: all 135 labelled SHIPPED (unverified); new unbacked acceptances blocked by tier0; owner batch re-approval via signed accept ops once the signer is live. Design: .agents/delegation/outputs/verified-acceptance/DESIGN.md (Codex review pending).
+
+[OPEN] rsi-33b56f7a43abc923bdc0f639 — systemd:failed-unit failure in failed-unit:ai-gap-import.service. Root cause evidence: producer=systemd:failed-unit; path=ai-gap-import.service; authority=systemd; os_error=unit ai-gap-import.service in failed state. Detected=2026-10-31T18:10:05.565827Z.
+  Severity: medium
+  Action: journalctl -u ai-gap-import.service; fix producer, then systemctl reset-failed
+  File: ai-gap-import.service
+
+[OPEN] rsi-7ca5f26ac644733d9d37ecf6 — capability-audit failure in capability-audit:ai-gap-import. Root cause evidence: producer=capability-audit; path=ai-gap-import; authority=capability-audit; os_error=capability ai-gap-import regressed from ACTIVE. Detected=2026-10-31T18:10:06.800668Z.
+  Severity: medium
+  Action: class ACTIVE -> BROKEN (report 2026-10-31T18:08:25Z); run aq-capability-audit --json and inspect the capability evidence; restore wiring/discovery/usage
+  File: ai-gap-import
+
+[OPEN] rsi-e4947771be6d1fee05ed1517 — capability-audit failure in capability-audit:threshold:BROKEN. Root cause evidence: producer=capability-audit; path=threshold:BROKEN; authority=capability-audit; os_error=BROKEN capabilities exceed 0. Detected=2026-10-31T18:10:06.839853Z.
+  Severity: medium
+  Action: 1 capabilities classed BROKEN (limit 0, report 2026-10-31T18:08:25Z); see aq-capability-audit next_action
+  File: threshold:BROKEN
+
+[OPEN] rsi-a4e016d653cfdfae08a72d77 — attention-queue:ai-stack-health-monitor failure in attention:attn-9d349f7025e54fba. Root cause evidence: producer=attention-queue:ai-stack-health-monitor; path=attention:attn-9d349f7025e54fba; authority=attention-queue; os_error=[ai-stack-health-monitor] QA phase 0: 1 check failing (0.10.66 aq-confine acceptance: profi): Scheduled health monitor found 1 failing check:   [0.10.66] aq-confine acceptance: profiles, goldens, cgroup scope limits, bwrap isolation (AQ_CONFINE_REQUIRE=1 locally) (rc=1 29 FAIL: [tmp] writes ou. Detected=2026-10-31T18:10:06.936792Z.
+  Severity: high
+  Action: Re-run `aq-qa 0 --machine` and fix the failing check(s).
+  File: attention:attn-9d349f7025e54fba
+[DONE] rsi-a683820918c5c354995be8b7 — resolved 2026-10-31: attention alert attn-f551946501e940a1 resolved in attention queue (2026-10-31T18:10:06Z) — ledger status=resolved
+[DONE] rsi-b21e83331429d7495468fdeb — resolved 2026-10-31: attention alert attn-f551946501e940a1 resolved in attention queue (2026-10-31T18:10:06Z) — ledger status=resolved
+
+- [OPEN] GEMINI/video - gemini agent CLI (~/.local/bin/gemini) cannot access YouTube streams/captions in this environment (2026-10-31, video S49gppZl8H0) and --mode auto is "not available for this account" (fell back to default mode). Workaround path: scripts/ai/aq-transcribe (local yt-dlp + whisper) then hand the transcript to Gemini. Visual-only content (slides, on-screen code) is not captured. Severity: LOW. Action: note in delegate-to-gemini docs; consider frame extraction (ffmpeg) for slide-heavy videos.
+
+[OPEN] rsi-8650ce4cc2ece9f2c452614e — aq-qa:phase0 failure in aq-qa:0.16.2. Root cause evidence: producer=aq-qa:phase0; path=aq-qa check 0.16.2; authority=aq-qa; os_error=phase-0 check 0.16.2 failing: Security Center live metadata (HTTP 503). Detected=2026-10-31T18:25:06.544478Z.
+  Severity: medium
+  Action: run aq-qa 0 --machine and fix check 0.16.2 at its producer
+  File: aq-qa check 0.16.2
+
+[OPEN] rsi-057aff2091f68523d91a5ec1 — attention-queue:ai-stack-health-monitor failure in attention:attn-c65b85fa2b444d4d. Root cause evidence: producer=attention-queue:ai-stack-health-monitor; path=attention:attn-c65b85fa2b444d4d; authority=attention-queue; os_error=[ai-stack-health-monitor] QA phase 0: 2 checks failing (0.16.2 Security Center live metadat, 0.10.66 aq-c…: QA phase 0: 2 checks failing (0.16.2 Security Center live metadat, 0.10.66 aq-confine acceptance: profi)  Scheduled health monitor found 2 failing checks:   [0.16.2] Security Center live metadata (HTT. Detected=2026-10-31T18:25:10.020236Z.
+  Severity: high
+  Action: Re-run `aq-qa 0 --machine` and fix the failing check(s).
+  File: attention:attn-c65b85fa2b444d4d
+[DONE] rsi-a4e016d653cfdfae08a72d77 — resolved 2026-10-31: attention alert attn-9d349f7025e54fba resolved in attention queue (2026-10-31T18:25:10Z) — ledger status=resolved
+
+- [OPEN] AQ-TOOL/cwd - `aq-tool <pkg> <relative-path>` does not resolve relative paths against the caller cwd (tesseract: "cannot read input file frames/p_0010.jpg"); first OCR pass over 80 frames silently produced empty text with rc 0 handling in the caller. Severity: LOW. Action: aq-tool should run the tool in the caller cwd (or document absolute paths); callers must check stderr. Found 2026-10-31.
+- [OPEN] AQ-TRANSCRIBE/timeout - whisper small on a 16-min video exceeded 25 min under load and was killed; aq-transcribe printed only "whisper transcription failed". Also YouTube subtitle fetch hit HTTP 429 and yt-dlp aborted the whole download. Severity: LOW. Action: aq-transcribe: progress output, configurable timeout, model auto-select by duration; yt-dlp: treat subtitle errors as non-fatal (--ignore-errors for subs).
+
+- [OPEN] AQ-TRANSCRIBE/terminated - whisper (small) on the local 16-min mp4 was "Terminated" twice (2026-10-31 11:15 and ~11:25) with no internal timeout on the whisper call; likely memory pressure (llama.cpp holds ~24 GB of 27 GB; systemd-oomd or the earlyoom-style killer) but unconfirmed. aq-transcribe hides whisper output (>/dev/null) so the cause is invisible. Severity: MEDIUM for the video-ingest path. Action: show whisper stderr, run under the idle lease (stop/park llama during ASR), or use a smaller model / chunked audio.
+
+[OPEN] rsi-0079a39f1e7ff263968309d4 — attention-queue:ai-stack-health-monitor failure in attention:attn-def442bbc2934373. Root cause evidence: producer=attention-queue:ai-stack-health-monitor; path=attention:attn-def442bbc2934373; authority=attention-queue; os_error=[ai-stack-health-monitor] aq-qa phase 0 could not run: Command '['/run/current-system/sw/bin/python3', '/…: aq-qa phase 0 could not run: Command '['/run/current-system/sw/bin/python3', '/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/scripts/ai/lib/harness_runner.py', '0', '--json']' timed out after 705 secon. Detected=2026-10-31T18:40:09.227506Z.
+  Severity: high
+  Action: Investigate aq-qa and health monitor logs.
+  File: attention:attn-def442bbc2934373
+
+[OPEN] rsi-946c82b75da710d4fd75d11e — aq-qa:phase0 failure in aq-qa:0.1.2. Root cause evidence: producer=aq-qa:phase0; path=aq-qa check 0.1.2; authority=aq-qa; os_error=phase-0 check 0.1.2 failing: no AI units in failed state (● ai-gap-import.service loaded failed failed AI gap knowledge auto-import (PRSI gap closure. Detected=2026-10-31T18:55:07.134416Z.
+  Severity: medium
+  Action: run aq-qa 0 --machine and fix check 0.1.2 at its producer
+  File: aq-qa check 0.1.2
+
+[OPEN] rsi-0799cc4c4806b6508f2a09f5 — aq-qa:phase0 failure in aq-qa:0.10.50. Root cause evidence: producer=aq-qa:phase0; path=aq-qa check 0.10.50; authority=aq-qa; os_error=phase-0 check 0.10.50 failing: Factory readiness preflight: hash-bound evidence, fail-closed unconfigured checks, typed blockers (fixture exit 1). Detected=2026-10-31T18:55:07.200076Z.
+  Severity: medium
+  Action: run aq-qa 0 --machine and fix check 0.10.50 at its producer
+  File: aq-qa check 0.10.50
+
+[OPEN] rsi-fb35bec6d2b69ebf89ec5004 — attention-queue:ai-stack-health-monitor failure in attention:attn-c65b85fa2b444d4d. Root cause evidence: producer=attention-queue:ai-stack-health-monitor; path=attention:attn-c65b85fa2b444d4d; authority=attention-queue; os_error=[ai-stack-health-monitor] QA phase 0: 3 checks failing (0.1.2 no AI units in failed state , 0.10.50 Facto…: QA phase 0: 3 checks failing (0.1.2 no AI units in failed state , 0.10.50 Factory readiness preflight:, 0.10.66 aq-confine acceptance: profi)  Scheduled health monitor found 3 failing checks:   [0.1.2. Detected=2026-10-31T18:55:10.924420Z.
+  Severity: critical
+  Action: Re-run `aq-qa 0 --machine` and fix the failing check(s).
+  File: attention:attn-c65b85fa2b444d4d
+
+- [OPEN] AI-GAP-IMPORT/gemini PATH - ai-gap-import.service failed 2026-10-31 11:08: "gemini CLI not found in PATH (/home/hyperd/.npm-global/bin:...)". The gemini agent CLI now lives at ~/.local/bin/gemini (memory feedback-gemini-agent-cli-for-coordination); the unit PATH still points at the dead npm-global location. Unit is in failed state (QA 0.1.2 WARN). Severity: MEDIUM (PRSI gap closure not running). Action: declare the correct PATH/binary in the unit (Nix), or resolve gemini via a store-path/home-manager option; test.
+
+[OPEN] rsi-65bec9b57d85376154a32cf8 — attention-queue:ai-stack-health-monitor failure in attention:attn-c65b85fa2b444d4d. Root cause evidence: producer=attention-queue:ai-stack-health-monitor; path=attention:attn-c65b85fa2b444d4d; authority=attention-queue; os_error=[ai-stack-health-monitor] QA phase 0: 2 checks failing (0.1.2 no AI units in failed state , 0.10.66 aq-co…: QA phase 0: 2 checks failing (0.1.2 no AI units in failed state , 0.10.66 aq-confine acceptance: profi)  Scheduled health monitor found 2 failing checks:   [0.1.2] no AI units in failed state (● ai-ga. Detected=2026-10-31T19:10:09.823546Z.
+  Severity: high
+  Action: Re-run `aq-qa 0 --machine` and fix the failing check(s).
+  File: attention:attn-c65b85fa2b444d4d
+
+[OPEN] rsi-3dea8ced6ed0e44aaed81c69 — aq-qa:phase0 failure in aq-qa:0.10.66. Root cause evidence: producer=aq-qa:phase0; path=aq-qa check 0.10.66; authority=aq-qa; os_error=phase-0 check 0.10.66 failing: aq-confine acceptance: profiles, goldens, cgroup scope limits, bwrap isolation (AQ_CONFINE_REQUIRE=1 locally) (rc=1 30 F. Detected=2026-10-31T19:40:08.304114Z.
+  Severity: medium
+  Action: run aq-qa 0 --machine and fix check 0.10.66 at its producer
+  File: aq-qa check 0.10.66
+
+[OPEN] PR672 package-count drift — enabling Herdr changes generated counts; baseline omitted. Severity P2; regenerate/validate after requested fix-plan approval. Scope config/package-count-baseline.json; failing CI run41234297655.
+[OPEN] Continuation local gate — QA0 agent-memory0.10.8 and failed AI units0.1.2 fail; producer root cause uninvestigated. Severity P2; diagnose before activation; module-map tier0 log2026-10-31_124703.
+[OPEN] Agent followup thread limit — completed worker could not receive followup; producer session capacity; severity P3; bounded documentation finished by root with recorded reason, independent review pending.
+
+[OPEN] rsi-0799cc4c4806b6508f2a09f5 — aq-qa:phase0 failure in aq-qa:0.10.50. Root cause evidence: producer=aq-qa:phase0; path=aq-qa check 0.10.50; authority=aq-qa; os_error=phase-0 check 0.10.50 failing: Factory readiness preflight: hash-bound evidence, fail-closed unconfigured checks, typed blockers (fixture exit 1). Detected=2026-10-31T19:55:08.795715Z.
+  Severity: medium
+  Action: run aq-qa 0 --machine and fix check 0.10.50 at its producer
+  File: aq-qa check 0.10.50
+[DONE] rsi-0079a39f1e7ff263968309d4 — resolved 2026-10-31: attention alert attn-def442bbc2934373 resolved in attention queue (2026-10-31T19:55:14Z) — ledger status=resolved
+
+- [OPEN] SYSTEM / AGENT / MODEL — Owner rebuild intent was not followed: work diverted into continuation slices and an approval request omitted the concrete plan. Root cause: approval workflow over-applied and rebuild acceptance not kept primary. Severity P1; Action: explicit owner directive authorizes PR672 baseline repair, preserved flake-lock validation, live blocker fixes, and a documented clean rebuild breakpoint. Evidence: owner correction 2026-10-31; scope .agent/collaboration/HANDOFF.md.
+
+[OPEN] SYSTEM/QA — ai-auto-remediate.service launches canonical provider probe in a read-only namespace; probe opens provider-probe.lock O_RDWR and raises EROFS. Root cause: producer write contract absent from service sandbox declaration; Severity P2; Action: separate bounded declarative repair, preserve current failure evidence. Files: nix/modules/services/mcp-servers.nix ~2076; scripts/automation/auto-remediate.sh ~41; scripts/testing/qa-provider-probe.py ~215. Found 2026-10-31.
+
+[OPEN] rsi-7c1e49a58b768cc88606e4da — attention-queue:ai-stack-health-monitor failure in attention:attn-37beca315e144b8e. Root cause evidence: producer=attention-queue:ai-stack-health-monitor; path=attention:attn-37beca315e144b8e; authority=attention-queue; os_error=[ai-stack-health-monitor] QA phase 0: 2 checks failing (0.1.2 no AI units in failed state , 0.10.66 aq-co…: QA phase 0: 2 checks failing (0.1.2 no AI units in failed state , 0.10.66 aq-confine acceptance: profi)  Scheduled health monitor found 2 failing checks:   [0.1.2] no AI units in failed state (● ai-ga. Detected=2026-10-31T21:55:17.386619Z.
+  Severity: high
+  Action: Re-run `aq-qa 0 --machine` and fix the failing check(s).
+  File: attention:attn-37beca315e144b8e
+[DONE] rsi-057aff2091f68523d91a5ec1 — resolved 2026-10-31: attention alert attn-c65b85fa2b444d4d resolved in attention queue (2026-10-31T21:55:17Z) — ledger status=resolved
+[DONE] rsi-65bec9b57d85376154a32cf8 — resolved 2026-10-31: attention alert attn-c65b85fa2b444d4d resolved in attention queue (2026-10-31T21:55:17Z) — ledger status=resolved
+[DONE] rsi-fb35bec6d2b69ebf89ec5004 — resolved 2026-10-31: attention alert attn-c65b85fa2b444d4d resolved in attention queue (2026-10-31T21:55:17Z) — ledger status=resolved
+
+[OPEN] rsi-a40bc48b27b052d9745d4393 — attention-queue:ai-stack-health-monitor failure in attention:attn-74ced017652840b8. Root cause evidence: producer=attention-queue:ai-stack-health-monitor; path=attention:attn-74ced017652840b8; authority=attention-queue; os_error=[ai-stack-health-monitor] QA phase 0: 2 checks failing (0.1.2 no AI units in failed state , 0.10.66 aq-co…: QA phase 0: 2 checks failing (0.1.2 no AI units in failed state , 0.10.66 aq-confine acceptance: profi)  Scheduled health monitor found 2 failing checks:   [0.1.2] no AI units in failed state (● ai-ga. Detected=2026-10-31T22:55:16.202716Z.
+  Severity: high
+  Action: Re-run `aq-qa 0 --machine` and fix the failing check(s).
+  File: attention:attn-74ced017652840b8
+[DONE] rsi-7c1e49a58b768cc88606e4da — resolved 2026-10-31: attention alert attn-37beca315e144b8e resolved in attention queue (2026-10-31T22:55:16Z) — ledger status=resolved
+
+- [OPEN] ROUTING/local-lane followups (local Qwen advisory local-20261031-112905-rqf68c, 2026-10-31) - for the frozen routing plan: (1) dynamic context budget: package only relevant snippets by complexity tier, beyond the S1 refuse-and-decompose preflight; (2) shadow-review agreement threshold (85%) may be unrealistic for nuanced tasks - calibrate per task kind before using it for eligibility; (3) define "bounded" concretely per task kind. Severity: LOW. Action: fold into S3 / later-phase lane qualification.
+
+- [OPEN] PR/review-disposition race - copen.py opens the PR as draft with a placeholder body, then edits in the review record; the review-disposition run triggered by the draft/ready events can evaluate the old body and FAIL, leaving a red required check (seen #664, #672 on 2026-10-30/31). Workaround: re-save the body to fire an `edited` event. Fix: copen should mark ready only after the body edit lands and its edited-event check passes, or the workflow should re-read the current PR body via API instead of the event payload. Severity: LOW. File: .agents/delegation/outputs/session-50391bdd-scratch/copen.py; .github/workflows (review-disposition).
+
+- [OPEN] TEST/worktree-isolation leak - scripts/testing/test-worktree-isolation.py leaves an untracked child.txt ("child change") in the worktree it runs in (found 2026-10-31 in .agents/delegation/worktrees/routing-slice1). Tests must write only to temp dirs. Severity: LOW (risk of accidental commit; git add -A pipelines). Action: confine the test to tempfile dirs; add a post-test clean-tree assertion.
+
+[OPEN] rsi-025a0993f670eb1a7293e25b — delegation:codex failure in delegation:codex:quota. Root cause evidence: producer=delegation:codex; path=.agents/delegation/registry.jsonl; authority=codex; os_error=codex delegation class quota. Detected=2026-10-31T23:10:13.094652Z.
+  Severity: medium
+  Action: 1 run(s) in window; latest example .agents/delegation/outputs/codex-20261031-160601-7fe95i.log; fix producer for class quota
+  File: .agents/delegation/registry.jsonl
+
+- [OPEN] GOVERNANCE/tier0 - check 0.1.2 (no AI units in failed state) blocks --pre-commit on live unit state unrelated to the change; blocked PR #673 receipt commit because ai-gap-import.service (the unit #673 fixes) was failed. Root cause: live-runtime health check classed HARD in pre-commit instead of WARN (Rule 19 gate corollary). Severity: medium. Action: reclassify 0.1.2 as WARN in --pre-commit, HARD in --maintenance. File: scripts/governance/tier0-validation-gate.sh (QA phase 0 / 0.1.2).
+
+[OPEN] rsi-0799cc4c4806b6508f2a09f5 — aq-qa:phase0 failure in aq-qa:0.10.50. Root cause evidence: producer=aq-qa:phase0; path=aq-qa check 0.10.50; authority=aq-qa; os_error=phase-0 check 0.10.50 failing: Factory readiness preflight: hash-bound evidence, fail-closed unconfigured checks, typed blockers (fixture exit 1). Detected=2026-10-31T23:55:13.537606Z.
+  Severity: medium
+  Action: run aq-qa 0 --machine and fix check 0.10.50 at its producer
+  File: aq-qa check 0.10.50
+
+[OPEN] rsi-b491160f1f0bc606b258dfeb — attention-queue:ai-stack-health-monitor failure in attention:attn-fce566a3d7fa4fae. Root cause evidence: producer=attention-queue:ai-stack-health-monitor; path=attention:attn-fce566a3d7fa4fae; authority=attention-queue; os_error=[ai-stack-health-monitor] QA phase 0: 3 checks failing (0.1.2 no AI units in failed state , 0.10.50 Facto…: QA phase 0: 3 checks failing (0.1.2 no AI units in failed state , 0.10.50 Factory readiness preflight:, 0.10.66 aq-confine acceptance: profi)  Scheduled health monitor found 3 failing checks:   [0.1.2. Detected=2026-10-31T23:55:17.932068Z.
+  Severity: critical
+  Action: Re-run `aq-qa 0 --machine` and fix the failing check(s).
+  File: attention:attn-fce566a3d7fa4fae
+[DONE] rsi-a40bc48b27b052d9745d4393 — resolved 2026-10-31: attention alert attn-74ced017652840b8 resolved in attention queue (2026-10-31T23:55:17Z) — ledger status=resolved
+
+[OPEN] rsi-70161ac5b42bf1bc833eed80 — attention-queue:ai-stack-health-monitor failure in attention:attn-fce566a3d7fa4fae. Root cause evidence: producer=attention-queue:ai-stack-health-monitor; path=attention:attn-fce566a3d7fa4fae; authority=attention-queue; os_error=[ai-stack-health-monitor] QA phase 0: 2 checks failing (0.1.2 no AI units in failed state , 0.10.66 aq-co…: QA phase 0: 2 checks failing (0.1.2 no AI units in failed state , 0.10.66 aq-confine acceptance: profi)  Scheduled health monitor found 2 failing checks:   [0.1.2] no AI units in failed state (● ai-ga. Detected=2026-11-01T00:10:20.270219Z.
+  Severity: high
+  Action: Re-run `aq-qa 0 --machine` and fix the failing check(s).
+  File: attention:attn-fce566a3d7fa4fae
+[DONE] rsi-33b56f7a43abc923bdc0f639 — resolved 2026-11-01: unit ai-gap-import.service no longer in systemctl --failed (2026-11-01T18:06:43Z) — ledger status=resolved
+
+[OPEN] rsi-575a4d9663770ced7c0d3afb — delegation:codex failure in delegation:codex:orphaned. Root cause evidence: producer=delegation:codex; path=.agents/delegation/registry.jsonl; authority=codex; os_error=codex delegation class orphaned. Detected=2026-11-01T18:06:43.928295Z.
+  Severity: low
+  Action: 1 run(s) in window; latest example .agents/delegation/outputs/codex-20261031-173400-bqdf3i.log; fix producer for class orphaned
+  File: .agents/delegation/registry.jsonl
+[DONE] rsi-7ca5f26ac644733d9d37ecf6 — resolved 2026-11-01: capability ai-gap-import restored to ACTIVE in report 2026-11-01T18:05:11Z — ledger status=resolved
+[DONE] rsi-70161ac5b42bf1bc833eed80 — resolved 2026-11-01: attention alert attn-fce566a3d7fa4fae resolved in attention queue (2026-11-01T18:06:45Z) — ledger status=resolved
+[DONE] rsi-b491160f1f0bc606b258dfeb — resolved 2026-11-01: attention alert attn-fce566a3d7fa4fae resolved in attention queue (2026-11-01T18:06:45Z) — ledger status=resolved
+[DONE] rsi-946c82b75da710d4fd75d11e — resolved 2026-11-01: phase-0 check 0.1.2 passing in health-monitor JSON run 2026-11-01T18:10:22Z — ledger status=resolved
+
+[OPEN] rsi-1846d78f2410905c42029189 — attention-queue:ai-stack-health-monitor failure in attention:attn-54d53ad2e56345c1. Root cause evidence: producer=attention-queue:ai-stack-health-monitor; path=attention:attn-54d53ad2e56345c1; authority=attention-queue; os_error=[ai-stack-health-monitor] QA phase 0: 1 check failing (0.10.66 aq-confine acceptance: profi): Scheduled health monitor found 1 failing check:   [0.10.66] aq-confine acceptance: profiles, goldens, cgroup scope limits, bwrap isolation (AQ_CONFINE_REQUIRE=1 locally) (rc=1 29 FAIL: [tmp] writes ou. Detected=2026-11-01T18:21:47.213174Z.
+  Severity: high
+  Action: Re-run `aq-qa 0 --machine` and fix the failing check(s).
+  File: attention:attn-54d53ad2e56345c1
+
+[OPEN] rsi-51771c87bba3777526c7dd43 — journal:ai-hybrid-coordinator failure in service-error:ai-hybrid-coordinator:{"event": "sync_query_gaps_failed error=[Errno <n>] Permissi. Root cause evidence: producer=journal:ai-hybrid-coordinator; path=ai-hybrid-coordinator; authority=journald; os_error=recurring error in ai-hybrid-coordinator: {"event": "sync_query_gaps_failed error=[Errno <n>] Permission denied: '/var/log/nixos-ai-stack/query-gaps.tmp'", "service": "hybrid-coordinator", "version": "<. Detected=2026-11-01T18:36:48.495498Z.
+  Severity: medium
+  Action: 6 occurrence(s) in last 3600s; example: {"event": "sync_query_gaps_failed error=[Errno 13] Permission denied: '/var/log/nixos-ai-stack/query-gaps.tmp'", "service": "hybrid-coordinator", "version": "1.0.0", "logger": "hybrid-coordinator", "l; journalctl -u ai-hybrid-coordinator; fix producer
+  File: ai-hybrid-coordinator
+- [OPEN] GOVERNANCE/tier0 - QA 0.10.2 (token_usage coverage over last N coordinator model_call events) is live-telemetry state but HARD in --pre-commit; transiently failed and blocked the verified-acceptance round-2 commit 2026-11-01, passed 100% minutes later. Root cause: live-runtime check classed HARD in pre-commit (Rule 19 gate corollary; same class as 0.1.2). Severity: medium. Action: classify 0.10.2 with 0.1.2 as live-state WARN in --pre-commit, HARD in --maintenance. File: scripts/testing/harness_qa/phases/phase0.py (0.10.2), scripts/governance/tier0-validation-gate.sh.
+
+[OPEN] rsi-ca0351661b7f40e08d42ab50 — systemd:failed-unit failure in failed-unit:ai-mcp-integrity-check.service. Root cause evidence: producer=systemd:failed-unit; path=ai-mcp-integrity-check.service; authority=systemd; os_error=unit ai-mcp-integrity-check.service in failed state. Detected=2026-11-01T19:06:44.605647Z.
+  Severity: medium
+  Action: journalctl -u ai-mcp-integrity-check.service; fix producer, then systemctl reset-failed
+  File: ai-mcp-integrity-check.service
+
+[OPEN] rsi-31f7a5d6b33f5d322342583c — aq-qa:phase0 failure in aq-qa:0.1.2. Root cause evidence: producer=aq-qa:phase0; path=aq-qa check 0.1.2; authority=aq-qa; os_error=phase-0 check 0.1.2 failing: no AI units in failed state (● ai-mcp-integrity-check.service loaded failed failed AI stack MCP source file integrity ch. Detected=2026-11-01T19:36:45.573579Z.
+  Severity: medium
+  Action: run aq-qa 0 --machine and fix check 0.1.2 at its producer
+  File: aq-qa check 0.1.2
+
+[OPEN] rsi-19ce46c8deb7fc73908bbbb8 — attention-queue:ai-stack-health-monitor failure in attention:attn-dd2eb3df04594346. Root cause evidence: producer=attention-queue:ai-stack-health-monitor; path=attention:attn-dd2eb3df04594346; authority=attention-queue; os_error=[ai-stack-health-monitor] QA phase 0: 2 checks failing (0.1.2 no AI units in failed state , 0.10.66 aq-co…: QA phase 0: 2 checks failing (0.1.2 no AI units in failed state , 0.10.66 aq-confine acceptance: profi)  Scheduled health monitor found 2 failing checks:   [0.1.2] no AI units in failed state (● ai-mc. Detected=2026-11-01T19:36:51.287907Z.
+  Severity: high
+  Action: Re-run `aq-qa 0 --machine` and fix the failing check(s).
+  File: attention:attn-dd2eb3df04594346
+[DONE] rsi-1846d78f2410905c42029189 — resolved 2026-11-01: attention alert attn-54d53ad2e56345c1 resolved in attention queue (2026-11-01T19:36:51Z) — ledger status=resolved
+- [OPEN] SECURITY/mcp-integrity - ai-mcp-integrity-check.service crashes (exit 127, jq: command not found at check-mcp-integrity.sh:67) on the alert path, so a real source change produces a unit failure instead of the mcp_source_integrity_violation alert. Root cause: unit has no path entry for jq (nix/modules/services/mcp-servers.nix ~2410); only the PASS path was ever exercised live. Trigger 2026-11-01: main checkout ff to 91eeef9e brought #669's interaction_tracker.py change ahead of the Oct-30 baseline (expected change). Severity: medium. Action: add pkgs.jq to the unit path (fix/mcp-integrity-jq) + regression; owner regenerates baseline after review of the change.
+
+[OPEN] rsi-f25727124f12cf7497613279 — attention-queue:ai-stack-health-monitor failure in attention:attn-8e27ef519d564ee5. Root cause evidence: producer=attention-queue:ai-stack-health-monitor; path=attention:attn-8e27ef519d564ee5; authority=attention-queue; os_error=[ai-stack-health-monitor] QA phase 0: 2 checks failing (0.1.2 no AI units in failed state , 0.10.66 aq-co…: QA phase 0: 2 checks failing (0.1.2 no AI units in failed state , 0.10.66 aq-confine acceptance: profi)  Scheduled health monitor found 2 failing checks:   [0.1.2] no AI units in failed state (● ai-mc. Detected=2026-11-01T20:36:52.294773Z.
+  Severity: high
+  Action: Re-run `aq-qa 0 --machine` and fix the failing check(s).
+  File: attention:attn-8e27ef519d564ee5
+[DONE] rsi-19ce46c8deb7fc73908bbbb8 — resolved 2026-11-01: attention alert attn-dd2eb3df04594346 resolved in attention queue (2026-11-01T20:36:52Z) — ledger status=resolved
+
+[OPEN] rsi-64135764162c62fd2a370ed0 — attention-queue:ai-stack-health-monitor failure in attention:attn-1df202fd425b44f4. Root cause evidence: producer=attention-queue:ai-stack-health-monitor; path=attention:attn-1df202fd425b44f4; authority=attention-queue; os_error=[ai-stack-health-monitor] QA phase 0: 2 checks failing (0.1.2 no AI units in failed state , 0.10.66 aq-co…: QA phase 0: 2 checks failing (0.1.2 no AI units in failed state , 0.10.66 aq-confine acceptance: profi)  Scheduled health monitor found 2 failing checks:   [0.1.2] no AI units in failed state (● ai-mc. Detected=2026-11-01T22:06:52.413814Z.
+  Severity: high
+  Action: Re-run `aq-qa 0 --machine` and fix the failing check(s).
+  File: attention:attn-1df202fd425b44f4
+[DONE] rsi-f25727124f12cf7497613279 — resolved 2026-11-01: attention alert attn-8e27ef519d564ee5 resolved in attention queue (2026-11-01T22:06:52Z) — ledger status=resolved
+
+[OPEN] rsi-c16f16646f7b1670221d80f7 — attention-queue:ai-stack-health-monitor failure in attention:attn-095ee70fe3aa469b. Root cause evidence: producer=attention-queue:ai-stack-health-monitor; path=attention:attn-095ee70fe3aa469b; authority=attention-queue; os_error=[ai-stack-health-monitor] QA phase 0: 2 checks failing (0.1.2 no AI units in failed state , 0.10.66 aq-co…: QA phase 0: 2 checks failing (0.1.2 no AI units in failed state , 0.10.66 aq-confine acceptance: profi)  Scheduled health monitor found 2 failing checks:   [0.1.2] no AI units in failed state (● ai-mc. Detected=2026-11-01T23:21:52.163962Z.
+  Severity: high
+  Action: Re-run `aq-qa 0 --machine` and fix the failing check(s).
+  File: attention:attn-095ee70fe3aa469b
+[DONE] rsi-64135764162c62fd2a370ed0 — resolved 2026-11-01: attention alert attn-1df202fd425b44f4 resolved in attention queue (2026-11-01T23:21:52Z) — ledger status=resolved
+
+[OPEN] rsi-170ebd1d182af418d3cb6808 — journal:ai-aidb failure in service-error:ai-aidb:Embedding generation failed. Root cause evidence: producer=journal:ai-aidb; path=ai-aidb; authority=journald; os_error=recurring error in ai-aidb: Embedding generation failed. Detected=2026-11-02T00:21:56.103868Z.
+  Severity: medium
+  Action: 6 occurrence(s) in last 3600s; example: {"event": "Embedding generation failed", "exc_info": ["<class 'RuntimeError'>", "RuntimeError('all_embedding_backends_failed (service:All connection attempts failed; llama:All connection attempts fail; journalctl -u ai-aidb; fix producer
+  File: ai-aidb
+
+[OPEN] rsi-b035ead53e58ba8ec263abd6 — journal:ai-aidb failure in service-error:ai-aidb:embedding_failed error_id=<hex>. Root cause evidence: producer=journal:ai-aidb; path=ai-aidb; authority=journald; os_error=recurring error in ai-aidb: embedding_failed error_id=<hex>. Detected=2026-11-02T00:21:56.175746Z.
+  Severity: medium
+  Action: 6 occurrence(s) in last 3600s; example: {"event": "embedding_failed error_id=047e7d1c4845", "exc_info": ["<class 'RuntimeError'>", "RuntimeError('all_embedding_backends_failed (service:All connection attempts failed; llama:All connection at; journalctl -u ai-aidb; fix producer
+  File: ai-aidb
+
+[OPEN] rsi-26feae2794ecdea6fee35f91 — attention-queue:ai-stack-health-monitor failure in attention:attn-3784e1ec386642f8. Root cause evidence: producer=attention-queue:ai-stack-health-monitor; path=attention:attn-3784e1ec386642f8; authority=attention-queue; os_error=[ai-stack-health-monitor] QA phase 0: 1 check failing (0.10.66 aq-confine acceptance: profi): Scheduled health monitor found 1 failing check:   [0.10.66] aq-confine acceptance: profiles, goldens, cgroup scope limits, bwrap isolation (AQ_CONFINE_REQUIRE=1 locally) (rc=1 29 FAIL: [tmp] writes ou. Detected=2026-11-02T00:21:57.425395Z.
+  Severity: high
+  Action: Re-run `aq-qa 0 --machine` and fix the failing check(s).
+  File: attention:attn-3784e1ec386642f8
+[DONE] rsi-c16f16646f7b1670221d80f7 — resolved 2026-11-02: attention alert attn-095ee70fe3aa469b resolved in attention queue (2026-11-02T00:21:57Z) — ledger status=resolved
+
+[OPEN] rsi-ca0351661b7f40e08d42ab50 — systemd:failed-unit failure in failed-unit:ai-mcp-integrity-check.service. Root cause evidence: producer=systemd:failed-unit; path=ai-mcp-integrity-check.service; authority=systemd; os_error=unit ai-mcp-integrity-check.service in failed state. Detected=2026-11-02T01:13:31.221568Z.
+  Severity: medium
+  Action: journalctl -u ai-mcp-integrity-check.service; fix producer, then systemctl reset-failed
+  File: ai-mcp-integrity-check.service
+
+[OPEN] rsi-e5cf3d273302bb77771a3b84 — delegation:antigravity failure in delegation:antigravity:timeout. Root cause evidence: producer=delegation:antigravity; path=.agents/delegation/registry.jsonl; authority=antigravity; os_error=antigravity delegation class timeout. Detected=2026-11-02T01:13:31.984561Z.
+  Severity: low
+  Action: 1 run(s) in window; latest example .agents/delegation/outputs/antigravity-20261101-165446-tkvjon.log; fix producer for class timeout
+  File: .agents/delegation/registry.jsonl
+[DONE] rsi-170ebd1d182af418d3cb6808 — resolved 2026-11-02: journal of ai-aidb read OK; signature below 5 occurrence(s) in last 3600s (2026-11-02T01:13:36Z) — ledger status=resolved
+[DONE] rsi-b035ead53e58ba8ec263abd6 — resolved 2026-11-02: journal of ai-aidb read OK; signature below 5 occurrence(s) in last 3600s (2026-11-02T01:13:36Z) — ledger status=resolved
+
+[OPEN] rsi-2ebae7103c4cbd24099b7209 — attention-queue:ai-stack-health-monitor failure in attention:attn-3784e1ec386642f8. Root cause evidence: producer=attention-queue:ai-stack-health-monitor; path=attention:attn-3784e1ec386642f8; authority=attention-queue; os_error=[ai-stack-health-monitor] QA phase 0: 3 checks failing (0.1.2 no AI units in failed state , 0.10.22 LOCAL…: QA phase 0: 3 checks failing (0.1.2 no AI units in failed state , 0.10.22 LOCAL_TOK_PER_SEC throughput, 0.10.66 aq-confine acceptance: profi)  Scheduled health monitor found 3 failing checks:   [0.1.2. Detected=2026-11-02T01:13:36.764810Z.
+  Severity: critical
+  Action: Re-run `aq-qa 0 --machine` and fix the failing check(s).
+  File: attention:attn-3784e1ec386642f8
+
+[OPEN] POST-REBOOT/confine-oom-attribution — focused test-aq-confine.py: 204 checks, 1 failed, 0 skipped; allocation past MemoryMax returned child-failed rc=-9 rather than expected oom-killed. Root cause hypothesis: watcher attached but missed cgroup event; under investigation, no generic SIGKILL reclassification authorized. Severity: MEDIUM. Action: evidence-safe attribution plan + regression. File: scripts/ai/lib/confine.py (_watch_oom), scripts/testing/test-aq-confine.py; evidence /tmp/aq-confine-focused-reboot.log.
+[IN-PROGRESS] ROUTING/S1-template-fallback-accounting — independent review found _payload_bytes omits newly forwarded template options when apply-template/tokenize fail. Root cause: exact rendering fields added without shared fallback accounting. Severity: MEDIUM. Action: bounded implementer fix and large-kwargs fallback regression in existing S1 worktree. File: scripts/ai/lib/dispatch_evidence.py (_payload_bytes).
+
+[OPEN] LOCAL/delegation-recovery — local-20261101-171747-2eed7s registry running but pid absent and output file absent; root cause unconfirmed; Severity: MEDIUM; Action: reconcile registry and diagnose runner before accepting review; Evidence: delegate-to-local --status; .agents/delegation/outputs/local-20261101-171747-2eed7s.log absent.
+
+[CORRECTED] LOCAL/delegation-recovery — task local-20261101-171747-2eed7s completed successfully; earlier stale inference lacked contemporaneous timing evidence. Root cause: premature interpretation of absent PID/output. Severity: LOW. Action: no rerun; confirmed output/progress/timing. Review remains advisory because it infers an unsupported routing prerequisite.
+[OPEN] LOCAL/registry-compatibility — registry show rejects legacy row over compatibility bound; local status fallback succeeds. Root cause: legacy row compatibility constraint. Severity: MEDIUM. Action: bounded producer diagnosis deferred; evidence from independent read-only runner diagnosis.
+
+[OPEN] rsi-cfd03647bfddae784dca94ab — attention-queue:ai-stack-health-monitor failure in attention:attn-3784e1ec386642f8. Root cause evidence: producer=attention-queue:ai-stack-health-monitor; path=attention:attn-3784e1ec386642f8; authority=attention-queue; os_error=[ai-stack-health-monitor] QA phase 0: 2 checks failing (0.1.2 no AI units in failed state , 0.10.66 aq-co…: QA phase 0: 2 checks failing (0.1.2 no AI units in failed state , 0.10.66 aq-confine acceptance: profi)  Scheduled health monitor found 2 failing checks:   [0.1.2] no AI units in failed state (● ai-mc. Detected=2026-11-02T01:43:38.306265Z.
+  Severity: high
+  Action: Re-run `aq-qa 0 --machine` and fix the failing check(s).
+  File: attention:attn-3784e1ec386642f8
+
+[OPEN] rsi-4263f9daeb19f4adc7219106 — systemd:failed-unit failure in failed-unit:ai-sync-knowledge-sources.service. Root cause evidence: producer=systemd:failed-unit; path=ai-sync-knowledge-sources.service; authority=systemd; os_error=unit ai-sync-knowledge-sources.service in failed state. Detected=2026-11-02T19:43:20.507966Z.
+  Severity: medium
+  Action: journalctl -u ai-sync-knowledge-sources.service; fix producer, then systemctl reset-failed
+  File: ai-sync-knowledge-sources.service
+
+[OPEN] rsi-47d6715b906e5e242cefae44 — capability-audit failure in capability-audit:ai-mcp-integrity-check. Root cause evidence: producer=capability-audit; path=ai-mcp-integrity-check; authority=capability-audit; os_error=capability ai-mcp-integrity-check regressed from ACTIVE. Detected=2026-11-02T19:43:23.881010Z.
+  Severity: medium
+  Action: class ACTIVE -> BROKEN (report 2026-11-02T19:33:59Z); run aq-capability-audit --json and inspect the capability evidence; restore wiring/discovery/usage
+  File: ai-mcp-integrity-check
+
+[OPEN] rsi-63023c51c6b42b3b7642019c — capability-audit failure in capability-audit:ai-sync-knowledge-sources. Root cause evidence: producer=capability-audit; path=ai-sync-knowledge-sources; authority=capability-audit; os_error=capability ai-sync-knowledge-sources regressed from ACTIVE. Detected=2026-11-02T19:43:23.924788Z.
+  Severity: medium
+  Action: class ACTIVE -> BROKEN (report 2026-11-02T19:33:59Z); run aq-capability-audit --json and inspect the capability evidence; restore wiring/discovery/usage
+  File: ai-sync-knowledge-sources
+
+[OPEN] rsi-e4947771be6d1fee05ed1517 — capability-audit failure in capability-audit:threshold:BROKEN. Root cause evidence: producer=capability-audit; path=threshold:BROKEN; authority=capability-audit; os_error=BROKEN capabilities exceed 0. Detected=2026-11-02T19:43:23.999151Z.
+  Severity: medium
+  Action: 2 capabilities classed BROKEN (limit 0, report 2026-11-02T19:33:59Z); see aq-capability-audit next_action
+  File: threshold:BROKEN
+
+[OPEN] rsi-9c2302b562eddce0433501aa — aq-qa:phase0 failure in aq-qa:0.1.2. Root cause evidence: producer=aq-qa:phase0; path=aq-qa check 0.1.2; authority=aq-qa; os_error=phase-0 check 0.1.2 failing: no AI units in failed state (● ai-mcp-integrity-check.service    loaded failed failed AI stack MCP source file integrity. Detected=2026-11-02T19:58:20.397377Z.
+  Severity: medium
+  Action: run aq-qa 0 --machine and fix check 0.1.2 at its producer
+  File: aq-qa check 0.1.2
+
+[OPEN] rsi-fdca4d764dec5e68ce4de169 — attention-queue:ai-stack-health-monitor failure in attention:attn-4a7afc3fc162415d. Root cause evidence: producer=attention-queue:ai-stack-health-monitor; path=attention:attn-4a7afc3fc162415d; authority=attention-queue; os_error=[ai-stack-health-monitor] QA phase 0: 2 checks failing (0.1.2 no AI units in failed state , 0.10.66 aq-co…: QA phase 0: 2 checks failing (0.1.2 no AI units in failed state , 0.10.66 aq-confine acceptance: profi)  Scheduled health monitor found 2 failing checks:   [0.1.2] no AI units in failed state (● ai-mc. Detected=2026-11-02T19:58:23.954042Z.
+  Severity: high
+  Action: Re-run `aq-qa 0 --machine` and fix the failing check(s).
+  File: attention:attn-4a7afc3fc162415d
+[DONE] rsi-26feae2794ecdea6fee35f91 — resolved 2026-11-02: attention alert attn-3784e1ec386642f8 resolved in attention queue (2026-11-02T19:58:23Z) — ledger status=resolved
+[DONE] rsi-2ebae7103c4cbd24099b7209 — resolved 2026-11-02: attention alert attn-3784e1ec386642f8 resolved in attention queue (2026-11-02T19:58:24Z) — ledger status=resolved
+[DONE] rsi-cfd03647bfddae784dca94ab — resolved 2026-11-02: attention alert attn-3784e1ec386642f8 resolved in attention queue (2026-11-02T19:58:24Z) — ledger status=resolved
+
+[OPEN] rsi-0799cc4c4806b6508f2a09f5 — aq-qa:phase0 failure in aq-qa:0.10.50. Root cause evidence: producer=aq-qa:phase0; path=aq-qa check 0.10.50; authority=aq-qa; os_error=phase-0 check 0.10.50 failing: Factory readiness preflight: hash-bound evidence, fail-closed unconfigured checks, typed blockers (fixture exit 1). Detected=2026-11-02T20:13:20.432233Z.
+  Severity: medium
+  Action: run aq-qa 0 --machine and fix check 0.10.50 at its producer
+  File: aq-qa check 0.10.50
+
+[OPEN] rsi-20cde6b64854b7e9481090e7 — attention-queue:ai-stack-health-monitor failure in attention:attn-4a7afc3fc162415d. Root cause evidence: producer=attention-queue:ai-stack-health-monitor; path=attention:attn-4a7afc3fc162415d; authority=attention-queue; os_error=[ai-stack-health-monitor] QA phase 0: 3 checks failing (0.1.2 no AI units in failed state , 0.10.50 Facto…: QA phase 0: 3 checks failing (0.1.2 no AI units in failed state , 0.10.50 Factory readiness preflight:, 0.10.66 aq-confine acceptance: profi)  Scheduled health monitor found 3 failing checks:   [0.1.2. Detected=2026-11-02T20:13:24.707747Z.
+  Severity: critical
+  Action: Re-run `aq-qa 0 --machine` and fix the failing check(s).
+  File: attention:attn-4a7afc3fc162415d
+
+[OPEN] rsi-45f01ca2faf9dcd132a8093e — scripts/ai/delegate-to-gemini failure in gemini-delegation-binary. Root cause evidence: producer=scripts/ai/delegate-to-gemini; path=scripts/ai/delegate-to-gemini; authority=owner-request; os_error=Gemini delegation failed because configured headless CLI path was unavailable and the shell gemini alias resolves to agy; failure was not automatically sent through RSI. Detected=2026-11-02T20:28:23.991843Z.
+  Severity: medium
+  Action: Resolve the canonical Gemini headless executable safely and invoke RSI reporting on every delegation failure, without using the Antigravity IDE route.
+  File: scripts/ai/delegate-to-gemini
+
+[OPEN] rsi-e04f5d33f5bc8c1b081c428a — Codex orchestrator closeout failure in Gemini RSI hook closeout. Root cause evidence: producer=Codex orchestrator closeout; path=.agent/collaboration/HANDOFF.md; authority=operator-correction; os_error=Orchestrator reported an integration blocker before kicking off the RSI workflow, requiring owner correction. Detected=2026-11-02T21:04:06.880777Z.
+  Severity: medium
+  Action: On any failure/friction, run aq-rsi report and lifecycle intake before status reporting; then resolve the root cause, test the auto trigger, and close the loop.
+  File: .agent/collaboration/HANDOFF.md
+
+[OPEN] rsi-ad22700dc4837a6ca5e7e28d — scripts/health/gemini-cli-health.sh failure in gemini-headless-health-routing. Root cause evidence: producer=scripts/health/gemini-cli-health.sh; path=scripts/health/gemini-cli-health.sh; authority=agent-reported; os_error=Gemini CLI health reports retired Antigravity IDE/inbox as healthy; gemini --version confirms headless Gemini CLI 1.4.12 but auth/live model smoke was not tested. Detected=2026-11-02T21:07:20.778168Z.
+  Severity: medium
+  Action: Replace Antigravity-specific health assertions with headless Gemini CLI availability/auth evidence and update its phase0/test contract; do not route through IDE inbox.
+  File: scripts/health/gemini-cli-health.sh
+
+[OPEN] rsi-411bb5f2eb342d9338caf65c — scripts/ai/delegate-to-gemini failure in gemini-dispatch-binary-resolution. Root cause evidence: producer=scripts/ai/delegate-to-gemini; path=scripts/ai/delegate-to-gemini; authority=agent-reported; os_error=Gemini dispatch preflight uses stale /home/hyperd/.npm-global/bin/gemini although headless CLI resolves to /home/hyperd/.local/bin/gemini; Gemini review dispatch exits 1 before CLI launch and current hook did not report this path mismatch. Detected=2026-11-02T21:10:04.988884Z.
+  Severity: high
+  Action: Resolve GEMINI_BIN from explicit override then command -v gemini; pass the resolved executable to foreground and background workers; emit RSI incident for unresolved binary only.
+  File: scripts/ai/delegate-to-gemini
+
+[OPEN] rsi-c005fb848ddc0750a46e33d8 — review-disposition workflow / PR template failure in PR #676 independent review receipt gate. Root cause evidence: producer=review-disposition workflow / PR template; path=.github/workflows and scripts/ai/aq-review-receipt; authority=owner-directed PR repair; os_error=PR #676 review-disposition gate is blocked because required independent, head-bound review receipt fields are absent from PR metadata; PR head 69c901ee34c44d9b9dc13f09ac7fa4f1352207f2. Investigate receipt producer and make the trigger automatic for future PR waves.. Detected=2026-11-02T21:13:26.212131Z.
+  Severity: high
+  Action: Generate and validate the head-bound receipt from the independent review dispatch, then make the PR workflow create or request it automatically before failure.
+  File: .github/workflows and scripts/ai/aq-review-receipt
+
+[OPEN] rsi-ea094eeab8c683bf959ee0ee — scripts/ai/delegate-to-gemini failure in PR #676 independent review. Root cause evidence: producer=scripts/ai/delegate-to-gemini; path=scripts/ai/delegate-to-gemini; authority=local; os_error=Gemini review dispatch failed: delegate-to-gemini configured nonexistent /home/hyperd/.npm-global/bin/gemini while actual headless CLI exists at /home/hyperd/.local/bin/gemini.. Detected=2026-11-02T21:15:26.703615Z.
+  Severity: medium
+  Action: Resolve Gemini CLI path from PATH or current Nix profile and add a dispatch smoke check; preserve headless Gemini CLI route.
+  File: scripts/ai/delegate-to-gemini
+
+[OPEN] rsi-01e152cf81d1bcb1230855ee — scripts/ai/delegate-to-gemini failure in PR #676 independent review. Root cause evidence: producer=scripts/ai/delegate-to-gemini; path=scripts/ai/delegate-to-gemini; authority=local; os_error=Gemini delegation wrapper is incompatible with installed CLI: it invokes unsupported --approval-mode although installed Gemini accepts --mode, so delegated review exited before reviewer output.. Detected=2026-11-02T21:15:32.869448Z.
+  Severity: high
+  Action: Update Gemini adapter argument contract against the installed CLI and add a real headless review smoke test before accepting dispatch.
+  File: scripts/ai/delegate-to-gemini
+
+[OPEN] rsi-c0731682d7305b7896a93e63 — /home/hyperd/.local/bin/gemini failure in PR #676 independent review. Root cause evidence: producer=/home/hyperd/.local/bin/gemini; path=scripts/ai/delegate-to-gemini; authority=local; os_error=Direct Gemini headless review of PR #676 in plan/sandbox mode exceeded the CLI 120-second timeout and produced no reviewer output.. Detected=2026-11-02T21:17:41.076348Z.
+  Severity: medium
+  Action: Fix adapter-to-installed-CLI protocol, then add bounded-time authenticated headless review smoke and explicit stalled-task handling.
+  File: scripts/ai/delegate-to-gemini
+
+[OPEN] rsi-37f5a07034fb342a666601e8 — GitHub connector invocation failure in PR #676 review evidence retrieval. Root cause evidence: producer=GitHub connector invocation; path=.agent/collaboration/PULSE.log; authority=local; os_error=GitHub PR diff lookup used wrong connector parameter name on first attempt; schema required repo_full_name. Corrected on retry; no repo impact.. Detected=2026-11-02T21:18:44.832261Z.
+  Severity: low
+  Action: Use repo_full_name for github_get_pr_diff and surface connector schema in tool map.
+  File: .agent/collaboration/PULSE.log
+
+[OPEN] rsi-83f9e7a56fe48f22d2802aa6 — scripts/ai/delegate-to-local --wait failure in PR #676 independent review. Root cause evidence: producer=scripts/ai/delegate-to-local --wait; path=scripts/ai/delegate-to-local; authority=local; os_error=Registered local Qwen reviewer invocation for PR #676 timed out at 120 seconds before returning a disposition; no review receipt was produced. Cause under investigation: delegate-to-local --wait wrapper timeout or backend latency. Retry once using task ID/status and a shorter prompt; do not treat timeout as review.. Detected=2026-11-02T21:21:00.918476Z.
+  Severity: medium
+  Action: Expose and preserve asynchronous task IDs on wait timeout; use bounded payload and allow status/monitor resume without losing registry linkage.
+  File: scripts/ai/delegate-to-local
+
+[OPEN] rsi-a6e5c2a2f8283b23c2e4e70b — scripts/ai/delegate-to-gemini failure in PR #676 Gemini headless reviewer route. Root cause evidence: producer=scripts/ai/delegate-to-gemini; path=scripts/ai/delegate-to-gemini; authority=local; os_error=Gemini reviewer dispatch for PR #676 exited before registry completion because delegate-to-gemini passed unsupported --approval-mode to the installed headless CLI; output is a CLI usage error, not a review. This repeats the known Gemini adapter mismatch and leaves no eligible receipt.. Detected=2026-11-02T21:22:04.102244Z.
+  Severity: medium
+  Action: Update and smoke-verify the Gemini CLI argument contract against the installed headless binary; make the route report adapter failures to RSI and avoid registering them as review outcomes.
+  File: scripts/ai/delegate-to-gemini
+
+[OPEN] rsi-e18f68b325bbfbe29910f925 — aq-resume/aq-rsi status failure in PR #676 recovery: surfaced delegation and RSI health failures. Root cause evidence: producer=aq-resume/aq-rsi status; path=scripts/ai/aq-rsi; authority=local; os_error=Session recovery surfaced unresolved system friction: recent ai_coordinator_delegate exit=7 failures (7 occurrences) and RSI phase-0 health monitor reports 3 failing checks. This conflicts with the prior RSI automation gap; capture current state and route remediation through PRSI rather than suppressing the signal.. Detected=2026-11-02T21:22:59.943104Z.
+  Severity: high
+  Action: Trace exact failing check IDs and delegation exit=7 producer; remediate root causes, then verify RSI trigger and health path automatically records and routes failures.
+  File: scripts/ai/aq-rsi
+
+[OPEN] rsi-7b4f23209ddf47edb9b3ee4f — scripts/ai/delegate-to-local --status failure in PR #676 recovery: delegate status requires task ID. Root cause evidence: producer=scripts/ai/delegate-to-local --status; path=scripts/ai/delegate-to-local; authority=local; os_error=During PR #676 recovery, I invoked delegate-to-local --status without the required task ID; the command rejected the request before checking any run. Root cause is operator-facing status syntax not surfaced at the call site. Action: use exact task IDs and improve the recovery runbook/CLI help so status requires an explicit ID.. Detected=2026-11-02T21:24:24.269380Z.
+  Severity: low
+  Action: Document and expose exact task-ID status usage in recovery tooling; add a checkable help/usage regression if the contract is unclear.
+  File: scripts/ai/delegate-to-local
+
+[OPEN] rsi-e8c16650c7313111f320a747 — aq-qa:phase0 failure in aq-qa:0.8.1. Root cause evidence: producer=aq-qa:phase0; path=aq-qa check 0.8.1; authority=aq-qa; os_error=phase-0 check 0.8.1 failing: delegate 24h success rate ≥50% (got 45% (5/11 calls)). Detected=2026-11-02T21:28:20.894213Z.
+  Severity: medium
+  Action: run aq-qa 0 --machine and fix check 0.8.1 at its producer
+  File: aq-qa check 0.8.1
+
+[OPEN] rsi-501b6a9e835fd0afef120fd4 — attention-queue:ai-stack-health-monitor failure in attention:attn-4a7afc3fc162415d. Root cause evidence: producer=attention-queue:ai-stack-health-monitor; path=attention:attn-4a7afc3fc162415d; authority=attention-queue; os_error=[ai-stack-health-monitor] QA phase 0: 3 checks failing (0.1.2 no AI units in failed state , 0.8.1 delegat…: QA phase 0: 3 checks failing (0.1.2 no AI units in failed state , 0.8.1 delegate 24h success rate ≥5, 0.10.66 aq-confine acceptance: profi)  Scheduled health monitor found 3 failing checks:   [0.1.2] . Detected=2026-11-02T21:28:26.137931Z.
+  Severity: critical
+  Action: Re-run `aq-qa 0 --machine` and fix the failing check(s).
+  File: attention:attn-4a7afc3fc162415d
+
+[OPEN] rsi-ff2e4b875d0c67522c04d4b7 — delegate-to-local-direct failure in pr676-review. Root cause evidence: producer=delegate-to-local-direct; path=scripts/ai/delegate-to-local; authority=aq-rsi; os_error=Local Qwen direct reviewer exceeded 120s while creating a standardized PR 676 receipt review; existing prior Qwen review remains PASS but lacks required head SHA/disposition footer.. Detected=2026-11-02T21:29:06.525492Z.
+  Severity: medium
+  Action: Use task registry status to reuse completed exact-head review evidence where valid, configure review timeout to fit local APU pacing, and ensure reviewer outputs include receipt parser footer; independently test against PR 676.
+  File: scripts/ai/delegate-to-local
+
+[OPEN] rsi-63942596a4ef58a4e9012c9c — gemini-cli-invocation failure in pr676-review. Root cause evidence: producer=gemini-cli-invocation; path=scripts/ai/delegate-to-gemini; authority=aq-rsi; os_error=Gemini headless invocation failed because this installed CLI treats --print as taking the prompt value and ignored the separate --prompt argument.. Detected=2026-11-02T21:29:16.852021Z.
+  Severity: low
+  Action: Correct the registered Gemini dispatch wrapper to match installed Gemini CLI argument contract and cover it with a CLI smoke check.
+  File: scripts/ai/delegate-to-gemini
+
+[OPEN] rsi-c17c82b22fe3d58245108b21 — gemini-cli-route failure in pr676-review. Root cause evidence: producer=gemini-cli-route; path=scripts/ai/delegate-to-gemini; authority=aq-rsi; os_error=Gemini reviewer invocation is running through the Antigravity CLI clone, repeatedly failing to persist conversation state under ~/.gemini/antigravity-cli (read-only filesystem), and is not producing a registered Gemini Code Assist review receipt.. Detected=2026-11-02T21:30:35.433088Z.
+  Severity: medium
+  Action: Resolve the Gemini headless executable through the configured canonical lane and validate its actual CLI identity/auth/persistence before dispatch; do not route agentic reviews through Antigravity.
+  File: scripts/ai/delegate-to-gemini
+
+[OPEN] rsi-e4325b8a429676acb245c4c7 — shell-pretool-hook failure in pr676-recovery. Root cause evidence: producer=shell-pretool-hook; path=.agent/WORKFLOW-CANON.md; authority=aq-rsi; os_error=A compound shell status probe was blocked by the mandatory lean-ctx pre-tool hook; the required retry command was provided, so the probe is being rerun through lean-ctx.. Detected=2026-11-02T21:30:46.777628Z.
+  Severity: low
+  Action: Use lean-ctx for shell/read probes from the start and encode this requirement in the recovery runbook if absent.
+  File: .agent/WORKFLOW-CANON.md
+
+[OPEN] rsi-4bf8be5700dd230e0ff2fe90 — codex-reviewer-quota failure in pr676-review. Root cause evidence: producer=codex-reviewer-quota; path=.agent/collaboration; authority=aq-rsi; os_error=Existing Codex routing-validation reviewer agent hit its provider usage limit while assisting the active recovery; PR 676 remains without an accepted receipt.. Detected=2026-11-02T21:30:58.443341Z.
+  Severity: medium
+  Action: Route confirmatory review through an available registered lane after checking quota headroom; keep the completed exact-head findings advisory and never synthesize reviewer output.
+  File: .agent/collaboration
+
+[OPEN] rsi-eb9934e6b8148969445f5bf6 — lean-ctx-tool-selection failure in pr676-recovery. Root cause evidence: producer=lean-ctx-tool-selection; path=.agent/WORKFLOW-CANON.md; authority=aq-rsi; os_error=Attempted to invoke ctx_read as a shell subcommand; lean-ctx exposes ctx_shell and ctx_read as separate MCP tools, so the reads returned command-not-found and no files were changed.. Detected=2026-11-02T21:31:05.550549Z.
+  Severity: low
+  Action: Use the documented ctx_read MCP tool for reads; avoid shelling out to MCP tool names.
+  File: .agent/WORKFLOW-CANON.md
+
+[OPEN] rsi-3387a8f18d9d73e34d86e4da — PR676-recovery failure in pr676-review-disposition. Root cause evidence: producer=PR676-recovery; path=.agent/workflows/review-disposition.yml; authority=local; os_error=PR #676 recovery inspection referenced .agent/workflows/review-disposition.yml but that path does not exist; required disposition workflow location unresolved.. Detected=2026-11-02T21:31:52.499408Z.
+  Severity: low
+  Action: Locate the actual review-disposition workflow from repository manifests/search results and correct the runbook reference; avoid guessed paths.
+  File: .agent/workflows/review-disposition.yml
+
+[OPEN] rsi-b5b9739d61da67f1edc0e165 — PR676-recovery failure in pr676-review-disposition. Root cause evidence: producer=PR676-recovery; path=.agents/workflows/review-disposition.yml; authority=local; os_error=Review-disposition workflow path was still unresolved: guessed .agents/workflows/review-disposition.yml also absent. Prior cached checkpoint indicates a review-disposition.yml was read, so search authoritative repository paths before editing.. Detected=2026-11-02T21:32:00.520774Z.
+  Severity: low
+  Action: Resolve the cached file identity via repo search and fix the source reference, not by creating a duplicate guessed workflow.
+  File: .agents/workflows/review-disposition.yml
+
+[OPEN] rsi-87c5f73fe3147bfd1f866cdd — Codex orchestrator failure in PR 676 triage command error. Root cause evidence: producer=Codex orchestrator; path=.agent/memory/issues-backlog.md; authority=agent-reported; os_error=Invalid aq-rsi health subcommand during PR 676 investigation; CLI choices are report/status/pending/approve/reconcile/sweep. Root cause: guessed health verb without checking CLI. Use aq-rsi status; add command discovery to the PR triage runbook.. Detected=2026-11-02T21:33:15.994510Z.
+  Severity: low
+  Action: Use aq-rsi status and document supported RSI CLI verbs in triage guidance.
+  File: .agent/memory/issues-backlog.md
+
+[OPEN] rsi-1a4f46ccbd7408797417221b — review-disposition workflow / PR authoring path failure in PR 676 review receipt and skipped build. Root cause evidence: producer=review-disposition workflow / PR authoring path; path=.github/workflows/review-disposition.yml; authority=agent-reported; os_error=PR 676 review-disposition remains blocked: PR body lacks required receipt fields and committed receipt; Build & Package check is skipped despite body claiming local build validation. Existing review text is not receipt-compatible. Root cause: review ran without exact-subject receipt minting and PR workflow does not synthesize it.. Detected=2026-11-02T21:33:29.439788Z.
+  Severity: medium
+  Action: Complete registered independent review for exact PR head, mint receipt from genuine output, add matching fields, and resolve reproducibility gap for the skipped Build & Package check.
+  File: .github/workflows/review-disposition.yml
+
+[OPEN] rsi-55132edf85f06b66898e366f — scripts/ai/delegate-to-gemini failure in PR 676 independent review lane unavailable. Root cause evidence: producer=scripts/ai/delegate-to-gemini; path=scripts/ai/delegate-to-gemini; authority=agent-reported; os_error=Gemini review dispatch could not start: delegate-to-gemini reports configured binary /home/hyperd/.npm-global/bin/gemini missing. Root cause: Gemini CLI unavailable in current post-restart environment although route script exists; Antigravity is explicitly not a valid replacement. Restore/install the supported headless Gemini CLI through Nix/Home Manager or correct GEMINI_BIN declaratively, then run health validation.. Detected=2026-11-02T21:33:40.409677Z.
+  Severity: medium
+  Action: Restore the Nix-declared Gemini headless CLI and validate delegate-to-gemini startup without Antigravity.
+  File: scripts/ai/delegate-to-gemini
+
+[OPEN] rsi-552081585863a5d3756daf96 — Codex triage command failure in PR 676 receipt audit path error. Root cause evidence: producer=Codex triage command; path=.agents/delegation/registry.jsonl; authority=agent-reported; os_error=Registry inspection command used a relative path from the wrong persisted lean-ctx cwd and could not open .agents/delegation/registry.jsonl. Root cause: ctx_shell retains cwd across calls while command assumed project root. Correct via absolute repo path or cwd argument.. Detected=2026-11-02T21:34:04.590626Z.
+  Severity: low
+  Action: Pass explicit cwd or absolute project paths in lean-ctx shell commands.
+  File: .agents/delegation/registry.jsonl
+
+[OPEN] rsi-4084c364cb24a3d24d87189d — scripts/ai/delegate-to-local failure in PR 676 local Qwen review timeout. Root cause evidence: producer=scripts/ai/delegate-to-local; path=scripts/ai/lib/dispatch.py; authority=agent-reported; os_error=Local Qwen reviewer dispatch exceeded its 120s execution ceiling and returned no review output. Root cause: local direct review latency exceeds the shell/delegation wait budget on this host. Existing Codex independent reviewer completed with REQUEST_CHANGES; use its specific finding and fix the exact-subject build evidence rather than accepting an empty local verdict.. Detected=2026-11-02T21:36:40.540641Z.
+  Severity: low
+  Action: Measure lane latency before blocking reviewer dispatch and use registered async/long-timeout reviewer path with bounded polling.
+  File: scripts/ai/lib/dispatch.py
+
+[OPEN] rsi-9bd7ae71ee271808fd401df7 — skill-frontmatter failure in PR-676-review-routing. Root cause evidence: producer=skill-frontmatter; path=.agent/skills/aq-workflow/SKILL.md; authority=agent-reported; os_error=Codex delegation surfaces duplicate YAML frontmatter description warnings in four project skills, weakening instruction loading for review runs.. Detected=2026-11-02T21:38:14.487375Z.
+  Severity: low
+  Action: Normalize duplicate frontmatter keys in affected skill files and add a metadata validation guard.
+  File: .agent/skills/aq-workflow/SKILL.md
+
+[OPEN] rsi-73aea0a04ab59892f2407802 — scripts/ai/aq-review-receipt failure in PR676. Root cause evidence: producer=scripts/ai/aq-review-receipt; path=.agent/reviews/receipts/pr676-69c901ee34c4.json; authority=gate; os_error=PR676 receipt mint rejected Codex review: reviewer lane codex equals PR author lane codex; output also lacks required Review-Disposition line. Detected=2026-11-02T21:39:13.691191Z.
+  Severity: medium
+  Action: Route binding review to an independent registered lane (Gemini headless or local Qwen); validate author/reviewer lane eligibility before launching review and provide receipt format in reviewer payload.
+  File: .agent/reviews/receipts/pr676-69c901ee34c4.json
+
+[OPEN] rsi-b625a762b79a2db9c945ae18 — scripts/ai/delegate-to-gemini failure in PR676. Root cause evidence: producer=scripts/ai/delegate-to-gemini; path=scripts/health/gemini-cli-health.sh; authority=gate; os_error=Gemini headless reviewer route defaults to missing ~/.npm-global/bin/gemini although CLI is at ~/.local/bin/gemini; gemini-cli-health reports antigravity lane as Gemini healthy. Detected=2026-11-02T21:39:31.395709Z.
+  Severity: high
+  Action: Resolve Gemini executable from PATH or canonical Nix option; make Gemini health probe execute the headless Gemini binary and never infer Gemini health from Antigravity.
+  File: scripts/health/gemini-cli-health.sh
+
+[OPEN] rsi-1302e51676885fb54f516916 — scripts/ai/delegate-to-gemini failure in PR676. Root cause evidence: producer=scripts/ai/delegate-to-gemini; path=scripts/ai/delegate-to-gemini; authority=gate; os_error=Gemini PR676 review dispatch started but failed before model execution: installed Gemini CLI rejects wrapper flag -approval-mode; wrapper passed role=implement for a review prompt. Detected=2026-11-02T21:40:23.338939Z.
+  Severity: high
+  Action: Align delegate-to-gemini approval and role flags with the installed Gemini headless CLI; add a Gemini headless review smoke check and preserve registered reviewer role/disposition.
+  File: scripts/ai/delegate-to-gemini
+
+[OPEN] rsi-e9205f7f9c86ada384162c75 — GitHub Actions inspection tool invocation failure in PR676 review-disposition evidence lookup returned 404 on wrong repo route. Root cause evidence: producer=GitHub Actions inspection tool invocation; path=.agent/memory/issues-backlog.md; authority=Codex orchestrator investigation; os_error=ERROR. Detected=2026-11-02T21:42:11.466564Z.
+  Severity: low
+  Action: Resolve repository owner from git remote before querying workflow endpoints; verify API result matches live run.
+  File: .agent/memory/issues-backlog.md
+
+[OPEN] rsi-09a9b1fe8f99210e06a9037e — GitHub Actions review-disposition workflow failure in PR #676 review-disposition gate failed. Root cause evidence: producer=GitHub Actions review-disposition workflow; path=.github/workflows; authority=PR #676 required validation; os_error=ERROR. Detected=2026-11-02T21:42:15.091433Z.
+  Severity: high
+  Action: Inspect gate criteria and satisfy with an independent review tied to exact PR head SHA; repair the gate only if its evidence contract is incorrect.
+  File: .github/workflows
+
+[OPEN] rsi-d1824188eae1311c52177393 — .github/workflows/review-disposition.yml failure in PR #676 review-disposition metadata absent from live PR body. Root cause evidence: producer=.github/workflows/review-disposition.yml; path=.github/pull_request_template.md; authority=agent-reported; os_error=ERROR. Detected=2026-11-02T21:43:00.280263Z.
+  Severity: high
+  Action: The gate correctly requires a real exact-head independent reviewer receipt plus six body fields. Complete a fresh Gemini head-bound review, mint and commit its real receipt, then populate the PR body from the receipt; preserve fail-closed gate.
+  File: .github/pull_request_template.md
+
+[OPEN] rsi-f6392bcd618845b0216a4f37 — Gemini headless CLI model configuration failure in Gemini CLI model alias rejected during PR #676 review dispatch. Root cause evidence: producer=Gemini headless CLI model configuration; path=/tmp/nqd-pr676; authority=agent-reported; os_error=ERROR. Detected=2026-11-02T21:43:17.626579Z.
+  Severity: medium
+  Action: Resolve reviewer model from gemini models/settings before dispatch; use configured Gemini 4 Argon (High) alias rather than a retired public model ID.
+  File: /tmp/nqd-pr676
+[DONE] rsi-e8c16650c7313111f320a747 — resolved 2026-11-02: phase-0 check 0.8.1 passing in health-monitor JSON run 2026-11-02T21:30:32Z — ledger status=resolved
+
+[OPEN] rsi-ee9727f1d09cf64f989f3635 — Gemini headless CLI invocation failure in Gemini exact-head review timed out at 120 seconds. Root cause evidence: producer=Gemini headless CLI invocation; path=/tmp/nqd-pr676; authority=agent-reported; os_error=ERROR. Detected=2026-11-02T21:46:21.425941Z.
+  Severity: medium
+  Action: Use async delegation or the configured faster Gemini review tier; retain run identity and never infer PASS after timeout.
+  File: /tmp/nqd-pr676
+
+[OPEN] rsi-2dbce5ebf64e8c4674304a6b — scripts/ai/delegate-to-gemini line 46 binary default failure in Gemini delegate hardcodes absent npm-global binary despite live Gemini command on PATH. Root cause evidence: producer=scripts/ai/delegate-to-gemini line 46 binary default; path=scripts/ai/delegate-to-gemini:46; authority=agent-reported; os_error=ERROR. Detected=2026-11-02T21:47:20.730517Z.
+  Severity: high
+  Action: Resolve Gemini CLI from PATH or Nix-managed command and verify it is the Gemini headless CLI; do not route through agy/Antigravity.
+  File: scripts/ai/delegate-to-gemini:46
+
+[OPEN] rsi-0799cc4c4806b6508f2a09f5 — aq-qa:phase0 failure in aq-qa:0.10.50. Root cause evidence: producer=aq-qa:phase0; path=aq-qa check 0.10.50; authority=aq-qa; os_error=phase-0 check 0.10.50 failing: Factory readiness preflight: hash-bound evidence, fail-closed unconfigured checks, typed blockers (fixture exit 1). Detected=2026-11-02T22:28:23.146962Z.
+  Severity: medium
+  Action: run aq-qa 0 --machine and fix check 0.10.50 at its producer
+  File: aq-qa check 0.10.50
+
+[OPEN] rsi-d8ca8afe999c3f21f917f015 — delegation:gemini failure in delegation:gemini:orphaned. Root cause evidence: producer=delegation:gemini; path=.agents/delegation/registry.jsonl; authority=gemini; os_error=gemini delegation class orphaned. Detected=2026-11-02T22:43:22.497752Z.
+  Severity: medium
+  Action: 3 run(s) in window; latest example .agents/delegation/outputs/gemini-20261102-134018-ay6u4o.log; fix producer for class orphaned
+  File: .agents/delegation/registry.jsonl
+
+[OPEN] rsi-1bc1b43fc57a31a3eb8de77b — attention-queue:ai-stack-health-monitor failure in attention:attn-dd161e7cf5734dc2. Root cause evidence: producer=attention-queue:ai-stack-health-monitor; path=attention:attn-dd161e7cf5734dc2; authority=attention-queue; os_error=[ai-stack-health-monitor] QA phase 0: 2 checks failing (0.1.2 no AI units in failed state , 0.10.66 aq-co…: QA phase 0: 2 checks failing (0.1.2 no AI units in failed state , 0.10.66 aq-confine acceptance: profi)  Scheduled health monitor found 2 failing checks:   [0.1.2] no AI units in failed state (● ai-mc. Detected=2026-11-02T23:43:27.706423Z.
+  Severity: high
+  Action: Re-run `aq-qa 0 --machine` and fix the failing check(s).
+  File: attention:attn-dd161e7cf5734dc2
+[DONE] rsi-20cde6b64854b7e9481090e7 — resolved 2026-11-02: attention alert attn-4a7afc3fc162415d resolved in attention queue (2026-11-02T23:43:27Z) — ledger status=resolved
+[DONE] rsi-501b6a9e835fd0afef120fd4 — resolved 2026-11-02: attention alert attn-4a7afc3fc162415d resolved in attention queue (2026-11-02T23:43:27Z) — ledger status=resolved
+[DONE] rsi-fdca4d764dec5e68ce4de169 — resolved 2026-11-02: attention alert attn-4a7afc3fc162415d resolved in attention queue (2026-11-02T23:43:27Z) — ledger status=resolved
+
+[OPEN] rsi-fe6c92d6bd299535048e3d6c — attention-queue:ai-stack-health-monitor failure in attention:attn-5075714618614efc. Root cause evidence: producer=attention-queue:ai-stack-health-monitor; path=attention:attn-5075714618614efc; authority=attention-queue; os_error=[ai-stack-health-monitor] QA phase 0: 2 checks failing (0.1.2 no AI units in failed state , 0.10.66 aq-co…: QA phase 0: 2 checks failing (0.1.2 no AI units in failed state , 0.10.66 aq-confine acceptance: profi)  Scheduled health monitor found 2 failing checks:   [0.1.2] no AI units in failed state (● ai-mc. Detected=2026-11-03T01:43:30.319547Z.
+  Severity: high
+  Action: Re-run `aq-qa 0 --machine` and fix the failing check(s).
+  File: attention:attn-5075714618614efc
+[DONE] rsi-1bc1b43fc57a31a3eb8de77b — resolved 2026-11-03: attention alert attn-dd161e7cf5734dc2 resolved in attention queue (2026-11-03T01:43:30Z) — ledger status=resolved
+
+[OPEN] rsi-d3a908790f7a9c71adaa41d1 — attention-queue:ai-stack-health-monitor failure in attention:attn-1760c887306c44d1. Root cause evidence: producer=attention-queue:ai-stack-health-monitor; path=attention:attn-1760c887306c44d1; authority=attention-queue; os_error=[ai-stack-health-monitor] QA phase 0: 2 checks failing (0.1.2 no AI units in failed state , 0.10.66 aq-co…: QA phase 0: 2 checks failing (0.1.2 no AI units in failed state , 0.10.66 aq-confine acceptance: profi)  Scheduled health monitor found 2 failing checks:   [0.1.2] no AI units in failed state (● ai-mc. Detected=2026-11-03T02:58:35.628567Z.
+  Severity: high
+  Action: Re-run `aq-qa 0 --machine` and fix the failing check(s).
+  File: attention:attn-1760c887306c44d1
+[DONE] rsi-fe6c92d6bd299535048e3d6c — resolved 2026-11-03: attention alert attn-5075714618614efc resolved in attention queue (2026-11-03T02:58:35Z) — ledger status=resolved
+
+[OPEN] rsi-a6fd2d4315e1ce4c9c065170 — attention-queue:ai-stack-health-monitor failure in attention:attn-1640bd2acae745be. Root cause evidence: producer=attention-queue:ai-stack-health-monitor; path=attention:attn-1640bd2acae745be; authority=attention-queue; os_error=[ai-stack-health-monitor] QA phase 0: 2 checks failing (0.1.2 no AI units in failed state , 0.10.66 aq-co…: QA phase 0: 2 checks failing (0.1.2 no AI units in failed state , 0.10.66 aq-confine acceptance: profi)  Scheduled health monitor found 2 failing checks:   [0.1.2] no AI units in failed state (● ai-mc. Detected=2026-11-03T03:58:34.885112Z.
+  Severity: high
+  Action: Re-run `aq-qa 0 --machine` and fix the failing check(s).
+  File: attention:attn-1640bd2acae745be
+[DONE] rsi-d3a908790f7a9c71adaa41d1 — resolved 2026-11-03: attention alert attn-1760c887306c44d1 resolved in attention queue (2026-11-03T03:58:34Z) — ledger status=resolved
+
+[OPEN] rsi-de474975cbba6b87917be3cd — attention-queue:ai-stack-health-monitor failure in attention:attn-eb8a638bf1204e83. Root cause evidence: producer=attention-queue:ai-stack-health-monitor; path=attention:attn-eb8a638bf1204e83; authority=attention-queue; os_error=[ai-stack-health-monitor] QA phase 0: 2 checks failing (0.1.2 no AI units in failed state , 0.10.66 aq-co…: QA phase 0: 2 checks failing (0.1.2 no AI units in failed state , 0.10.66 aq-confine acceptance: profi)  Scheduled health monitor found 2 failing checks:   [0.1.2] no AI units in failed state (● ai-mc. Detected=2026-11-03T05:13:38.232437Z.
+  Severity: high
+  Action: Re-run `aq-qa 0 --machine` and fix the failing check(s).
+  File: attention:attn-eb8a638bf1204e83
+[DONE] rsi-a6fd2d4315e1ce4c9c065170 — resolved 2026-11-03: attention alert attn-1640bd2acae745be resolved in attention queue (2026-11-03T05:13:38Z) — ledger status=resolved
+
+[OPEN] rsi-fab5d550912fd730f9084dfb — attention-queue:ai-stack-health-monitor failure in attention:attn-1ded158c43d74e0b. Root cause evidence: producer=attention-queue:ai-stack-health-monitor; path=attention:attn-1ded158c43d74e0b; authority=attention-queue; os_error=[ai-stack-health-monitor] QA phase 0: 2 checks failing (0.1.2 no AI units in failed state , 0.10.66 aq-co…: QA phase 0: 2 checks failing (0.1.2 no AI units in failed state , 0.10.66 aq-confine acceptance: profi)  Scheduled health monitor found 2 failing checks:   [0.1.2] no AI units in failed state (● ai-mc. Detected=2026-11-03T06:13:37.440733Z.
+  Severity: high
+  Action: Re-run `aq-qa 0 --machine` and fix the failing check(s).
+  File: attention:attn-1ded158c43d74e0b
+[DONE] rsi-de474975cbba6b87917be3cd — resolved 2026-11-03: attention alert attn-eb8a638bf1204e83 resolved in attention queue (2026-11-03T06:13:37Z) — ledger status=resolved
+
+[OPEN] rsi-ccb9a39519ee989ee693f673 — attention-queue:ai-stack-health-monitor failure in attention:attn-f7dc2c806a83445b. Root cause evidence: producer=attention-queue:ai-stack-health-monitor; path=attention:attn-f7dc2c806a83445b; authority=attention-queue; os_error=[ai-stack-health-monitor] QA phase 0: 2 checks failing (0.1.2 no AI units in failed state , 0.10.66 aq-co…: QA phase 0: 2 checks failing (0.1.2 no AI units in failed state , 0.10.66 aq-confine acceptance: profi)  Scheduled health monitor found 2 failing checks:   [0.1.2] no AI units in failed state (● ai-mc. Detected=2026-11-03T08:13:42.268287Z.
+  Severity: high
+  Action: Re-run `aq-qa 0 --machine` and fix the failing check(s).
+  File: attention:attn-f7dc2c806a83445b
+[DONE] rsi-fab5d550912fd730f9084dfb — resolved 2026-11-03: attention alert attn-1ded158c43d74e0b resolved in attention queue (2026-11-03T08:13:42Z) — ledger status=resolved
+
+[OPEN] rsi-09774c74e9bff4c8e64d00f6 — attention-queue:ai-stack-health-monitor failure in attention:attn-30105d1190fa47b0. Root cause evidence: producer=attention-queue:ai-stack-health-monitor; path=attention:attn-30105d1190fa47b0; authority=attention-queue; os_error=[ai-stack-health-monitor] QA phase 0: 2 checks failing (0.1.2 no AI units in failed state , 0.10.66 aq-co…: QA phase 0: 2 checks failing (0.1.2 no AI units in failed state , 0.10.66 aq-confine acceptance: profi)  Scheduled health monitor found 2 failing checks:   [0.1.2] no AI units in failed state (● ai-mc. Detected=2026-11-03T09:13:43.579635Z.
+  Severity: high
+  Action: Re-run `aq-qa 0 --machine` and fix the failing check(s).
+  File: attention:attn-30105d1190fa47b0
+[DONE] rsi-ccb9a39519ee989ee693f673 — resolved 2026-11-03: attention alert attn-f7dc2c806a83445b resolved in attention queue (2026-11-03T09:13:43Z) — ledger status=resolved
+
+[OPEN] rsi-ffd513f90230faa059950928 — attention-queue:ai-stack-health-monitor failure in attention:attn-d01de49c9c9744bc. Root cause evidence: producer=attention-queue:ai-stack-health-monitor; path=attention:attn-d01de49c9c9744bc; authority=attention-queue; os_error=[ai-stack-health-monitor] QA phase 0: 2 checks failing (0.1.2 no AI units in failed state , 0.10.66 aq-co…: QA phase 0: 2 checks failing (0.1.2 no AI units in failed state , 0.10.66 aq-confine acceptance: profi)  Scheduled health monitor found 2 failing checks:   [0.1.2] no AI units in failed state (● ai-mc. Detected=2026-11-03T10:58:43.885447Z.
+  Severity: high
+  Action: Re-run `aq-qa 0 --machine` and fix the failing check(s).
+  File: attention:attn-d01de49c9c9744bc
+[DONE] rsi-09774c74e9bff4c8e64d00f6 — resolved 2026-11-03: attention alert attn-30105d1190fa47b0 resolved in attention queue (2026-11-03T10:58:43Z) — ledger status=resolved
+
+[OPEN] rsi-a58d5fb6aed7af0cdd52292b — attention-queue:ai-stack-health-monitor failure in attention:attn-94aefc1f141f4b87. Root cause evidence: producer=attention-queue:ai-stack-health-monitor; path=attention:attn-94aefc1f141f4b87; authority=attention-queue; os_error=[ai-stack-health-monitor] QA phase 0: 2 checks failing (0.1.2 no AI units in failed state , 0.10.66 aq-co…: QA phase 0: 2 checks failing (0.1.2 no AI units in failed state , 0.10.66 aq-confine acceptance: profi)  Scheduled health monitor found 2 failing checks:   [0.1.2] no AI units in failed state (● ai-mc. Detected=2026-11-03T13:28:45.586633Z.
+  Severity: high
+  Action: Re-run `aq-qa 0 --machine` and fix the failing check(s).
+  File: attention:attn-94aefc1f141f4b87
+[DONE] rsi-ffd513f90230faa059950928 — resolved 2026-11-03: attention alert attn-d01de49c9c9744bc resolved in attention queue (2026-11-03T13:28:45Z) — ledger status=resolved
+
+[OPEN] rsi-79d1aa9cbb281466ae1eeae2 — attention-queue:ai-stack-health-monitor failure in attention:attn-e905d4c40f3243c2. Root cause evidence: producer=attention-queue:ai-stack-health-monitor; path=attention:attn-e905d4c40f3243c2; authority=attention-queue; os_error=[ai-stack-health-monitor] QA phase 0: 2 checks failing (0.1.2 no AI units in failed state , 0.10.66 aq-co…: QA phase 0: 2 checks failing (0.1.2 no AI units in failed state , 0.10.66 aq-confine acceptance: profi)  Scheduled health monitor found 2 failing checks:   [0.1.2] no AI units in failed state (● ai-mc. Detected=2026-11-03T14:28:47.443308Z.
+  Severity: high
+  Action: Re-run `aq-qa 0 --machine` and fix the failing check(s).
+  File: attention:attn-e905d4c40f3243c2
+[DONE] rsi-a58d5fb6aed7af0cdd52292b — resolved 2026-11-03: attention alert attn-94aefc1f141f4b87 resolved in attention queue (2026-11-03T14:28:47Z) — ledger status=resolved
+
+[OPEN] rsi-44488311e98e0406bbc6bc9b — attention-queue:ai-stack-health-monitor failure in attention:attn-05ba92010461432c. Root cause evidence: producer=attention-queue:ai-stack-health-monitor; path=attention:attn-05ba92010461432c; authority=attention-queue; os_error=[ai-stack-health-monitor] QA phase 0: 2 checks failing (0.1.2 no AI units in failed state , 0.10.66 aq-co…: QA phase 0: 2 checks failing (0.1.2 no AI units in failed state , 0.10.66 aq-confine acceptance: profi)  Scheduled health monitor found 2 failing checks:   [0.1.2] no AI units in failed state (● ai-mc. Detected=2026-11-03T15:28:48.624056Z.
+  Severity: high
+  Action: Re-run `aq-qa 0 --machine` and fix the failing check(s).
+  File: attention:attn-05ba92010461432c
+[DONE] rsi-79d1aa9cbb281466ae1eeae2 — resolved 2026-11-03: attention alert attn-e905d4c40f3243c2 resolved in attention queue (2026-11-03T15:28:48Z) — ledger status=resolved
+
+[OPEN] rsi-c4cda35d0a4871d6a14e4993 — attention-queue:ai-stack-health-monitor failure in attention:attn-e355afc3815e41a7. Root cause evidence: producer=attention-queue:ai-stack-health-monitor; path=attention:attn-e355afc3815e41a7; authority=attention-queue; os_error=[ai-stack-health-monitor] QA phase 0: 2 checks failing (0.1.2 no AI units in failed state , 0.10.66 aq-co…: QA phase 0: 2 checks failing (0.1.2 no AI units in failed state , 0.10.66 aq-confine acceptance: profi)  Scheduled health monitor found 2 failing checks:   [0.1.2] no AI units in failed state (● ai-mc. Detected=2026-11-03T19:28:11.561204Z.
+  Severity: high
+  Action: Re-run `aq-qa 0 --machine` and fix the failing check(s).
+  File: attention:attn-e355afc3815e41a7
+[DONE] rsi-44488311e98e0406bbc6bc9b — resolved 2026-11-03: attention alert attn-05ba92010461432c resolved in attention queue (2026-11-03T19:28:11Z) — ledger status=resolved
+
+[OPEN] rsi-0799cc4c4806b6508f2a09f5 — aq-qa:phase0 failure in aq-qa:0.10.50. Root cause evidence: producer=aq-qa:phase0; path=aq-qa check 0.10.50; authority=aq-qa; os_error=phase-0 check 0.10.50 failing: Factory readiness preflight: hash-bound evidence, fail-closed unconfigured checks, typed blockers (fixture exit 1). Detected=2026-11-03T20:28:12.063547Z.
+  Severity: medium
+  Action: run aq-qa 0 --machine and fix check 0.10.50 at its producer
+  File: aq-qa check 0.10.50
+
+[OPEN] rsi-b8bbc6e7c24b79f403c53d68 — attention-queue:ai-stack-health-monitor failure in attention:attn-e355afc3815e41a7. Root cause evidence: producer=attention-queue:ai-stack-health-monitor; path=attention:attn-e355afc3815e41a7; authority=attention-queue; os_error=[ai-stack-health-monitor] QA phase 0: 3 checks failing (0.1.2 no AI units in failed state , 0.10.50 Facto…: QA phase 0: 3 checks failing (0.1.2 no AI units in failed state , 0.10.50 Factory readiness preflight:, 0.10.66 aq-confine acceptance: profi)  Scheduled health monitor found 3 failing checks:   [0.1.2. Detected=2026-11-03T20:28:19.031264Z.
+  Severity: critical
+  Action: Re-run `aq-qa 0 --machine` and fix the failing check(s).
+  File: attention:attn-e355afc3815e41a7
+
+[OPEN] rsi-648f09decc64dffea022155d — tier0-validation-gate failure in containment-fixture-20261103. Root cause evidence: producer=tier0-validation-gate; path=scripts/testing/test-write-region.py; authority=agent-reported; os_error=Tier0 blocked by live QA 0.10.8 agent memory surface and 0.1.2 failed AI units; 66 gates passed, QA phase 0 failed. Detected=2026-11-03T20:28:22.153632Z.
+  Severity: medium
+  Action: Diagnose live memory and unit producers before retrying; do not bypass QA
+  File: scripts/testing/test-write-region.py
+
+[OPEN] rsi-cde2f822836ecb2c046782ca — delegate-to-gemini failure in gemini-headless-route. Root cause evidence: producer=delegate-to-gemini; path=scripts/ai/delegate-to-gemini; authority=agent-reported; os_error=No standalone Google Gemini headless CLI installed; local gemini resolves to agy, prohibited route; wrapper default npm binary absent. Detected=2026-11-03T20:28:23.444645Z.
+  Severity: medium
+  Action: Declare Google headless CLI installation and validate executable identity; do not route through agy
+  File: scripts/ai/delegate-to-gemini
+
+[OPEN] rsi-ad9efbbe8acdebec2b51c3bd — aq-qa:phase0 failure in aq-qa:0.10.44. Root cause evidence: producer=aq-qa:phase0; path=aq-qa check 0.10.44; authority=aq-qa; os_error=phase-0 check 0.10.44 failing: execution-cell-adapter Service-Coverage (solvable", "receipt_id": null, "ts": "2026-11-03T20:27:01Z"} execution-cell-ada. Detected=2026-11-03T23:58:17.218059Z.
+  Severity: medium
+  Action: run aq-qa 0 --machine and fix check 0.10.44 at its producer
+  File: aq-qa check 0.10.44
+
+[OPEN] rsi-41345dffae25e16d5e949ec7 — attention-queue:ai-stack-health-monitor failure in attention:attn-dfc762e0e05d4290. Root cause evidence: producer=attention-queue:ai-stack-health-monitor; path=attention:attn-dfc762e0e05d4290; authority=attention-queue; os_error=[ai-stack-health-monitor] QA phase 0: 4 checks failing (0.1.2 no AI units in failed state , 0.10.44 execu…: QA phase 0: 4 checks failing (0.1.2 no AI units in failed state , 0.10.44 execution-cell-adapter Servi, 0.10.50 Factory readiness preflight: +1 more)  Scheduled health monitor found 4 failing checks: . Detected=2026-11-03T23:58:20.699404Z.
+  Severity: critical
+  Action: Re-run `aq-qa 0 --machine` and fix the failing check(s).
+  File: attention:attn-dfc762e0e05d4290
+[DONE] rsi-b8bbc6e7c24b79f403c53d68 — resolved 2026-11-03: attention alert attn-e355afc3815e41a7 resolved in attention queue (2026-11-03T23:58:20Z) — ledger status=resolved
+[DONE] rsi-c4cda35d0a4871d6a14e4993 — resolved 2026-11-03: attention alert attn-e355afc3815e41a7 resolved in attention queue (2026-11-03T23:58:21Z) — ledger status=resolved
+
+[OPEN] rsi-c3c4e268e920a4a454b7c8ab — attention-queue:ai-stack-health-monitor failure in attention:attn-9b7b29bf2cd5496c. Root cause evidence: producer=attention-queue:ai-stack-health-monitor; path=attention:attn-9b7b29bf2cd5496c; authority=attention-queue; os_error=[ai-stack-health-monitor] aq-qa phase 0 could not run: Command '['/run/current-system/sw/bin/python3', '/…: aq-qa phase 0 could not run: Command '['/run/current-system/sw/bin/python3', '/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/scripts/ai/lib/harness_runner.py', '0', '--json']' timed out after 705 secon. Detected=2026-11-04T00:13:23.852686Z.
+  Severity: high
+  Action: Investigate aq-qa and health monitor logs.
+  File: attention:attn-9b7b29bf2cd5496c
+[DONE] rsi-ad9efbbe8acdebec2b51c3bd — resolved 2026-11-04: phase-0 check 0.10.44 passing in health-monitor JSON run 2026-11-04T00:49:18Z — ledger status=resolved
+
+[OPEN] rsi-400c64b32d7f6c28e8006604 — attention-queue:ai-stack-health-monitor failure in attention:attn-fa9dbb54b7044047. Root cause evidence: producer=attention-queue:ai-stack-health-monitor; path=attention:attn-fa9dbb54b7044047; authority=attention-queue; os_error=[ai-stack-health-monitor] QA phase 0: 3 checks failing (0.1.2 no AI units in failed state , 0.10.50 Facto…: QA phase 0: 3 checks failing (0.1.2 no AI units in failed state , 0.10.50 Factory readiness preflight:, 0.10.66 aq-confine acceptance: profi)  Scheduled health monitor found 3 failing checks:   [0.1.2. Detected=2026-11-04T00:58:25.087282Z.
+  Severity: critical
+  Action: Re-run `aq-qa 0 --machine` and fix the failing check(s).
+  File: attention:attn-fa9dbb54b7044047
+[DONE] rsi-41345dffae25e16d5e949ec7 — resolved 2026-11-04: attention alert attn-dfc762e0e05d4290 resolved in attention queue (2026-11-04T00:58:25Z) — ledger status=resolved
+
+[OPEN] rsi-efc35fb0816d9b893065ae20 — attention-queue:ai-stack-health-monitor failure in attention:attn-6e64128f735e4bc6. Root cause evidence: producer=attention-queue:ai-stack-health-monitor; path=attention:attn-6e64128f735e4bc6; authority=attention-queue; os_error=[ai-stack-health-monitor] aq-qa phase 0 could not run: Command '['/run/current-system/sw/bin/python3', '/…: aq-qa phase 0 could not run: Command '['/run/current-system/sw/bin/python3', '/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/scripts/ai/lib/harness_runner.py', '0', '--json']' timed out after 705 secon. Detected=2026-11-04T01:13:27.487578Z.
+  Severity: high
+  Action: Investigate aq-qa and health monitor logs.
+  File: attention:attn-6e64128f735e4bc6
+[DONE] rsi-c3c4e268e920a4a454b7c8ab — resolved 2026-11-04: attention alert attn-9b7b29bf2cd5496c resolved in attention queue (2026-11-04T01:13:27Z) — ledger status=resolved
+
+[OPEN] rsi-bc050e10d4401816fa27fda5 — attention-queue:ai-stack-health-monitor failure in attention:attn-757a205009434741. Root cause evidence: producer=attention-queue:ai-stack-health-monitor; path=attention:attn-757a205009434741; authority=attention-queue; os_error=[ai-stack-health-monitor] QA phase 0: 3 checks failing (0.1.2 no AI units in failed state , 0.10.50 Facto…: QA phase 0: 3 checks failing (0.1.2 no AI units in failed state , 0.10.50 Factory readiness preflight:, 0.10.66 aq-confine acceptance: profi)  Scheduled health monitor found 3 failing checks:   [0.1.2. Detected=2026-11-04T02:03:58.891685Z.
+  Severity: critical
+  Action: Re-run `aq-qa 0 --machine` and fix the failing check(s).
+  File: attention:attn-757a205009434741
+[DONE] rsi-400c64b32d7f6c28e8006604 — resolved 2026-11-04: attention alert attn-fa9dbb54b7044047 resolved in attention queue (2026-11-04T02:03:58Z) — ledger status=resolved
+
+[OPEN] rsi-c37527e6e9947ef5f0aba27d — attention-queue:ai-stack-health-monitor failure in attention:attn-757a205009434741. Root cause evidence: producer=attention-queue:ai-stack-health-monitor; path=attention:attn-757a205009434741; authority=attention-queue; os_error=[ai-stack-health-monitor] QA phase 0: 2 checks failing (0.1.2 no AI units in failed state , 0.10.66 aq-co…: QA phase 0: 2 checks failing (0.1.2 no AI units in failed state , 0.10.66 aq-confine acceptance: profi)  Scheduled health monitor found 2 failing checks:   [0.1.2] no AI units in failed state (● ai-mc. Detected=2026-11-04T02:18:59.770766Z.
+  Severity: high
+  Action: Re-run `aq-qa 0 --machine` and fix the failing check(s).
+  File: attention:attn-757a205009434741
+[DONE] rsi-efc35fb0816d9b893065ae20 — resolved 2026-11-04: attention alert attn-6e64128f735e4bc6 resolved in attention queue (2026-11-04T02:33:59Z) — ledger status=resolved
+
+[OPEN] rsi-344e1ca730857aff15ecd9ed — attention-queue:ai-stack-health-monitor failure in attention:attn-67e85df7973b45e3. Root cause evidence: producer=attention-queue:ai-stack-health-monitor; path=attention:attn-67e85df7973b45e3; authority=attention-queue; os_error=[ai-stack-health-monitor] QA phase 0: 2 checks failing (0.1.2 no AI units in failed state , 0.10.66 aq-co…: QA phase 0: 2 checks failing (0.1.2 no AI units in failed state , 0.10.66 aq-confine acceptance: profi)  Scheduled health monitor found 2 failing checks:   [0.1.2] no AI units in failed state (● ai-mc. Detected=2026-11-04T03:19:00.896851Z.
+  Severity: high
+  Action: Re-run `aq-qa 0 --machine` and fix the failing check(s).
+  File: attention:attn-67e85df7973b45e3
+[DONE] rsi-bc050e10d4401816fa27fda5 — resolved 2026-11-04: attention alert attn-757a205009434741 resolved in attention queue (2026-11-04T03:19:00Z) — ledger status=resolved
+[DONE] rsi-c37527e6e9947ef5f0aba27d — resolved 2026-11-04: attention alert attn-757a205009434741 resolved in attention queue (2026-11-04T03:19:00Z) — ledger status=resolved
+
+[OPEN] TRUNK-REQUIRED-CHECK-REMOVED — 2026-11-03 codex set main branch protection required_status_checks to [] to merge PR #676 (owner authorized delivery with deferred review). Verified 2026-11-04 via gh api: contexts=[], checks=[], enforce_admins=true, ruleset requires PR with 0 approvals. Effect: review-disposition (context "review-disposition", app 15368, owner-set 2026-10-29) no longer blocks any merge. Root cause: one-off admin bypass implemented as a persistent settings change, not restored after merge. Severity: high (trunk review gate unenforced). Action: owner restores — `gh api -X PATCH repos/MasterofNull/NixOS-Dev-Quick-Deploy/branches/main/protection/required_status_checks -F strict=false -f 'checks[][context]=review-disposition' -F 'checks[][app_id]=15368'`. File: GitHub branch protection (main).
+[OPEN] DELEGATE-GEMINI-CLI-FLAGS — scripts/ai/delegate-to-gemini ~L46 defaults GEMINI_BIN to the removed ~/.npm-global/bin/gemini and ~L404 passes `--approval-mode`, which the current gemini CLI lacks, so every delegated Gemini run (PR #676 reviews gemini-20261102-*/20261103-*) logged only CLI help and no review. Root cause: wrapper not updated when CLI changed flags to `--mode auto|accept-edits|plan`. Severity: high (Gemini review lane silently produced nothing; receipts impossible). Action: fix/delegate-gemini-cli-flags (in progress 2026-11-04).
+[OPEN] LOCAL-REVIEW-CALIBRATION-SHELLCHECK — local Qwen review local-20261102-133425-hem7vu of PR #676 returned FAIL claiming `# shellcheck source=/dev/null` disables all checking for the script; it only affects source-target resolution. Severity: low (false FAIL, no merge impact). Action: add a shellcheck-directive-scope note to the local reviewer scaffold.
+
+[OPEN] rsi-71b7c2fb78393e21729f8fb9 — journal:ai-hybrid-coordinator failure in service-error:ai-hybrid-coordinator:switchboard_unavailable error_id=<hex>. Root cause evidence: producer=journal:ai-hybrid-coordinator; path=ai-hybrid-coordinator; authority=journald; os_error=recurring error in ai-hybrid-coordinator: switchboard_unavailable error_id=<hex>. Detected=2026-11-04T09:21:43.505897Z.
+  Severity: medium
+  Action: 6 occurrence(s) in last 3600s; example: {"event": "switchboard_unavailable error_id=8af5eade08c1", "exc_info": ["<class 'httpx.HTTPStatusError'>", "HTTPStatusError(\"Server error '503 Service Unavailable' for url 'http://127.0.0.1:8085/v1/c; journalctl -u ai-hybrid-coordinator; fix producer
+  File: ai-hybrid-coordinator
+
+[OPEN] rsi-9873b0f3cebe8500accf3bf1 — attention-queue:ai-stack-health-monitor failure in attention:attn-bcd58daa30f645f0. Root cause evidence: producer=attention-queue:ai-stack-health-monitor; path=attention:attn-bcd58daa30f645f0; authority=attention-queue; os_error=[ai-stack-health-monitor] QA phase 0: 2 checks failing (0.1.2 no AI units in failed state , 0.10.66 aq-co…: QA phase 0: 2 checks failing (0.1.2 no AI units in failed state , 0.10.66 aq-confine acceptance: profi)  Scheduled health monitor found 2 failing checks:   [0.1.2] no AI units in failed state (● ai-mc. Detected=2026-11-04T09:21:43.655760Z.
+  Severity: high
+  Action: Re-run `aq-qa 0 --machine` and fix the failing check(s).
+  File: attention:attn-bcd58daa30f645f0
+[DONE] rsi-344e1ca730857aff15ecd9ed — resolved 2026-11-04: attention alert attn-67e85df7973b45e3 resolved in attention queue (2026-11-04T09:21:43Z) — ledger status=resolved
+[OPEN] DELEGATE-GEMINI-ARGMAX-SILENT — delegate-to-gemini passes the whole prompt as one `-p` argument; a prompt >128 KiB (MAX_ARG_STRLEN) makes exec fail with rc=126 and the wrapper prints nothing and registers nothing (2026-11-04, 171 KB VA review prompt). Same class as the codex-pr 194 KB rc=126 (2026-10-31). Root cause: argv transport for large prompts, no size check. Severity: medium (silent dropped review). Action: size-check and fail loudly, or pass the prompt via stdin/file if the CLI supports it. File: scripts/ai/delegate-to-gemini ~L404.
+[OPEN] TEST-DELEGATION-LOCAL-GEMINI-FALSE-PASS — scripts/testing/test-delegation-local-gemini.py exits 0 when both profiles return HTTP 502, so it never fails. Severity: low (decorative test). Action: assert on success responses. Found 2026-11-04.
+[OPEN] VA-DEAD-ALLOWLIST-UNAUTHORIZED-HANDLER — scripts/ai/aq-health-spider ~L1379 still routes owner_acceptance_allowlist_unauthorized to the attention queue, but 4ac4f7caf stopped emitting that type (Gemini gemini-20261104-013216-gagxjb LOW). Severity: low (dead branch, Rule 23). Action: bounded follow-up after VA PR merges: remove the branch.
+
+[OPEN] rsi-859cd6501a225a86c50f7408 — attention-queue:ai-stack-health-monitor failure in attention:attn-e2bcd458e9844692. Root cause evidence: producer=attention-queue:ai-stack-health-monitor; path=attention:attn-e2bcd458e9844692; authority=attention-queue; os_error=[ai-stack-health-monitor] QA phase 0: 2 checks failing (0.1.2 no AI units in failed state , 0.10.66 aq-co…: QA phase 0: 2 checks failing (0.1.2 no AI units in failed state , 0.10.66 aq-confine acceptance: profi)  Scheduled health monitor found 2 failing checks:   [0.1.2] no AI units in failed state (● ai-mc. Detected=2026-11-04T10:21:49.082874Z.
+  Severity: high
+  Action: Re-run `aq-qa 0 --machine` and fix the failing check(s).
+  File: attention:attn-e2bcd458e9844692
+[DONE] rsi-9873b0f3cebe8500accf3bf1 — resolved 2026-11-04: attention alert attn-bcd58daa30f645f0 resolved in attention queue (2026-11-04T10:21:49Z) — ledger status=resolved
+
+[OPEN] rsi-66ceb64e0da41c37fb031f7b — attention-queue:ai-stack-health-monitor failure in attention:attn-1bcc7efc7b964b22. Root cause evidence: producer=attention-queue:ai-stack-health-monitor; path=attention:attn-1bcc7efc7b964b22; authority=attention-queue; os_error=[ai-stack-health-monitor] QA phase 0: 2 checks failing (0.1.2 no AI units in failed state , 0.10.66 aq-co…: QA phase 0: 2 checks failing (0.1.2 no AI units in failed state , 0.10.66 aq-confine acceptance: profi)  Scheduled health monitor found 2 failing checks:   [0.1.2] no AI units in failed state (● ai-mc. Detected=2026-11-04T12:06:48.490611Z.
+  Severity: high
+  Action: Re-run `aq-qa 0 --machine` and fix the failing check(s).
+  File: attention:attn-1bcc7efc7b964b22
+[DONE] rsi-859cd6501a225a86c50f7408 — resolved 2026-11-04: attention alert attn-e2bcd458e9844692 resolved in attention queue (2026-11-04T12:06:48Z) — ledger status=resolved
+
+[OPEN] rsi-5d43eae3fe77d5e84be81dc1 — attention-queue:ai-stack-health-monitor failure in attention:attn-8bec871f8da04606. Root cause evidence: producer=attention-queue:ai-stack-health-monitor; path=attention:attn-8bec871f8da04606; authority=attention-queue; os_error=[ai-stack-health-monitor] QA phase 0: 2 checks failing (0.1.2 no AI units in failed state , 0.10.66 aq-co…: QA phase 0: 2 checks failing (0.1.2 no AI units in failed state , 0.10.66 aq-confine acceptance: profi)  Scheduled health monitor found 2 failing checks:   [0.1.2] no AI units in failed state (● ai-mc. Detected=2026-11-04T13:06:48.389789Z.
+  Severity: high
+  Action: Re-run `aq-qa 0 --machine` and fix the failing check(s).
+  File: attention:attn-8bec871f8da04606
+[DONE] rsi-66ceb64e0da41c37fb031f7b — resolved 2026-11-04: attention alert attn-1bcc7efc7b964b22 resolved in attention queue (2026-11-04T13:06:48Z) — ledger status=resolved
+
+[OPEN] rsi-775ab24691cd39c656642571 — attention-queue:ai-stack-health-monitor failure in attention:attn-5922846a8f74412b. Root cause evidence: producer=attention-queue:ai-stack-health-monitor; path=attention:attn-5922846a8f74412b; authority=attention-queue; os_error=[ai-stack-health-monitor] QA phase 0: 2 checks failing (0.1.2 no AI units in failed state , 0.10.66 aq-co…: QA phase 0: 2 checks failing (0.1.2 no AI units in failed state , 0.10.66 aq-confine acceptance: profi)  Scheduled health monitor found 2 failing checks:   [0.1.2] no AI units in failed state (● ai-mc. Detected=2026-11-04T14:21:50.992015Z.
+  Severity: high
+  Action: Re-run `aq-qa 0 --machine` and fix the failing check(s).
+  File: attention:attn-5922846a8f74412b
+[DONE] rsi-5d43eae3fe77d5e84be81dc1 — resolved 2026-11-04: attention alert attn-8bec871f8da04606 resolved in attention queue (2026-11-04T14:21:51Z) — ledger status=resolved
+
+[OPEN] rsi-ab0b3e91600845d12a9d3607 — attention-queue:ai-stack-health-monitor failure in attention:attn-ccf9c047b1bc48a8. Root cause evidence: producer=attention-queue:ai-stack-health-monitor; path=attention:attn-ccf9c047b1bc48a8; authority=attention-queue; os_error=[ai-stack-health-monitor] QA phase 0: 2 checks failing (0.1.2 no AI units in failed state , 0.10.66 aq-co…: QA phase 0: 2 checks failing (0.1.2 no AI units in failed state , 0.10.66 aq-confine acceptance: profi)  Scheduled health monitor found 2 failing checks:   [0.1.2] no AI units in failed state (● ai-mc. Detected=2026-11-04T15:51:52.823777Z.
+  Severity: high
+  Action: Re-run `aq-qa 0 --machine` and fix the failing check(s).
+  File: attention:attn-ccf9c047b1bc48a8
+[DONE] rsi-775ab24691cd39c656642571 — resolved 2026-11-04: attention alert attn-5922846a8f74412b resolved in attention queue (2026-11-04T15:51:52Z) — ledger status=resolved
+
+- [OPEN] EVIDENCE-SECTIONS-CHECKED-ONLY-AT-PUSH — harness-first-pr-evidence (required evidence headings from config/harness-first-policy.json) runs in pre-push ci-merge-parity, not in tier0 --pre-commit; jq (2026-11-04) and VA (3 docs) passed review and commit, then failed at push, so a docs-only fix moves the reviewed head and forces a re-review. Root cause: check not in the pre-commit focused set. Severity: low (friction). Action: run the evidence-section check on staged evidence docs in tier0 --pre-commit. File: scripts/governance/tier0-validation-gate.sh / config/ci-checks.json harness-first-pr-evidence.
+
+[OPEN] rsi-b24bae27d5db874250216621 — attention-queue:ai-stack-health-monitor failure in attention:attn-49b65e62811f4827. Root cause evidence: producer=attention-queue:ai-stack-health-monitor; path=attention:attn-49b65e62811f4827; authority=attention-queue; os_error=[ai-stack-health-monitor] QA phase 0: 2 checks failing (0.1.2 no AI units in failed state , 0.10.66 aq-co…: QA phase 0: 2 checks failing (0.1.2 no AI units in failed state , 0.10.66 aq-confine acceptance: profi)  Scheduled health monitor found 2 failing checks:   [0.1.2] no AI units in failed state (● ai-mc. Detected=2026-11-04T17:06:56.155037Z.
+  Severity: high
+  Action: Re-run `aq-qa 0 --machine` and fix the failing check(s).
+  File: attention:attn-49b65e62811f4827
+[DONE] rsi-ab0b3e91600845d12a9d3607 — resolved 2026-11-04: attention alert attn-ccf9c047b1bc48a8 resolved in attention queue (2026-11-04T17:06:56Z) — ledger status=resolved
+
+- [IN-PROGRESS] MERGE-PARITY-STAGED-MERGE-MISATTRIBUTES — scripts/governance/ci-merge-parity.sh merges BASE with `--no-commit`, so in the parity worktree HEAD is the branch tip and main's changes are staged; check-harness-first-pr-evidence-gate.sh unions `git diff --cached` and counted main's newly added evidence docs as the PR's (VA PR #680 pre-push failed on docs/harness-first/evidence/2026-11-01-routing-s1-preflight.md, added by #678). GitHub CI (real merge ref) passed. Severity: medium (false pre-push FAIL; blocked the #680 receipt push). Action: parity builds a real merge commit via merge-tree --write-tree + commit-tree (slice fix/ci-merge-parity-real-merge). File: scripts/governance/ci-merge-parity.sh ~L34.
+- [OPEN] ROUTING-S1-EVIDENCE-DOC-NONCOMPLIANT — docs/harness-first/evidence/2026-11-01-routing-s1-preflight.md (landed via #678) lacks every required harness-first section; the gate skipped it because #678 touched no high-impact path, so section checks never ran. Root cause: section validation is conditional on high-impact paths. Severity: low. Action: restructure the doc; consider validating sections on every added evidence doc. File: scripts/testing/check-harness-first-pr-evidence-gate.sh ~L70-90.
+- [OPEN] PR680-MERGED-WITHOUT-RECEIPT — PR #680 (verified owner acceptance) merged 2026-11-04T17:10Z at head 385634ee with review-disposition FAILURE: receipt .agent/reviews/receipts/pr680-385634eea1fb.json never reached the head (push blocked by MERGE-PARITY-STAGED-MERGE-MISATTRIBUTES). The review is real (gemini-20261104-083618-944ibw PASS at that head). Root cause: trunk required check removed (TRUNK-REQUIRED-CHECK-REMOVED) so a failing review-disposition did not block merge. Severity: medium (audit trail gap). Action: land the receipt on main via the merge-parity fix PR; owner restores required check.
+- [OPEN] AQ-PM-TRACKER-HELP-CRASH — `scripts/ai/aq-pm-tracker --help` treats --help as a plan dir and raises FileNotFoundError ('--help/tracker.json'). Severity: low. Action: argparse help. File: scripts/ai/aq-pm-tracker ~L1073.
+
+- [OPEN] RESEARCH-WORK-STRANDED-IN-TMP — uncommitted Codex/Antigravity research lives only in /tmp worktrees (wiped on reboot): /tmp/wt-ai-engineer-video-20261103 (graph-engineering video record + transcript + ai-engineer-youtube feed), /tmp/wt-infinity-intake-20261103 (Infinity runtime intake, staged). Root cause: research worktrees created under /tmp, never committed/PR'd. Severity: medium (data loss risk). Action: land via a research PR (2026-11-04, claude-opus); lanes must create worktrees under .agents/delegation/worktrees.
+- [OPEN] VIDEO-WT-UNRELATED-STAGED-EDITS — /tmp/wt-ai-engineer-video-20261103 also stages a rewrite of scripts/testing/test-write-region.py (drops the /var/tmp outside-workspace helper) and rewords a user-preference line in ai-stack/agent-memory/MEMORY.md; neither relates to the video intake and the author is unrecorded. Severity: low. Action: excluded from the research PR; needs its owner (codex?) to explain or drop.
+- [OPEN] GEMINI-RESEARCH-UNVERIFIED-CITATIONS — Gemini CI/CD research gemini-20261104-085238-f5ozqh (flash-medium, plan mode) claimed openai/codex has no public repo (false) and 3 of 6 cited workflow-file URLs do not exist. Root cause: model answered from memory instead of opening sources; default model quota exhausted forced flash. Severity: medium for ingestion quality. Action: do not ingest as-is; ground analysis on a fetched corpus (.agents/delegation/outputs/cicd-corpus-20261104, gh api) and treat the Gemini report as leads only.
+- [OPEN] DELEGATE-GEMINI-API-KEY-HINT — scripts/ai/delegate-to-gemini failure branch still prints "Bypass: export GEMINI_API_KEY=<key>", contradicting the OAuth-only/no-API-keys policy. Severity: low. Action: replace the hint with the OAuth re-login / model-quota guidance. File: scripts/ai/delegate-to-gemini ~L462.
+
+- [IN-PROGRESS] ROUTING-PREFLIGHT-SLOW-QA-0.12.9-FLAKY — tier0 QA phase0 check 0.12.9 (routing S1 local context preflight, scripts/testing/harness_qa/phases/phase0.py ~L2138) fails intermittently under concurrent load: the fixture's `local_preflight.py` takes 16-50 s for a 20-byte prompt against a 60 s timeout. Profile: aq_decide classifier retrained from seeds on every call (dispatch.classify_task_type ~10 s), a blocking call to the live embedded-assist service (dispatch._embedded_assist_prefetch ~8 s; fixture not hermetic), ~4 s imports. Same cost hits every delegate-to-local launch. Root cause: preflight assembles the full prompt before checks that need no assembly, and the QA fixture depends on a live service. Severity: medium (false tier0 BLOCK; blocked 2 commits 2026-11-04). Action: slice fix/routing-preflight-fast-refusal. File: scripts/ai/lib/local_preflight.py ~L70-143.
+
+- [OPEN] WORKFLOW-MASK-GUARD-GAPS — scripts/governance/check-workflow-masks.py (fix/ci-unmask-gates, 7a988435) matches only `|| true` and `continue-on-error: true`; it misses `|| :`, `|| exit 0` and masks split across lines, and does not check that a `# KNOWN-FAILING:` annotation's ID exists in .agent/WORKAROUND-REGISTER.md. Source: Gemini review gemini-20261104-101002-j4knq3 (2x LOW). Severity: low. Action: widen the pattern and add the register cross-reference in a follow-up slice. File: scripts/governance/check-workflow-masks.py ~L14-15.
+- [OPEN] CI-KNOWN-FAILING-GATES — three CI gates fail on main and stay masked (CI-MASK-NIX-BUILD-CHECK-FLAKE: `nix flake check --all-systems` "Unsupported system: aarch64-linux"; CI-MASK-SHELLCHECK-SHELLCHECK-ANALYSIS: SC2068 errors; CI-MASK-VALIDATE-SHELL-SCRIPTS-RUN-SHELLCHECK: SC2034/SC2088/SC2155). Severity: high (gates never fail; P0.2). Action: one slice each to fix the producer, then unmask: flake check limited to supported systems or fix the aarch64 eval; fix the shellcheck findings.
+
+[OPEN] rsi-ad9157cc2568d9ba327a1b1c — attention-queue:ai-stack-health-monitor failure in attention:attn-a77577bbcbee4a95. Root cause evidence: producer=attention-queue:ai-stack-health-monitor; path=attention:attn-a77577bbcbee4a95; authority=attention-queue; os_error=[ai-stack-health-monitor] QA phase 0: 2 checks failing (0.1.2 no AI units in failed state , 0.10.66 aq-co…: QA phase 0: 2 checks failing (0.1.2 no AI units in failed state , 0.10.66 aq-confine acceptance: profi)  Scheduled health monitor found 2 failing checks:   [0.1.2] no AI units in failed state (● ai-mc. Detected=2026-11-04T18:36:56.307510Z.
+  Severity: high
+  Action: Re-run `aq-qa 0 --machine` and fix the failing check(s).
+  File: attention:attn-a77577bbcbee4a95
+[DONE] rsi-b24bae27d5db874250216621 — resolved 2026-11-04: attention alert attn-49b65e62811f4827 resolved in attention queue (2026-11-04T18:36:56Z) — ledger status=resolved
+
+- [OPEN] DELEGATE-GEMINI-REGISTRY-ARGV — scripts/ai/delegate-to-gemini registry_append passes the task description (the prompt) as a python3 argv element (~L227); a 127 KB review prompt hit "Argument list too long" there on 2026-11-04 (gemini-20261104-111924-v5oq6b) with only a shell error. #682 check_prompt_size refuses such prompts earlier with a clear message, which covers it; residual: registry rows still embed the full prompt as description. Severity: low. Action: store a truncated description in the registry row. File: scripts/ai/delegate-to-gemini ~L223-229.
+
+[OPEN] rsi-b1cfc5c20abc54396c9ed8f4 — attention-queue:ai-stack-health-monitor failure in attention:attn-b41a8b4e37394647. Root cause evidence: producer=attention-queue:ai-stack-health-monitor; path=attention:attn-b41a8b4e37394647; authority=attention-queue; os_error=[ai-stack-health-monitor] QA phase 0: 2 checks failing (0.1.2 no AI units in failed state , 0.10.66 aq-co…: QA phase 0: 2 checks failing (0.1.2 no AI units in failed state , 0.10.66 aq-confine acceptance: profi)  Scheduled health monitor found 2 failing checks:   [0.1.2] no AI units in failed state (● ai-mc. Detected=2026-11-04T19:36:58.073351Z.
+  Severity: high
+  Action: Re-run `aq-qa 0 --machine` and fix the failing check(s).
+  File: attention:attn-b41a8b4e37394647
+[DONE] rsi-ad9157cc2568d9ba327a1b1c — resolved 2026-11-04: attention alert attn-a77577bbcbee4a95 resolved in attention queue (2026-11-04T19:36:58Z) — ledger status=resolved
+
+- [IN-PROGRESS] CONFINE-OOM-TEST-FLAKY (2026-11-04 re-run failed again; suspected race: confine.py _watch_oom misses memory.events oom_kill before scope collection ~L1662-1709; slice fix/confine-oom-detection-race) — aq-confine behavioral suite check "allocating past MemoryMax (rlimit-as removed) is killed by the cgroup, never completes" fails intermittently on GitHub runners (child-failed instead of rc=-9): PR #685 passed at 19:27Z and failed at 19:41Z on a receipt-only change (run 41899396630); main failed it on 2026-10-30 (41039028094). Earlier attempt: branch fix/aq-confine-load-flake. Root cause not isolated (runner cgroup OOM timing vs allocation pattern). Severity: medium (flaky required-class CI). Action: investigate the OOM probe; re-ran the job for #685.

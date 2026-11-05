@@ -17,6 +17,27 @@
 sources:
 
   # ---------------------------------------------------------------------------
+  # AI Engineer YouTube Channel
+  # Official channel Atom feed; recurring episodes on practical AI engineering.
+  # ---------------------------------------------------------------------------
+  - id: ai-engineer-youtube
+    type: url
+    description: >
+      AI Engineer YouTube channel feed. Recurring source for talks and interviews
+      on agent engineering, graph-based systems, evaluation, and production AI.
+    url: https://www.youtube.com/feeds/videos.xml?channel_id=UCLKPca3kwwd-B59HNr-_lvA
+    fetch:
+      - full
+    collection: agentic-ai
+    tags:
+      - ai-engineer
+      - agentic-ai
+      - knowledge-graphs
+      - videos
+    schedule: weekly
+    enabled: true
+
+  # ---------------------------------------------------------------------------
   # Claude Code Tools & Templates Marketplace
   # https://github.com/davila7/claude-code-templates
   # Contains 100+ templates: skills, agents, slash commands, MCP integrations,

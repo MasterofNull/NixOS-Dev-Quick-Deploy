@@ -43,7 +43,7 @@ jobs:
             /usr/local/share/boost \
             /var/lib/docker \
             /var/run/docker.sock
-          docker system prune --all --volumes -f 2>/dev/null || true
+          docker system prune --all --volumes -f 2>/dev/null || true  # NON-GATING: disk cleanup
           df -h /
 
       - name: Install Nix
@@ -56,6 +56,7 @@ jobs:
             trusted-public-keys = cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY= nix-community.cachix.org-1:mB9FSh9qf2dCimDSUo8Zy7bkq5CX+/rkCWyvRCYg3Fs= cosmic.cachix.org-1:Dya9IyXD4xdBehWjrkPv6rtxpmMdRel02smYzA85dPE=
 
       - name: Check flake
+        # KNOWN-FAILING: `--all-systems` evaluates aarch64-linux, which fails "Unsupported system: aarch64-linux" (run 41875000226); tracked CI-MASK-NIX-BUILD-CHECK-FLAKE
         run: nix flake check --all-systems || true
       
       - name: Add swap and pre-build llama-cpp alone
