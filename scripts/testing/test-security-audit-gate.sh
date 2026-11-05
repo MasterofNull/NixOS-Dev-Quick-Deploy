@@ -302,11 +302,12 @@ printf '#!/usr/bin/env bash\nprintf "%%s" "$PLAN_BODY" > "$2"\n' > "$d/sec.sh"; 
 rc=0; out="$(PLAN_BODY="$PLAN_BODY" PATH="$T/tc-none-healthy/bin" env -u CI SECURITY_AUDIT_FAIL_ON_DEGRADED=1 PIP_BODY="$PIP_OK" NPM_BODY="$NPM_OK" DASHBOARD_SCAN_SCRIPT="$T/tc-none-healthy/dash.sh" DASH_BODY="$DASH_OK" SECRETS_ROTATION_PLAN_SCRIPT="$d/sec.sh" "$(command -v bash)" "$ROOT/scripts/security/security-audit.sh" --repo-root "$T/nonpm" --output-dir "$d/out" 2>&1)" || rc=$?
 [[ $rc -eq 0 && "$(jq -r .summary.secrets_rotation.status "$d/out/latest-security-audit.json")" == "planning_required" && "$(jq -r .status "$d/out/latest-security-audit.json")" == "ok" ]] || { echo "FAIL: planning_required should stay informational rc=$rc"; echo "$out"; exit 1; }
 echo "case secrets/planning_required (valid, informational): status=ok exit=$rc"
-# A clean scan with real coverage stays ok.
+# A clean scan with real coverage stays ok. Dashboard/secrets scanners are stubbed healthy: the real dashboard
+# scan curls a live dashboard on 127.0.0.1 and reports degraded wherever none is running (e.g. a CI runner).
 cat > "$T/bin/pip-audit" <<'N'
 #!/usr/bin/env bash
 echo '{"dependencies":[{"name":"x","version":"1","vulns":[]}]}'
 N
-rc=0; out="$(PATH="$T/bin:$PATH" env -u CI bash "$ROOT/scripts/security/security-audit.sh" --repo-root "$T/cov" --output-dir "$T/o17" 2>&1)" || rc=$?
+rc=0; out="$(PATH="$T/bin:$PATH" env -u CI DASHBOARD_SCAN_SCRIPT="$T/ok-dashboard.sh" SECRETS_ROTATION_PLAN_SCRIPT="$T/ok-secrets.sh" bash "$ROOT/scripts/security/security-audit.sh" --repo-root "$T/cov" --output-dir "$T/o17" 2>&1)" || rc=$?
 [[ "$(jq -r .status "$T/o17/latest-security-audit.json")" == "ok" ]] || { echo "FAIL: covered clean scan not ok"; echo "$out"; exit 1; }
 echo "PASS: security-audit gate blocks on seeded finding, passes clean, flags no-coverage as degraded"

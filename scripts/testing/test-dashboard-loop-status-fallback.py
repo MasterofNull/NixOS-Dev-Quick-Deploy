@@ -18,6 +18,8 @@ from api.routes import aistack  # noqa: E402
 
 
 async def main() -> int:
+    # Teacher health is "codex binary exists"; point it at any existing file so the result does not depend on the host.
+    os.environ.setdefault("CODEX_BIN", sys.executable)
     original_repo_root = aistack._repo_root
     original_telemetry = os.environ.get("TELEMETRY_DIR")
 

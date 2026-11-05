@@ -514,6 +514,93 @@ jobs:
           chmod +x scripts/governance/run-ci-checks.sh
           ./scripts/governance/run-ci-checks.sh --all --only factory-kit-tests
 
+  manifest-tests:
+    name: Manifest test groups (every scripts/testing/test-*)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09  # v5
+
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6
+        with:
+          # 3.13 is the production interpreter (NixOS python3.13); sources use 3.12+ syntax (PEP 701 f-strings)
+          # and 3.11's wait_for cancellation semantics differ from what the dashboard code is written for.
+          python-version: "3.13"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e  # v6
+
+      - name: Install Nix
+        # Same pinned action/config as nix-build.yml. Tests evaluate the flake (`nix eval`, `nix build --expr`).
+        uses: cachix/install-nix-action@08dcb3a5e62fa31e2da3d490afc4176ef55ecd72  # v30
+        with:
+          nix_path: nixpkgs=channel:nixos-25.11
+          extra_nix_config: |
+            experimental-features = nix-command flakes
+            substituters = https://cache.nixos.org https://nix-community.cachix.org https://cosmic.cachix.org
+            trusted-public-keys = cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY= nix-community.cachix.org-1:mB9FSh9qf2dCimDSUo8Zy7bkq5CX+/rkCWyvRCYg3Fs= cosmic.cachix.org-1:Dya9IyXD4xdBehWjrkPv6rtxpmMdRel02smYzA85dPE=
+
+      - name: Install gitleaks
+        # Same pinned release as gitleaks.yml (test-gitleaks-ci-parity asserts parity with CI's gitleaks).
+        run: |
+          GITLEAKS_VERSION=8.24.3
+          curl -sSfL "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" \
+            | tar -xz gitleaks
+          sudo install -m 0755 gitleaks /usr/local/bin/gitleaks
+
+      - name: Install mkpasswd
+        # aqos-guided-install hashes passwords with mkpasswd (yescrypt); the stdlib crypt fallback is gone in Python 3.13.
+        run: sudo apt-get install -y --no-install-recommends whois
+
+      - name: Install test dependencies
+        run: |
+          uv pip install --system -r config/ci-test-requirements.txt
+          git config --global user.name ci
+          git config --global user.email ci@localhost
+          # Tests build throwaway repos and push "main"; git's default branch on the runner is master.
+          git config --global init.defaultBranch main
+
+      - name: Run every declared test (a red test fails the job)
+        run: |
+          chmod +x scripts/governance/run-ci-checks.sh
+          ./scripts/governance/run-ci-checks.sh --all \
+            --only pm-tracker-untrusted-hold \
+            --only pm-tracker-activation-cap \
+            --only pm-tracker-owner-acceptance \
+            --only check-workflow-masks-test \
+            --only activation-manifest-tests \
+            --only rea-sandbox-tests \
+            --only intelligence-classifier-tests \
+            --only delegate-headless-budget-tests \
+            --only dispatch-preflight-tests \
+            --only delegation-dir-resolution-tests \
+            --only aq-review-request-tests \
+            --only llm-speed-probe-tests \
+            --only hook-git-env-isolation \
+            --only delegate-sleep-inhibit \
+            --only mobility-sleep-resilience \
+            --only ci-test-coverage-gate \
+            --only service-manager-sudo-commands-test \
+            --only tier0-qa-admission-test \
+            --only mcp-integrity-baseline-test \
+            --only mcp-integrity-unit-path-test \
+            --only tests-agent \
+            --only tests-aq \
+            --only tests-aqos \
+            --only tests-capability \
+            --only tests-context \
+            --only tests-dashboard \
+            --only tests-delegate \
+            --only tests-factory \
+            --only tests-local \
+            --only tests-misc-a-c \
+            --only tests-misc-d-h \
+            --only tests-misc-i-m \
+            --only tests-misc-n-r \
+            --only tests-misc-s-z
+
   validate-structure:
     name: Validate Project Structure
     runs-on: ubuntu-latest
@@ -827,7 +914,7 @@ jobs:
   build:
     name: Build & Package
     runs-on: ubuntu-latest
-    needs: [shellcheck, syntax, validate-structure, smoke-tests, security]
+    needs: [shellcheck, syntax, validate-structure, smoke-tests, security, manifest-tests]
     if: startsWith(github.ref, 'refs/tags/v')
     permissions:
       contents: write
