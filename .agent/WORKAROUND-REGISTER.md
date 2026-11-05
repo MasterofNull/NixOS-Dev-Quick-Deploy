@@ -434,14 +434,15 @@ Codex lane absent).
 - fix-path: verified-acceptance slice 3 after the signer MVP round trip; until then a signed-shaped `approval_ref` fails closed.
 - class: governance · severity: medium · SSOT `.agents/plans/system-integrity-recovery/VERIFIED-ACCEPTANCE.md`.
 
-## CI-MASK-NIX-BUILD-CHECK-FLAKE — `nix-build.yml` step "Check flake" masked — OPEN
+## CI-MASK-NIX-BUILD-CHECK-FLAKE — `nix-build.yml` step "Check flake" masked — CLOSED
 - symptom: `nix-build.yml` step "Check flake" runs `nix flake check --all-systems || true`, so it can never fail.
 - band-aid in place? yes: `|| true` / `continue-on-error: true` annotated `# KNOWN-FAILING:` in the workflow.
 - root cause: `--all-systems` evaluates aarch64-linux outputs, which abort with `error: Unsupported system: aarch64-linux` (run 41875000226, main f77faf19); the mask hid this from the start.
 - producer to fix: `.github/workflows/nix-build.yml` Check flake step (and the flake's per-system outputs).
 - fix-path: either restrict the check to the supported system (drop `--all-systems`) or make the aarch64 outputs evaluable, then remove `|| true` and the KNOWN-FAILING comment; guard `scripts/governance/check-workflow-masks.py` keeps the mask annotated until then.
-- class: T2 validation-gap · severity: medium · status: OPEN · opened: 2026-11-04.
+- class: T2 validation-gap · severity: medium · status: CLOSED · opened: 2026-11-04.
 - evidence: `docs/harness-first/evidence/2026-11-04-ci-unmask-gates.md`.
+- closed 2026-11-04: flake.nix dev shells skip packages that cannot evaluate off their native system (x86_64 output unchanged); `|| true` and the KNOWN-FAILING comment removed (branch fix/ci-flake-check-systems).
 
 ## CI-MASK-SHELLCHECK-SHELLCHECK-ANALYSIS — `shellcheck.yml` ShellCheck Analysis step masked — CLOSED
 - symptom: `shellcheck.yml` ShellCheck Analysis step has `continue-on-error: true`, so shellcheck errors never fail the workflow.
