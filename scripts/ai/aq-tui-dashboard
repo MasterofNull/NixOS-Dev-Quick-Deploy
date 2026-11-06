@@ -90,8 +90,7 @@ TERMINAL_HISTORY_LIMIT = 20
 INBOX_HISTORY_LIMIT = 20
 AGENT_EXECUTABLES = {
     "bwrap", "codex", "claude", "gemini", "aq-agent-loop", "agent_executor.py",
-    "delegate-to-local", "delegate-to-claude", "delegate-to-codex",
-    "delegate-to-antigravity",
+    "delegate-to-local", "delegate-to-claude", "delegate-to-codex", "delegate-to-gemini",
 }
 
 # A delegation still "running" older than this with no completion is flagged STALLED.

@@ -1,6 +1,6 @@
 {
  "audit_window_days": 30,
- "count": 445,
+ "count": 463,
  "entries": [
   {
    "category": "Agents, delegation and loops",
@@ -28,6 +28,14 @@
   },
   {
    "category": "Agents, delegation and loops",
+   "class": "UNDISCOVERABLE",
+   "kind": "script",
+   "name": "aq-agent-auth",
+   "path": "scripts/ai/aq-agent-auth",
+   "purpose": "Operational CLI for Agent Authorization (AUTH-S8)."
+  },
+  {
+   "category": "Agents, delegation and loops",
    "class": "UNUSED-AVAILABLE",
    "kind": "script",
    "name": "aq-agent-launcher",
@@ -36,7 +44,7 @@
   },
   {
    "category": "Agents, delegation and loops",
-   "class": "UNUSED-AVAILABLE",
+   "class": "ACTIVE",
    "kind": "script",
    "name": "aq-agent-loop",
    "path": "scripts/ai/aq-agent-loop",
@@ -65,22 +73,6 @@
    "name": "aq-agent-window",
    "path": "scripts/ai/aq-agent-window",
    "purpose": "Dedicated interactive terminal window for any agent/model lane."
-  },
-  {
-   "category": "Agents, delegation and loops",
-   "class": "UNUSED-AVAILABLE",
-   "kind": "script",
-   "name": "aq-antigravity-agent",
-   "path": "scripts/ai/aq-antigravity-agent",
-   "purpose": "Headless Antigravity agent loop."
-  },
-  {
-   "category": "Agents, delegation and loops",
-   "class": "UNUSED-AVAILABLE",
-   "kind": "script",
-   "name": "aq-antigravity-inbox",
-   "path": "scripts/ai/aq-antigravity-inbox",
-   "purpose": "Claim-bound, receipt-backed Antigravity advisory inbox supervisor."
   },
   {
    "category": "Agents, delegation and loops",
@@ -140,11 +132,19 @@
   },
   {
    "category": "Agents, delegation and loops",
-   "class": "UNUSED-AVAILABLE",
+   "class": "ACTIVE",
    "kind": "script",
    "name": "aq-commit-agent",
    "path": "scripts/ai/aq-commit-agent",
    "purpose": "Explicit-path, process-bound commit transaction for integration slices."
+  },
+  {
+   "category": "Agents, delegation and loops",
+   "class": "ACTIVE",
+   "kind": "script",
+   "name": "aq-confine",
+   "path": "scripts/ai/aq-confine",
+   "purpose": "thin CLI over scripts/ai/lib/confine.py (design: .agents/plans/sota-rounding/\u2026"
   },
   {
    "category": "Agents, delegation and loops",
@@ -172,11 +172,19 @@
   },
   {
    "category": "Agents, delegation and loops",
-   "class": "UNUSED-AVAILABLE",
+   "class": "ACTIVE",
    "kind": "script",
    "name": "aq-delegation-registry",
    "path": "scripts/ai/aq-delegation-registry",
    "purpose": "Inspect and reconcile the durable multi-agent delegation registry."
+  },
+  {
+   "category": "Agents, delegation and loops",
+   "class": "UNDISCOVERABLE",
+   "kind": "script",
+   "name": "aq-durable",
+   "path": "scripts/ai/aq-durable",
+   "purpose": "CLI utility for Durable Agent Runtime management and reconciliation (DP-2)."
   },
   {
    "category": "Agents, delegation and loops",
@@ -212,11 +220,19 @@
   },
   {
    "category": "Agents, delegation and loops",
-   "class": "UNUSED-AVAILABLE",
+   "class": "ACTIVE",
    "kind": "script",
    "name": "aq-introspection-validate",
    "path": "scripts/ai/aq-introspection-validate",
    "purpose": "validate local-agent operational introspection output."
+  },
+  {
+   "category": "Agents, delegation and loops",
+   "class": "UNDISCOVERABLE",
+   "kind": "script",
+   "name": "aq-keep-awake",
+   "path": "scripts/ai/aq-keep-awake",
+   "purpose": "opt-in guard that keeps the laptop awake (lid closed) while delegated tasks r\u2026"
   },
   {
    "category": "Agents, delegation and loops",
@@ -236,7 +252,7 @@
   },
   {
    "category": "Agents, delegation and loops",
-   "class": "UNUSED-AVAILABLE",
+   "class": "ACTIVE",
    "kind": "script",
    "name": "aq-local-surface-scan",
    "path": "scripts/ai/aq-local-surface-scan",
@@ -268,7 +284,7 @@
   },
   {
    "category": "Agents, delegation and loops",
-   "class": "UNUSED-AVAILABLE",
+   "class": "ACTIVE",
    "kind": "script",
    "name": "aq-optimizer",
    "path": "scripts/ai/aq-optimizer",
@@ -305,6 +321,14 @@
    "name": "aq-review",
    "path": "scripts/ai/aq-review",
    "purpose": "aq-review <id> \u2014 Phase 86 alert detail viewer."
+  },
+  {
+   "category": "Agents, delegation and loops",
+   "class": "ACTIVE",
+   "kind": "script",
+   "name": "aq-review-receipt",
+   "path": "scripts/ai/aq-review-receipt",
+   "purpose": "Mint, verify and audit review receipts that back PR `Review-Receipt:` claims."
   },
   {
    "category": "Agents, delegation and loops",
@@ -348,7 +372,7 @@
   },
   {
    "category": "Agents, delegation and loops",
-   "class": "STALE-CLAIM",
+   "class": "ACTIVE",
    "kind": "script",
    "name": "aq-skill-auto",
    "path": "scripts/ai/aq-skill-auto",
@@ -356,7 +380,7 @@
   },
   {
    "category": "Agents, delegation and loops",
-   "class": "UNUSED-AVAILABLE",
+   "class": "ACTIVE",
    "kind": "script",
    "name": "aq-skill-suggest",
    "path": "scripts/ai/aq-skill-suggest",
@@ -422,14 +446,6 @@
    "category": "Agents, delegation and loops",
    "class": "UNUSED-AVAILABLE",
    "kind": "script",
-   "name": "delegate-to-antigravity",
-   "path": "scripts/ai/delegate-to-antigravity",
-   "purpose": "legacy keyed-switchboard dispatch. NOT the sanctioned"
-  },
-  {
-   "category": "Agents, delegation and loops",
-   "class": "UNUSED-AVAILABLE",
-   "kind": "script",
    "name": "delegate-to-claude",
    "path": "scripts/ai/delegate-to-claude",
    "purpose": "Delegate a task to Claude CLI (headless, persistent)"
@@ -473,6 +489,14 @@
    "name": "maigret",
    "path": "scripts/ai/maigret",
    "purpose": "OSINT username enumeration wrapper (delegates to sherlock per OSINT MCP contr\u2026"
+  },
+  {
+   "category": "Agents, delegation and loops",
+   "class": "UNDISCOVERABLE",
+   "kind": "script",
+   "name": "orchestrate-sandbox.sh",
+   "path": "scripts/ai/orchestrate-sandbox.sh",
+   "purpose": "Microarchitectural Ephemeral Sandbox Lifecycle Engine"
   },
   {
    "category": "Agents, delegation and loops",
@@ -588,7 +612,7 @@
   },
   {
    "category": "Capability, audit and reuse",
-   "class": "UNUSED-AVAILABLE",
+   "class": "ACTIVE",
    "kind": "script",
    "name": "aq-capability-catalog",
    "path": "scripts/ai/aq-capability-catalog",
@@ -612,7 +636,7 @@
   },
   {
    "category": "Capability, audit and reuse",
-   "class": "UNUSED-AVAILABLE",
+   "class": "ACTIVE",
    "kind": "script",
    "name": "aq-capability-gap",
    "path": "scripts/ai/aq-capability-gap",
@@ -841,6 +865,14 @@
    "name": "aq-hints",
    "path": "scripts/ai/aq-hints",
    "purpose": "Agent-agnostic workflow hint CLI (Phase 19.1.2)"
+  },
+  {
+   "category": "Hints, context and memory",
+   "class": "UNDISCOVERABLE",
+   "kind": "script",
+   "name": "aq-llama-resume-gate",
+   "path": "scripts/ai/aq-llama-resume-gate",
+   "purpose": "Health-gated llama-cpp resume: after suspend, restart llama-cpp only if it is\u2026"
   },
   {
    "category": "Hints, context and memory",
@@ -1172,7 +1204,7 @@
   },
   {
    "category": "MCP tools",
-   "class": "ACTIVE",
+   "class": "UNUSED-AVAILABLE",
    "kind": "mcp-tool",
    "name": "query_aidb",
    "path": "scripts/ai/mcp-bridge-hybrid.py",
@@ -1350,6 +1382,14 @@
    "category": "MCP tools",
    "class": "UNUSED-AVAILABLE",
    "kind": "script",
+   "name": "mcp-rea-sandboxed",
+   "path": "scripts/ai/mcp-rea-sandboxed",
+   "purpose": "Sandbox launcher for REA (Reverse Engineer Anything) MCP capability-intake ca\u2026"
+  },
+  {
+   "category": "MCP tools",
+   "class": "UNUSED-AVAILABLE",
+   "kind": "script",
    "name": "mcp-server",
    "path": "scripts/ai/mcp-server",
    "purpose": "MCP Server Lifecycle Manager"
@@ -1404,11 +1444,35 @@
   },
   {
    "category": "Models and inference",
-   "class": "UNUSED-AVAILABLE",
+   "class": "ACTIVE",
    "kind": "script",
    "name": "aq-eval",
    "path": "scripts/ai/aq-eval",
    "purpose": "Repo-local eval/red-team wrapper for static AQ harness suites."
+  },
+  {
+   "category": "Models and inference",
+   "class": "ACTIVE",
+   "kind": "script",
+   "name": "aq-functional-eval",
+   "path": "scripts/ai/aq-functional-eval",
+   "purpose": "Frontier FE-2a functional eval metric baseline CLI."
+  },
+  {
+   "category": "Models and inference",
+   "class": "UNDISCOVERABLE",
+   "kind": "script",
+   "name": "aq-help-center",
+   "path": "scripts/ai/aq-help-center",
+   "purpose": "Interactive SOTA Help Center, User Manual, & Training Explorer."
+  },
+  {
+   "category": "Models and inference",
+   "class": "UNDISCOVERABLE",
+   "kind": "script",
+   "name": "aq-hermetic-eval",
+   "path": "scripts/ai/aq-hermetic-eval",
+   "purpose": "CLI for hermetic candidate evaluation evidence (ECC P0-D)."
   },
   {
    "category": "Models and inference",
@@ -1473,6 +1537,14 @@
    "name": "aq-prm-eval",
    "path": "scripts/ai/aq-prm-eval",
    "purpose": "FE-1 process-reward steering A/B on a fixed 5-task dogfood set."
+  },
+  {
+   "category": "Models and inference",
+   "class": "ACTIVE",
+   "kind": "script",
+   "name": "aq-prompt-compile",
+   "path": "scripts/ai/aq-prompt-compile",
+   "purpose": "Frontier FE-2b GEPA build-time prompt compile CLI."
   },
   {
    "category": "Models and inference",
@@ -1553,6 +1625,14 @@
    "name": "aq-system-state",
    "path": "scripts/ai/aq-system-state",
    "purpose": "System Intelligence Hub snapshot (Phase 115.1)"
+  },
+  {
+   "category": "NixOS, deploy and system",
+   "class": "UNDISCOVERABLE",
+   "kind": "script",
+   "name": "aq-triage",
+   "path": "scripts/ai/aq-triage",
+   "purpose": "CLI for System 1 High-Frequency Triage Engine (`aq-triage`)."
   },
   {
    "category": "NixOS, deploy and system",
@@ -1732,6 +1812,14 @@
   },
   {
    "category": "Other tools",
+   "class": "UNDISCOVERABLE",
+   "kind": "script",
+   "name": "aq-decide",
+   "path": "scripts/ai/aq-decide",
+   "purpose": "DEC-S1 CLI over scripts/ai/lib/aq_decide.py (library + shadow; no HTTP, no li\u2026"
+  },
+  {
+   "category": "Other tools",
    "class": "UNUSED-AVAILABLE",
    "kind": "script",
    "name": "aq-drop",
@@ -1748,7 +1836,7 @@
   },
   {
    "category": "Other tools",
-   "class": "UNUSED-AVAILABLE",
+   "class": "ACTIVE",
    "kind": "script",
    "name": "aq-epoch-bump",
    "path": "scripts/ai/aq-epoch-bump",
@@ -1756,11 +1844,11 @@
   },
   {
    "category": "Other tools",
-   "class": "UNUSED-AVAILABLE",
+   "class": "ACTIVE",
    "kind": "script",
    "name": "aq-factory",
    "path": "scripts/ai/aq-factory",
-   "purpose": "Toolbox Factory for dynamic tool scaffolding."
+   "purpose": "Universal software dev factory CLI & tool scaffolding."
   },
   {
    "category": "Other tools",
@@ -1788,7 +1876,7 @@
   },
   {
    "category": "Other tools",
-   "class": "UNUSED-AVAILABLE",
+   "class": "ACTIVE",
    "kind": "script",
    "name": "aq-herdr",
    "path": "scripts/ai/aq-herdr",
@@ -1796,7 +1884,7 @@
   },
   {
    "category": "Other tools",
-   "class": "UNUSED-AVAILABLE",
+   "class": "ACTIVE",
    "kind": "script",
    "name": "aq-lane-eligibility",
    "path": "scripts/ai/aq-lane-eligibility",
@@ -1820,11 +1908,27 @@
   },
   {
    "category": "Other tools",
+   "class": "ACTIVE",
+   "kind": "script",
+   "name": "aq-oncalld",
+   "path": "scripts/ai/aq-oncalld",
+   "purpose": "CLI for Autonomous On-Call Incident Response Daemon (`aq-oncalld`)."
+  },
+  {
+   "category": "Other tools",
    "class": "UNUSED-AVAILABLE",
    "kind": "script",
    "name": "aq-patterns",
    "path": "scripts/ai/aq-patterns",
    "purpose": "Extract and analyze recurring patterns from AI stack telemetry"
+  },
+  {
+   "category": "Other tools",
+   "class": "ACTIVE",
+   "kind": "script",
+   "name": "aq-radar-ingest",
+   "path": "scripts/ai/aq-radar-ingest",
+   "purpose": "SOTA Frontier Radar & Dynamic Ingestion/Investigator CLI."
   },
   {
    "category": "Other tools",
@@ -1836,7 +1940,7 @@
   },
   {
    "category": "Other tools",
-   "class": "UNUSED-AVAILABLE",
+   "class": "ACTIVE",
    "kind": "script",
    "name": "aq-skill-factory",
    "path": "scripts/ai/aq-skill-factory",
@@ -2092,7 +2196,7 @@
   },
   {
    "category": "QA, health and monitoring",
-   "class": "UNUSED-AVAILABLE",
+   "class": "ACTIVE",
    "kind": "script",
    "name": "aq-alerts",
    "path": "scripts/ai/aq-alerts",
@@ -2132,7 +2236,7 @@
   },
   {
    "category": "QA, health and monitoring",
-   "class": "UNUSED-AVAILABLE",
+   "class": "ACTIVE",
    "kind": "script",
    "name": "aq-ecc-diagnostics",
    "path": "scripts/ai/aq-ecc-diagnostics",
@@ -2148,7 +2252,7 @@
   },
   {
    "category": "QA, health and monitoring",
-   "class": "UNUSED-AVAILABLE",
+   "class": "ACTIVE",
    "kind": "script",
    "name": "aq-gate-checkout",
    "path": "scripts/ai/aq-gate-checkout",
@@ -2196,7 +2300,15 @@
   },
   {
    "category": "QA, health and monitoring",
-   "class": "UNUSED-AVAILABLE",
+   "class": "UNDISCOVERABLE",
+   "kind": "script",
+   "name": "aq-llm-speed-probe",
+   "path": "scripts/ai/aq-llm-speed-probe",
+   "purpose": "fixed small completion against the local llama server; records"
+  },
+  {
+   "category": "QA, health and monitoring",
+   "class": "ACTIVE",
    "kind": "script",
    "name": "aq-provider-projection",
    "path": "scripts/ai/aq-provider-projection",
@@ -2212,7 +2324,7 @@
   },
   {
    "category": "QA, health and monitoring",
-   "class": "UNUSED-AVAILABLE",
+   "class": "ACTIVE",
    "kind": "script",
    "name": "aq-refactor-status",
    "path": "scripts/ai/aq-refactor-status",
@@ -2228,7 +2340,7 @@
   },
   {
    "category": "QA, health and monitoring",
-   "class": "STALE-CLAIM",
+   "class": "ACTIVE",
    "kind": "script",
    "name": "aq-report",
    "path": "scripts/ai/aq-report",
@@ -2372,7 +2484,7 @@
   },
   {
    "category": "Search, RAG and knowledge",
-   "class": "UNUSED-AVAILABLE",
+   "class": "ACTIVE",
    "kind": "script",
    "name": "aq-graph-build",
    "path": "scripts/ai/aq-graph-build",
@@ -2396,7 +2508,7 @@
   },
   {
    "category": "Search, RAG and knowledge",
-   "class": "KEEP-DECLARED",
+   "class": "ACTIVE",
    "kind": "script",
    "name": "aq-index-knowledge-graph",
    "path": "scripts/ai/aq-index-knowledge-graph",
@@ -2428,7 +2540,7 @@
   },
   {
    "category": "Search, RAG and knowledge",
-   "class": "UNUSED-AVAILABLE",
+   "class": "ACTIVE",
    "kind": "script",
    "name": "aq-plans-index",
    "path": "scripts/ai/aq-plans-index",
@@ -2476,7 +2588,7 @@
   },
   {
    "category": "Search, RAG and knowledge",
-   "class": "UNUSED-AVAILABLE",
+   "class": "ACTIVE",
    "kind": "script",
    "name": "aq-wiki",
    "path": "scripts/ai/aq-wiki",
@@ -2612,7 +2724,15 @@
   },
   {
    "category": "Security, approval and governance",
-   "class": "UNUSED-AVAILABLE",
+   "class": "ACTIVE",
+   "kind": "script",
+   "name": "aq-durable-sweeper",
+   "path": "scripts/ai/aq-durable-sweeper",
+   "purpose": "Proactive autonomous intelligence sweeper & signal classifier."
+  },
+  {
+   "category": "Security, approval and governance",
+   "class": "ACTIVE",
    "kind": "script",
    "name": "aq-integrity-scan",
    "path": "scripts/ai/aq-integrity-scan",
@@ -2628,7 +2748,7 @@
   },
   {
    "category": "Security, approval and governance",
-   "class": "UNDISCOVERABLE",
+   "class": "ACTIVE",
    "kind": "script",
    "name": "aq-network-policy",
    "path": "scripts/ai/aq-network-policy",
@@ -2636,7 +2756,7 @@
   },
   {
    "category": "Security, approval and governance",
-   "class": "UNUSED-AVAILABLE",
+   "class": "ACTIVE",
    "kind": "script",
    "name": "aq-propose",
    "path": "scripts/ai/aq-propose",
@@ -2828,6 +2948,14 @@
   },
   {
    "category": "Systemd units (services and timers)",
+   "class": "UNDISCOVERABLE",
+   "kind": "unit",
+   "name": "ai-frontier-scan",
+   "path": "nix/modules/roles/ai-stack.nix",
+   "purpose": ""
+  },
+  {
+   "category": "Systemd units (services and timers)",
    "class": "UNUSED-AVAILABLE",
    "kind": "unit",
    "name": "ai-gap-auto-remediate",
@@ -2863,7 +2991,7 @@
    "class": "UNUSED-AVAILABLE",
    "kind": "unit",
    "name": "ai-hybrid-coordinator",
-   "path": "nix/modules/services/world-model.nix",
+   "path": "nix/modules/services/identity-kernel.nix",
    "purpose": ""
   },
   {
@@ -2928,6 +3056,14 @@
    "kind": "unit",
    "name": "ai-npm-security-monitor",
    "path": "nix/modules/services/mcp-servers.nix",
+   "purpose": ""
+  },
+  {
+   "category": "Systemd units (services and timers)",
+   "class": "UNDISCOVERABLE",
+   "kind": "unit",
+   "name": "ai-oncalld",
+   "path": "nix/modules/services/oncalld.nix",
    "purpose": ""
   },
   {
@@ -3412,7 +3548,7 @@
   },
   {
    "category": "Workflow, planning and PM",
-   "class": "UNUSED-AVAILABLE",
+   "class": "ACTIVE",
    "kind": "script",
    "name": "aq-enrich-plans",
    "path": "scripts/ai/aq-enrich-plans",
@@ -3420,7 +3556,7 @@
   },
   {
    "category": "Workflow, planning and PM",
-   "class": "UNUSED-AVAILABLE",
+   "class": "ACTIVE",
    "kind": "script",
    "name": "aq-flat-prd-gate",
    "path": "scripts/ai/aq-flat-prd-gate",
@@ -3428,7 +3564,7 @@
   },
   {
    "category": "Workflow, planning and PM",
-   "class": "UNUSED-AVAILABLE",
+   "class": "ACTIVE",
    "kind": "script",
    "name": "aq-pm-tracker",
    "path": "scripts/ai/aq-pm-tracker",
@@ -3468,7 +3604,7 @@
   },
   {
    "category": "Workflow, planning and PM",
-   "class": "UNUSED-AVAILABLE",
+   "class": "ACTIVE",
    "kind": "script",
    "name": "aq-slice-helper",
    "path": "scripts/ai/aq-slice-helper",
@@ -3529,6 +3665,14 @@
    "name": "project-import",
    "path": ".agent/skills/project-import/SKILL.md",
    "purpose": "Instructions and workflow for the project-import skill."
+  },
+  {
+   "category": "Workflow, planning and PM",
+   "class": "UNDISCOVERABLE",
+   "kind": "skill",
+   "name": "rea-reverse-engineering",
+   "path": ".agent/skills/rea-reverse-engineering/SKILL.md",
+   "purpose": "Reverse engineering and binary/application deep analysis workflow bas\u2026"
   },
   {
    "category": "Workflow, planning and PM",

@@ -6,7 +6,7 @@ import tempfile
 from pathlib import Path
 
 CHECK = Path(__file__).resolve().parents[1] / "governance/tier0.d/check-lane-hook-parity.sh"
-LANES = ["codex", "local", "claude", "antigravity"]
+LANES = ["codex", "local", "claude", "gemini"]
 
 def build(root: Path, hooks=True, bypass=False):
     subprocess.run(["git", "init", "-q", str(root)], check=True)
@@ -21,8 +21,6 @@ def build(root: Path, hooks=True, bypass=False):
         body = "#!/bin/sh\n"
         if lane in ("codex", "local"):
             body += "source lib/worktree-isolation.sh\n"
-        if lane == "antigravity":
-            body += "# blocked_unsupported_ide_worktree_isolation\n"
         if bypass and lane == "local":
             body += "git commit --no-verify -m x\n"
         (ai / f"delegate-to-{lane}").write_text(body)

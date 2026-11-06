@@ -21,6 +21,6 @@
     "terminal_reasons": ["admission_denied", "auth_failed", "policy_blocked", "timeout", "cancelled", "output_incomplete", "integrity_failed", "executor_lost"]
   },
   "required_capabilities": ["preflight", "start", "observe", "cancel_owned", "classify_exit", "collect"],
-  "adapters": ["local", "claude", "codex", "antigravity"],
+  "adapters": ["local", "claude", "codex", "gemini"],
   "coverage_gates": ["aq_qa", "agent_ops", "web_dashboard"]
 }

@@ -863,9 +863,12 @@ def _acquire_rsi_dispatch_lock() -> Any:
 
 def _rsi_dispatch_preflight(lane: str = "codex") -> Tuple[bool, str]:
     """Require a dispatcher with enforceable isolated-worktree execution."""
-    if lane == "antigravity":
-        return False, "blocked_unsupported_ide_worktree_isolation"
     delegate = AI_SCRIPT_DIR / f"delegate-to-{lane}"
+    if lane == "gemini":
+        # Headless Gemini runs read-only (--mode plan): it can edit nothing, so no worktree is needed.
+        if not delegate.is_file() or not os.access(delegate, os.X_OK):
+            return False, "blocked_missing_isolated_delegate"
+        return True, "gemini_plan_only_read_only"
     isolation = AI_LIB_DIR / "worktree-isolation.sh"
     if not delegate.is_file() or not os.access(delegate, os.X_OK):
         return False, "blocked_missing_isolated_delegate"
@@ -919,7 +922,7 @@ def _rsi_task_prompt(row: Dict[str, Any], apply: bool) -> str:
     )
 
 
-_VALID_RSI_LANES = {"codex", "claude", "antigravity", "local"}
+_VALID_RSI_LANES = {"codex", "claude", "gemini", "local"}
 
 
 def _run_rsi_delegate(row: Dict[str, Any], timeout_seconds: int, apply: bool, lane: str = "codex") -> Tuple[str, Dict[str, Any]]:
@@ -932,10 +935,11 @@ def _run_rsi_delegate(row: Dict[str, Any], timeout_seconds: int, apply: bool, la
     elif lane == "claude":
         argv = [str(AI_SCRIPT_DIR / "delegate-to-claude"), "--wait", "--role", "implement",
                 "--prompt", _rsi_task_prompt(row, apply)]
-    elif lane == "antigravity":
+    elif lane == "gemini":
+        # Read-only plan mode: the lane diagnoses and proposes; it never edits, so apply=False prompt.
         argv = [
-            str(AI_SCRIPT_DIR / "delegate-to-antigravity"), "--wait",
-            "--timeout", str(timeout_seconds), "--role", "rsi", "--prompt", _rsi_task_prompt(row, apply),
+            str(AI_SCRIPT_DIR / "delegate-to-gemini"), "--wait", "--mode", "plan",
+            "--role", "reviewer", "--prompt", _rsi_task_prompt(row, False),
         ]
     else:
         argv = [
@@ -978,7 +982,7 @@ def _run_rsi_delegate(row: Dict[str, Any], timeout_seconds: int, apply: bool, la
         "local": r"(?m)^\[delegate-to-local\] Task local-\d{8}-\d{6}-[a-z0-9]{6} completed\.$",
         "codex": r"(?m)^\[delegate-to-codex\] Task codex-\d{8}-\d{6}-[a-z0-9]{6} completed\.$",
         "claude": r"(?m)^\[delegate-to-claude\] Task claude-\d{8}-\d{6}-[a-z0-9]{6} completed( successfully)?\.$",
-        "antigravity": r"(?m)^\[delegate-to-antigravity\] Task antigravity-\d{8}-\d{6}-[a-z0-9]{6} completed\.$",
+        "gemini": r"(?m)^\[delegate-to-gemini\] Task gemini-\d{8}-\d{6}-[a-z0-9]{6} completed successfully\.$",
     }
     if not re.search(receipt_patterns[lane], stdout or ""):
         receipt["reason"] = "missing_delegate_receipt"
@@ -1649,7 +1653,7 @@ def build_parser() -> argparse.ArgumentParser:
     s_rsi.add_argument("--limit", type=int, default=1)
     s_rsi.add_argument("--max-attempts", type=int, default=_RSI_MAX_ATTEMPTS)
     s_rsi.add_argument("--timeout-seconds", type=int, default=600)
-    s_rsi.add_argument("--lane", choices=("codex", "claude", "antigravity", "local"), default=None)
+    s_rsi.add_argument("--lane", choices=("codex", "claude", "gemini", "local"), default=None)
     s_rsi.set_defaults(func=cmd_rsi_dispatch)
 
     s_rq = sub.add_parser("rsi-requeue", help="Requeue owner-approved RSI rows stalled by infrastructure failures")

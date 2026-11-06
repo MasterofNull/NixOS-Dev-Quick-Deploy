@@ -60,11 +60,7 @@ lane_check() { # <lane> <script> <mode: iso|advisory>
 lane_check codex delegate-to-codex iso
 lane_check local delegate-to-local iso
 lane_check claude delegate-to-claude advisory
-lane_check antigravity delegate-to-antigravity advisory
-# Antigravity must stay non-editing until worktree binding exists, else it would need its own commit path.
-if [[ -f "$ROOT/scripts/ai/delegate-to-antigravity" ]] && ! grep -q 'blocked_unsupported_ide_worktree_isolation' "$ROOT/scripts/ai/delegate-to-antigravity"; then
-  gap "lane antigravity: editing-role guard (blocked_unsupported_ide_worktree_isolation) missing"
-fi
+lane_check gemini delegate-to-gemini advisory
 
 [[ $gaps -eq 0 ]] && echo "${TAG} PASS: every lane reaches the same commit gate at integration (static evidence; no lane-side bypass)" || echo "${TAG} WARN: ${gaps} lane parity gap(s) (report-only, not blocking)"
 exit 0

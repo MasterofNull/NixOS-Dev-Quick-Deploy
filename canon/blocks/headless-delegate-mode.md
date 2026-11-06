@@ -19,4 +19,4 @@ Applies to any agent dispatched non-interactively (`delegate-to-*`, `codex exec`
 - **Validation output required:** Paste actual command output (tail) for every validation step in your hand-back report; claimed-but-unshown validation is treated as not run, and the orchestrator re-validates.
 - **Worktree isolation:** Never run `git stash`, `git switch/checkout <branch>`, `git branch -m/-D`, or `git pull` outside your assigned worktree; verify `git rev-parse --show-toplevel` equals your worktree before any git write, and run repo tools (generators, gates) via your worktree's own path — a main-checkout copy writes to the main checkout.
 - **Fixture secrets at runtime:** Tests build fake secrets at runtime (string concatenation), never as token-shaped literals (github_pat_…, PEM blocks).
-- **Bridge-managed handoff:** For bridge-managed delegates (delegate-to-codex/local/antigravity), leave changes staged and uncommitted unless the prompt explicitly says to commit.
+- **Bridge-managed handoff:** For bridge-managed delegates (delegate-to-codex/local/gemini), leave changes staged and uncommitted unless the prompt explicitly says to commit.

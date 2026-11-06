@@ -185,8 +185,6 @@ require_gemini() {
   and run 'gemini' once interactively to re-seed the credential store. Add the key to
   nix/hosts/hyperd/home-deploy-options.nix (gitignored) as home.sessionVariables.GEMINI_API_KEY.
 
-  Antigravity CLI (pkgs.antigravity, now installed) is a VS Code IDE — NOT a CLI
-  delegation tool. 'antigravity chat' opens a GUI window. Do not set GEMINI_BIN=antigravity.
   See: .agent/GEMINI.md §Auth Architecture and .agent/memory/issues-backlog.md"
 }
 

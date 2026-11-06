@@ -6,9 +6,9 @@ Loop-engineering pattern (Schedule→Triage→Ground→Execute→Verify→Escala
 
   1. TRIAGE   — pop task from backlog or accept --intent
   2. GROUND   — load hints + skills; fan-out parallel research probes to local agent
-                (Qwen3-35B) and antigravity (Gemini) for grounded context
+                (Qwen3-35B) and gemini (headless Gemini CLI) for grounded context
   3. EXECUTE  — run aq-agent-loop (inner ReAct loop with full tool set)
-  4. VERIFY   — check COMPLETED: marker; fan-out acceptance review to antigravity reviewer;
+  4. VERIFY   — check COMPLETED: marker; fan-out acceptance review to gemini reviewer;
                 current compatibility path may retry once within the bounded loop; the target
                 terminal-receipt policy moves findings to a separately scoped next slice
   5. LOOP     — if incomplete and iterations remain, rebuild prompt with evidence
@@ -138,8 +138,8 @@ def _dispatch_local_probe(intent: str, loop_id: str) -> "str | None":
     return None
 
 
-def _dispatch_antigravity_probe(intent: str, loop_id: str) -> "str | None":
-    """Fire a background architecture probe to delegate-to-antigravity. Returns task ID or None."""
+def _dispatch_gemini_probe(intent: str, loop_id: str) -> "str | None":
+    """Fire a background architecture probe to delegate-to-gemini. Returns task ID or None."""
     probe = (
         f"ARCHITECTURE PROBE for loop {loop_id}:\n"
         f"Provide architectural guidance and risk assessment for this task (max 500 words):\n"
@@ -149,14 +149,14 @@ def _dispatch_antigravity_probe(intent: str, loop_id: str) -> "str | None":
     )
     try:
         r = subprocess.run(
-            [str(_SCRIPT_DIR / "delegate-to-antigravity"), "--mode", "architect",
+            [str(_SCRIPT_DIR / "delegate-to-gemini"), "--mode", "plan",
              "--role", "architect", "--prompt", probe],
             capture_output=True, text=True, timeout=15, cwd=str(_REPO_ROOT),
         )
         lines = [l for l in r.stdout.splitlines() if l.strip()]
-        # Last line should be the task ID (antigravity prints tid as last line)
+        # Last line should be the task ID (delegate-to-gemini echoes the id last in background mode)
         tid = lines[-1].strip() if lines else None
-        if tid and (tid.startswith("antigravity-") or tid.startswith("gemini-")):
+        if tid and tid.startswith("gemini-"):
             return tid
     except Exception:
         pass
@@ -187,14 +187,14 @@ def fanout_ground(
     print(f"[aq-loop] GROUND: dispatching fan-out probes (timeout={fanout_timeout}s) ...")
 
     local_tid = _dispatch_local_probe(intent, loop_id)
-    anti_tid = _dispatch_antigravity_probe(intent, loop_id)
+    gem_tid = _dispatch_gemini_probe(intent, loop_id)
 
     if local_tid:
         print(f"[aq-loop] GROUND: local research probe → {local_tid}")
-    if anti_tid:
-        print(f"[aq-loop] GROUND: antigravity architecture probe → {anti_tid}")
+    if gem_tid:
+        print(f"[aq-loop] GROUND: gemini architecture probe → {gem_tid}")
 
-    if not local_tid and not anti_tid:
+    if not local_tid and not gem_tid:
         print("[aq-loop] GROUND: no fan-out probes dispatched (delegation unavailable)")
         return ""
 
@@ -202,13 +202,13 @@ def fanout_ground(
     deadline = time.monotonic() + fanout_timeout
     local_result = anti_result = None
     while time.monotonic() < deadline and (
-        (local_tid and local_result is None) or (anti_tid and anti_result is None)
+        (local_tid and local_result is None) or (gem_tid and anti_result is None)
     ):
         if local_tid and local_result is None:
             local_result = _collect_probe_output(local_tid, timeout_s=5)
-        if anti_tid and anti_result is None:
-            anti_result = _collect_probe_output(anti_tid, timeout_s=5)
-        if not ((local_tid and local_result is None) or (anti_tid and anti_result is None)):
+        if gem_tid and anti_result is None:
+            anti_result = _collect_probe_output(gem_tid, timeout_s=5)
+        if not ((local_tid and local_result is None) or (gem_tid and anti_result is None)):
             break
         time.sleep(5)
 
@@ -220,7 +220,7 @@ def fanout_ground(
 
     if parts:
         received = len(parts)
-        total = sum(1 for t in [local_tid, anti_tid] if t)
+        total = sum(1 for t in [local_tid, gem_tid] if t)
         print(f"[aq-loop] GROUND: fan-out collected {received}/{total} probe results")
         return "\n\n".join(parts)
     else:
@@ -231,7 +231,7 @@ def fanout_ground(
 def fanout_verify(
     intent: str, result_summary: str, loop_id: str, iteration: int,
 ) -> "dict | None":
-    """Dispatch completed result to antigravity reviewer. Returns verdict or None."""
+    """Dispatch completed result to gemini reviewer. Returns verdict or None."""
     probe = (
         f"ACCEPTANCE REVIEW for loop {loop_id} iter {iteration}:\n"
         f"Task: {intent}\n\n"
@@ -240,8 +240,8 @@ def fanout_verify(
     )
     try:
         r = subprocess.run(
-            [str(_SCRIPT_DIR / "delegate-to-antigravity"),
-             "--mode", "reviewer", "--role", "reviewer",
+            [str(_SCRIPT_DIR / "delegate-to-gemini"),
+             "--mode", "plan", "--role", "reviewer",
              "--prompt", probe, "--wait"],
             capture_output=True, text=True, timeout=180, cwd=str(_REPO_ROOT),
         )
@@ -250,7 +250,7 @@ def fanout_verify(
         except Exception: structured = None
         return {"structured": structured, "output": output[:1000]}
     except Exception as exc:
-        print(f"[aq-loop] VERIFY: antigravity review skipped ({exc})")
+        print(f"[aq-loop] VERIFY: gemini review skipped ({exc})")
         return None
 
 
@@ -592,7 +592,7 @@ def run_loop(
         append_pulse(loop_id, iteration, "VERIFY", status, f"elapsed={elapsed}s")
 
         if completed:
-            # Fan-out VERIFY: dispatch completed result to antigravity reviewer
+            # Fan-out VERIFY: dispatch completed result to gemini reviewer
             review_verdict = None
             if fanout:
                 result_summary = evidence.get("result_preview", intent[:300])

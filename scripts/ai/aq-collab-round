@@ -12,11 +12,11 @@ Auth model (NO API keys — governing, feedback-no-api-keys-oauth-only):
   - local  : delegate-to-local → on-host APU. NOTHING leaves the host. Never skipped: dispatched
              with the task INLINED (so it doesn't burn turns reading) + a generous timeout; the
              round stays OPEN for its late contribution.
-  - antigravity : the Google Antigravity IDE (real Gemini) authenticated by its OWN OAuth, which we
-             NEVER touch. We do NOT call a headless key-based lane (that would fall back to local
-             Qwen). Instead we DROP a task file into a watched inbox; the IDE agent (configured to
-             watch it) responds by writing the per-agent file. No credentials cross the boundary.
-             The old delegate-to-gemini / gemini npm CLI is DEAD — never dispatched.
+  - gemini : headless Gemini CLI via delegate-to-gemini (--role reviewer --mode plan), the CLI's own
+             Google OAuth session. Plan mode is read-only, so the lane's final reply is the contribution:
+             `collect` records it as gemini.md (receipt .gemini.import.json). The Antigravity IDE lane
+             is RETIRED (owner 2026-11-05): rounds opened before that keep a read-only `antigravity.md`
+             seat (legacy), but nothing dispatches to the IDE any more.
 
 Usage:
   aq-collab-round open   --round <name> --task "<prompt>" [--target <path>] [--local-timeout 5400] [--dry-run]
@@ -49,14 +49,11 @@ PLANS = REPO / ".agents" / "plans"
 SCRIPTS = REPO / "scripts" / "ai"
 OUTPUTS = REPO / ".agents" / "delegation" / "outputs"
 DELEGATION_REGISTRY = REPO / ".agents" / "delegation" / "registry.jsonl"
-# Watched inbox — the Antigravity IDE agent (its own OAuth) polls this dir and responds.
-ANTIGRAVITY_INBOX = REPO / ".agent" / "collaboration" / "antigravity-inbox"
-
-# Scope & stop guardrail, prepended to every inbox drop. The Antigravity/IDE lane
-# does NOT flow through dispatch.py, so it never receives config/local-agent-grounding.md;
-# this preamble is the ONLY place the same discipline reaches it. Mirror of the grounding
+# Scope & stop guardrail, prepended to the Gemini lane prompt. The prompt is
+# passed through delegate-to-gemini, which adds the grounding SSOT; this preamble pins the
+# round-specific scope discipline. Mirror of the grounding
 # supplement's "Scope & Stop Discipline" section (keep the two in sync).
-INBOX_SCOPE_STOP_PREAMBLE = (
+GEMINI_SCOPE_STOP_PREAMBLE = (
     "## SCOPE & STOP (HARD — read before writing)\n"
     "- Edit ONLY the files this task names as surfaces. A related-looking file is still out of scope.\n"
     "- NEVER implement a data/config change as a filesystem shortcut: no symlink, bind mount, mount,\n"
@@ -69,12 +66,14 @@ INBOX_SCOPE_STOP_PREAMBLE = (
     "- Undeclared dependency discovered -> STOP and report; do not expand scope to 'make it work'.\n"
     "- Budgets/acceptance criteria are hard facts: a measured violation FAILS; a sentence calling it\n"
     "  'acceptable' does not change the number. Report the real value.\n"
-    "- Write ONLY your own named output file. Do NOT edit shared files. Do NOT commit.\n"
+    "- Plan mode is read-only: print your contribution as your final reply. Do NOT edit files. Do NOT commit.\n"
     "- When unsure whether something is in scope: it is not. Report, do not act.\n\n"
 )
-# Lanes that receive a live dispatch. antigravity is a file-drop (inbox), not a process dispatch.
-PROCESS_AGENTS = ["codex", "local"]
-ALL_AGENTS = ["claude", "codex", "local", "antigravity"]
+# Lanes that receive a live process dispatch.
+PROCESS_AGENTS = ["codex", "local", "gemini"]
+ALL_AGENTS = ["claude", "codex", "local", "gemini"]
+# Seats from rounds opened before the Antigravity IDE lane was retired: read-only, never dispatched.
+LEGACY_AGENTS = ["antigravity"]
 LEGACY_ROUND_ALIASES = {
     "usability-parity-v2": "usability-parity",
 }
@@ -135,7 +134,7 @@ def _typed_consensus(rd: Path, name: str) -> str | None:
                 quorum_policy=_rstate.QuorumPolicy(min_lanes=2, required_agents=[],
                                                    timeout_seconds=None, deadline=None),
                 lanes=[], consensus_hash=None, aggregate_path=None, aggregate_hash=None, locked_at=None)
-            for agent in ALL_AGENTS:
+            for agent in _round_agents(rd):
                 _raggr.register_lane(m, agent, "reviewer", "(legacy)")
             m = _rstate.transition(m, _rstate.RoundState.DISPATCHED, "aq-collab-round")
         try:
@@ -144,7 +143,7 @@ def _typed_consensus(rd: Path, name: str) -> str | None:
             disp = {}
         contribs = {}
         review_subject = _review_subject(rd)
-        for agent in ALL_AGENTS:
+        for agent in _round_agents(rd):
             markdown = rd / f"{agent}.md"
             if not markdown.exists() and agent not in disp:
                 continue
@@ -200,6 +199,11 @@ def _round_dir(name: str) -> Path:
     return PLANS / name
 
 
+def _round_agents(rd: Path) -> list:
+    """Current seats plus any retired seat that landed a file in this (older) round."""
+    return ALL_AGENTS + [a for a in LEGACY_AGENTS if (rd / f"{a}.md").exists()]
+
+
 def _now() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
@@ -214,11 +218,11 @@ Target artifact (if a review round): {target or '(none — fresh drafting round)
 {task}
 
 ## Protocol
-Each agent writes its OWN file here — `codex.md`, `local.md`, `antigravity.md`, `claude.md`.
+Each agent writes its OWN file here — `codex.md`, `local.md`, `gemini.md`, `claude.md`.
 NEVER append to a shared file. The orchestrator aggregates into `AGGREGATE.md`.
 - local[Qwen] runs long — the round stays OPEN for it; never skipped.
-- antigravity (Antigravity IDE, real Gemini via its OWN OAuth) picks up the task from the inbox
-  `{ANTIGRAVITY_INBOX.relative_to(REPO)}/{name}.md` and writes `antigravity.md`. No API keys.
+- gemini (headless Gemini CLI via delegate-to-gemini, plan mode, its OWN OAuth) replies read-only;
+  `collect` records the reply as `gemini.md`. No API keys.
 """
 
 
@@ -248,7 +252,7 @@ def _write_prompt(rd: Path, name: str, task: str, target: str) -> Path:
     prompt = (f"COLLABORATIVE ROUND '{name}'.\n{target_block}"
               f"TASK:\n{task}\n\n"
               f"Write your contribution to YOUR OWN file ONLY: "
-              f".agents/plans/{name}/<AGENT>.md (<AGENT> = codex | local | antigravity). "
+              f".agents/plans/{name}/<AGENT>.md (<AGENT> = codex | local | gemini). "
               f"Do NOT edit any shared file. Do NOT read the artifact file (it is inlined above). "
               f"Be decisive and concise.")
     pf = rd / ".round-prompt.txt"
@@ -289,6 +293,13 @@ def _write_prompt(rd: Path, name: str, task: str, target: str) -> Path:
         f"Write your contribution to YOUR OWN file ONLY: .agents/plans/{name}/local.md. "
         f"Be decisive and concise (a few short paragraphs).")
     (rd / ".round-prompt-local.txt").write_text(local_prompt)
+    # GEMINI variant — plan mode cannot write files, so the reply text IS the contribution.
+    gemini_prompt = (
+        f"{GEMINI_SCOPE_STOP_PREAMBLE}COLLABORATIVE ROUND '{name}' — GEMINI lane (headless, read-only).\n"
+        f"{target_block}TASK:\n{task}\n\n"
+        f"Reply with your complete contribution as your final message; aq-collab-round records it as "
+        f".agents/plans/{name}/gemini.md. Be decisive and concise.")
+    (rd / ".round-prompt-gemini.txt").write_text(gemini_prompt)
     return pf
 
 
@@ -302,7 +313,7 @@ def _parse_task_id(stdout: str) -> str:
 
 
 def _dispatch_process(agent: str, prompt_file: Path, local_timeout: int) -> str:
-    """Fire a live process dispatch (codex/local), background. Returns the task id (or error)."""
+    """Fire a live process dispatch (codex/local/gemini), background. Returns the task id (or error)."""
     try:
         if agent == "codex":
             # Isolated worktree, not --shared: delegate-to-codex refuses shared editing,
@@ -310,6 +321,13 @@ def _dispatch_process(agent: str, prompt_file: Path, local_timeout: int) -> str:
             cmd = ["bash", str(SCRIPTS / "delegate-to-codex"), "--mode", "edit",
                    "--prompt-file", str(prompt_file)]
             env = os.environ
+        elif agent == "gemini":
+            # Headless Gemini CLI, read-only plan mode; the reply is recorded by collect.
+            gem_pf = prompt_file.parent / ".round-prompt-gemini.txt"
+            use_pf = gem_pf if gem_pf.exists() else prompt_file
+            cmd = ["bash", str(SCRIPTS / "delegate-to-gemini"), "--role", "reviewer",
+                   "--mode", "plan", "--prompt-file", str(use_pf)]
+            env = {**os.environ, "AQ_AGENT_ROLE": "reviewer"}
         else:  # local — never-skip: agent-mode, budget-fitting local prompt, async
             # Use the local-specific bounded prompt (smaller inline + leaf-node rules)
             # when present; fall back to the shared prompt for older/dry callers.
@@ -347,191 +365,6 @@ def _dispatch_process(agent: str, prompt_file: Path, local_timeout: int) -> str:
         return f"error:{e}"
 
 
-def _drop_antigravity(name: str, prompt_file: Path) -> str:
-    """No-key antigravity lane: drop a task file into the IDE-watched inbox.
-
-    Secondary/notification only. The inbox has historically piled up unconsumed
-    (the IDE was never wired to poll it), so the RELIABLE lane is the headless
-    switchboard dispatch below. This drop remains for a human working in the IDE.
-    """
-    ANTIGRAVITY_INBOX.mkdir(parents=True, exist_ok=True)
-    inbox = ANTIGRAVITY_INBOX / f"{name}.md"
-    inbox.write_text(f"# A2A task for antigravity — round '{name}'\n\n"
-                     f"Output: .agents/plans/{name}/antigravity.md\n"
-                     f"Role: review\n"
-                     f"Dropped: {_now()}\n\n"
-                     f"Respond by writing `.agents/plans/{name}/antigravity.md`.\n\n"
-                     f"{INBOX_SCOPE_STOP_PREAMBLE}"
-                     f"{prompt_file.read_text()}\n")
-    return f"inbox:{inbox.relative_to(REPO)}"
-
-
-# The consumption signal is deletion: the IDE (or a bridge) removes a task file
-# once it acts on it. We track the LAST drop so liveness keys off whether THAT
-# specific file was consumed — not on the presence of unrelated old backlog
-# (which created a self-reinforcing UNAVAILABLE loop: stale files -> unavailable
-# -> drop another -> more stale files. Diagnosis credited to the antigravity
-# lane itself, relayed 2026-07-09).
-_ANTIGRAVITY_STATE = ANTIGRAVITY_INBOX / ".lane-state.json"
-_ANTIGRAVITY_CONSUME_WINDOW_S = 900  # 15 min to consume a drop before "not watching"
-
-
-def _archive_stale_inbox(keep: "set[str]") -> int:
-    """Move consumed-window-exceeded task files (except `keep`) to the archive.
-
-    Stops the monotonic backlog growth that poisoned the liveness signal.
-    Rule 12: archive, never delete.
-    """
-    if not ANTIGRAVITY_INBOX.exists():
-        return 0
-    now = time.time()
-    archive_dir = REPO / ".agent" / "archive" / f"antigravity-inbox-{datetime.now(timezone.utc):%Y%m%d}"
-    scanner = REPO / "scripts" / "governance" / "pre-archive-scan.sh"
-    moved = 0
-    for p in ANTIGRAVITY_INBOX.glob("*.md"):
-        if p.name in keep:
-            continue
-        if now - p.stat().st_mtime <= _ANTIGRAVITY_CONSUME_WINDOW_S:
-            continue
-        rel = p.relative_to(REPO).as_posix()
-        # A background collector must not mutate the caller's Git index. Tracked
-        # inbox entries therefore require an explicit operator-owned archive
-        # transaction (scan, reference repair, stage deletion, then move).
-        tracked = subprocess.run(
-            ["git", "-C", str(REPO), "ls-files", "--error-unmatch", "--", rel],
-            capture_output=True, text=True, timeout=10,
-        ).returncode == 0
-        if tracked:
-            print(f"[aq-collab-round] archive deferred for tracked inbox entry: {rel}",
-                  file=sys.stderr)
-            continue
-        if not scanner.is_file():
-            print(f"[aq-collab-round] archive blocked; scanner missing for: {rel}",
-                  file=sys.stderr)
-            continue
-        scan = subprocess.run(
-            [str(scanner), rel], cwd=REPO, capture_output=True, text=True, timeout=30,
-        )
-        destination = archive_dir / p.name
-        if scan.returncode != 0 or destination.exists():
-            print(f"[aq-collab-round] archive blocked by pre-scan/collision for: {rel}",
-                  file=sys.stderr)
-            continue
-        archive_dir.mkdir(parents=True, exist_ok=True)
-        shutil.move(str(p), str(destination))
-        moved += 1
-    return moved
-
-
-# Harness tooling whose command lines contain the substring "antigravity" and
-# therefore falsely match a bare `pgrep -fa antigravity` — the check must exclude
-# them (and the shell running the check) so only a genuine Antigravity IDE process
-# counts as live. A false "IDE running" makes the orchestrator wait on / nudge a
-# lane that nobody is serving.
-_ANTIGRAVITY_PROC_EXCLUDE = (
-    "aq-collab-round", "aq-antigravity-inbox", "delegate-to-antigravity",
-    "aq-antigravity-agent", "aq-event", "pgrep", "snapshot-zsh", "/claude",
-)
-
-
-def _antigravity_proc_live() -> bool:
-    """True iff a REAL Antigravity IDE process is running — not merely a command
-    line that happens to contain the word 'antigravity' (the harness's own helper
-    scripts and the shell running this check all do)."""
-    try:
-        out = subprocess.run(
-            ["pgrep", "-fa", "antigravity"], capture_output=True, text=True, timeout=5
-        )
-    except Exception:
-        return False
-    if out.returncode != 0:
-        return False
-    for line in out.stdout.splitlines():
-        parts = line.split(None, 1)
-        cmd = parts[1] if len(parts) > 1 else ""
-        if any(tok in cmd for tok in _ANTIGRAVITY_PROC_EXCLUDE):
-            continue
-        return True  # a match that is not harness tooling — a genuine IDE process
-    return False
-
-
-def _antigravity_inbox_live() -> "tuple[bool, str]":
-    """Liveness by per-drop CONSUMPTION, not backlog presence.
-
-    Live iff the last dropped task file was consumed (deleted) within the
-    window. Unrelated old files no longer poison the signal (they are archived
-    on open). If we have no prior drop to judge, we report 'unproven' as a
-    soft state (attempt the lane) rather than a hard dead.
-    """
-    try:
-        proc_live = _antigravity_proc_live()
-        if not ANTIGRAVITY_INBOX.exists():
-            return False, "inbox dir missing"
-
-        last_drop = None
-        try:
-            last_drop = json.loads(_ANTIGRAVITY_STATE.read_text()).get("last_drop")
-        except Exception:
-            last_drop = None
-
-        if not last_drop:
-            return proc_live, ("no prior drop to judge — attempting lane"
-                               + ("" if proc_live else "; Antigravity IDE not running"))
-
-        prev = ANTIGRAVITY_INBOX / last_drop["name"]
-        age = time.time() - last_drop["ts"]
-        if not prev.exists():
-            # Previous drop was consumed — but that only proves the lane is live
-            # NOW if the consumption was recent. A drop dropped-and-consumed days
-            # ago says nothing about whether the IDE is watching this instant;
-            # claiming "lane live" off a stale consumption is a false positive
-            # that makes the orchestrator wait on a lane nobody is serving.
-            if age <= _ANTIGRAVITY_CONSUME_WINDOW_S:
-                return True, "IDE consumed the previous task file recently (lane live)"
-            return proc_live, (
-                f"previous drop was consumed but {int(age/3600)}h ago — current "
-                f"liveness unproven; "
-                f"{'Antigravity IDE process seen' if proc_live else 'no Antigravity IDE process running (IDE not watching)'}"
-            )
-        if age > _ANTIGRAVITY_CONSUME_WINDOW_S:
-            return False, (f"previous drop '{last_drop['name']}' unconsumed after "
-                           f"{int(age/60)}min — "
-                           f"{'IDE running but no inbox-watch workflow' if proc_live else 'IDE not running'}")
-        return proc_live, f"previous drop pending consumption ({int(age)}s)"
-    except Exception as e:  # noqa: BLE001
-        return False, f"liveness check error: {e}"
-
-
-def _dispatch_antigravity(name: str, prompt_file: Path) -> str:
-    """Antigravity lane (no-key IDE/OAuth inbox), self-cleaning + consumption-based."""
-    archived = _archive_stale_inbox(keep={f"{name}.md"})
-    live, why = _antigravity_inbox_live()          # judge BEFORE this drop
-    marker = _drop_antigravity(name, prompt_file)
-    try:
-        _ANTIGRAVITY_STATE.write_text(json.dumps(
-            {"last_drop": {"name": f"{name}.md", "ts": time.time()}}))
-    except Exception:
-        pass
-    # AUTO-TRIGGER: nudge the IDE agent to process this drop now, removing the
-    # manual-nudge friction. `aq-antigravity-inbox wake` self-gates on the precise
-    # proc-liveness check — it runs `antigravity chat --mode agent <strict scope
-    # prompt>` only when a real IDE process is live, else it is a harmless
-    # passive-drop no-op. Fire-and-forget; never let it block or fail the dispatch.
-    triggered = ""
-    try:
-        subprocess.Popen(
-            [str(SCRIPTS / "aq-antigravity-inbox"), "wake", name, "--actor", "aq-collab-round"],
-            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-        )
-        triggered = " (auto-triggered)"
-    except Exception:
-        pass
-    arch = f" (archived {archived} stale)" if archived else ""
-    if live:
-        return f"{marker} (IDE consuming — {why}){triggered}{arch}"
-    return f"{marker} UNAVAILABLE: {why}{triggered}{arch}"
-
-
 _TASK_PATH_RE = re.compile(r"(?<![\w/.-])((?:\.?[\w-]+/)+[\w.-]+\.\w+)")
 
 
@@ -565,7 +398,7 @@ def cmd_open(args) -> int:
     if args.dry_run:
         print(f"[dry-run] would open '{args.round}' at {rd}")
         print(f"[dry-run] dispatch: codex(edit), local(agent,{args.local_timeout}s,inlined,never-skip)")
-        print(f"[dry-run] antigravity: file-drop to {ANTIGRAVITY_INBOX.relative_to(REPO)}/{args.round}.md (no keys)")
+        print("[dry-run] gemini: delegate-to-gemini --role reviewer --mode plan (headless, read-only)")
         print(f"[dry-run] claude: orchestrator writes {args.round}/claude.md + aggregates")
         return 0
     rd.mkdir(parents=True, exist_ok=True)
@@ -578,15 +411,6 @@ def cmd_open(args) -> int:
         tid = _dispatch_process(agent, pf, args.local_timeout)
         dispatch[agent] = tid
         print(f"  {agent}: dispatched {tid}")
-    # Antigravity: no-key IDE/OAuth inbox lane with honest liveness reporting.
-    # (Headless switchboard->Gemini is intentionally refused by the no-keys
-    #  policy guard, so the IDE inbox is the only sanctioned transport.)
-    dispatch["antigravity"] = _dispatch_antigravity(args.round, pf)
-    _ag_state = dispatch["antigravity"]
-    print(f"  antigravity: {_ag_state}")
-    if "UNAVAILABLE" in _ag_state:
-        print(f"  ⚠ antigravity lane will not respond until the Antigravity IDE is wired to watch "
-              f"{ANTIGRAVITY_INBOX.relative_to(REPO)}/ — round will aggregate without it.")
     print(f"  claude: orchestrator writes {args.round}/claude.md + aggregates")
     (rd / ".round-dispatch.json").write_text(json.dumps(
         {"opened": _now(), "dispatch": dispatch}, indent=2))
@@ -594,7 +418,7 @@ def cmd_open(args) -> int:
     if (rd / "round.json").exists():
         print(f"  round.json: written (state=DISPATCHED)")
     print(f"\n  poll:    aq-collab-round status  --round {args.round}")
-    print(f"  collect: aq-collab-round collect --round {args.round}   (auto-extracts local verdict)")
+    print(f"  collect: aq-collab-round collect --round {args.round}   (auto-extracts local + gemini verdicts)")
     return 0
 
 
@@ -766,36 +590,55 @@ def _legacy_round_alias(name: str) -> str | None:
     return LEGACY_ROUND_ALIASES.get(name)
 
 
-def _repair_antigravity_misplaced_output(rd: Path, name: str) -> str:
-    """Recover Antigravity output written to a known superseded round path.
+_GEMINI_NOISE_RE = re.compile(
+    r"^Warning:|^YOLO mode|^Attempt [0-9]+ failed|An unexpected critical|FetchError|ETIMED|EAI_AGAIN|"
+    r"ENOTFOUND|retrying with backoff|^\s+at |node_modules|googleapis\.com|GaxiosError|AbortSignal|"
+    r"errorRedactor|paramsSerializer|validateStatus|Symbol\(|response: undefined|^SUNSET_ERROR|"
+    r"^\[delegate-to-gemini\]|^Loaded cached credentials|^Data collection is disabled")
 
-    The IDE lane is file-drop/OAuth only, so the common failure mode is a stale
-    prompt instructing the IDE to write to an older round directory. Copy only
-    known aliases and only when the active round output is absent.
-    """
-    target = rd / "antigravity.md"
+
+def _extract_gemini_contribution(rd: Path) -> str:
+    """Record the headless Gemini lane's final reply as gemini.md (plan mode is read-only)."""
+    target = rd / "gemini.md"
     if target.exists():
         return "present"
-    alias = _legacy_round_alias(name)
-    if not alias:
-        return "no-legacy-alias"
-    legacy = PLANS / alias / "antigravity.md"
-    if not legacy.exists():
-        return "legacy-missing"
-    target.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copyfile(legacy, target)
-    with target.open("a", encoding="utf-8") as fh:
-        fh.write(
-            "\n\n<!-- recovered-by: aq-collab-round; "
-            f"source=.agents/plans/{alias}/antigravity.md; "
-            "reason=legacy-output-path -->\n"
-        )
-    return f"recovered-from:{alias}"
+    try:
+        dispatch = json.loads((rd / ".round-dispatch.json").read_text()).get("dispatch", {})
+    except Exception:
+        return "no-dispatch-record"
+    task_id = dispatch.get("gemini", "")
+    if not isinstance(task_id, str) or not task_id or task_id.startswith("error"):
+        return "not-dispatched"
+    record = _delegation_record(task_id)
+    if not record:
+        return "registry-missing"
+    if record.get("status") not in {"done", "completed"}:
+        return f"not-terminal:{record.get('status', '?')}"
+    log = OUTPUTS / f"{task_id}.log"
+    try:
+        raw = log.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return "log-missing"
+    text = "\n".join(l for l in raw.splitlines() if not _GEMINI_NOISE_RE.search(l)).strip()
+    if not text:
+        return "completed-empty"
+    ok, reason = _validate_review_contribution(rd, text)
+    if not ok:
+        return f"completed-invalid:{reason}"
+    target.write_text(f"# gemini — round contribution (recorded from headless dispatch)\n\n"
+                      f"_From dispatch `{task_id}` (delegate-to-gemini, plan mode)._\n\n{text}\n",
+                      encoding="utf-8")
+    receipt = {"schema_version": "1.0", "agent": "gemini", "dispatch_id": task_id,
+               "source_kind": "headless-dispatch-log",
+               "sha256": hashlib.sha256(text.encode("utf-8")).hexdigest(), "imported_at": _now()}
+    (rd / ".gemini.import.json").write_text(json.dumps(receipt, indent=2, sort_keys=True) + "\n",
+                                            encoding="utf-8")
+    return "recorded"
 
 
-def _validate_antigravity_contribution(rd: Path) -> list[str]:
-    """Return non-fatal review warnings for known Antigravity proposal mistakes."""
-    path = rd / "antigravity.md"
+def _validate_seat_contribution(rd: Path, agent: str) -> list[str]:
+    """Return non-fatal review warnings for known proposal mistakes in a seat's file."""
+    path = rd / f"{agent}.md"
     if not path.exists():
         return []
     text = path.read_text(encoding="utf-8", errors="replace")
@@ -818,7 +661,7 @@ def _validate_antigravity_contribution(rd: Path) -> list[str]:
         ]
         missing = [h for h in required if h not in text]
         if missing:
-            warnings.append("antigravity-missing-headings:" + ",".join(missing))
+            warnings.append(f"{agent}-missing-headings:" + ",".join(missing))
 
     stale_path_lines = [
         line for line in text.splitlines()
@@ -826,10 +669,10 @@ def _validate_antigravity_contribution(rd: Path) -> list[str]:
         and ("write" in line.lower() or "output" in line.lower())
     ]
     if stale_path_lines:
-        warnings.append("antigravity-mentions-superseded-output-path")
+        warnings.append(f"{agent}-mentions-superseded-output-path")
     forbidden = ["Google AI Studio", "active billing quota", "SOPS secret keys"]
     if any(term in text for term in forbidden):
-        warnings.append("antigravity-provider-language-needs-no-key-review")
+        warnings.append(f"{agent}-provider-language-needs-no-key-review")
 
     if is_parity:
         gap_section = text.split("# Ranked Parity Gaps", 1)[-1].split("# Proposed UX Architecture", 1)[0]
@@ -844,7 +687,7 @@ def _validate_antigravity_contribution(rd: Path) -> list[str]:
             if any(line.lstrip().startswith(f"{i}.") for i in range(1, 11))
         )
         if max(ranked_rows, numbered) < 10:
-            warnings.append("antigravity-ranked-gaps-fewer-than-10")
+            warnings.append(f"{agent}-ranked-gaps-fewer-than-10")
     return warnings
 
 
@@ -854,17 +697,17 @@ def cmd_status(args, do_extract: bool = False) -> int:
         print(f"no round '{args.round}' at {rd}", file=sys.stderr)
         return 1
     if do_extract:
-        for agent in PROCESS_AGENTS:
+        for agent in [a for a in PROCESS_AGENTS if a != "gemini"]:
             imported = _import_isolated_contribution(rd, agent)
             if imported != "present":
                 print(f"[collect] {agent} isolated contribution: {imported}")
         r = _extract_local_verdict(rd)
         print(f"[collect] local verdict: {r}")
-        ar = _repair_antigravity_misplaced_output(rd, args.round)
-        if ar != "present":
-            print(f"[collect] antigravity output: {ar}")
+        gr = _extract_gemini_contribution(rd)
+        if gr != "present":
+            print(f"[collect] gemini contribution: {gr}")
     print(f"[aq-collab-round] {args.round}")
-    for agent in ALL_AGENTS:
+    for agent in _round_agents(rd):
         f = rd / f"{agent}.md"
         print(f"  {agent:12} " + (f"✅ {f.stat().st_size}B" if f.exists() else "⏳ pending"))
     try:
@@ -873,11 +716,12 @@ def cmd_status(args, do_extract: bool = False) -> int:
         print(f"  active dispatch procs: {sum(1 for l in out.splitlines() if 'aq-collab-round' not in l and 'pgrep' not in l)}")
     except Exception:
         pass
-    have = [a for a in ALL_AGENTS if (rd / f"{a}.md").exists()]
+    have = [a for a in _round_agents(rd) if (rd / f"{a}.md").exists()]
     print(f"  landed: {len(have)}/4 — {', '.join(have) or 'none'}")
     if do_extract:  # F1.5: collect/aggregate print the typed consensus (additive; None-safe)
-        for warning in _validate_antigravity_contribution(rd):
-            print(f"  warning: {warning}")
+        for seat in _round_agents(rd):
+            for warning in _validate_seat_contribution(rd, seat):
+                print(f"  warning: {warning}")
         tc = _typed_consensus(rd, args.round)
         if tc:
             print(f"  {tc}")
