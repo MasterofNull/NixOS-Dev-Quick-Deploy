@@ -1,0 +1,116 @@
+{
+  "plan": {
+    "id": "delivery-loop-simplification",
+    "title": "Delivery loop simplification: receipts off-branch, gate placement, aq-land, aq-update, RSI-convened rounds",
+    "prd_ref": ".agents/plans/delivery-loop-simplification/DESIGN.md",
+    "goal": "Make the delivery loop simpler without weakening what it proves"
+  },
+  "phases": [
+    {
+      "id": "mvp",
+      "name": "Frozen MVP"
+    }
+  ],
+  "items": [
+    {
+      "id": "S1",
+      "name": "Off-branch review receipts + live disposition",
+      "phase": "mvp",
+      "kind": "slice",
+      "goal": "Off-branch review receipts + live disposition",
+      "validation_goal": "Receipt leaves the head unchanged; forged/stale/replayed receipts rejected",
+      "deps": [],
+      "detection": {
+        "commit_match": [
+          "feat\\(review\\): .*off-branch"
+        ]
+      },
+      "acceptance": {
+        "status": "pending",
+        "by": null,
+        "date": null,
+        "note": ""
+      }
+    },
+    {
+      "id": "S2",
+      "name": "Gate placement by criteria",
+      "phase": "mvp",
+      "kind": "slice",
+      "goal": "Gate placement by criteria",
+      "validation_goal": "Doc-only commit passes tier0 with the stack down; seeded regressions still caught",
+      "deps": [],
+      "detection": {
+        "commit_match": [
+          "fix\\(gates\\): .*placement"
+        ]
+      },
+      "acceptance": {
+        "status": "pending",
+        "by": null,
+        "date": null,
+        "note": ""
+      }
+    },
+    {
+      "id": "S3",
+      "name": "aq-land in the repo",
+      "phase": "mvp",
+      "kind": "slice",
+      "goal": "aq-land in the repo",
+      "validation_goal": "Kill at each step resumes without duplicates; stale evidence rejected",
+      "deps": [],
+      "detection": {
+        "commit_match": [
+          "feat\\(landing\\): .*aq-land"
+        ]
+      },
+      "acceptance": {
+        "status": "pending",
+        "by": null,
+        "date": null,
+        "note": ""
+      }
+    },
+    {
+      "id": "S4",
+      "name": "aq-update: one-command refresh, sync, deploy, validate",
+      "phase": "mvp",
+      "kind": "slice",
+      "goal": "aq-update: one-command refresh, sync, deploy, validate",
+      "validation_goal": "No Nix delta means no rebuild; unlockable input blocks with a reason",
+      "deps": [],
+      "detection": {
+        "commit_match": [
+          "feat\\(update\\): .*aq-update"
+        ]
+      },
+      "acceptance": {
+        "status": "pending",
+        "by": null,
+        "date": null,
+        "note": ""
+      }
+    },
+    {
+      "id": "S5",
+      "name": "RSI convenes expert rounds",
+      "phase": "mvp",
+      "kind": "slice",
+      "goal": "RSI convenes expert rounds",
+      "validation_goal": "Seeded repeat incident opens exactly one round within budget",
+      "deps": [],
+      "detection": {
+        "commit_match": [
+          "feat\\(rsi\\): .*expert round"
+        ]
+      },
+      "acceptance": {
+        "status": "pending",
+        "by": null,
+        "date": null,
+        "note": ""
+      }
+    }
+  ]
+}
