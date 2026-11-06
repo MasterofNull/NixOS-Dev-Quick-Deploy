@@ -11,6 +11,19 @@ echo '{"metadata":{"vulnerabilities":{"info":0,"low":0,"moderate":0,"high":0,"cr
 exit 1
 N
 chmod +x "$T/bin/npm"
+# Dashboard/secrets scanners default to healthy stubs for every run below: the real ones curl a live
+# dashboard on 127.0.0.1 and walk the secrets tree (seconds per run, and degraded wherever none is
+# running). Cases that test those scanners override the env vars explicitly.
+cat > "$T/ok-dashboard.sh" <<'N'
+#!/usr/bin/env bash
+printf '{"generated_at":"t","status":"ok","checks":{"root":{"status":"ok"},"compliance":{"status":"ok"},"integrity":{"status":"ok"}}}' > "$2"
+N
+cat > "$T/ok-secrets.sh" <<'N'
+#!/usr/bin/env bash
+printf '{"generated_at":"t","rotation_ready":true,"core_ready":true,"summary":{"total_managed_secrets":3}}' > "$2"
+N
+chmod +x "$T/ok-dashboard.sh" "$T/ok-secrets.sh"
+export DASHBOARD_SCAN_SCRIPT="$T/ok-dashboard.sh" SECRETS_ROTATION_PLAN_SCRIPT="$T/ok-secrets.sh"
 echo '{"name":"x","lockfileVersion":3}' | tee "$T/bad/package.json" "$T/bad/package-lock.json" >/dev/null
 
 rc=0; out="$(PATH="$T/bin:$PATH" bash "$ROOT/scripts/security/security-audit.sh" --repo-root "$T/bad" --output-dir "$T/o1" 2>&1)" || rc=$?
@@ -124,15 +137,6 @@ rc=0; out="$(PATH="$T/bin:$PATH" env -u CI SECURITY_AUDIT_FAIL_ON_DEGRADED=1 DAS
 rc=0; out="$(PATH="$T/bin:$PATH" env -u CI bash "$ROOT/scripts/security/security-audit.sh" --repo-root "$T/cov2" --output-dir "$T/o21" 2>&1)" || rc=$?
 [[ $rc -eq 0 ]] || { echo "FAIL: incomplete scan without the unit flag must stay exit 0 rc=$rc"; echo "$out"; exit 1; }
 # npm exits 0 with EMPTY output: scanner error, not clean (dashboard/secrets fakes healthy so only npm is at fault).
-cat > "$T/ok-dashboard.sh" <<'N'
-#!/usr/bin/env bash
-printf '{"generated_at":"t","status":"ok","checks":{"root":{"status":"ok"},"compliance":{"status":"ok"},"integrity":{"status":"ok"}}}' > "$2"
-N
-cat > "$T/ok-secrets.sh" <<'N'
-#!/usr/bin/env bash
-printf '{"generated_at":"t","rotation_ready":true,"core_ready":true,"summary":{"total_managed_secrets":3}}' > "$2"
-N
-chmod +x "$T/ok-dashboard.sh" "$T/ok-secrets.sh"
 cat > "$T/bin/npm" <<'N'
 #!/usr/bin/env bash
 exit 0
@@ -148,7 +152,7 @@ N
 rc=0; out="$(PATH="$T/bin:$PATH" env -u CI SECURITY_AUDIT_FAIL_ON_DEGRADED=1 DASHBOARD_SCAN_SCRIPT=/nonexistent SECRETS_ROTATION_PLAN_SCRIPT="$T/ok-secrets.sh" bash "$ROOT/scripts/security/security-audit.sh" --repo-root "$T/nonpm" --output-dir "$T/o23" 2>&1)" || rc=$?
 [[ $rc -eq 3 ]] && [[ "$(jq -r .status "$T/o23/latest-security-audit.json")" == "degraded" ]] && jq -e '.degraded_reasons | map(test("dashboard scanner unavailable")) | any' "$T/o23/latest-security-audit.json" >/dev/null \
   || { echo "FAIL: unavailable dashboard scanner not degraded/exit 3 rc=$rc"; echo "$out"; exit 1; }
-unset DASHBOARD_SCAN_SCRIPT SECRETS_ROTATION_PLAN_SCRIPT
+export DASHBOARD_SCAN_SCRIPT="$T/ok-dashboard.sh" SECRETS_ROTATION_PLAN_SCRIPT="$T/ok-secrets.sh"
 
 # Table-driven: every scanner x failure mode must be non-ok, carry a degraded reason, and exit 3 under the flag.
 PIP_OK='{"dependencies":[{"name":"x","version":"1","vulns":[]}]}'
@@ -212,14 +216,29 @@ run_case() { # <scanner> <mode> ; echoes nothing, sets CASE_RC CASE_OUT CASE_DIR
 }
 run_case none healthy
 [[ $CASE_RC -eq 0 && "$(jq -r .status "$CASE_DIR/latest-security-audit.json")" == "ok" ]] || { echo "FAIL: healthy baseline not ok rc=$CASE_RC"; echo "$CASE_OUT"; exit 1; }
-for sc in pip npm dashboard secrets; do
-  for mode in missing nonzero empty malformed emptyobj unknown nocov nocov2 nocov3 nocov4 nocov5 nocov6; do
-    run_case "$sc" "$mode"
+# The 48 scanner x mode cases are independent (each has its own $T/tc-<sc>-<mode> dir), so run them
+# concurrently; each writes its verdict to a file and the results are checked in order afterwards.
+table_case() { # <scanner> <mode>
+  ( run_case "$1" "$2"
     st="$(jq -r .status "$CASE_DIR/latest-security-audit.json")"
     if [[ $CASE_RC -ne 3 || "$st" == "ok" ]] || ! jq -e '.degraded_reasons | length > 0' "$CASE_DIR/latest-security-audit.json" >/dev/null; then
-      echo "FAIL: $sc/$mode rc=$CASE_RC status=$st"; echo "$CASE_OUT"; exit 1
+      { echo "FAIL: $1/$2 rc=$CASE_RC status=$st"; echo "$CASE_OUT"; } > "$T/tr-$1-$2.fail"
+    else
+      echo "case $1/$2: status=$st exit=$CASE_RC" > "$T/tr-$1-$2.ok"
     fi
-    echo "case $sc/$mode: status=$st exit=$CASE_RC"
+  ) &
+  while (( $(jobs -rp | wc -l) >= ${TABLE_JOBS:-8} )); do wait -n || true; done
+}
+for sc in pip npm dashboard secrets; do
+  for mode in missing nonzero empty malformed emptyobj unknown nocov nocov2 nocov3 nocov4 nocov5 nocov6; do
+    table_case "$sc" "$mode"
+  done
+done
+wait
+for sc in pip npm dashboard secrets; do
+  for mode in missing nonzero empty malformed emptyobj unknown nocov nocov2 nocov3 nocov4 nocov5 nocov6; do
+    if [[ -f "$T/tr-$sc-$mode.ok" ]]; then cat "$T/tr-$sc-$mode.ok"
+    else cat "$T/tr-$sc-$mode.fail" 2>/dev/null || echo "FAIL: $sc/$mode produced no verdict"; exit 1; fi
   done
 done
 # pip skip handling and -r includes (healthy dashboard/secrets/npm from the table fixtures).
