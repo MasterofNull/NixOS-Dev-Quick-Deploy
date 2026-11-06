@@ -414,7 +414,7 @@ def executable_kind(proc: ProcessFact) -> tuple[str, str]:
     all_args = [v.lower() for v in proc.argv[1:]]
     if exe == "bwrap":
         return "sandbox_wrapper", "system"
-    if exe in {"delegate-to-local", "delegate-to-claude", "delegate-to-codex", "delegate-to-antigravity"}:
+    if exe in {"delegate-to-local", "delegate-to-claude", "delegate-to-codex"}:
         return "managed_task", exe.removeprefix("delegate-to-")
     if exe == "aq-agent-loop" or exe == "agent_executor.py":
         return "managed_child", "local"

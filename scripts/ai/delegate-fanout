@@ -57,7 +57,7 @@ delegate_role_for_agent() {
 }
 
 is_task_id() {
-    [[ "$1" =~ ^(local|codex|claude|antigravity)-[0-9]{8}-[0-9]{6}-[a-z0-9]{6}$ ]]
+    [[ "$1" =~ ^(local|codex|claude|gemini)-[0-9]{8}-[0-9]{6}-[a-z0-9]{6}$ ]]
 }
 
 fanout_id() {
@@ -132,11 +132,7 @@ cmd_fanout() {
     for agent in "${agents[@]}"; do
         agent="${agent// /}"  # trim spaces
         local delegate_script
-        if [[ "$agent" == "gemini" || "$agent" == "antigravity" ]]; then
-            delegate_script="$SCRIPT_DIR/delegate-to-antigravity"
-        else
-            delegate_script="$SCRIPT_DIR/delegate-to-${agent}"
-        fi
+        delegate_script="$SCRIPT_DIR/delegate-to-${agent}"
         if [[ ! -x "$delegate_script" ]]; then
             info "SKIP: $delegate_script not found"
             [[ "$role" == "implementer" ]] && failed_implementers+=("$agent")

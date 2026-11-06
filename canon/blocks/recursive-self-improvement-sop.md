@@ -1,7 +1,7 @@
 ## Recursive Self-Improvement (RSI) Closed-Loop SOP (Canonical — all agents)
 
 SSOT: `.agent/WORKFLOW-CANON.md` · Philosophy: `AGENTS.md` §Project Philosophy · Rule SSOT: Rule 11a & Rule 21.
-NixOS-Dev-Quick-Deploy is an immutable, declarative **Pessimistic Recursive Self-Improvement (PRSI)** environment. Every agent (Claude, Codex, Gemini/Antigravity, local Qwen) and every task slice MUST execute within the recursive self-improvement closed-loop: findings, friction, errors, and mitigations are never discarded or bypassed with silent workarounds; they MUST be dogfooded back into the system to drive continuous, compounding platform evolution.
+NixOS-Dev-Quick-Deploy is an immutable, declarative **Pessimistic Recursive Self-Improvement (PRSI)** environment. Every agent (Claude, Codex, Gemini, local Qwen) and every task slice MUST execute within the recursive self-improvement closed-loop: findings, friction, errors, and mitigations are never discarded or bypassed with silent workarounds; they MUST be dogfooded back into the system to drive continuous, compounding platform evolution.
 
 ### 1. The 5-Stage Recursive Self-Improvement Closed-Loop
 The recursive self-improvement loop operates across every phase of task execution:

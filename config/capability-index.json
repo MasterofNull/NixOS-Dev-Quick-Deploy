@@ -68,22 +68,6 @@
   },
   {
    "category": "Agents, delegation and loops",
-   "class": "UNUSED-AVAILABLE",
-   "kind": "script",
-   "name": "aq-antigravity-agent",
-   "path": "scripts/ai/aq-antigravity-agent",
-   "purpose": "Headless Antigravity agent loop."
-  },
-  {
-   "category": "Agents, delegation and loops",
-   "class": "UNUSED-AVAILABLE",
-   "kind": "script",
-   "name": "aq-antigravity-inbox",
-   "path": "scripts/ai/aq-antigravity-inbox",
-   "purpose": "Claim-bound, receipt-backed Antigravity advisory inbox supervisor."
-  },
-  {
-   "category": "Agents, delegation and loops",
    "class": "KEEP-DECLARED",
    "kind": "script",
    "name": "aq-bitnet-compare.py",
@@ -417,14 +401,6 @@
    "name": "delegate-fanout",
    "path": "scripts/ai/delegate-fanout",
    "purpose": "Fan-out a task to N agents in parallel, arbitrate winner."
-  },
-  {
-   "category": "Agents, delegation and loops",
-   "class": "UNUSED-AVAILABLE",
-   "kind": "script",
-   "name": "delegate-to-antigravity",
-   "path": "scripts/ai/delegate-to-antigravity",
-   "purpose": "legacy keyed-switchboard dispatch. NOT the sanctioned"
   },
   {
    "category": "Agents, delegation and loops",

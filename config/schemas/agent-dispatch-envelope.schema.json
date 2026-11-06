@@ -14,7 +14,7 @@
     "identifier": {"type": "string", "pattern": "^[a-z0-9][a-z0-9._:-]{0,127}$"},
     "reason": {"enum": ["admission_denied", "launch_failed", "provider_transient", "quota_parked", "auth_failed", "policy_blocked", "timeout", "cancelled", "output_incomplete", "integrity_failed", "executor_lost"]},
     "state": {"enum": ["submitted", "queued", "starting", "running", "waiting", "parked", "cancelling", "cancelled", "done", "failed", "stale"]},
-    "lane": {"enum": ["local", "claude", "codex", "antigravity"]},
+    "lane": {"enum": ["local", "claude", "codex", "gemini"]},
     "sealed_input": {
       "type": "object", "additionalProperties": false,
       "required": ["transport", "handle", "byte_length"],

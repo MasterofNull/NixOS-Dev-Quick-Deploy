@@ -104,7 +104,7 @@ ENRICHED_DETAILS = {
         ]
     },
     "local-agent-delegation": {
-        "implementation": "Structured inside the Switchboard router configuration (`ai-stack/switchboard/switchboard.py`) and routed through `scripts/ai/delegate-to-antigravity`. Wires local tool results to remote reasoning endpoints.",
+        "implementation": "Structured inside the Switchboard router configuration (`ai-stack/switchboard/switchboard.py`) and routed through `scripts/ai/delegate-to-gemini`. Wires local tool results to remote reasoning endpoints.",
         "function": "Receives standard prompt inputs, serializes system context maps, maps fallback endpoints to local Qwen loops on API limits, and returns structured tool calling execution steps.",
         "grounding": "Distributed Agent Orchestration (Split-Compute Architecture). Leverages high-reasoning remote models for planning while routing local, secure file modifications to local execution boundaries.",
         "mermaid": """graph TD

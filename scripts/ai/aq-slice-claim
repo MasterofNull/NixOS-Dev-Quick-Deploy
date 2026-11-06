@@ -7,7 +7,7 @@ producing duplicate/tangled work. DESIGN SSOT:
 `.agents/plans/agent-agnostic-factory/DESIGN.md` §3 item 1.
 
 CAS primitive: reuses the exact atomic-rename pattern from
-`scripts/ai/aq-antigravity-inbox::cmd_claim` — same-filesystem
+the retired Antigravity inbox supervisor's cmd_claim (archived) — same-filesystem
 `Path.rename()` can only succeed once, so two racing claimants cannot both
 win. Here the rename target is the claim file itself: a claim is created
 with `os.open(..., O_CREAT | O_EXCL)` (the create-side CAS — there is no
@@ -162,7 +162,7 @@ def _write_claim_exclusive(path: Path, record: dict[str, Any]) -> bool:
     the atomic create-side CAS primitive (POSIX guarantees the open()
     syscall itself is the exclusivity check — no separate exists()-then-
     create() race window). Mirrors the rename-based CAS in
-    aq-antigravity-inbox but for a from-scratch claim file rather than an
+    the retired Antigravity inbox supervisor but for a from-scratch claim file rather than an
     already-existing pending drop. Fail-closed: any OSError other than
     "already exists" propagates so the caller refuses to proceed.
 

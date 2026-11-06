@@ -16,7 +16,6 @@
   },
   "agents": {
     "codex": { "window_seconds": 300, "max_dispatches": 20 },
-    "gemini": { "window_seconds": 300, "max_dispatches": 20 },
-    "antigravity": { "window_seconds": 300, "max_dispatches": 20 }
+    "gemini": { "window_seconds": 300, "max_dispatches": 20 }
   }
 }

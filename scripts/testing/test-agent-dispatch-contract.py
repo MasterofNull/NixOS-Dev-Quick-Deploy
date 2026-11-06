@@ -48,7 +48,7 @@ class AgentDispatchContractC0(unittest.TestCase):
                 contract.validate_document(bad, self.envelope_schema, max_bytes=65536)
 
         adapter = {
-            "schema_version": "aq.dispatch.adapter.v1", "adapter": "antigravity",
+            "schema_version": "aq.dispatch.adapter.v1", "adapter": "gemini",
             "capabilities": self.policy["required_capabilities"], "network_boundary": "declared_remote",
             "credential_boundary": "runtime_secret", "progress_evidence": "inbox_receipt",
             "concurrency_limit": 2, "cancellation_ownership": "lease_and_fence",
@@ -153,7 +153,7 @@ class AgentDispatchContractC0(unittest.TestCase):
         blocked = contract.contract_health(self.policy, adapters[:-1],
                                            {"aq_qa": True, "agent_ops": True, "web_dashboard": False})
         self.assertEqual(blocked["verdict"], "blocked")
-        self.assertEqual(blocked["adapter_health"]["antigravity"], "blocked")
+        self.assertEqual(blocked["adapter_health"]["gemini"], "blocked")
 
 
 if __name__ == "__main__":

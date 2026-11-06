@@ -1,6 +1,6 @@
 ## Delivery Workflow (Canonical — all agents)
 
-Owner directive 2026-10-10: every lane (Claude, Codex, Gemini/Antigravity, local) delivers work the same
+Owner directive 2026-10-10: every lane (Claude, Codex, Gemini, local) delivers work the same
 way so any other lane can resume, finish, review, or hand off a slice when a session closes, a quota or
 token limit is hit, or a lane is unavailable. These steps were previously held only in one lane's private
 memory; that is why another lane committed straight into the main checkout. They are canon now.

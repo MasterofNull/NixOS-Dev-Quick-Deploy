@@ -149,7 +149,7 @@ def run_cascade(
     local_fn(task) -> (response, tokens). remote_fn(task, draft) -> (response,
     tokens); receives the local draft so it can POLISH rather than redo. Both
     injectable for tests; the CLI wires them to delegate-to-local /
-    delegate-to-antigravity.
+    delegate-to-gemini.
     """
     thr = threshold if threshold is not None else threshold_for(task_class)
     draft, local_tokens = local_fn(task)

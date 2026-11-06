@@ -1,8 +1,5 @@
 #!/usr/bin/env bash
-# DEPRECATED (2026-06-20): delegate-to-gemini (npm CLI) is retired.
-# Use scripts/health/antigravity-health.sh for the current delegation path.
-# This script is kept for historical reference only and will not succeed
-# because the gemini npm CLI auth is broken (credits exhausted, OAuth sunset).
+# Health check for the headless Gemini CLI that scripts/ai/delegate-to-gemini drives.
 #
 # Check and optionally repair Gemini CLI state-directory corruption that causes
 # `gemini --help` to hang under the real home directory.
@@ -19,15 +16,6 @@
 #   3 usage error
 #   4 repair attempted but failed
 #
-# EXCEPTION — oauth-personal delegation branch (below, ~line 189): when settings.json
-# selects oauth-personal, this script forwards straight to `antigravity-health.sh --check`
-# and `exit $?` with its raw exit code. In that branch the exit code is
-# antigravity-health.sh's OWN three-state contract, not this script's 0-4 scheme above:
-#   0 = healthy, 3 = degraded for an EXTERNAL/environmental reason (e.g. Gemini Code Assist
-#   quota exhaustion — non-blocking for callers like the tier0 gate), 1 = our script/config
-#   is actually broken. See scripts/health/antigravity-health.sh's header for the full
-#   rationale (Rule 19 gate corollary) and scripts/testing/harness_qa/phases/phase0.py check
-#   0.6.2 for the consumer that relies on this distinction.
 
 set -euo pipefail
 
@@ -180,9 +168,7 @@ if [[ ! -d "${GEMINI_DIR}" ]]; then
   emit_result 0
 fi
 
-# Detect oauth-personal auth type — delegate health check to antigravity-health.sh
-# (2026-06-21 update: oauth-personal is the CORRECT path for Code Assist API,
-# not the consumer generativelanguage.googleapis.com API key path)
+# oauth-personal: the Gemini CLI's own OAuth session. Minimal check: credentials present.
 SETTINGS_FILE="${GEMINI_DIR}/settings.json"
 if [[ -f "${SETTINGS_FILE}" ]]; then
   SELECTED_TYPE="$(python3 -c "
@@ -194,18 +180,10 @@ except Exception:
     pass
 " 2>/dev/null || true)"
   if [[ "${SELECTED_TYPE}" == "oauth-personal" ]]; then
-    # oauth-personal → delegate-to-antigravity path via Code Assist API
-    # Use antigravity-health.sh for the definitive check
-    ANTIGRAVITY_HEALTH="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/antigravity-health.sh"
-    if [[ -x "${ANTIGRAVITY_HEALTH}" ]]; then
-      bash "${ANTIGRAVITY_HEALTH}" --check
-      exit $?
-    fi
-    # antigravity-health.sh not found — minimal check: credentials present?
     GEMINI_CREDS="${GEMINI_DIR}/gemini-credentials.json"
     if [[ -f "${GEMINI_CREDS}" ]] && [[ "$(wc -c < "${GEMINI_CREDS}" 2>/dev/null || echo 0)" -ge 50 ]]; then
       STATUS="healthy"
-      REASON="oauth-personal auth configured; credentials present (run antigravity-health.sh --smoke for full check)"
+      REASON="oauth-personal auth configured; credentials present"
       emit_result 0
     else
       STATUS="unhealthy"

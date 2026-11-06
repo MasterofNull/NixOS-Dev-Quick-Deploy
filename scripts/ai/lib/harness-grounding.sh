@@ -2,9 +2,8 @@
 # harness-grounding.sh — SSOT loader for the shared harness grounding supplement.
 #
 # Every delegation lane must inject the SAME canonical grounding so all agents
-# (codex, claude, gemini, local, antigravity) share one set of harness facts:
+# (codex, claude, gemini, local) share one set of harness facts:
 #   - local      -> scripts/ai/lib/dispatch.py::_load_grounding / _prepend_grounding
-#   - antigravity-> scripts/ai/delegate-to-antigravity::_load_harness_grounding
 #   - codex/claude/gemini -> this helper (sourced by the delegate-to-* scripts)
 #
 # Source of truth: config/local-agent-grounding.md. Keeping the loader here (not a

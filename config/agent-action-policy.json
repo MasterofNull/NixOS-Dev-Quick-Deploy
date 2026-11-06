@@ -23,12 +23,6 @@
       "privileged_modes": ["yolo"],
       "blocked_modes": [],
       "privileged_reason": "yolo -> auto-approves ALL tool calls including run_shell_command (no approval prompt)."
-    },
-    "antigravity": {
-      "allowed_modes": ["*"],
-      "privileged_modes": [],
-      "blocked_modes": [],
-      "note": "Inference-only via the switchboard; no local shell execution, so no privileged execution mode to gate."
     }
   }
 }

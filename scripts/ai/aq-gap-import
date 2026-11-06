@@ -4,7 +4,7 @@
 #
 # Reads the top recurring gaps from /var/log/nixos-ai-stack/query-gaps.jsonl
 # (written by hybrid-coordinator's PRSI gap-sync loop), filters those that
-# exceed a minimum occurrence threshold, generates content via delegate-to-antigravity
+# exceed a minimum occurrence threshold, generates content via delegate-to-gemini
 # (invoked by aq-knowledge-import.sh; no gemini binary is used here),
 # imports each into AIDB, then rebuilds Qdrant embeddings for the new docs.
 #
@@ -33,10 +33,10 @@ if [[ ! -r "$GAPS_JSONL" ]]; then
   exit 0
 fi
 
-# The generator is delegate-to-antigravity (called by aq-knowledge-import.sh), not a
+# The generator is delegate-to-gemini (called by aq-knowledge-import.sh), not a
 # gemini binary on PATH; the retired npm gemini CLI is not a dependency of this job.
-if [[ ! -x "${SCRIPT_DIR}/delegate-to-antigravity" ]]; then
-  printf 'ERROR delegate-to-antigravity not executable at %s\n' "${SCRIPT_DIR}/delegate-to-antigravity" >&2
+if [[ ! -x "${SCRIPT_DIR}/delegate-to-gemini" ]]; then
+  printf 'ERROR delegate-to-gemini not executable at %s\n' "${SCRIPT_DIR}/delegate-to-gemini" >&2
   exit 1
 fi
 

@@ -47,10 +47,6 @@ in {
     # is a no-behavior-change canary (prove the signer is healthy before any first-party lease flows
     # through it). REVERT: enable=false. Runbook: ASYMMETRIC-LEASE-AUTHORITY-ACTIVATION-RUNBOOK-20260806.md.
     mySystem.aiStack.leaseSigningAuthority.enable = true;
-    # Auto-nudge the Antigravity IDE when an advisory task is dropped into its inbox, so multi-agent
-    # rounds don't need a manual IDE prompt. Per-user systemd path unit in the owner's own session,
-    # firing the owner-gated wake. No-op when the IDE isn't open. REVERT: enable=false.
-    mySystem.aiStack.antigravityAutoWake.enable = true;
     # C2-SCI (Foundation C Q-C6-1): confined scheduler-lease-context issuer. Activated 2026-08-15 with the
     # real owner-provisioned SOPS signer key + verifier-allowlist public key. Pairs with the switchboard
     # CAPABILITY_SCHEDULER_CONTEXT_ISSUER=1 flag. REVERT: enable=false → default-OFF byte-parity.

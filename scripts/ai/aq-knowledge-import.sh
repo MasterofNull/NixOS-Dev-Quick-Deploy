@@ -43,7 +43,7 @@ if [[ -z "$AIDB_KEY" ]]; then
   exit 1
 fi
 
-# ── Generate content via delegate-to-antigravity ──────────────────────────────
+# ── Generate content via delegate-to-gemini ──────────────────────────────
 printf 'Generating explanation for: %s\n' "${TOPIC}"
 PROMPT="You are a NixOS systems expert. Write a comprehensive, accurate reference \
 document (600-1200 words) explaining: ${TOPIC}
@@ -56,25 +56,26 @@ Include:
 
 Format as plain text with section headers. Be precise and practical."
 
-ANTIGRAVITY_BIN="${SCRIPT_DIR}/delegate-to-antigravity"
-if [[ ! -x "$ANTIGRAVITY_BIN" ]]; then
-  printf 'ERROR: delegate-to-antigravity not found at %s\n' "$ANTIGRAVITY_BIN" >&2
+GEMINI_DELEGATE="${SCRIPT_DIR}/delegate-to-gemini"
+if [[ ! -x "$GEMINI_DELEGATE" ]]; then
+  printf 'ERROR: delegate-to-gemini not found at %s\n' "$GEMINI_DELEGATE" >&2
   exit 1
 fi
 
-TID="$(timeout "${GEMINI_TIMEOUT_SECONDS}" "$ANTIGRAVITY_BIN" \
-  --prompt "$PROMPT" --mode fast --role implementer --wait \
-  2>/dev/null | tail -1)" || {
-  printf 'ERROR: delegate-to-antigravity failed for topic: %s\n' "${TOPIC}" >&2
+DELEGATE_OUT="$(timeout "${GEMINI_TIMEOUT_SECONDS}" "$GEMINI_DELEGATE" \
+  --prompt "$PROMPT" --mode plan --role research --wait \
+  2>/dev/null)" || {
+  printf 'ERROR: delegate-to-gemini failed for topic: %s\n' "${TOPIC}" >&2
   exit 1
 }
-CONTENT="$("$ANTIGRAVITY_BIN" --check "$TID" 2>/dev/null)" || {
+TID="$(printf '%s\n' "$DELEGATE_OUT" | grep -oE 'gemini-[0-9]{8}-[0-9]{6}-[a-z0-9]{6}' | head -1)"
+CONTENT="$("$GEMINI_DELEGATE" --check "$TID" 2>/dev/null)" || {
   printf 'ERROR: could not retrieve output for task %s\n' "${TID}" >&2
   exit 1
 }
 
 if [[ -z "$CONTENT" ]]; then
-  printf 'ERROR: delegate-to-antigravity returned empty content\n' >&2
+  printf 'ERROR: delegate-to-gemini returned empty content\n' >&2
   exit 1
 fi
 

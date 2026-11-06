@@ -36,8 +36,7 @@
   # manifest.renames only redirects the Nix ATTR (pkgs.<stable-name> ->
   # unstablePkgs.<unstable-name>). It does not help script/shell consumers
   # that invoke the bare BINARY by its stable-era name (e.g.
-  # scripts/ai/aq-antigravity-inbox's `antigravity chat`, or
-  # scripts/health/antigravity-health.sh's `command -v antigravity`) — once
+  # any script that execs the bare `antigravity` IDE binary) — once
   # upstream renames the binary too (antigravity -> antigravity-ide, 2.5.5),
   # the bare command disappears from PATH after rebuild even though
   # pkgs.antigravity still evaluates fine. Wrap the resolved package in a

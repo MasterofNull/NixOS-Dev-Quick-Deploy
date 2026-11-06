@@ -293,8 +293,7 @@ async def _spawn_delegated_agent_instance(
     lane_norm = lane.lower().strip()
     repo_root = Path(__file__).resolve().parents[4]
     script_map = {
-        "antigravity": repo_root / "scripts" / "ai" / "delegate-to-antigravity",
-        "gemini": repo_root / "scripts" / "ai" / "delegate-to-antigravity",
+        "gemini": repo_root / "scripts" / "ai" / "delegate-to-gemini",
         "codex": repo_root / "scripts" / "ai" / "delegate-to-codex",
         "claude": repo_root / "scripts" / "ai" / "delegate-to-claude",
     }
@@ -330,8 +329,10 @@ async def _spawn_delegated_agent_instance(
     if lane_norm == "codex":
         prompt_text = f"Assigned role: {normalized_role}\n\n{task_text}"
     cmd = [str(script), "--wait", "--prompt", prompt_text]
-    if lane_norm in ("antigravity", "gemini"):
-        cmd.extend(["--role", normalized_role, "--timeout", str(int(timeout_sec))])
+    if lane_norm == "gemini":
+        # Headless Gemini is read-only here (plan mode); delegate-to-gemini has no --timeout flag.
+        gemini_role = {"coordinator": "orchestrator", "subagent": "implementer"}.get(normalized_role, normalized_role)
+        cmd.extend(["--role", gemini_role, "--mode", "plan"])
     elif lane_norm == "claude":
         claude_role = {
             "implementer": "implement",
@@ -405,7 +406,7 @@ async def handle_agents_spawn(request: web.Request) -> web.Response:
     task_text = data.get("task", "")
     if not task_text:
         return web.json_response({"error": "task required"}, status=400)
-    if lane in ("antigravity", "gemini", "codex", "claude"):
+    if lane in ("gemini", "codex", "claude"):
         instance, status_code = await _spawn_delegated_agent_instance(
             lane=lane,
             role=role,
@@ -449,7 +450,7 @@ async def handle_agents_team(request: web.Request) -> web.Response:
         if not task_text:
             results.append({"role": role, "error": "task required", "status": "skipped"})
             continue
-        if lane in ("antigravity", "gemini", "codex", "claude"):
+        if lane in ("gemini", "codex", "claude"):
             instance, _status = await _spawn_delegated_agent_instance(
                 lane=lane,
                 role=role,

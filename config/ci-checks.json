@@ -936,7 +936,6 @@
       "cmd": "scripts/testing/run-test-group.py tests-delegate",
       "paths": [
         "scripts/testing/run-test-group.py",
-        "scripts/testing/test-delegate-antigravity-background-stdio.py",
         "scripts/testing/test-delegate-attention-queue-wiring.py",
         "scripts/testing/test-delegate-codex-quota-precheck.sh",
         "scripts/testing/test-delegate-codex-shared-writable.py",
@@ -944,10 +943,10 @@
         "scripts/testing/test-delegate-failure-classification.py",
         "scripts/testing/test-delegate-response-budget-wiring.py",
         "scripts/testing/test-delegate-routing-profile-honoring.py",
-        "scripts/testing/test-delegate-to-antigravity.py",
         "scripts/testing/test-delegate-to-local-argparse.sh",
         "scripts/testing/test-delegate-to-local-launch-verification.py",
-        "scripts/testing/test-delegate-to-local-status-json.py"
+        "scripts/testing/test-delegate-to-local-status-json.py",
+        "scripts/testing/test-no-antigravity-ide-trigger.py"
       ],
       "needs": [
         "python3",
@@ -955,7 +954,6 @@
       ],
       "ci_workflow": ".github/workflows/test.yml#syntax",
       "tests": [
-        "scripts/testing/test-delegate-antigravity-background-stdio.py",
         "scripts/testing/test-delegate-attention-queue-wiring.py",
         "scripts/testing/test-delegate-codex-quota-precheck.sh",
         "scripts/testing/test-delegate-codex-shared-writable.py",
@@ -963,10 +961,10 @@
         "scripts/testing/test-delegate-failure-classification.py",
         "scripts/testing/test-delegate-response-budget-wiring.py",
         "scripts/testing/test-delegate-routing-profile-honoring.py",
-        "scripts/testing/test-delegate-to-antigravity.py",
         "scripts/testing/test-delegate-to-local-argparse.sh",
         "scripts/testing/test-delegate-to-local-launch-verification.py",
-        "scripts/testing/test-delegate-to-local-status-json.py"
+        "scripts/testing/test-delegate-to-local-status-json.py",
+        "scripts/testing/test-no-antigravity-ide-trigger.py"
       ]
     },
     {
@@ -1093,13 +1091,6 @@
         "scripts/testing/test-alert-engine-builtins.py",
         "scripts/testing/test-analysis-only-stagnation-mode.py",
         "scripts/testing/test-anti-fabrication-lint.py",
-        "scripts/testing/test-antigravity-claim-receipt.py",
-        "scripts/testing/test-antigravity-health-credential-check.py",
-        "scripts/testing/test-antigravity-health-quota.sh",
-        "scripts/testing/test-antigravity-implementer-lane.py",
-        "scripts/testing/test-antigravity-inbox.py",
-        "scripts/testing/test-antigravity-liveness.py",
-        "scripts/testing/test-antigravity-routing-honesty.py",
         "scripts/testing/test-api-auth-hardening-smoke.py",
         "scripts/testing/test-api-client-gen.py",
         "scripts/testing/test-apparmor-fix-agent-generalization.py",
@@ -1187,13 +1178,6 @@
         "scripts/testing/test-alert-engine-builtins.py",
         "scripts/testing/test-analysis-only-stagnation-mode.py",
         "scripts/testing/test-anti-fabrication-lint.py",
-        "scripts/testing/test-antigravity-claim-receipt.py",
-        "scripts/testing/test-antigravity-health-credential-check.py",
-        "scripts/testing/test-antigravity-health-quota.sh",
-        "scripts/testing/test-antigravity-implementer-lane.py",
-        "scripts/testing/test-antigravity-inbox.py",
-        "scripts/testing/test-antigravity-liveness.py",
-        "scripts/testing/test-antigravity-routing-honesty.py",
         "scripts/testing/test-api-auth-hardening-smoke.py",
         "scripts/testing/test-api-client-gen.py",
         "scripts/testing/test-apparmor-fix-agent-generalization.py",
@@ -1772,7 +1756,6 @@
         "scripts/testing/test-spec-variant-packs.py",
         "scripts/testing/test-state-authorities.py",
         "scripts/testing/test-stateful-downgrade-policy.py",
-        "scripts/testing/test-subagent-workflows-antigravity.py",
         "scripts/testing/test-suggested-ai-repo-candidates.py",
         "scripts/testing/test-suspend-resume-contract.py",
         "scripts/testing/test-sweeper-taxonomy.py",
@@ -1860,7 +1843,6 @@
         "scripts/testing/test-spec-variant-packs.py",
         "scripts/testing/test-state-authorities.py",
         "scripts/testing/test-stateful-downgrade-policy.py",
-        "scripts/testing/test-subagent-workflows-antigravity.py",
         "scripts/testing/test-suggested-ai-repo-candidates.py",
         "scripts/testing/test-suspend-resume-contract.py",
         "scripts/testing/test-sweeper-taxonomy.py",
@@ -2191,11 +2173,6 @@
       "script": "scripts/testing/test-aidb-library-catalog-sync-fetch.py",
       "class": "live-service",
       "reason": "host-only: needs a live local service (switchboard/dashboard/coordinator/AIDB); last output: Is the server running on that host and accepting TCP/IP connections?"
-    },
-    {
-      "script": "scripts/testing/test-antigravity-env-strengthening.py",
-      "class": "sandbox-env",
-      "reason": "host-only: asserts the real user's ~/.gemini/config/mcp_config.json exists; a CI runner has no Gemini/Antigravity install"
     },
     {
       "script": "scripts/testing/test-approval-recovery.py",
