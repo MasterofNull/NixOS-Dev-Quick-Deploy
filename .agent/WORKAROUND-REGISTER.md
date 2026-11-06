@@ -434,14 +434,15 @@ Codex lane absent).
 - fix-path: verified-acceptance slice 3 after the signer MVP round trip; until then a signed-shaped `approval_ref` fails closed.
 - class: governance · severity: medium · SSOT `.agents/plans/system-integrity-recovery/VERIFIED-ACCEPTANCE.md`.
 
-## CI-MASK-NIX-BUILD-CHECK-FLAKE — `nix-build.yml` step "Check flake" masked — OPEN
+## CI-MASK-NIX-BUILD-CHECK-FLAKE — `nix-build.yml` step "Check flake" masked — CLOSED
 - symptom: `nix-build.yml` step "Check flake" runs `nix flake check --all-systems || true`, so it can never fail.
 - band-aid in place? yes: `|| true` / `continue-on-error: true` annotated `# KNOWN-FAILING:` in the workflow.
 - root cause: `--all-systems` evaluates aarch64-linux outputs, which abort with `error: Unsupported system: aarch64-linux` (run 41875000226, main f77faf19); the mask hid this from the start.
 - producer to fix: `.github/workflows/nix-build.yml` Check flake step (and the flake's per-system outputs).
 - fix-path: either restrict the check to the supported system (drop `--all-systems`) or make the aarch64 outputs evaluable, then remove `|| true` and the KNOWN-FAILING comment; guard `scripts/governance/check-workflow-masks.py` keeps the mask annotated until then.
-- class: T2 validation-gap · severity: medium · status: OPEN · opened: 2026-11-04.
+- class: T2 validation-gap · severity: medium · status: CLOSED · opened: 2026-11-04.
 - evidence: `docs/harness-first/evidence/2026-11-04-ci-unmask-gates.md`.
+- closed 2026-11-04: flake.nix dev shells skip packages that cannot evaluate off their native system (x86_64 output unchanged); `|| true` and the KNOWN-FAILING comment removed (branch fix/ci-flake-check-systems).
 
 ## CI-MASK-SHELLCHECK-SHELLCHECK-ANALYSIS — `shellcheck.yml` ShellCheck Analysis step masked — CLOSED
 - symptom: `shellcheck.yml` ShellCheck Analysis step has `continue-on-error: true`, so shellcheck errors never fail the workflow.
@@ -462,3 +463,11 @@ Codex lane absent).
 - class: T2 validation-gap · severity: medium · status: CLOSED · opened: 2026-11-04.
 - evidence: `docs/harness-first/evidence/2026-11-04-ci-unmask-gates.md`.
 - closed 2026-11-04: all shellcheck warning-severity findings under scripts/ fixed at the producer (PR #691, 288 -> 0); `continue-on-error` and the KNOWN-FAILING comment removed (branch fix/ci-unmask-validate-shell).
+
+## FLAKE-NIXIFIED-AI-HELD-58A84491 — nixified-ai held at 58a84491 (2026-11-03) — OPEN
+- symptom: a fresh `nix flake update` locks nixified-ai 0f0fa9cd (2026-11-05), whose flake declares a relative path input `enable-container-tests = path:./flags/container-tests/disabled`; as a dependency Nix records it as an unlocked input, and CI's `nix flake show --no-write-lock-file` fails with `lock file contains unlocked input '{"path":"./flags/container-tests/disabled","type":"path"}'` (PR #698, run 42097403547).
+- band-aid in place? yes: flake.lock pins nixified-ai to 58a844917a140f465e5760e9ee03dd084dbf9008, the newest upstream commit without that input (`nix flake lock --override-input nixified-ai github:nixified-ai/flake/58a84491...`). flake.nix `original` still tracks github:nixified-ai/flake, so the next plain `nix flake update` re-pulls the breaking revision.
+- root cause: upstream nixified-ai/flake introduced the relative path input in bfedfcf8 (2026-11-03); relative path inputs of a non-root flake are not lockable for consumers.
+- producer to fix: upstream nixified-ai/flake (owner-authored issue/PR, propose-not-push; draft in .agents/delegation/outputs/flake-update/upstream-issue-nixified-ai.md).
+- fix-path: when upstream locks the flag differently (or drops it), run a plain `nix flake update` and close this entry. Until then, every flake refresh must re-apply the override for nixified-ai only.
+- class: T3 dependency-hold · severity: low · status: OPEN · opened: 2026-11-05 · review-by: 2026-12-05.

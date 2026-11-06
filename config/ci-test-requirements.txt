@@ -1,0 +1,22 @@
+# Python packages the manifest test groups (scripts/testing/test-*) import; installed by the
+# test.yml `manifest-tests` job. Local parity: CI_CLEAN_ENV_REQS=config/ci-test-requirements.txt scripts/governance/ci-clean-env.sh --all --only tests-aq
+pyyaml
+cryptography
+jsonschema
+pytest
+httpx
+fastapi
+pydantic
+aiohttp
+numpy
+rich
+requests
+redis
+packaging
+psutil
+beautifulsoup4
+uvicorn
+prompt_toolkit
+prometheus_client
+qdrant-client
+rfc3987
