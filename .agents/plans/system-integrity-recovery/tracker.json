@@ -61,6 +61,13 @@
       "detection": {
         "commit_match": [
           "\\(#634\\)"
+        ],
+        "wired_caller": {
+          "file": ".github/workflows/review-disposition.yml",
+          "pattern": "check-review-disposition\\.py"
+        },
+        "tests": [
+          "scripts/testing/test-review-disposition-check.py"
         ]
       },
       "acceptance": {
@@ -101,6 +108,13 @@
       "detection": {
         "commit_match": [
           "\\(#636\\)"
+        ],
+        "wired_caller": {
+          "file": ".github/workflows/review-disposition.yml",
+          "pattern": "check-pr-body-format\\.py"
+        },
+        "tests": [
+          "scripts/testing/test-pr-body-format-check.py"
         ]
       },
       "acceptance": {
@@ -121,6 +135,13 @@
       "detection": {
         "commit_match": [
           "\\(#635\\)"
+        ],
+        "wired_caller": {
+          "file": "scripts/governance/tier0.d/check-pm-tracker.sh",
+          "pattern": "--check-owner-acceptance"
+        },
+        "tests": [
+          "scripts/testing/test-pm-tracker-acceptance-authority.py"
         ]
       },
       "acceptance": {
@@ -140,7 +161,11 @@
       "deps": [],
       "detection": {
         "commit_match": [
-          "feat\\(ci\\): .*all test files"
+          "feat\\(ci\\): .*all test files",
+          "gate every test into CI coverage \\(P0\\.5\\)"
+        ],
+        "tests": [
+          "scripts/testing/test-ci-test-coverage-gate.py"
         ]
       },
       "acceptance": {
@@ -221,6 +246,13 @@
       "detection": {
         "commit_match": [
           "feat\\(pm-tracker\\): .*activation evidence"
+        ],
+        "wired_caller": {
+          "file": "scripts/governance/tier0.d/check-pm-tracker.sh",
+          "pattern": "\"\\$\\{plan_dir\\}\" --check"
+        },
+        "tests": [
+          "scripts/testing/test-pm-tracker-activation-cap.py"
         ]
       },
       "acceptance": {
@@ -241,6 +273,13 @@
       "detection": {
         "commit_match": [
           "feat\\(pm-tracker\\): .*untrusted-author hold"
+        ],
+        "wired_caller": {
+          "file": "scripts/governance/tier0.d/check-pm-tracker.sh",
+          "pattern": "--check-untrusted-items"
+        },
+        "tests": [
+          "scripts/testing/test-pm-tracker-untrusted-hold.py"
         ]
       },
       "acceptance": {
@@ -261,6 +300,13 @@
       "detection": {
         "commit_match": [
           "fix\\(security\\): validate AppArmor fix-agent rules"
+        ],
+        "wired_caller": {
+          "file": "scripts/ai/aq-approve",
+          "pattern": "from apparmor_rules import rule_error"
+        },
+        "tests": [
+          "scripts/testing/test-apparmor-fix-agent-safety.py"
         ]
       },
       "acceptance": {
@@ -281,6 +327,13 @@
       "detection": {
         "commit_match": [
           "fix\\(egress\\): attribute gemini lane"
+        ],
+        "wired_caller": {
+          "file": "scripts/ai/delegate-to-gemini",
+          "pattern": "remote_lane_egress\\.py"
+        },
+        "tests": [
+          "scripts/testing/test-remote-lane-egress.py"
         ]
       },
       "acceptance": {
@@ -301,6 +354,13 @@
       "detection": {
         "commit_match": [
           "fix\\(mcp\\): negotiate protocol version"
+        ],
+        "wired_caller": {
+          "file": ".mcp.json",
+          "pattern": "mcp-bridge-hybrid"
+        },
+        "tests": [
+          "scripts/testing/test-mcp-bridge-protocol-negotiation.py"
         ]
       },
       "acceptance": {
@@ -321,6 +381,14 @@
       "detection": {
         "commit_match": [
           "fix\\(rea,intel\\):"
+        ],
+        "wired_caller": {
+          "file": ".mcp.json",
+          "pattern": "mcp-rea-sandboxed"
+        },
+        "tests": [
+          "scripts/testing/test-rea-sandbox.py",
+          "scripts/testing/test-intelligence-classifier.py"
         ]
       },
       "acceptance": {
@@ -341,6 +409,10 @@
       "detection": {
         "commit_match": [
           "feat\\(delegation\\): .*review"
+        ],
+        "tests": [
+          "scripts/testing/test-aq-review-request.py",
+          "scripts/testing/test-delegate-headless-budget.py"
         ]
       },
       "acceptance": {
@@ -360,7 +432,14 @@
       "deps": [],
       "detection": {
         "commit_match": [
-          "fix\\(delegation\\): .*inhibit"
+          "feat\\(mobility\\): sleep-resilient local work"
+        ],
+        "wired_caller": {
+          "file": "scripts/ai/delegate-to-codex",
+          "pattern": "sleep-inhibit\\.sh"
+        },
+        "tests": [
+          "scripts/testing/test-delegate-sleep-inhibit.py"
         ]
       },
       "acceptance": {
@@ -380,7 +459,11 @@
       "deps": [],
       "detection": {
         "commit_match": [
-          "fix\\(llama\\):"
+          "feat\\(power\\): AC-aware power profile .*\\(P1\\.7\\)",
+          "feat\\(power\\): turn on P1\\.7"
+        ],
+        "tests": [
+          "scripts/testing/test-llm-speed-probe.py"
         ]
       },
       "acceptance": {
@@ -403,6 +486,13 @@
       "detection": {
         "commit_match": [
           "feat\\(mobility\\):"
+        ],
+        "wired_caller": {
+          "file": "scripts/ai/delegate-to-local",
+          "pattern": "conn_retry\\.py"
+        },
+        "tests": [
+          "scripts/testing/test-mobility-sleep-resilience.py"
         ]
       },
       "acceptance": {
@@ -445,6 +535,14 @@
       "detection": {
         "commit_match": [
           "fix\\(rebuild-path\\):"
+        ],
+        "wired_caller": {
+          "file": "scripts/ai/aq-rsi",
+          "pattern": "import rsi_paths"
+        },
+        "tests": [
+          "scripts/testing/test-runtime-writers-leave-checkout-clean.py",
+          "scripts/testing/test-runtime-state-out-of-tracked-config.py"
         ]
       },
       "acceptance": {
