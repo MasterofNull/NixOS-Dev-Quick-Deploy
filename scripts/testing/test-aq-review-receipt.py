@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Tests for scripts/ai/aq-review-receipt (mint/verify/audit) with a temp registry."""
 import json
+import os
 import pathlib
 import subprocess
 import sys
@@ -184,6 +185,31 @@ class T(unittest.TestCase):
         legacy = self.d / "legacy.json"
         legacy.write_text(json.dumps({**json.loads(f.read_text()), "schema": 1}))
         self.assertNotEqual(self._publish(legacy).returncode, 0)  # schema 1 cannot be published
+
+    def test_push_timeout_is_clean_and_leaves_branch_untouched(self):
+        head = self._repo()
+        r, f = self._ob(head)
+        hook = self.bare / "hooks/pre-receive"
+        hook.write_text("#!/bin/sh\nsleep 6\nexit 0\n")
+        hook.chmod(0o755)
+        status0, head0 = self.g("status", "--porcelain"), self.g("rev-parse", "HEAD")
+        p = subprocess.run([sys.executable, str(TOOL), "--root", str(self.work), "--registry", str(self.reg), "publish", str(f)],
+                           capture_output=True, text=True, env={**os.environ, "AQ_REVIEW_RECEIPT_PUSH_TIMEOUT": "1"})
+        self.assertEqual(p.returncode, 1, p.stderr)
+        self.assertNotIn("Traceback", p.stderr)
+        lines = [l for l in p.stderr.splitlines() if l.strip()]
+        self.assertEqual(len(lines), 1, lines)
+        self.assertTrue(lines[0].startswith("publish FAILED: git timed out after 1s"), lines)
+        self.assertIn("not retrying", lines[0])
+        self.assertEqual((self.g("status", "--porcelain"), self.g("rev-parse", "HEAD"), self.g("rev-parse", "--abbrev-ref", "HEAD")),
+                         (status0, head0, "pr"))
+
+    def test_published_commit_identity_has_dotted_domain(self):
+        head = self._repo()
+        r, f = self._ob(head)
+        self.assertEqual(self._publish(f).returncode, 0)
+        who = subprocess.run(["git", "-C", str(self.bare), "log", "-1", "--format=%ae %ce", "review-receipts"], capture_output=True, text=True).stdout.split()
+        self.assertEqual(who, ["aq-review-receipt@noreply.invalid"] * 2)
 
 
 if __name__ == "__main__":
