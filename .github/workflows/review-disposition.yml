@@ -8,6 +8,7 @@ on:
 
 permissions:
   contents: read
+  pull-requests: read
 
 jobs:
   review-disposition:
@@ -17,7 +18,9 @@ jobs:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09  # v5
         with:
           fetch-depth: 0
-      - name: Verify independent, head-bound review disposition
+      - name: Verify independent, head-bound review disposition (live PR state + review-receipts branch)
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: python3 scripts/governance/check-review-disposition.py "$GITHUB_EVENT_PATH"
       - name: Verify PR body layout (Details, What, How, Why)
         run: python3 scripts/governance/check-pr-body-format.py "$GITHUB_EVENT_PATH"

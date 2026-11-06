@@ -2052,7 +2052,7 @@
     },
     {
       "script": "scripts/governance/check-review-disposition.py",
-      "reason": "reads the pull_request event payload ($GITHUB_EVENT_PATH: PR body + head sha); inherently remote. Local parity: .githooks/commit-msg Review-Disposition fields + scripts/testing/test-review-disposition-check.py"
+      "reason": "reads live PR state from the GitHub API and the review-receipts branch of origin using the Actions token, taking only the PR number from the event payload ($GITHUB_EVENT_PATH); inherently remote. Local parity: .githooks/commit-msg Review-Disposition fields + scripts/testing/test-review-disposition-check.py"
     },
     {
       "script": "scripts/governance/check-pr-body-format.py",

@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""Mint, verify and audit review receipts that back PR `Review-Receipt:` claims.
+"""Mint, publish, verify and audit review receipts that back PR review claims.
+
+`mint --offbranch` writes a schema 2 receipt (repo, PR, head, tree, base, policy)
+and `publish` appends it to the `review-receipts` branch with git plumbing, so the
+PR head never moves. Plain `mint` still writes the legacy in-tree schema 1 receipt.
 
 A receipt ties a PR review claim to a real harness reviewer run recorded in
 .agents/delegation/registry.jsonl. Detection-grade only: lanes share one Unix
@@ -16,8 +20,11 @@ except Exception:
 import argparse
 import hashlib
 import json
+import os
 import re
+import subprocess
 import sys
+import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -29,6 +36,9 @@ from delegation_dir import resolve_delegation_dir, resolve_main_root  # noqa: E4
 DEFAULT_REGISTRY = resolve_delegation_dir(Path(__file__).resolve().parent) / "registry.jsonl"
 MAIN_ROOT = resolve_main_root(Path(__file__).resolve().parent)
 RECEIPT_DIR = ".agent/reviews/receipts"
+RECEIPT_BRANCH = "review-receipts"
+POLICY_VERSION = "review-receipts/1"
+PUBLISH_RETRIES = 5
 VERDICTS = ("PASS", "PASS_WITH_FOLLOWUPS", "REQUEST_CHANGES")
 
 
@@ -111,11 +121,37 @@ def cmd_mint(a) -> int:
         "output_file": rel, "output_sha256": hashlib.sha256(full.read_bytes()).hexdigest(),
         "created_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
     }
-    out = root / RECEIPT_DIR / f"pr{a.pr}-{a.head[:12]}.json"
+    if a.offbranch:
+        try:
+            receipt.update(schema=2, repo=a.repo or _repo_slug(root), policy_version=POLICY_VERSION,
+                           tree=_git(root, "rev-parse", f"{a.head}^{{tree}}"),
+                           base_commit=a.base or _git(root, "merge-base", a.head, "refs/remotes/origin/main"))
+        except (subprocess.SubprocessError, OSError, ValueError) as exc:
+            print(f"mint FAILED: cannot bind head to tree/base/repo ({exc.__class__.__name__}); fetch the head and origin/main", file=sys.stderr)
+            return 1
+        out = Path(a.out) if a.out else MAIN_ROOT / ".agents/delegation/review-receipts" / f"pr{a.pr}-{a.head[:12]}.json"
+    else:
+        out = root / RECEIPT_DIR / f"pr{a.pr}-{a.head[:12]}.json"
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(receipt, indent=2) + "\n", encoding="utf-8")
-    print(f"wrote {out.relative_to(root)}")
+    print(f"wrote {out}" if a.offbranch else f"wrote {out.relative_to(root)}")
     return 0
+
+
+def _git(root, *args, env=None, input=None):
+    r = subprocess.run(["git", "-C", str(root), "-c", "commit.gpgsign=false", *args], capture_output=True, text=True,
+                       env=env, input=input, timeout=180)
+    if r.returncode != 0:
+        raise subprocess.CalledProcessError(r.returncode, args, r.stdout, r.stderr)
+    return r.stdout.strip()
+
+
+def _repo_slug(root) -> str:
+    url = _git(root, "remote", "get-url", "origin")
+    m = re.search(r"github\.com[:/]([\w.-]+/[\w.-]+?)(?:\.git)?/?$", url)
+    if not m:
+        raise ValueError("cannot derive owner/repo from origin; pass --repo")
+    return m.group(1)
 
 
 def verify_receipt(path: Path, root: Path, registry: Path) -> list[str]:
@@ -123,8 +159,8 @@ def verify_receipt(path: Path, root: Path, registry: Path) -> list[str]:
         r = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError) as exc:
         return [f"unreadable receipt: {exc.__class__.__name__}"]
-    if not isinstance(r, dict) or r.get("schema") != 1:
-        return ["not a schema 1 receipt"]
+    if not isinstance(r, dict) or r.get("schema") not in (1, 2):
+        return ["not a schema 1 or 2 receipt"]
     entry = load_registry(registry).get(r.get("run_id"))
     errs, full, rel, text = _run_checks(entry, root)
     if entry and norm(entry.get("agent")) != norm(r.get("reviewer_lane")):
@@ -143,7 +179,76 @@ def verify_receipt(path: Path, root: Path, registry: Path) -> list[str]:
             errs.append("output is empty or does not mention reviewed head")
         if r.get("verdict") not in VERDICTS or r.get("verdict") != parse_verdict(text):
             errs.append("receipt verdict != last Review-Disposition in output")
+    if r.get("schema") == 2:
+        for k in ("tree", "base_commit"):
+            if not re.fullmatch(r"[0-9a-f]{40}", str(r.get(k, ""))):
+                errs.append(f"receipt {k} must be 40 lowercase hex")
+        if not re.fullmatch(r"[\w.-]+/[\w.-]+", str(r.get("repo", ""))):
+            errs.append("receipt repo must be owner/name")
+        if r.get("policy_version") != POLICY_VERSION:
+            errs.append("receipt policy_version unknown")
+        if type(r.get("pr")) is not int:
+            errs.append("receipt pr must be an integer")
     return errs
+
+
+def cmd_publish(a) -> int:
+    """Append a verified schema 2 receipt to the review-receipts branch (plumbing only; idempotent)."""
+    root = Path(a.root).resolve()
+    src = Path(a.receipt)
+    errs = verify_receipt(src, root, Path(a.registry) if a.registry else DEFAULT_REGISTRY)
+    try:
+        r = json.loads(src.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        r = {}
+    if r.get("schema") != 2:
+        errs.append("publish needs a schema 2 receipt (mint --offbranch)")
+    if errs:
+        for e in errs:
+            print(f"publish FAILED: {e}", file=sys.stderr)
+        return 1
+    path = f"receipts/pr{r['pr']}-{r['reviewed_head_sha'][:12]}.json"
+    blob_text = json.dumps(r, indent=2) + "\n"
+    env_id = {"GIT_AUTHOR_NAME": "aq-review-receipt", "GIT_AUTHOR_EMAIL": "noreply@invalid",
+              "GIT_COMMITTER_NAME": "aq-review-receipt", "GIT_COMMITTER_EMAIL": "noreply@invalid"}
+    ref = f"refs/heads/{RECEIPT_BRANCH}"
+    last = ""
+    for _ in range(PUBLISH_RETRIES):
+        try:
+            parent = ""
+            if _git(root, "ls-remote", a.remote, ref):
+                _git(root, "fetch", "--no-tags", "-q", a.remote, ref)
+                parent = _git(root, "rev-parse", "FETCH_HEAD")
+            with tempfile.TemporaryDirectory() as td:
+                env = {**os.environ, **env_id, "GIT_INDEX_FILE": os.path.join(td, "index")}
+                if parent:
+                    _git(root, "read-tree", parent, env=env)
+                    try:
+                        existing = json.loads(_git(root, "show", f"{parent}:{path}"))
+                    except subprocess.CalledProcessError:
+                        existing = None
+                    if existing is not None:
+                        same = {k: v for k, v in existing.items() if k != "created_at"} == {k: v for k, v in r.items() if k != "created_at"}
+                        if same:
+                            print(f"already published: {RECEIPT_BRANCH}:{path}")
+                            return 0
+                        if existing.get("verdict") != "REQUEST_CHANGES":
+                            print(f"publish FAILED: {path} already holds a different {existing.get('verdict')} receipt (append-only)", file=sys.stderr)
+                            return 1
+                blob = _git(root, "hash-object", "-w", "--stdin", input=blob_text)
+                _git(root, "update-index", "--add", "--cacheinfo", f"100644,{blob},{path}", env=env)
+                tree = _git(root, "write-tree", env=env)
+                cmd = ["commit-tree", tree, "-m", f"receipt PR {r['pr']} {r['reviewed_head_sha'][:12]} {r['verdict']}"]
+                if parent:
+                    cmd += ["-p", parent]
+                commit = _git(root, *cmd, env=env)
+            _git(root, "push", "-q", a.remote, f"{commit}:{ref}")
+            print(f"published {RECEIPT_BRANCH}:{path} ({commit[:12]})")
+            return 0
+        except subprocess.CalledProcessError as exc:
+            last = (exc.stderr or "").strip()[:300]  # non-fast-forward or transient: rebuild on the new tip
+    print(f"publish FAILED after {PUBLISH_RETRIES} attempts: {last}", file=sys.stderr)
+    return 1
 
 
 def cmd_verify(a) -> int:
@@ -186,7 +291,15 @@ def main() -> int:
     m.add_argument("--pr", type=int, required=True)
     m.add_argument("--head", required=True)
     m.add_argument("--author-lane", required=True)
+    m.add_argument("--offbranch", action="store_true", help="write a schema 2 receipt for `publish`")
+    m.add_argument("--repo", default="")
+    m.add_argument("--base", default="")
+    m.add_argument("--out", default="")
     m.set_defaults(fn=cmd_mint)
+    pb = sub.add_parser("publish")
+    pb.add_argument("receipt")
+    pb.add_argument("--remote", default="origin")
+    pb.set_defaults(fn=cmd_publish)
     v = sub.add_parser("verify")
     v.add_argument("receipt")
     v.set_defaults(fn=cmd_verify)
