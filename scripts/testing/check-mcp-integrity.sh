@@ -8,7 +8,7 @@ set -euo pipefail
 MCP_SERVER_DIR="${MCP_SERVER_DIR:-}"
 if [[ -z "$MCP_SERVER_DIR" ]]; then
   # Try to locate the repo relative to this script
-  MCP_SERVER_DIR="$(cd "$(dirname "$0")/.." && pwd)/ai-stack/mcp-servers"
+  MCP_SERVER_DIR="$(cd "$(dirname "$0")/../.." && pwd)/ai-stack/mcp-servers"
 fi
 
 BASELINE_FILE="${MCP_INTEGRITY_BASELINE:-/var/lib/nixos-ai-stack/mcp-source-baseline.sha256}"
@@ -64,8 +64,14 @@ fi
 # Write alert
 mkdir -p "$ALERT_DIR"
 alert_file="$ALERT_DIR/mcp-integrity-$(date +%Y%m%d-%H%M%S).json"
-changed_json=$(printf '%s\n' "${changed_files[@]+"${changed_files[@]}"}" | jq -R . | jq -s .)
-missing_json=$(printf '%s\n' "${missing_files[@]+"${missing_files[@]}"}" | jq -R . | jq -s .)
+changed_json='[]'
+if [[ "${#changed_files[@]}" -gt 0 ]]; then
+  changed_json=$(printf '%s\n' "${changed_files[@]}" | jq -R . | jq -s .)
+fi
+missing_json='[]'
+if [[ "${#missing_files[@]}" -gt 0 ]]; then
+  missing_json=$(printf '%s\n' "${missing_files[@]}" | jq -R . | jq -s .)
+fi
 cat > "$alert_file" <<EOF
 {
   "timestamp": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
