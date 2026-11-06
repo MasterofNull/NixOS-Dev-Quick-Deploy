@@ -49,7 +49,7 @@ def test_missing_tool_warns_and_fail_exits_nonzero():
         mf.write_text(json.dumps({"checks": [
             {"id": "a", "cmd": "scripts/governance/check-world-writable.sh", "paths": [], "needs": ["no-such-tool-xyz"], "ci_workflow": "x"},
             {"id": "b", "cmd": "scripts/does-not-exist.sh", "paths": [], "needs": [], "ci_workflow": "x"}]}))
-        r = run([str(RUNNER), "--all"], CI_CHECKS_MANIFEST=str(mf))
+        r = run([str(RUNNER), "--all"], CI_CHECKS_MANIFEST=str(mf), CI="")  # CI=true in the Actions env turns the WARN into a FAIL
         assert "[WARN] a" in r.stdout and "[FAIL] b" in r.stdout and r.returncode == 1, r.stdout
 
 def _mf(d, tool):

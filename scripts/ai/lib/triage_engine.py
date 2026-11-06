@@ -389,6 +389,7 @@ class JournalStreamTriage:
 
 def health_summary(repo_root: Optional[Path] = None) -> Dict[str, Any]:
     """Top-level entrypoint for QA checks and dashboard route."""
-    state_dir = (repo_root or _DEFAULT_REPO_ROOT) / ".agent" / "triage"
+    env_dir = os.getenv("AQ_TRIAGE_STATE_DIR")
+    state_dir = Path(env_dir) if env_dir else (repo_root or _DEFAULT_REPO_ROOT) / ".agent" / "triage"
     engine = JournalStreamTriage(state_dir=state_dir)
     return engine.health_summary()

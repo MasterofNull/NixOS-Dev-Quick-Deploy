@@ -25,6 +25,12 @@ def run_delegate(args):
     # Private delegation dir: the live shared ledger's budget state must not decide the outcome.
     env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
     env["AQ_DELEGATION_DIR"] = tempfile.mkdtemp(prefix="aq-deleg-test-")
+    # delegate-to-codex checks the binary exists before parsing flags; an executable stub named codex satisfies it
+    # (--print-argv never runs it).
+    stub = Path(env["AQ_DELEGATION_DIR"]) / "codex"
+    stub.write_text("#!/bin/sh\nexit 0\n")
+    stub.chmod(0o755)
+    env.setdefault("CODEX_BIN", str(stub))
     try:
         result = subprocess.run(
             cmd,

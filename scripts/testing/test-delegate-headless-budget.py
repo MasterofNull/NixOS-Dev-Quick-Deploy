@@ -44,7 +44,7 @@ def run_cmd(cmd, env=None, cwd=None):
 
 def test_grounding_delegate_mode():
     """Test that grounding block contains DELEGATE MODE and is reasonable size."""
-    cmd = f"source {GROUNDING_SCRIPT} && harness_grounding codex"
+    cmd = ["bash", "-c", f"source {GROUNDING_SCRIPT} && harness_grounding codex"]  # `source` is bash-only; sh is dash on ubuntu
     rc, out, err = run_cmd(cmd, env={}, cwd=REPO_ROOT)
 
     if rc != 0:
