@@ -30,6 +30,8 @@
     };
     nixified-ai = {
       url = "github:nixified-ai/flake";
+      # Upstream declares this as a relative path input, which consumers cannot lock.
+      inputs.enable-container-tests.url = "github:nixified-ai/flake?dir=flags/container-tests/disabled";
     };
     nixos-rocm = {
       url = "github:nixos-rocm/nixos-rocm";
