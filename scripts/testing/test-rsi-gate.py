@@ -22,9 +22,11 @@ INC = {"id": "inc1", "producer": "p", "path": "x", "authority": "a", "error": "b
 T0 = datetime(2026, 10, 1, 12, 0, tzinfo=timezone.utc)
 
 
-def _claimer(store, start, out, n):
+def _claimer(store, start, out, n, done):
     start.wait()
     out.put(gate.claim("row1", f"w{n}", 60, store=Path(store)))
+    # claim() reclaims a lease whose same-host owner pid is dead, so the winner must outlive the race.
+    done.wait(30)
 
 
 def _reserver(state, start, out):
@@ -69,12 +71,15 @@ class LeaseTests(unittest.TestCase):
 
     def test_concurrent_claim_once(self):
         ctx = multiprocessing.get_context("fork")
-        start, out = ctx.Event(), ctx.Queue()
-        procs = [ctx.Process(target=_claimer, args=(str(self.store), start, out, n)) for n in range(6)]
+        start, done, out = ctx.Event(), ctx.Event(), ctx.Queue()
+        procs = [ctx.Process(target=_claimer, args=(str(self.store), start, out, n, done)) for n in range(6)]
         for p in procs: p.start()
         start.set()
-        for p in procs: p.join(10)
-        results = [out.get(timeout=5) for _ in procs]
+        try:
+            results = [out.get(timeout=30) for _ in procs]
+        finally:
+            done.set()
+            for p in procs: p.join(10)
         self.assertEqual(results.count(True), 1)
 
     def test_expiry_reclaim_and_release_owner_check(self):

@@ -209,8 +209,13 @@ def owned_setup(sb, touch):
     sb.commit()
     sb.put(touch, "changed\n")
     sb.stage()
+    # The sandbox HOME is empty, so a rustup-managed cargo (CI runners) finds no toolchain and the gate
+    # fails for a reason unrelated to scope; pin the toolchain dirs to the invoking user's real ones.
+    real_home = Path(os.environ.get("HOME", "/"))
     return {"env": {"OWNED_PATHS": "owned/", "SCOPE_BASE": "HEAD", "ALLOW_UNCOMMITTED": "1",
-                    "CARGO_TARGET_DIR": str(sb.root / "_target")}}
+                    "CARGO_TARGET_DIR": str(sb.root / "_target"),
+                    "CARGO_HOME": os.environ.get("CARGO_HOME", str(real_home / ".cargo")),
+                    "RUSTUP_HOME": os.environ.get("RUSTUP_HOME", str(real_home / ".rustup"))}}
 
 
 def pm_setup(sb, tracker_text):
@@ -433,7 +438,7 @@ def meta_check() -> list:
 
 
 def main() -> int:
-    fails, skips = [], []
+    fails, skips, reasons = [], [], {}
     errs = meta_check()
     for e in errs:
         print(f"FAIL meta: {e}")
@@ -449,13 +454,19 @@ def main() -> int:
         except Exception as e:  # a harness error is a failure, never a pass
             print(f"FAIL {label}: harness error {type(e).__name__}: {e}")
             fails.append(label)
+            reasons[label] = f"harness error {type(e).__name__}: {e}"
             continue
         if ok:
             print(f"PASS {label} (rc={rc})")
         else:
-            print(f"FAIL {label}: rc={rc} want={c.want} msg=/{c.msg}/\n    " + out.strip().replace("\n", "\n    ")[-900:])
+            tail = out.strip().replace("\n", "\n    ")[-900:]
+            print(f"FAIL {label}: rc={rc} want={c.want} msg=/{c.msg}/\n    " + tail)
             fails.append(label)
+            reasons[label] = f"rc={rc} want={c.want} msg=/{c.msg}/ last-output: " + " | ".join(out.strip().splitlines()[-2:])[-300:]
     n = len(CASES)
+    # Last lines of output: the CI runner shows only the tail, so failures must be named here.
+    for label in fails:
+        print(f"  FAILED: {label} -- {reasons.get(label, 'see above')}")
     print(f"gate-mutation: {n - len(fails) - len(skips)}/{n} passed, {len(skips)} skipped, {len(fails)} failed; "
           f"{len({c.gate for c in CASES})} gates mutated here, {len(COVERED_ELSEWHERE)} covered elsewhere")
     return 1 if fails else 0
