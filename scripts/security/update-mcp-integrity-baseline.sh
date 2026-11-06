@@ -5,7 +5,7 @@ set -euo pipefail
 
 MCP_SERVER_DIR="${MCP_SERVER_DIR:-}"
 if [[ -z "$MCP_SERVER_DIR" ]]; then
-  MCP_SERVER_DIR="$(cd "$(dirname "$0")/.." && pwd)/ai-stack/mcp-servers"
+  MCP_SERVER_DIR="$(cd "$(dirname "$0")/../.." && pwd)/ai-stack/mcp-servers"
 fi
 
 BASELINE_FILE="${MCP_INTEGRITY_BASELINE:-/var/lib/nixos-ai-stack/mcp-source-baseline.sha256}"
@@ -18,6 +18,12 @@ find "$MCP_SERVER_DIR" -name "*.py" -type f | sort | while read -r f; do
 done > "$tmp"
 
 count=$(wc -l < "$tmp")
+if [[ "$count" -eq 0 ]]; then
+  # Never replace an existing baseline with an empty one: it would verify nothing.
+  rm -f "$tmp"
+  echo "[mcp-integrity-baseline] ERROR: no .py files found under $MCP_SERVER_DIR - baseline $BASELINE_FILE NOT updated" >&2
+  exit 1
+fi
 # Install with 0644 so the DynamicUser integrity-check service can read it
 install -m 644 "$tmp" "$BASELINE_FILE"
 rm -f "$tmp"
