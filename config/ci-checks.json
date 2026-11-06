@@ -1636,6 +1636,7 @@
         "scripts/testing/test-rsi-sweep.py",
         "scripts/testing/test-run-ci-checks-maintenance.py",
         "scripts/testing/test-run-event-metrics.py",
+        "scripts/testing/test-run-test-group-state-isolation.py",
         "scripts/testing/test-runtime-state-out-of-tracked-config.py",
         "scripts/testing/test-runtime-writers-leave-checkout-clean.py"
       ],
@@ -1737,6 +1738,7 @@
         "scripts/testing/test-rsi-sweep.py",
         "scripts/testing/test-run-ci-checks-maintenance.py",
         "scripts/testing/test-run-event-metrics.py",
+        "scripts/testing/test-run-test-group-state-isolation.py",
         "scripts/testing/test-runtime-state-out-of-tracked-config.py",
         "scripts/testing/test-runtime-writers-leave-checkout-clean.py"
       ]
