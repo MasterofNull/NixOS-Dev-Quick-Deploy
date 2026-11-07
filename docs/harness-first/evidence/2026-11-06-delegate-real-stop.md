@@ -23,6 +23,8 @@ Minimal-code ladder: `TaskRegistry.cmd_cancel` (reached only by `dispatch.py can
 `scripts/governance/tier0.d/check-ci-test-coverage.sh`: `PASS (760 tests: 610 declared, 150 exempt)`.
 Mutation checks (each made exactly one test fail, then restored): drop start-time check -> reused-pid test; remove SIGKILL -> ignorer test; drop terminal no-op -> noop test; drop killpg -> 3 tests; drop own-group guard -> caller-group test; accept unproven cmdline -> unmarked test; drop reason recording -> row test; route `/kill` away from stop -> source test; console prints success on failure -> console test; remove setsid from gemini wrapper and drop start time in registry-update -> wrapper/marker tests.
 
+After merging the workspace repair, the console note was corrected: /cancel is a queued request read only by the local agent, and /kill stops any lane through the real stop.
+
 ## Rollback Plan
 Revert the files above. Rows gain optional fields only; no migration.
 
