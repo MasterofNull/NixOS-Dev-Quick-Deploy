@@ -921,6 +921,9 @@ class PerfHarness:
             max_concurrent_cells=DEFAULT_CONCURRENCY,
             env={"CAPABILITY_EXECUTION_CELLS": "1"},
             receipt_sink=self._receipt_sink,
+            # The runner refuses to bind its own socket unless explicitly told to (systemd socket
+            # activation is the production path); this harness owns a throwaway temp socket.
+            allow_self_bind=True,
         )
         defaults.update(overrides)
         return runner.RunnerConfig(**defaults)

@@ -1193,14 +1193,15 @@ def _telemetry_file_path(name: str) -> Path:
     return mapping[name]
 
 
-def _count_text_records(path: Path) -> int:
+def _count_text_records(path: Path) -> Optional[int]:
+    """Non-empty line count, or None when the file cannot be counted (a count of 0 must mean an empty file)."""
     if not path.exists() or not path.is_file():
-        return 0
+        return None
     try:
         with path.open("r", encoding="utf-8", errors="replace") as handle:
             return sum(1 for line in handle if line.strip())
     except OSError:
-        return 0
+        return None
 
 
 def _tail_json_records(path: Path, limit: int = 20) -> List[Dict[str, Any]]:
@@ -1913,13 +1914,12 @@ async def get_learning_stats() -> Dict[str, Any]:
     headers = {"X-API-Key": api_key} if api_key else None
     stats = await fetch_with_fallback(
         f"{hybrid_base}/learning/stats",
-        {
-            "checkpoints": {"total": 0, "last_checkpoint": None},
-            "backpressure": {"unprocessed_mb": 0, "paused": False},
-            "deduplication": {"total_patterns": 0, "duplicates_found": 0, "unique_patterns": 0}
-        },
+        None,
         headers=headers,
     )
+    if not isinstance(stats, dict):
+        # A zeroed stand-in would read as "nothing paused, nothing pending".
+        raise HTTPException(status_code=503, detail="Learning stats unavailable: hybrid coordinator /learning/stats did not return 200")
     feedback_pipeline = _build_feedback_pipeline_stats()
     files = feedback_pipeline.get("files", {})
     hint_feedback_path = _telemetry_file_path("hint_feedback")
@@ -1966,7 +1966,7 @@ async def get_learning_stats() -> Dict[str, Any]:
 
     if int(stats.get("total_metrics_tracked") or 0) == 0 and activity["total_events"] > 0:
         stats["total_metrics_tracked"] = activity["total_events"]
-    if int(stats.get("finetuning_dataset_size") or 0) == 0 and finetune_records > 0:
+    if int(stats.get("finetuning_dataset_size") or 0) == 0 and (finetune_records or 0) > 0:
         stats["finetuning_dataset_size"] = finetune_records
     return stats
 
@@ -3244,9 +3244,11 @@ async def get_scheduler_queue() -> Dict[str, Any]:
     now = time.time()
     try:
         raw = json.loads(state_p.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return {"available": True, "depth": 0, "running": None, "queue": [],
-                "note": "no queue state yet (no banded dispatch since boot)"}
+    except (OSError, json.JSONDecodeError) as exc:
+        # depth 0 here would claim an empty queue that nobody measured.
+        return {"available": False, "depth": None, "running": None, "queue": [],
+                "error": type(exc).__name__,
+                "note": f"queue state unreadable ({type(exc).__name__}): {state_p.name}"}
 
     def _job(j: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
         if not isinstance(j, dict):
@@ -5509,11 +5511,13 @@ async def get_aistack_metrics() -> Dict[str, Any]:
     )
 
     return {
-        "embedding_cache_hit_rate_pct": embedding_cache_hit_rate_pct or 0.0,
-        "llm_routing_local_pct": llm_routing_local_pct if llm_routing_local_pct is not None else 100.0,
+        # None = not measured; the dashboard renders it as unavailable. A
+        # substituted 100.0/0.0 here reads as a measurement.
+        "embedding_cache_hit_rate_pct": embedding_cache_hit_rate_pct,
+        "llm_routing_local_pct": llm_routing_local_pct,
         "tokens_compressed_last_hour": tokens_compressed_last_hour or 0.0,
-        "hint_adoption_pct": round(hint_adoption_pct, 2) if hint_adoption_pct is not None else 100.0,
-        "eval_latest_pct": round(eval_latest_pct, 2) if eval_latest_pct is not None else 0.0,
+        "hint_adoption_pct": round(hint_adoption_pct, 2) if hint_adoption_pct is not None else None,
+        "eval_latest_pct": round(eval_latest_pct, 2) if eval_latest_pct is not None else None,
         "tool_performance_rows": int(tool_rows) if tool_rows is not None else 0,
         "query_gap_count": int(query_gap_count) if query_gap_count is not None else 0,
         "availability": {
@@ -8795,15 +8799,23 @@ async def get_drops_status() -> Dict[str, Any]:
     archive_dir = drops_dir / "archive"
     failed_dir  = drops_dir / "failed"
 
-    def _count(d: Path) -> int:
-        try:
-            return len(list(d.glob("*.drop.yaml")))
-        except OSError:
-            return 0
+    errors: Dict[str, str] = {}
 
-    queued   = _count(drops_dir)
-    archived = _count(archive_dir)
-    failed   = _count(failed_dir)
+    def _count(d: Path, key: str) -> Optional[int]:
+        try:
+            if not d.is_dir():
+                if key == "queued":
+                    errors[key] = "FileNotFoundError"
+                    return None
+                return 0  # archive/ and failed/ are created on first use
+            return len(list(d.glob("*.drop.yaml")))
+        except OSError as exc:
+            errors[key] = type(exc).__name__
+            return None
+
+    queued   = _count(drops_dir, "queued")
+    archived = _count(archive_dir, "archived")
+    failed   = _count(failed_dir, "failed")
 
     last_error: Optional[str] = None
     try:
@@ -8814,7 +8826,7 @@ async def get_drops_status() -> Dict[str, Any]:
         pass
 
     # Check systemd unit status (non-blocking)
-    daemon_active = False
+    daemon_active: Optional[bool] = None  # None = could not ask systemd
     try:
         rc = await asyncio.to_thread(
             subprocess.run,
@@ -8822,10 +8834,12 @@ async def get_drops_status() -> Dict[str, Any]:
             capture_output=True, timeout=3,
         )
         daemon_active = (rc.returncode == 0)
-    except Exception:
-        pass
+    except Exception as exc:
+        errors["daemon_active"] = type(exc).__name__
 
     return {
+        "available": not errors,
+        "errors": errors,
         "daemon_active": daemon_active,
         "queued": queued,
         "archived": archived,

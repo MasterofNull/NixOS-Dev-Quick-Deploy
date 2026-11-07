@@ -10,22 +10,33 @@
 # sudo nixos-rebuild switch -> guarded home-manager switch (as `hms`) -> verify configuration
 # revision == HEAD and not -dirty, and list working-tree-backed units not restarted by the switch.
 #
-# Usage: scripts/maintenance/aq-deploy-current [--dry-run] [--help]
+# --rev <sha>: refuse (exit 1, before any guard or rebuild) unless HEAD after the pull is exactly that
+# 40-hex revision; aq-update passes the revision it verified, so a main that moved is never deployed.
+#
+# Usage: scripts/maintenance/aq-deploy-current [--dry-run] [--rev <sha>] [--help]
 # Run as the owner (not root); sudo is invoked only for nixos-rebuild switch.
 set -euo pipefail
 
 TAG="[aq-deploy-current]"
 DRY=0
-usage() { sed -n '2,13p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; echo; echo "Flags: --dry-run  build only, print what a real run would switch;  --help"; }
+usage() { sed -n '2,15p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; echo; echo "Flags: --dry-run  build only, print what a real run would switch;  --rev <sha>  deploy only exactly that revision;  --help"; }
 die() { echo "$TAG STOP: $*" >&2; exit 1; }
 
-for a in "$@"; do
-  case "$a" in
+WANT_REV=""
+HAVE_REV=0
+while (($#)); do
+  case "$1" in
     --dry-run) DRY=1 ;;
+    --rev) (($# >= 2)) || { echo "$TAG --rev needs a value" >&2; exit 2; }; WANT_REV="$2"; HAVE_REV=1; shift ;;
+    --rev=*) WANT_REV="${1#--rev=}"; HAVE_REV=1 ;;
     --help|-h) usage; exit 0 ;;
-    *) echo "$TAG unknown option: $a" >&2; usage >&2; exit 2 ;;
+    *) echo "$TAG unknown option: $1" >&2; usage >&2; exit 2 ;;
   esac
+  shift
 done
+if ((HAVE_REV)) && [[ ! "$WANT_REV" =~ ^[0-9a-f]{40}$ ]]; then
+  echo "$TAG --rev must be a full 40-hex revision, got '$WANT_REV'" >&2; exit 2
+fi
 
 SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO="$(git -C "$SELF_DIR" rev-parse --show-toplevel)" || die "not inside a git checkout"
@@ -62,6 +73,10 @@ fi
 
 # 4. fast-forward
 git pull --ff-only origin main || die "git pull --ff-only origin main failed (local main has diverged?)"
+
+if ((HAVE_REV)) && [[ "$(git rev-parse HEAD)" != "$WANT_REV" ]]; then
+  die "checkout is at $(git rev-parse HEAD) after the pull, not the requested --rev $WANT_REV (main moved or the checkout diverged); nothing was built"
+fi
 
 # Build from the committed HEAD, not the working tree: agent appends to tracked inert files
 # (issues-backlog.md, rsi-incidents.json, ...) would otherwise make the flake record `<rev>-dirty`.

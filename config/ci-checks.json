@@ -538,6 +538,21 @@
       "ci_workflow": ".github/workflows/test.yml#syntax"
     },
     {
+      "id": "dashboard-routing-ratio-test",
+      "cmd": "scripts/testing/test-dashboard-routing-ratio.sh",
+      "paths": [
+        "scripts/testing/test-dashboard-routing-ratio.sh",
+        "scripts/testing/test-dashboard-routing-ratio.js",
+        "assets/dashboard.js",
+        "config/ci-checks.json"
+      ],
+      "needs": [
+        "bash",
+        "node"
+      ],
+      "ci_workflow": ".github/workflows/test.yml#syntax"
+    },
+    {
       "id": "mcp-integrity-unit-path-test",
       "cmd": "scripts/testing/test-mcp-integrity-unit-path.sh",
       "paths": [
@@ -672,6 +687,7 @@
         "scripts/testing/test-aq-decide-s7.py",
         "scripts/testing/test-aq-decide-s8.py",
         "scripts/testing/test-aq-decide-s9-s10.py",
+        "scripts/testing/test-aq-deploy-current-rev.py",
         "scripts/testing/test-aq-durable.py",
         "scripts/testing/test-aq-editor-rescue.py",
         "scripts/testing/test-aq-eval.py",
@@ -703,6 +719,7 @@
         "scripts/testing/test-aq-report-prompt-cache-fallback.py",
         "scripts/testing/test-aq-report-prompt-registry-fallback.py",
         "scripts/testing/test-aq-report-ragas-panel.py",
+        "scripts/testing/test-aq-report-reliability-interpretation.py",
         "scripts/testing/test-aq-report-route-telemetry.py",
         "scripts/testing/test-aq-report-runtime-actions.py",
         "scripts/testing/test-aq-review-receipt.py",
@@ -752,6 +769,7 @@
         "scripts/testing/test-aq-decide-s7.py",
         "scripts/testing/test-aq-decide-s8.py",
         "scripts/testing/test-aq-decide-s9-s10.py",
+        "scripts/testing/test-aq-deploy-current-rev.py",
         "scripts/testing/test-aq-durable.py",
         "scripts/testing/test-aq-editor-rescue.py",
         "scripts/testing/test-aq-eval.py",
@@ -783,6 +801,7 @@
         "scripts/testing/test-aq-report-prompt-cache-fallback.py",
         "scripts/testing/test-aq-report-prompt-registry-fallback.py",
         "scripts/testing/test-aq-report-ragas-panel.py",
+        "scripts/testing/test-aq-report-reliability-interpretation.py",
         "scripts/testing/test-aq-report-route-telemetry.py",
         "scripts/testing/test-aq-report-runtime-actions.py",
         "scripts/testing/test-aq-review-receipt.py",
@@ -857,6 +876,7 @@
         "scripts/testing/test-capability-integration-wiring.py",
         "scripts/testing/test-capability-lease-gate.py",
         "scripts/testing/test-capability-lease-issuance.py",
+        "scripts/testing/test-capability-lease.py",
         "scripts/testing/test-capability-outcome-resolver.py"
       ],
       "needs": [
@@ -876,6 +896,7 @@
         "scripts/testing/test-capability-integration-wiring.py",
         "scripts/testing/test-capability-lease-gate.py",
         "scripts/testing/test-capability-lease-issuance.py",
+        "scripts/testing/test-capability-lease.py",
         "scripts/testing/test-capability-outcome-resolver.py"
       ]
     },
@@ -932,6 +953,7 @@
         "scripts/testing/test-dashboard-cockpit-steering.py",
         "scripts/testing/test-dashboard-command-center-graph-payloads.py",
         "scripts/testing/test-dashboard-command-center-graphs.py",
+        "scripts/testing/test-dashboard-compat-routes.py",
         "scripts/testing/test-dashboard-context-store-ui.py",
         "scripts/testing/test-dashboard-deployment-execution.py",
         "scripts/testing/test-dashboard-governance-projection.py",
@@ -939,6 +961,7 @@
         "scripts/testing/test-dashboard-insights-report-cache.py",
         "scripts/testing/test-dashboard-layered-health-precedence.py",
         "scripts/testing/test-dashboard-loop-status-fallback.py",
+        "scripts/testing/test-dashboard-no-false-values.py",
         "scripts/testing/test-dashboard-orchestration-events.py",
         "scripts/testing/test-dashboard-qa-runner-runtime-env.py",
         "scripts/testing/test-dashboard-qa-singleflight.py",
@@ -960,6 +983,7 @@
         "scripts/testing/test-dashboard-cockpit-steering.py",
         "scripts/testing/test-dashboard-command-center-graph-payloads.py",
         "scripts/testing/test-dashboard-command-center-graphs.py",
+        "scripts/testing/test-dashboard-compat-routes.py",
         "scripts/testing/test-dashboard-context-store-ui.py",
         "scripts/testing/test-dashboard-deployment-execution.py",
         "scripts/testing/test-dashboard-governance-projection.py",
@@ -967,6 +991,7 @@
         "scripts/testing/test-dashboard-insights-report-cache.py",
         "scripts/testing/test-dashboard-layered-health-precedence.py",
         "scripts/testing/test-dashboard-loop-status-fallback.py",
+        "scripts/testing/test-dashboard-no-false-values.py",
         "scripts/testing/test-dashboard-orchestration-events.py",
         "scripts/testing/test-dashboard-qa-runner-runtime-env.py",
         "scripts/testing/test-dashboard-qa-singleflight.py",
@@ -983,6 +1008,7 @@
       "paths": [
         "scripts/testing/run-test-group.py",
         "scripts/testing/test-delegate-attention-queue-wiring.py",
+        "scripts/testing/test-delegate-claude-model-routing.py",
         "scripts/testing/test-delegate-codex-quota-precheck.sh",
         "scripts/testing/test-delegate-codex-shared-writable.py",
         "scripts/testing/test-delegate-dir-env-override.py",
@@ -1001,6 +1027,7 @@
       "ci_workflow": ".github/workflows/test.yml#syntax",
       "tests": [
         "scripts/testing/test-delegate-attention-queue-wiring.py",
+        "scripts/testing/test-delegate-claude-model-routing.py",
         "scripts/testing/test-delegate-codex-quota-precheck.sh",
         "scripts/testing/test-delegate-codex-shared-writable.py",
         "scripts/testing/test-delegate-dir-env-override.py",
@@ -2320,11 +2347,6 @@
       "reason": "fails on main (rc=1): AssertionError: aq-qa phase 0 should describe the switchboard ingress contract for Continu, tracked in backlog"
     },
     {
-      "script": "scripts/testing/test-aq-report-reliability-interpretation.py",
-      "class": "known-failing",
-      "reason": "fails on main (rc=1): TypeError: format_text() missing 1 required positional argument: 'editor_rescue_windows_su, tracked in backlog"
-    },
-    {
       "script": "scripts/testing/test-aq-report-tool-audit-sources.py",
       "class": "known-failing",
       "reason": "fails on main (rc=1): AssertionError: expected only fresh entry inside window, tracked in backlog"
@@ -2358,11 +2380,6 @@
       "script": "scripts/testing/test-c6a-launch-dashboard-runtime-probe.py",
       "class": "known-failing",
       "reason": "fails on main (rc=1): 1 assertion(s) failed, tracked in backlog"
-    },
-    {
-      "script": "scripts/testing/test-capability-lease.py",
-      "class": "known-failing",
-      "reason": "fails in a clean CI-like venv (CI=true, pip deps only): 'attenuation: golden child verifies ok under DEV key' (53/54); not yet root-caused"
     },
     {
       "script": "scripts/testing/test-chat-intent.py",
@@ -2435,11 +2452,6 @@
       "reason": "fails on main (rc=1): - .welcome-banner, tracked in backlog"
     },
     {
-      "script": "scripts/testing/test-dashboard-compat-routes.py",
-      "class": "known-failing",
-      "reason": "fails in a clean CI-like venv: 'missing dashboard compatibility routes' (api.main drops routes when an optional dependency is absent); passes on the dev host"
-    },
-    {
       "script": "scripts/testing/test-dashboard-config-control-plane.py",
       "class": "known-failing",
       "reason": "fails on main (rc=1): AssertionError: front-door routing should expose implementation alias mapping, tracked in backlog"
@@ -2467,12 +2479,12 @@
     {
       "script": "scripts/testing/test-dashboard-orchestration-sessions.py",
       "class": "known-failing",
-      "reason": "fails on main (rc=1): AttributeError: 'FakeClientSession' object has no attribute 'closed', tracked in backlog"
+      "reason": "backend proxy half passes (FakeClientSession gained closed/close, fixed 2026-11-07); UI half asserts element ids/functions (orchestrationSessionList, loadOrchestrationSessions, ...) removed by the dashboard consolidation 1acd19966; needs re-derivation against assets/dashboard.js, tracked in backlog"
     },
     {
       "script": "scripts/testing/test-dashboard-phase5-7-integration.py",
       "class": "known-failing",
-      "reason": "fails on main (rc=1): AttributeError: 'FakeClientSession' object has no attribute 'closed', tracked in backlog"
+      "reason": "backend readiness proxy half passes (FakeClientSession gained closed/close, fixed 2026-11-07); UI half asserts fetchAISpecificMetrics/hybrid* element ids removed by the dashboard consolidation 1acd19966; needs re-derivation against assets/dashboard.js, tracked in backlog"
     },
     {
       "script": "scripts/testing/test-dashboard-program-progress.py",
@@ -2501,18 +2513,13 @@
     },
     {
       "script": "scripts/testing/test-dashboard-visual.sh",
-      "class": "slow",
-      "reason": "slow: exceeds the 120s timeout"
+      "class": "live-service",
+      "reason": "needs the live dashboard on :8889 and a working headless chromium (screenshot step aborts in the sweep sandbox and under the dev host's chromium); API half passes on the host (22/23)"
     },
     {
       "script": "scripts/testing/test-delegate-agent-mapping.py",
       "class": "live-service",
       "reason": "host-only: needs a live local service (switchboard/dashboard/coordinator/AIDB); POSTs to the coordinator at 127.0.0.1:8003 with the host secret /run/secrets/hybrid_coordinator_api_key"
-    },
-    {
-      "script": "scripts/testing/test-delegate-claude-model-routing.py",
-      "class": "known-failing",
-      "reason": "fails on main (rc=1): FAILED (errors=2), tracked in backlog"
     },
     {
       "script": "scripts/testing/test-delegate-coding.py",
@@ -2591,8 +2598,8 @@
     },
     {
       "script": "scripts/testing/test-execution-cell-perf-harness.py",
-      "class": "known-failing",
-      "reason": "fails on main (rc=1): FAILED: ['e2e_all_cohorts_valid', 'e2e_all_rows_green', 'e2e_verdict_not_invalid', 'e2e_ve, tracked in backlog"
+      "class": "sandbox-env",
+      "reason": "passes 56/56 on the dev host after the harness opted into allow_self_bind (2026-11-07); needs bwrap, a disk-backed temp dir and a delegated cgroup, which the CI runner and the sweep sandbox lack; run on the host"
     },
     {
       "script": "scripts/testing/test-execution-cell-runner.py",
@@ -2617,7 +2624,7 @@
     {
       "script": "scripts/testing/test-harness-hooks.py",
       "class": "unstable",
-      "reason": "unstable: passed in the sandboxed run but failed/timed out in a later run (plain=(1, 1), serial=(0, 0)); host-dependent or load-sensitive, tracked in backlog"
+      "reason": "unstable: a single-run 100 ms wall-clock bound flaked under load (138 ms vs ~80 ms idle); now best-of-7 against the same 100 ms bound (2026-11-07); drop this exemption after the group has run green in CI a few times"
     },
     {
       "script": "scripts/testing/test-http-query-audit-metadata.py",

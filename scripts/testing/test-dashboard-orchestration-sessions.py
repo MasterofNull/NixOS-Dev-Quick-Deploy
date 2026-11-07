@@ -53,6 +53,10 @@ def main() -> int:
         class FakeClientSession:
             def __init__(self, *args, **kwargs):
                 self.urls = []
+                self.closed = False
+
+            async def close(self):
+                self.closed = True
 
             async def __aenter__(self):
                 return self

@@ -34,6 +34,7 @@ COVERED_ELSEWHERE = {
     "check-ci-manifest-coverage.sh": "scripts/testing/test-ci-checks-manifest.py",
     "check-ci-test-coverage.sh": "scripts/testing/test-ci-test-coverage-gate.py",
     "check-color-echo.sh": "scripts/testing/test-tier0-color-echo-extension.sh",
+    "check-flake-age.sh": "scripts/testing/test-check-flake-age.sh",
     "check-frontier-fold": "scripts/testing/test-check-frontier-fold.py",
     "check-gitleaks-ci-parity.sh": "scripts/testing/test-gitleaks-ci-parity.py",
     "check-grype-ignore-expiry.sh": "scripts/testing/test-ffmpeg-cve-mitigations.py",

@@ -36,7 +36,10 @@ EXPECTED = {
     "/favicon.ico",
 }
 
-registered = {getattr(route, "path", "") for route in app.routes}
+# FastAPI >= 0.16x keeps include_router() children behind opaque _IncludedRouter entries in app.routes
+# (no .path), so top-level routes alone miss every proxied route. The OpenAPI schema lists them all;
+# union the two so schema-hidden routes (/favicon.ico) are still seen.
+registered = {getattr(route, "path", "") for route in app.routes} | set(app.openapi()["paths"])
 missing = sorted(EXPECTED - registered)
 if missing:
     raise SystemExit("missing dashboard compatibility routes: " + ", ".join(missing))
