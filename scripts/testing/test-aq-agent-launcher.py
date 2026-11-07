@@ -43,9 +43,9 @@ class LauncherTests(unittest.TestCase):
             launcher = scripts / "aq-agent-launcher"
             shutil.copyfile(ROOT / "scripts/ai/aq-agent-launcher", launcher)
             calls = root / "calls"
-            agy = scripts / "agy"
-            agy.write_text('#!/bin/sh\nprintf "agy-called: %s\\n" "$*" >> "' + str(calls) + '"\n')
-            agy.chmod(0o755)
+            gem = scripts / "gemini"
+            gem.write_text('#!/bin/sh\nprintf "gemini-called: %s\\n" "$*" >> "' + str(calls) + '"\n')
+            gem.chmod(0o755)
             env = dict(os.environ, HOME=str(root), PATH=str(scripts) + os.pathsep + os.environ["PATH"])
 
             # Test 'new' mode
@@ -54,8 +54,8 @@ class LauncherTests(unittest.TestCase):
                 capture_output=True, text=True, env=env, timeout=5,
             )
             self.assertEqual(result_new.returncode, 0, result_new.stderr)
-            self.assertTrue(calls.exists(), "agy was not called in new mode")
-            self.assertIn("agy-called: \n", calls.read_text())
+            self.assertTrue(calls.exists(), "gemini was not called in new mode")
+            self.assertIn("gemini-called: \n", calls.read_text())
 
             # Test 'resume' mode
             calls.unlink()
@@ -64,8 +64,8 @@ class LauncherTests(unittest.TestCase):
                 capture_output=True, text=True, env=env, timeout=5,
             )
             self.assertEqual(result_resume.returncode, 0, result_resume.stderr)
-            self.assertTrue(calls.exists(), "agy was not called in resume mode")
-            self.assertIn("agy-called: --continue\n", calls.read_text())
+            self.assertTrue(calls.exists(), "gemini was not called in resume mode")
+            self.assertIn("gemini-called: --continue\n", calls.read_text())
 
 
 if __name__ == "__main__":
