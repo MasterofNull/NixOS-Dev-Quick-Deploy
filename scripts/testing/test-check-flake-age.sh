@@ -176,4 +176,20 @@ assert_status 1
 assert_contains "$GUARD_OUTPUT" "code=dependency_unavailable_jq"
 assert_not_contains "$GUARD_OUTPUT" "command not found"
 
+# tier0.d wrapper: time-class signal, hard only under --maintenance (Rule 19 gate corollary).
+wrapper="$repo_root/scripts/governance/tier0.d/check-flake-age.sh"
+printf '#!/usr/bin/env bash\necho "RESULT status=fail code=temporal_policy_violation checked=1 violations=1"\nexit 1\n' >"$tmp_dir/guard-fail.sh"
+printf '#!/usr/bin/env bash\necho "RESULT status=pass checked=1 violations=0"\n' >"$tmp_dir/guard-pass.sh"
+for mode in --pre-commit --pre-deploy; do
+    out=$(FLAKE_AGE_GUARD="$tmp_dir/guard-fail.sh" bash "$wrapper" "$mode" 2>&1) || { printf 'FAIL wrapper blocked in %s\n%s\n' "$mode" "$out" >&2; exit 1; }
+    assert_contains "$out" "SKIP"
+done
+set +e
+out=$(FLAKE_AGE_GUARD="$tmp_dir/guard-fail.sh" bash "$wrapper" --maintenance 2>&1); rc=$?
+set -e
+[[ $rc -eq 1 ]] || { printf 'FAIL wrapper should fail under --maintenance on a violation (rc=%s)\n' "$rc" >&2; exit 1; }
+assert_contains "$out" "temporal_policy_violation"
+out=$(FLAKE_AGE_GUARD="$tmp_dir/guard-pass.sh" bash "$wrapper" --maintenance 2>&1)
+assert_contains "$out" "PASS (--maintenance)"
+
 printf 'PASS test-check-flake-age\n'

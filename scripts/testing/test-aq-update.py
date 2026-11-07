@@ -100,6 +100,7 @@ sys.exit(mod.main())
     "aq-deploy-current": """#!/bin/sh
 echo "deploy" >> "$STUB_DIR/calls.log"; touch "$STUB_DIR/mutated"
 echo "deploy-head $(git rev-parse HEAD)" >> "$STUB_DIR/heads.log"
+echo "$*" >> "$STUB_DIR/deploy-args.log"
 [ "$DEPLOY_KILL" = before ] && { kill -9 "$PPID"; exit 1; }
 git rev-parse HEAD > "$STUB_DIR/running_rev"
 [ "$DEPLOY_KILL" = after ] && kill -9 "$PPID"
@@ -277,6 +278,7 @@ def t_delta_runs_stages_in_order(fx):
     head = git(fx.repo, "rev-parse", "HEAD")
     check(head == fx.origin_head() and head != new, "lock was not landed and synced")
     check((fx.stub / "heads.log").read_text().strip() == f"deploy-head {head}", "deployed a revision other than the synced one")
+    check((fx.stub / "deploy-args.log").read_text().strip() == f"--rev {head}", "aq-update must pass the verified revision as --rev")
     check(json.loads(git(fx.repo, "show", "HEAD:flake.lock"))["nodes"]["foo"]["locked"]["rev"] == "bx", "lock not refreshed")
     check(fx.ledger()[-1]["event"] == "finished" and fx.ledger()[-1]["rebuild"] is True, fx.ledger())
 
