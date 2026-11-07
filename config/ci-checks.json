@@ -706,6 +706,7 @@
         "scripts/testing/test-aq-tempest.py",
         "scripts/testing/test-aq-triage.py",
         "scripts/testing/test-aq-update-tiers.py",
+        "scripts/testing/test-aq-update.py",
         "scripts/testing/test-aq-usage-logging.py",
         "scripts/testing/test-aq-workspace.py",
         "scripts/testing/test-aq-worktree-reap.py"
@@ -786,6 +787,7 @@
         "scripts/testing/test-aq-tempest.py",
         "scripts/testing/test-aq-triage.py",
         "scripts/testing/test-aq-update-tiers.py",
+        "scripts/testing/test-aq-update.py",
         "scripts/testing/test-aq-usage-logging.py",
         "scripts/testing/test-aq-workspace.py",
         "scripts/testing/test-aq-worktree-reap.py"
@@ -1798,6 +1800,8 @@
         "scripts/testing/test-stateful-downgrade-policy.py",
         "scripts/testing/test-suggested-ai-repo-candidates.py",
         "scripts/testing/test-suspend-resume-contract.py",
+        "scripts/testing/test-sweep-gates.py",
+        "scripts/governance/sweep-gates.py",
         "scripts/testing/test-sweeper-taxonomy.py",
         "scripts/testing/test-switchboard-adaptive-local-budget.py",
         "scripts/testing/test-switchboard-context-output-gc.py",
@@ -1887,6 +1891,7 @@
         "scripts/testing/test-stateful-downgrade-policy.py",
         "scripts/testing/test-suggested-ai-repo-candidates.py",
         "scripts/testing/test-suspend-resume-contract.py",
+        "scripts/testing/test-sweep-gates.py",
         "scripts/testing/test-sweeper-taxonomy.py",
         "scripts/testing/test-switchboard-adaptive-local-budget.py",
         "scripts/testing/test-switchboard-context-output-gc.py",
@@ -1943,6 +1948,30 @@
         "scripts/testing/test-worktree-write-guard.py",
         "scripts/testing/test-write-region.py"
       ]
+    },
+    {
+      "id": "sweep-tracker-claims",
+      "cmd": "scripts/governance/sweep-tracker-claims.py",
+      "paths": [
+        "scripts/governance/sweep-tracker-claims.py",
+        "scripts/ai/aq-pm-tracker",
+        ".agents/plans/*/tracker.json",
+        "config/activation-manifest.json"
+      ],
+      "needs": ["python3", "git"],
+      "ci_workflow": ".github/workflows/test.yml#syntax"
+    },
+    {
+      "id": "sweep-tracker-claims-test",
+      "cmd": "scripts/testing/test-sweep-tracker-claims.py",
+      "paths": [
+        "scripts/governance/sweep-tracker-claims.py",
+        "scripts/testing/test-sweep-tracker-claims.py",
+        "scripts/ai/aq-pm-tracker",
+        ".agents/plans/*/tracker.json"
+      ],
+      "needs": ["python3", "git"],
+      "ci_workflow": ".github/workflows/test.yml#syntax"
     },
     {
       "id": "tier0-gate-placement-tests",
