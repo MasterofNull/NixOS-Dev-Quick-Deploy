@@ -1111,9 +1111,15 @@ def test_h2_h1_m1_m3_behavioral():
           and wtree.stdout.strip() == tree, f"{res.refs.get('index')} {wtree.stdout} {wtree.stderr} {tree} {out(res)}")
 
 
+def _user_manager_env():
+    """Env that reaches the systemd user manager even when XDG_RUNTIME_DIR is unset (system-unit callers
+    such as ai-stack-health-monitor); the launcher itself resolves it the same way via host_scope_env()."""
+    return {**os.environ, **{k: v for k, v in confine.host_scope_env().items() if k != "PATH"}}
+
+
 def _unit_load_state(run_id):
     cp = subprocess.run(["systemctl", "--user", "show", "-p", "LoadState", "--value", f"aq-confine-{run_id}.scope"],
-                        capture_output=True, text=True, env=dict(os.environ))
+                        capture_output=True, text=True, env=_user_manager_env())
     return cp.stdout.strip()
 
 
@@ -1126,7 +1132,7 @@ def test_cgroup_behavioral():
         time.sleep(1.5)
         seen["show"] = subprocess.run(
             ["systemctl", "--user", "show", "-p", "MemoryMax", "-p", "MemorySwapMax", "-p", "TasksMax", "-p", "ActiveState",
-             "aq-confine-cgscope00001.scope"], capture_output=True, text=True).stdout
+             "aq-confine-cgscope00001.scope"], capture_output=True, text=True, env=_user_manager_env()).stdout
     th = threading.Thread(target=peek)
     th.start()
     res = sh("eval-untrusted", "sleep 3; echo done", run_id="cgscope00001")
