@@ -269,22 +269,83 @@ def test_concurrent_reclaim_never_produces_double_holder() -> None:
     )
 
 
+def _forced_straggler_reclaim() -> tuple[int, dict[str, int]]:
+    """Deterministic interleaving of the TOCTOU race, no timing luck.
+
+    Straggler B reads the expired claim inside `_reclaim_stale` and is then
+    held (via a wrapper on `_load_claim`, B's 2nd read = the reclaim re-check)
+    until racer A has had a chance to run a full acquire. Without the
+    per-slice lock A completes reclaim+create while B is parked, then B
+    renames A's fresh claim away and creates its own: two believed holders,
+    every time. With the lock, B parks while holding it, A blocks on it
+    (A is given 1s to finish, then B is released), B wins, A's re-check sees
+    a fresh claim and no-ops: exactly one holder.
+    Returns (number_of_winners, outcomes).
+    """
+    import argparse
+
+    real_load = claim_mod._load_claim
+    b_read = threading.Event()
+    release_b = threading.Event()
+    outcomes: dict[str, int] = {}
+    calls = {"B": 0}
+
+    def load(path):
+        claim = real_load(path)
+        if threading.current_thread().name == "B":
+            calls["B"] += 1
+            if calls["B"] == 2:  # 1st = cmd_acquire inspect, 2nd = reclaim re-check
+                b_read.set()
+                release_b.wait(timeout=10)
+        return claim
+
+    with tempfile.TemporaryDirectory() as td:
+        _fresh_claims_dir(Path(td))
+        claim_mod.CLAIMS_DIR.mkdir(parents=True, exist_ok=True)
+        path = claim_mod._claim_path("forced-race")
+        path.write_text(
+            json.dumps(
+                {
+                    "slice_id": "forced-race",
+                    "owner": "stale-owner",
+                    "head": "old",
+                    "ts": datetime.now(timezone.utc).isoformat(),
+                    "acquired_at": time.time() - 5 * 3600,
+                    "expires": time.time() - 3600,
+                    "ttl_seconds": 3600,
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        def run(owner: str) -> None:
+            outcomes[owner] = claim_mod.cmd_acquire(
+                argparse.Namespace(slice_id="forced-race", owner=owner, head=f"h-{owner}", ttl=3600, json=True)
+            )
+
+        claim_mod._load_claim = load
+        try:
+            tb = threading.Thread(target=run, args=("B",), name="B")
+            ta = threading.Thread(target=run, args=("A",), name="A")
+            tb.start()
+            b_read.wait(timeout=10)
+            ta.start()
+            ta.join(timeout=1.0)  # unlocked: A finishes here; locked: A is blocked
+            release_b.set()
+            tb.join(timeout=10)
+            ta.join(timeout=10)
+        finally:
+            claim_mod._load_claim = real_load
+            release_b.set()
+    return sum(1 for rc in outcomes.values() if rc == 0), outcomes
+
+
 def test_concurrent_reclaim_fix_is_load_bearing() -> None:
-    """Negative control: prove `test_concurrent_reclaim_never_produces_double_holder`
-    actually exercises the fix rather than passing vacuously. Monkeypatches
-    `claim_mod._locked_claim` — the per-slice advisory lock that
-    `_write_claim_exclusive` and `_reclaim_stale` both take, and the
-    mechanism this fix relies on to make a reclaimer's expiry re-check and
-    its rename atomic relative to every other mutator — to a no-op context
-    manager, simulating the pre-fix, unserialized design. Confirmed
-    empirically (see the driver script used during implementation) that
-    with the lock removed, the exact same `_run_expired_slice_race` driver
-    reproduces a double-believed-holder in roughly 60-80% of iterations at
-    8 racers; asserting `double > 0` here over the same iteration budget is
-    therefore not a coin flip, it is the expected, reliably-reproduced
-    outcome. This is the concrete evidence that the locked test above would
-    have FAILED against the original (and the first revised) design, and
-    is not merely checking something that was never at risk.
+    """Negative control: with `_locked_claim` replaced by a no-op (simulated
+    pre-fix design) the forced straggler interleaving ALWAYS yields two
+    believed-holders; with the real lock it always yields exactly one. The
+    interleaving is forced by events, not by thread timing, so this cannot
+    flake. Proves the stress test above exercises the fix, not vacuously.
     """
     import contextlib as _contextlib
 
@@ -296,15 +357,22 @@ def test_concurrent_reclaim_fix_is_load_bearing() -> None:
 
     claim_mod._locked_claim = _noop_lock
     try:
-        double, _zero = _run_expired_slice_race(iterations=20, racers=8)
+        unlocked_winners, _ = _forced_straggler_reclaim()
     finally:
         claim_mod._locked_claim = original_locked_claim
 
     check(
-        double > 0,
+        unlocked_winners == 2,
         "concurrent reclaim load-bearing check: with the per-slice lock removed (simulated pre-fix "
-        "design), the same contention scenario reliably reproduces a double-believed-holder — proving "
-        "the locked test above is actually exercising the fix, not passing vacuously",
+        "design), the forced straggler interleaving deterministically produces a double-believed-holder — "
+        "proving the locked test above is actually exercising the fix, not passing vacuously",
+    )
+
+    locked_winners, _ = _forced_straggler_reclaim()
+    check(
+        locked_winners == 1,
+        "concurrent reclaim load-bearing check: with the per-slice lock, the same forced interleaving "
+        "yields exactly one holder",
     )
 
 

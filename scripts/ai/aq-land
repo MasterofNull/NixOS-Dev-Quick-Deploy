@@ -339,6 +339,12 @@ class Land:
             return
         if remote and self.gitrc("merge-base", "--is-ancestor", remote, head) != 0:
             raise Stop("push", f"origin/{self.branch} has commits not in the local head; not forcing")
+        # A worktree made with `worktree add -b x refs/remotes/origin/main` tracks origin/main; pre-push then treats main
+        # as this branch's upstream and rejects the push when main moved during the review. -u below re-points it.
+        up = self.git("rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}", check=False)
+        if up and up != f"origin/{self.branch}":
+            self.gitrc("branch", "--unset-upstream")
+            say(f"cleared upstream {up} (not this branch's own remote branch)")
         run(["git", "-C", self.W, "push", "-q", "-u", "origin", self.branch], timeout=3600, stage="push")
         r = run(["git", "-C", self.W, "ls-remote", "origin", f"refs/heads/{self.branch}"], timeout=120, stage="push").stdout.split()
         if not r or r[0] != head:

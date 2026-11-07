@@ -308,6 +308,34 @@ class StaleEvidence(Base):
         self.assertIn(f"Reviewed-head-sha: {reviewed}", self.pr_body())
         self.assertIn(f"--head {reviewed}", (self.S / "receipt.log").read_text())
 
+    def test_push_survives_main_moving_when_branch_tracks_origin_main(self):
+        """A branch made from refs/remotes/origin/main tracks it; pre-push's sync check then reads main as the upstream."""
+        self.g("branch", "--set-upstream-to=origin/main")
+        hook = self.wd / ".git/hooks/pre-push"
+        # Models the real hook's sync check, with main advancing once right before it (after aq-land's last look).
+        hook.write_text(f'''#!/usr/bin/env bash
+set -e
+S="{self.S}"
+if [ ! -e "$S/hook-moved" ]; then
+  touch "$S/hook-moved"
+  git clone -q "$S/origin.git" "$S/c3"
+  echo m > "$S/c3/late.txt"
+  git -C "$S/c3" add .
+  git -C "$S/c3" -c user.name=x -c user.email=x@x commit -q -m late
+  git -C "$S/c3" push -q origin HEAD:main
+fi
+up="$(git rev-parse --abbrev-ref --symbolic-full-name '@{{upstream}}' 2>/dev/null || true)"
+[ -n "$up" ] || exit 0
+git fetch -q --no-tags "${{up%%/*}}" "${{up#*/}}"
+behind="$(git rev-list --count "HEAD..$up")"
+[ "$behind" -eq 0 ] || {{ echo "pre-push: behind $up by $behind" >&2; exit 1; }}
+''')
+        hook.chmod(0o755)
+        self.land(expect=0)
+        self.assertEqual(len(self.calls("gemini")), 1)
+        self.assertEqual(sh(self.S, "git", "--git-dir", str(self.origin), "rev-parse", "refs/heads/feat/x"), self.g("rev-parse", "HEAD"))
+        self.assertEqual(self.g("rev-parse", "--abbrev-ref", "@{upstream}"), "origin/feat/x")
+
     def test_head_changed_by_a_real_commit_needs_a_new_review(self):
         self.cfg({"gemini": {"mode": "ok", "side": "local_commit"}})
         self.land(expect=0)

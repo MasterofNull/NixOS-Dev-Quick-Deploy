@@ -877,6 +877,13 @@ gate_config_dir_lint() {
   fi
 }
 
+# Print each "[focused-ci] FAIL" line with up to 3 lines of context before it, so a real failure is not mistaken for load.
+print_focused_ci_failures() {
+  awk '{ buf[NR] = $0 }
+       /\[focused-ci\] FAIL/ { s = NR - 3; if (s < 1) s = 1; if (s <= last) s = last + 1
+                                for (i = s; i <= NR; i++) print "[tier0]   " buf[i]; last = NR }' "$1" >&2
+}
+
 # Gate 13: Path-aware focused CI checks
 gate_focused_ci_checks() {
   log "Running focused CI-sensitive checks..."
@@ -893,9 +900,14 @@ gate_focused_ci_checks() {
     mkdir -p "$(dirname "${_ci_fallback}")"
     _ci_artifact="${_ci_fallback}"
   fi
-  if FOCUSED_CI_JSON="${_ci_artifact}" bash "${SCRIPT_DIR}/run-focused-ci-checks.sh" "${MODE}" >/dev/null 2>&1; then
+  local _ci_out
+  _ci_out="$(mktemp)"
+  if FOCUSED_CI_JSON="${_ci_artifact}" bash "${SCRIPT_DIR}/run-focused-ci-checks.sh" "${MODE}" >"${_ci_out}" 2>&1; then
+    rm -f "${_ci_out}"
     pass "Focused CI-sensitive checks passed"
   else
+    print_focused_ci_failures "${_ci_out}"
+    rm -f "${_ci_out}"
     fail "Focused CI-sensitive checks failed"
     return 1
   fi
