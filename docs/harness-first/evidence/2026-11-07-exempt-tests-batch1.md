@@ -54,3 +54,9 @@ Test, manifest and requirements changes need none. The route_handler fix needs a
 
 ## Residual Risk
 Verified in a venv built from ci-test-requirements.txt on this host, not on a GitHub runner. fido2 is unpinned like the other entries. Runs left small artifacts only in scratch (moved, not deleted).
+
+## Rollback Plan
+Revert the commit. Product fixes stand alone: route_handler.py returns to raising NameError on local synthesis, so reverting it should be deliberate. Exemptions return with the revert.
+
+## Hint Feedback
+No hints were consulted. The sweep report and each test's code defined the work.
