@@ -10,7 +10,6 @@ import unittest
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 TOOL = ROOT / "scripts/ai/aq-review-receipt"
-HEAD = "a" * 40
 
 
 class T(unittest.TestCase):
@@ -19,9 +18,10 @@ class T(unittest.TestCase):
         self.d = pathlib.Path(self._t.name)
         (self.d / "out").mkdir()
         self.log = self.d / "out/rev.log"
-        self.log.write_text(f"reviewed {HEAD[:12]}\nReview-Disposition: PASS\n")
         self.reg = self.d / "registry.jsonl"
         self.set_entry()
+        self.head = self._repo()  # mint binds a real commit's tree, so every test needs a repo
+        self.log.write_text(f"reviewed {self.head[:12]}\nReview-Disposition: PASS\n")
 
     def tearDown(self):
         self._t.cleanup()
@@ -35,12 +35,20 @@ class T(unittest.TestCase):
         return subprocess.run([sys.executable, str(TOOL), "--root", str(self.d), "--registry", str(self.reg), *a],
                               capture_output=True, text=True)
 
-    def mint(self, author="claude", head=HEAD):
-        return self.run_tool("mint", "--run-id", "r1", "--pr", "7", "--head", head, "--author-lane", author)
+    def mint(self, author="claude", head=None):
+        return self.run_tool("mint", "--run-id", "r1", "--pr", "7", "--head", head or self.head, "--author-lane", author,
+                             "--repo", "o/r", "--out", str(self.rfile))
 
     @property
     def rfile(self):
-        return self.d / f".agent/reviews/receipts/pr7-{HEAD[:12]}.json"
+        return self.d / ".agent/reviews/receipts/pr7.json"
+
+    def test_mint_is_off_branch_by_default(self):
+        r = self.run_tool("mint", "--run-id", "r1", "--pr", "7", "--head", self.head, "--author-lane", "claude", "--repo", "o/r",
+                          "--out", str(self.d / "plain.json"))
+        self.assertEqual(r.returncode, 0, r.stderr)
+        rec = json.loads((self.d / "plain.json").read_text())
+        self.assertEqual((rec["schema"], rec["tree"]), (2, self.g("rev-parse", "HEAD^{tree}")))
 
     def test_mint_and_verify(self):
         r = self.mint()
@@ -57,12 +65,12 @@ class T(unittest.TestCase):
         self.assertNotEqual(self.mint().returncode, 0)
         self.set_entry(role="implementer")
         self.assertNotEqual(self.mint().returncode, 0)
-        self.log.write_text(f"{HEAD}\nno verdict\n")
+        self.log.write_text(f"{self.head}\nno verdict\n")
         self.set_entry()
         self.assertNotEqual(self.mint().returncode, 0)
 
     def test_verify_rejects_verdict_edit(self):
-        self.log.write_text(f"reviewed {HEAD[:12]}\nReview-Disposition: REQUEST_CHANGES\n")
+        self.log.write_text(f"reviewed {self.head[:12]}\nReview-Disposition: REQUEST_CHANGES\n")
         self.assertEqual(self.mint().returncode, 0)  # minting records the real verdict
         rec = json.loads(self.rfile.read_text())
         self.assertEqual(rec["verdict"], "REQUEST_CHANGES")
@@ -91,6 +99,8 @@ class T(unittest.TestCase):
 
     # --- off-branch receipts: mint --offbranch + publish (local bare origin) ---
     def _repo(self):
+        if getattr(self, "_head", None):
+            return self._head
         def g(*a, cwd=None):
             return subprocess.run(["git", "-C", str(cwd or self.work), *a], capture_output=True, text=True, check=True).stdout.strip()
         bt = tempfile.TemporaryDirectory()
@@ -105,7 +115,8 @@ class T(unittest.TestCase):
         (self.work / "b").write_text("b")
         g("add", "b"); g("commit", "-qm", "b")
         self.g = g
-        return g("rev-parse", "HEAD")
+        self._head = g("rev-parse", "HEAD")
+        return self._head
 
     def _ob(self, head, **extra):
         self.log.write_text(f"reviewed {head[:12]}\nReview-Disposition: PASS\n")

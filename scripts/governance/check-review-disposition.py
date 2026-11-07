@@ -13,27 +13,16 @@ lines (same field syntax as commit-msg):
   Reviewed-head-sha: <40 lowercase hex>  (must equal the PR head sha)
   Reviewed-by: <lane>                    (must differ from Author-lane)
   Author-lane: <lane>
-  Review-Receipt: <repo path>            (LEGACY only: receipt committed in the PR)
 
-Receipt, current form: fetched at run time from the append-only `review-receipts`
-branch (receipts/pr<N>-<head12>.json, schema 2, published by `aq-review-receipt
-publish`), so issuing it never changes the PR head. It must bind this repo, this
-PR, Reviewed-head-sha and that commit's tree, name a non-author reviewer and agree
-with the body (reviewer, author, disposition). A head that differs from
-Reviewed-head-sha is accepted only under the existing merge-only / receipt-only
-rules. Receipt missing or malformed, or a branch that cannot be fetched, fails.
-
-Legacy form (migration): a schema 1 receipt committed under .agent/reviews/receipts/
-named by Review-Receipt still validates, but only for the frozen cohort of PRs numbered
-<= LEGACY_MAX_PR, only when NO off-branch receipt exists (true absence: branch or file
-not there), and only if the receipt's `pr` equals this PR. Schema 1 carries no repo
-field, so a legacy receipt cannot be bound to this repository; that limit is why the
-fallback is frozen and is removed once the cohort has closed. A receipt that cannot be
-read (fetch error, malformed JSON, non-object JSON, non-regular file) is a failure and
-never falls through to the legacy path. An off-branch receipt, when present, takes
-precedence and must itself be valid. Retirement plan: the LEGACY_MAX_PR fallback and the
-receipt-only rule are removed in S3, when the landing tool switches to off-branch
-receipts; no time limit is added to the legacy path before then.
+Receipt: fetched at run time from the append-only `review-receipts` branch
+(receipts/pr<N>-<head12>.json, schema 2, published by `aq-review-receipt publish`),
+so issuing it never changes the PR head. It must bind this repo, this PR,
+Reviewed-head-sha and that commit's tree, name a non-author reviewer and agree with
+the body (reviewer, author, disposition). A head that differs from Reviewed-head-sha
+is accepted only under the merge-only rule below. Receipt missing or malformed, or a
+branch that cannot be fetched, fails. Schema 1 receipts committed in the PR are no
+longer accepted (the migration path was removed when `aq-land` began issuing
+off-branch receipts); a `Review-Receipt:` body line is ignored.
 
 Accepted limits: validation and result publication are not atomic, so a mutation after
 the final metadata read is possible; a clean merge from trusted main can carry unreviewed
@@ -47,14 +36,12 @@ the receipt is read the PR metadata is read again and any change of head or body
 The PR must target `main` of this repository (live base.ref and base repo, read twice;
 base ref, repo and sha must not change between reads). A head that differs from
 Reviewed-head-sha is accepted only when every commit on the
-first-parent chain head..Reviewed-head-sha is either (a) a merge whose second parent is
+first-parent chain head..Reviewed-head-sha is a merge whose second parent is
 an ancestor of the tip of origin's `refs/heads/main`, fetched by this run and never
 taken from the API's base sha, and whose tree equals the clean automatic result of
 `git merge-tree --write-tree <first-parent> <second-parent>` (needs git >= 2.38; the
-runner image's git is checked at run time and the check fails closed if it is older), or
-(b) for legacy-cohort PRs only, a commit that merely adds/modifies receipt JSON files
-under .agent/reviews/receipts/. Conflicted or hand-edited merges and ordinary commits
-need a new review.
+runner image's git is checked at run time and the check fails closed if it is older).
+Conflicted or hand-edited merges and ordinary commits need a new review.
 
 Limitations (plain): all lanes share one GitHub account, so identity is
 DECLARATIVE. Author-lane/Reviewed-by are self-asserted text; this check proves
@@ -76,11 +63,7 @@ import sys
 import urllib.request
 
 DISPOSITIONS = {"PASS", "PASS_WITH_FOLLOWUPS"}
-RECEIPT_PREFIX = ".agent/reviews/receipts/"
 RECEIPT_BRANCH = "review-receipts"
-# Frozen migration cohort: PRs numbered above this need an off-branch (schema 2) receipt.
-# Remove the schema 1 fallback entirely once every PR <= this number has closed.
-LEGACY_MAX_PR = 720
 FETCH_REMOTE = "origin"
 TRUSTED_BASE_REF = "main"
 POLICY_VERSION = "review-receipts/1"
@@ -109,7 +92,7 @@ def _is_ancestor(a, b):
     return r.returncode == 0
 
 
-def merge_only_update(rhead, head, base, legacy=True):
+def merge_only_update(rhead, head, base):
     """Return (ok, detail): head is reviewed rhead plus clean automatic merges of the base (fail closed)."""
     try:
         if not base:
@@ -133,12 +116,6 @@ def merge_only_update(rhead, head, base, legacy=True):
             if cur == rhead:
                 return True, "merge-only"
             parents = _git("rev-list", "--parents", "-n1", cur).split()[1:]
-            if len(parents) == 1 and legacy:
-                rok, rdetail = receipt_only_update(parents[0], cur)
-                if not rok:
-                    return False, f"net change differs from reviewed head (non-merge commit {cur[:12]}: {rdetail})"
-                cur = parents[0]
-                continue
             if len(parents) != 2:
                 return False, f"net change differs from reviewed head (non-merge commit {cur[:12]} or reviewed head off the first-parent chain)"
             first, other = parents
@@ -156,74 +133,6 @@ def merge_only_update(rhead, head, base, legacy=True):
         return False, "too many commits since the reviewed head"
     except (subprocess.SubprocessError, OSError):
         return False, "git error while checking merge-only update"
-
-
-def receipt_only_update(rhead, head, only=True):
-    """Return (ok, detail): rhead..head only adds/modifies regular *.json receipts (fail closed).
-
-    only=False ignores paths outside RECEIPT_PREFIX (used to vet the receipt dir the patch-id excludes).
-    """
-    try:
-        subprocess.run(["git", "merge-base", "--is-ancestor", rhead, head], check=True, capture_output=True, timeout=60)
-        rows = [l for l in _git("diff", "--raw", "--no-renames", "-z", rhead, head).split("\0") if l]
-    except (subprocess.SubprocessError, OSError):
-        return False, "reviewed commit unavailable or not an ancestor"
-    if not rows and only:
-        return False, "no changes"
-    # -z --raw: ":<srcmode> <dstmode> <srcsha> <dstsha> <status>" then path as the next token.
-    for meta, path in zip(rows[0::2], rows[1::2]):
-        if not only and not path.startswith(RECEIPT_PREFIX):
-            continue
-        fields = meta.lstrip(":").split()
-        status, dmode = fields[4][:1], fields[1]
-        if (status not in ("A", "M") or dmode != "100644" or not path.startswith(RECEIPT_PREFIX)
-                or ".." in path.split("/") or not path.endswith(".json")):
-            return False, f"non-receipt change: {path}"
-    return True, "receipt-only"
-
-
-def check_receipt(path, head, rhead, reviewer, author, disp, pr_number=None):
-    """Validate the committed receipt against the body fields; return error list."""
-    if not path:
-        return ["missing Review-Receipt"]
-    if path.startswith("/") or ".." in path.split("/"):
-        return ["Review-Receipt must be a repo-relative path"]
-    if not head:
-        return ["no PR head to read Review-Receipt from"]
-    try:
-        mode = _git("ls-tree", head, "--", path).split()[0]
-        if mode != "100644":
-            return [f"Review-Receipt {path} must be a regular file (mode {mode})"]
-        r = json.loads(_git("show", f"{head}:{path}"))
-    except (subprocess.SubprocessError, OSError, ValueError, IndexError):
-        return [f"Review-Receipt {path} not found or not JSON at PR head"]
-    if not isinstance(r, dict) or type(r.get("schema")) is not int or r["schema"] != 1:
-        return ["Review-Receipt is not schema 1"]
-    errs = []
-    if type(r.get("pr")) is not int:
-        errs.append("receipt pr must be an integer")
-    for k in ("run_id", "reviewer_lane", "author_lane", "verdict", "reviewed_head_sha", "output_sha256"):
-        v = r.get(k)
-        if not isinstance(v, str) or not v.strip():
-            errs.append(f"receipt {k} must be a non-empty string")
-    if errs:
-        return errs
-    if pr_number is not None and r["pr"] != pr_number:
-        errs.append(f"legacy receipt pr {r['pr']} != {pr_number} (replay)")
-    if not re.fullmatch(r"[0-9a-f]{40}", r["reviewed_head_sha"]):
-        errs.append("receipt reviewed_head_sha must be 40 lowercase hex")
-    elif r["reviewed_head_sha"] != rhead:
-        errs.append("receipt reviewed_head_sha != Reviewed-head-sha")
-    if norm(r["reviewer_lane"]) != norm(reviewer):
-        errs.append("receipt reviewer_lane != Reviewed-by")
-    if norm(r["author_lane"]) != norm(author):
-        errs.append("receipt author_lane != Author-lane")
-    if r["verdict"] != disp or r["verdict"] == "REQUEST_CHANGES":
-        errs.append("receipt verdict != Review-Disposition (or is REQUEST_CHANGES)")
-    if not re.fullmatch(r"[0-9a-f]{64}", r["output_sha256"]):
-        errs.append("receipt output_sha256 must be 64 lowercase hex")
-    return errs
-
 
 
 def check_offbranch_receipt(r, repo, pr_number, rhead, reviewer, author, disp):
@@ -302,9 +211,8 @@ def load_offbranch_receipt(remote, pr_number, rhead):
         return None, f"cannot read {RECEIPT_BRANCH}: {exc.__class__.__name__}"
 
 
-def check(event, receipt_loader=None):
-    """Return the error list. receipt_loader(pr_number, rhead) -> (receipt|None, error|None) enables
-    the off-branch path; without it only legacy committed receipts are accepted."""
+def check(event, receipt_loader):
+    """Return the error list. receipt_loader(pr_number, rhead) -> (receipt|None, error|None)."""
     pr = event.get("pull_request") or {}
     body = (pr.get("body") or "").replace("\r\n", "\n")
     head = (pr.get("head") or {}).get("sha", "")
@@ -328,12 +236,8 @@ def check(event, receipt_loader=None):
     elif not re.fullmatch(r"[0-9a-f]{40}", rhead):
         errors.append("Reviewed-head-sha must be 40 lowercase hex")
     elif rhead != head:
-        legacy_ok = pr_number is None or (type(pr_number) is int and pr_number <= LEGACY_MAX_PR)
-        ok, detail = merge_only_update(rhead, head, base, legacy_ok) if head else (False, "no PR head")
-        rok, rdetail = receipt_only_update(rhead, head) if head and legacy_ok else (False, "no PR head" if not head else "receipt-only updates apply to the legacy cohort only")
-        if rok:
-            print(f"review rebound: head {head[:12]} only adds review receipts to reviewed {rhead[:12]}")
-        elif ok:
+        ok, detail = merge_only_update(rhead, head, base) if head else (False, "no PR head")
+        if ok:
             print(f"review rebound: head {head[:12]} is a merge-only update of reviewed {rhead[:12]} "
                   f"(clean automatic merge of the base, {detail})")
         else:
@@ -346,9 +250,8 @@ def check(event, receipt_loader=None):
         errors.append("missing Author-lane")
     if reviewer and author and norm(reviewer) == norm(author):
         errors.append(f"Reviewed-by ({reviewer}) must differ from Author-lane ({author})")
-    legacy = field(body, "Review-Receipt")
     r, rerr = (None, None)
-    if receipt_loader and HEX40.fullmatch(rhead or ""):
+    if HEX40.fullmatch(rhead or ""):
         if type(pr_number) is not int or not repo:
             errors.append("event lacks repository/PR number; cannot locate off-branch receipt")
         else:
@@ -356,16 +259,9 @@ def check(event, receipt_loader=None):
     if r is not None:
         errors += check_offbranch_receipt(r, repo, pr_number, rhead, reviewer, author, disp)
     elif rerr:
-        errors.append(rerr)  # unreadable receipt is a failure, never a reason to try the legacy path
-    elif legacy:
-        if type(pr_number) is int and pr_number > LEGACY_MAX_PR:
-            errors.append(f"PR {pr_number} is past the legacy cohort (<= {LEGACY_MAX_PR}); publish an off-branch receipt to {RECEIPT_BRANCH}")
-        else:
-            errors += check_receipt(legacy, head, rhead, reviewer, author, disp, pr_number)
-    elif receipt_loader:
-        errors.append(f"missing receipt: none on {RECEIPT_BRANCH} for PR {pr_number} head {(rhead or '')[:12]}")
+        errors.append(rerr)
     else:
-        errors.append("missing Review-Receipt")
+        errors.append(f"missing receipt: none on {RECEIPT_BRANCH} for PR {pr_number} head {(rhead or '')[:12]}")
     return errors
 
 

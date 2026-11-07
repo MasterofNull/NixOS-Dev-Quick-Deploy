@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 """Tests for scripts/governance/check-pr-body-format.py."""
+import http.server
 import json
 import os
 import subprocess
 import sys
 import tempfile
+import threading
 import unittest
 
 SCRIPT = os.path.join(os.path.dirname(__file__), "..", "governance", "check-pr-body-format.py")
@@ -14,15 +16,39 @@ PR634 = '## Details\n\n- **Scope:** 12 files, +515/-17. New `scripts/ai/aq-revie
 VALID = "## Details\n- a\n### Review record\nX: y\n\n## What\nw\n\n## How\nh\n\n## Why\ny\n"
 
 
-def run(body=None, payload=True):
-    with tempfile.TemporaryDirectory() as d:
-        p = os.path.join(d, "event.json")
-        if payload:
-            with open(p, "w") as f:
-                json.dump({"pull_request": {"body": body}}, f)
-        env = {k: v for k, v in os.environ.items() if k != "GITHUB_EVENT_PATH"}
-        r = subprocess.run([sys.executable, SCRIPT, p], capture_output=True, text=True, env=env)
-        return r.returncode, r.stdout
+def serve(body, status=200):
+    """Stub GitHub API: GET /repos/o/r/pulls/5 returns the live body."""
+    class H(http.server.BaseHTTPRequestHandler):
+        def do_GET(self):
+            ok = status == 200 and self.path == "/repos/o/r/pulls/5"
+            data = json.dumps({"body": body} if ok else {"message": "no"}).encode()
+            self.send_response(200 if ok else 500)
+            self.end_headers()
+            self.wfile.write(data)
+
+        def log_message(self, *a):
+            pass
+    srv = http.server.HTTPServer(("127.0.0.1", 0), H)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    return srv
+
+
+def run(body=None, payload=True, event_body="STALE EVENT BODY", status=200, event=None):
+    """Run the check; `body` is what the API serves, `event_body` is the (ignored) frozen payload body."""
+    srv = serve(body, status)
+    try:
+        with tempfile.TemporaryDirectory() as d:
+            p = os.path.join(d, "event.json")
+            if payload:
+                with open(p, "w") as f:
+                    json.dump(event or {"repository": {"full_name": "o/r"}, "pull_request": {"number": 5, "body": event_body}}, f)
+            env = {k: v for k, v in os.environ.items() if k != "GITHUB_EVENT_PATH"}
+            env["GITHUB_API_URL"] = f"http://127.0.0.1:{srv.server_port}"
+            r = subprocess.run([sys.executable, SCRIPT, p], capture_output=True, text=True, env=env)
+            return r.returncode, r.stdout
+    finally:
+        srv.shutdown()
+        srv.server_close()
 
 
 class PrBodyFormat(unittest.TestCase):
@@ -55,6 +81,18 @@ class PrBodyFormat(unittest.TestCase):
     def test_headings_only_in_fence(self):
         b = "## Details\n- a\n\n```\n## What\nw\n## How\nh\n## Why\ny\n```\n"
         self.assertEqual(run(b)[0], 1)
+
+    def test_reads_live_body_not_event_body(self):
+        self.assertEqual(run(VALID, event_body="no headings at all")[0], 0)
+        self.assertEqual(run("no headings", event_body=VALID)[0], 1)
+
+    def test_api_failure_fails_closed(self):
+        code, out = run(VALID, status=500)
+        self.assertEqual(code, 1)
+        self.assertIn("failing closed", out)
+
+    def test_payload_without_pr_number_fails_closed(self):
+        self.assertEqual(run(VALID, event={"pull_request": {"body": VALID}})[0], 1)
 
     def test_no_payload(self):
         self.assertEqual(run(payload=False)[0], 2)

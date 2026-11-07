@@ -479,6 +479,11 @@ jobs:
           chmod +x scripts/governance/run-ci-checks.sh
           ./scripts/governance/run-ci-checks.sh --all --only python-tooling-policy
 
+      - name: Detect failure-masking constructs in workflows
+        run: |
+          chmod +x scripts/governance/run-ci-checks.sh
+          ./scripts/governance/run-ci-checks.sh --all --only workflow-failure-masks
+
       - name: Set up Python (activation chain test)
         uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6
         with:
@@ -570,6 +575,7 @@ jobs:
             --only pm-tracker-activation-cap \
             --only pm-tracker-owner-acceptance \
             --only check-workflow-masks-test \
+            --only tier0-gate-placement-tests \
             --only activation-manifest-tests \
             --only rea-sandbox-tests \
             --only intelligence-classifier-tests \

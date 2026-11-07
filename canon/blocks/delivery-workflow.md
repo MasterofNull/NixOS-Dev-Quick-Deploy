@@ -22,14 +22,18 @@ memory; that is why another lane committed straight into the main checkout. They
   do not commit regenerated copies.
 
 ### 3. Land by pull request only
-- Push the branch and open a PR (`gh pr create --body-file <file>`); never push to `main`.
-- The owner merges. After a rebase the pre-push sync check needs
-  `SKIP_PRE_PUSH_SYNC_CHECK=true git push --force-with-lease`.
+- Land through `scripts/ai/aq-land` (gate, merge main, independent review of that exact head, push, PR, off-branch
+  receipt, wait for checks, merge). One landing at a time; a re-run resumes after a kill without a second PR,
+  review or receipt; a stalled or quota-limited review lane falls through to the next eligible independent lane
+  and the substitution is recorded in the PR body. Never push to `main`.
+- Documentation ships inside the code PR it describes (owner 2026-11-06). No documentation-only PRs or commits;
+  `aq-land` refuses them unless `--allow-docs-only` is given.
 - Each PR carries an evidence doc `docs/harness-first/evidence/<YYYY-MM-DD>-<slug>.md`
   (what changed, why, test output, what is still not done).
 - The required `review-disposition` check (`.github/workflows/review-disposition.yml`) needs the PR body to
   carry `Author-lane`, `Review-Disposition: PASS|PASS_WITH_FOLLOWUPS`, `Reviewed-subject-sha256`,
-  `Reviewed-head-sha` (== current PR head; re-review after each content push; merge-only base updates with identical verbatim (whitespace-exact) patch-id are accepted) and `Reviewed-by` (lane != Author-lane) plus `Review-Receipt: <path>` minted by `scripts/ai/aq-review-receipt mint` from a real reviewer run (receipt-only follow-up commits stay bound).
+  `Reviewed-head-sha` (== current PR head, or a clean automatic merge of main onto it) and `Reviewed-by` (lane != Author-lane). The receipt is
+  not in the PR: `aq-land` publishes it to the `review-receipts` branch (`scripts/ai/aq-review-receipt mint` + `publish`), so the head never moves.
   Template: `.github/pull_request_template.md`. Identity is declarative until signed receipts exist.
 - PR body layout (CI-enforced by `scripts/governance/check-pr-body-format.py` in the `review-disposition` workflow): `## Details` first (scope, merge order, tests with results, risk, then `### Review record`), followed by plain-language `## What`, `## How`, `## Why`, each non-empty.
 

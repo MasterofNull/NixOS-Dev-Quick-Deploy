@@ -6,18 +6,18 @@ cd "${ROOT_DIR}"
 # shellcheck source=../scripts/governance/lib/clean-git-env.sh
 source "${ROOT_DIR}/scripts/governance/lib/clean-git-env.sh"
 
-SCRIPT_HEADER_SCOPE="all"
-SCRIPT_HEADER_BASE_REF=""
-SCRIPT_HEADER_HEAD_REF=""
+# One entry per pushed ref update ("head base remote_ref"); deletions publish nothing and are skipped. Every
+# non-deletion update is validated on its own range.
+PUSH_UPDATES=()
+PUSH_SEEN=0
 
 while read -r local_ref local_sha remote_ref remote_sha; do
   [[ -n "${local_ref:-}" ]] || continue
-  SCRIPT_HEADER_SCOPE="changed"
-  SCRIPT_HEADER_HEAD_REF="${local_sha}"
-  if [[ -n "${remote_sha:-}" && ! "${remote_sha}" =~ ^0+$ ]]; then
-    SCRIPT_HEADER_BASE_REF="${remote_sha}"
-  fi
-  break
+  PUSH_SEEN=1
+  if [[ "${local_sha}" =~ ^0+$ ]]; then continue; fi
+  base=""
+  if [[ -n "${remote_sha:-}" && ! "${remote_sha}" =~ ^0+$ ]]; then base="${remote_sha}"; fi
+  PUSH_UPDATES+=("${local_sha} ${base:--} ${remote_ref:--}")
 done
 
 summarize_lint_failure() {
@@ -97,46 +97,153 @@ EOF
   return 0
 }
 
-if [[ "${SKIP_PRE_PUSH_LINT:-false}" == "true" ]]; then
-  echo "pre-push: SKIP_PRE_PUSH_LINT=true -> skipping quick lint gate"
-  exit 0
-fi
+# --- Stage ownership (docs/harness-first/evidence/2026-11-06-gate-placement.md) -------------------------
+# pre-push = push safety: things CI cannot see or can only see AFTER the commits are public.
+#   sync      branch is not behind its upstream
+#   identity  every pushed commit has a real author name/email (CI cannot repair history)
+#   secrets   gitleaks over the pushed range (CI scans only after the secret is already on the remote)
+#   conflict  WARNING only: the branch does not merge with origin/main (GitHub reports it on the PR; a branch stacked
+#             on an unmerged branch is honest, so this never blocks the push)
+#   lint      quick-deploy-lint --mode fast: sole owner of the doc/structure scripts listed in
+#             config/ci-checks.json ci_exempt as "run locally by pre-push quick-deploy-lint"
+# NOT here (CI owns them: test.yml manifest-tests + nix-build.yml): the run-ci-checks manifest suites and the
+# Nix evaluation. Opt back in with PRE_PUSH_CI_PARITY=1 when you want the CI result before pushing.
 
-if [[ ! -x "scripts/governance/quick-deploy-lint.sh" ]]; then
-  echo "pre-push: missing scripts/governance/quick-deploy-lint.sh" >&2
-  exit 1
-fi
+push_range() {
+  local head="$1" base="${2:-}" ref="${3:-}"
+  if [[ "${ref}" == "${RECEIPTS_REF}" ]]; then
+    # Append-only receipts branch: its history is unrelated to main, so main is not a base. Scan only the
+    # commits the remote does not already have.
+    if [[ -n "${base}" ]]; then printf '%s..%s' "${base}" "${head}"; else printf '%s --not --remotes' "${head}"; fi
+    return 0
+  fi
+  if [[ -z "${base}" ]]; then
+    base="$(git rev-parse --verify --quiet "${CI_CHECKS_BASE:-origin/main}" || true)"
+  fi
+  if [[ -n "${base}" ]]; then printf '%s..%s' "${base}" "${head}"; else printf '%s' "${head}"; fi
+}
 
-run_upstream_sync_check
+# Exactly this ref, never a pattern: it gets identity + secret scan only (S1 publishes plumbing commits here).
+RECEIPTS_REF="refs/heads/review-receipts"
 
-echo "Running pre-push quick lint gate..."
-lint_log="$(mktemp "${TMPDIR:-/tmp}/pre-push-lint-XXXXXX.log")"
-trap 'rm -f "${lint_log}"' EXIT
-lint_cmd=(./scripts/governance/quick-deploy-lint.sh --mode fast --script-header-scope "${SCRIPT_HEADER_SCOPE}")
-[[ -n "${SCRIPT_HEADER_BASE_REF}" ]] && lint_cmd+=(--base-ref "${SCRIPT_HEADER_BASE_REF}")
-[[ -n "${SCRIPT_HEADER_HEAD_REF}" ]] && lint_cmd+=(--head-ref "${SCRIPT_HEADER_HEAD_REF}")
-run_ci_manifest_checks() {
-  [[ -x "scripts/governance/run-ci-checks.sh" ]] || return 0
-  # CI tests the PR merge commit (branch + main), so the merge-parity run replaces the plain branch run.
-  # CI_MERGE_PARITY_SKIP=1 skips only that step (WARN) and falls back to the branch-only run.
-  if [[ "${CI_MERGE_PARITY_SKIP:-}" != "1" && -x "scripts/governance/ci-merge-parity.sh" ]]; then
-    echo "Running pre-push merge-commit parity (branch + ${CI_CHECKS_BASE:-origin/main}, config/ci-checks.json)..."
-    clean_git_env_run ./scripts/governance/ci-merge-parity.sh --base "${CI_CHECKS_BASE:-origin/main}"
-  else
-    [[ "${CI_MERGE_PARITY_SKIP:-}" != "1" ]] || echo "WARN: CI_MERGE_PARITY_SKIP=1 -> merge-commit parity NOT checked; running branch-only checks" >&2
-    echo "Running pre-push CI-manifest checks (config/ci-checks.json --changed)..."
-    clean_git_env_run ./scripts/governance/run-ci-checks.sh --changed --base "${CI_CHECKS_BASE:-origin/main}"
+run_push_identity_check() {
+  local range bad
+  range="$(push_range "$1" "${2:-}" "${3:-}")"
+  # shellcheck disable=SC2086  # range may be "<head> --not --remotes" and must word-split
+  bad="$(git log --format='%h %an <%ae>' ${range} 2>/dev/null \
+    | awk '{ if ($0 !~ /<[^<>@ ]+@[^<>@ ]+\.[^<>@ ]+>/ || $0 ~ /@localhost|<root@|<unknown@|<\(none\)|<>/) print }' | head -5 || true)"
+  if [[ -n "${bad}" ]]; then
+    echo "pre-push: commit author identity is missing or a placeholder in ${range}:" >&2
+    echo "${bad}" >&2
+    echo "pre-push: set git user.name/user.email, then rewrite the author of those commits before pushing." >&2
+    return 1
   fi
 }
 
-if "${lint_cmd[@]}" 2>&1 | tee "${lint_log}"; then
-  run_ci_manifest_checks || { echo "pre-push: CI-manifest checks failed (same scripts CI runs)." >&2; exit 1; }
-  if [[ -x "scripts/governance/pre-push-nix-eval.sh" ]]; then
-    ./scripts/governance/pre-push-nix-eval.sh "${CI_CHECKS_BASE:-origin/main}" "${SCRIPT_HEADER_HEAD_REF:-HEAD}" || { echo "pre-push: nix evaluation check failed." >&2; exit 1; }
+run_push_secret_scan() {
+  if [[ "${SKIP_SECRET_SCAN:-}" == "1" ]]; then
+    echo "pre-push: secret scan skipped (SKIP_SECRET_SCAN=1)"
+    return 0
   fi
-  exit 0
+  if ! command -v gitleaks >/dev/null 2>&1; then
+    echo "pre-push: WARNING gitleaks not on PATH; pushed-range secret scan NOT run (pre-commit regex scan and CI still apply)" >&2
+    return 0
+  fi
+  local range
+  range="$(push_range "$1" "${2:-}" "${3:-}")"
+  if ! gitleaks git --log-opts="${range}" --no-banner --redact --config .gitleaks.toml >/dev/null 2>&1; then
+    echo "pre-push: gitleaks found a secret in the pushed range ${range}. Re-run for detail:" >&2
+    echo "  gitleaks git --log-opts='${range}' --redact --config .gitleaks.toml" >&2
+    return 1
+  fi
+}
+
+run_push_conflict_probe() {
+  local base="${CI_CHECKS_BASE:-origin/main}"
+  git rev-parse --verify --quiet "${base}" >/dev/null || return 0
+  if ! git merge-tree --write-tree "$1" "${base}" >/dev/null 2>&1; then
+    echo "pre-push: WARNING: $1 conflicts with ${base}; the PR will show the conflict. Not blocking (stacked branches are legitimate)." >&2
+  fi
+}
+
+run_ci_parity_opt_in() {
+  [[ "${PRE_PUSH_CI_PARITY:-0}" == "1" ]] || return 0
+  if [[ "${CI_MERGE_PARITY_SKIP:-}" != "1" && -x "scripts/governance/ci-merge-parity.sh" ]]; then
+    echo "Running opt-in merge-commit parity (branch + ${CI_CHECKS_BASE:-origin/main}, config/ci-checks.json)..."
+    clean_git_env_run ./scripts/governance/ci-merge-parity.sh --base "${CI_CHECKS_BASE:-origin/main}" || return 1
+  elif [[ -x "scripts/governance/run-ci-checks.sh" ]]; then
+    echo "Running opt-in CI-manifest checks (config/ci-checks.json --changed)..."
+    clean_git_env_run ./scripts/governance/run-ci-checks.sh --changed --base "${CI_CHECKS_BASE:-origin/main}" || return 1
+  fi
+  if [[ -x "scripts/governance/pre-push-nix-eval.sh" ]]; then
+    ./scripts/governance/pre-push-nix-eval.sh "${CI_CHECKS_BASE:-origin/main}" "${1:-HEAD}" || return 1
+  fi
+}
+
+# Owner-acceptance (fetch-dependent half of tier0.d/check-pm-tracker): fail-closed, never passes offline.
+# Checks the working tree against fetched origin/main; run once per push that publishes anything.
+run_owner_acceptance_check() {
+  [[ -x scripts/governance/tier0.d/check-pm-tracker.sh ]] || { echo "pre-push: check-pm-tracker.sh missing" >&2; return 1; }
+  bash scripts/governance/tier0.d/check-pm-tracker.sh --owner-acceptance >&2
+}
+
+# A push that only appends to the receipts branch says nothing about the working branch: no sync, no owner check.
+OTHER_UPDATES=0
+for update in "${PUSH_UPDATES[@]+"${PUSH_UPDATES[@]}"}"; do
+  read -r _h _b u_ref <<<"${update}"
+  [[ "${u_ref}" == "${RECEIPTS_REF}" ]] || OTHER_UPDATES=$((OTHER_UPDATES + 1))
+done
+if ((PUSH_SEEN == 0 || OTHER_UPDATES > 0)); then
+  run_upstream_sync_check
+fi
+if ((OTHER_UPDATES > 0)); then
+  run_owner_acceptance_check || { echo "pre-push: owner-acceptance check failed (fail-closed; needs network to fetch origin/main)." >&2; exit 1; }
 fi
 
-rc=${PIPESTATUS[0]}
-summarize_lint_failure "${lint_log}"
-exit "${rc}"
+for update in "${PUSH_UPDATES[@]+"${PUSH_UPDATES[@]}"}"; do
+  read -r u_head u_base u_ref <<<"${update}"
+  [[ "${u_base}" == "-" ]] && u_base=""
+  run_push_identity_check "${u_head}" "${u_base}" "${u_ref}" || { echo "pre-push: identity check failed." >&2; exit 1; }
+  run_push_secret_scan "${u_head}" "${u_base}" "${u_ref}" || exit 1
+  [[ "${u_ref}" == "${RECEIPTS_REF}" ]] || run_push_conflict_probe "${u_head}"
+done
+
+if [[ "${SKIP_PRE_PUSH_LINT:-false}" == "true" ]]; then
+  echo "pre-push: SKIP_PRE_PUSH_LINT=true -> skipping quick lint gate"
+else
+  if [[ ! -x "scripts/governance/quick-deploy-lint.sh" ]]; then
+    echo "pre-push: missing scripts/governance/quick-deploy-lint.sh" >&2
+    exit 1
+  fi
+  lint_updates=("${PUSH_UPDATES[@]+"${PUSH_UPDATES[@]}"}")
+  # A push with no refs on stdin (manual run) lints the whole tree; a delete-only push has nothing to lint.
+  if ((PUSH_SEEN == 0)); then lint_updates=("HEAD - -"); fi
+  for update in "${lint_updates[@]+"${lint_updates[@]}"}"; do
+    read -r u_head u_base u_ref <<<"${update}"
+  [[ "${u_base}" == "-" ]] && u_base=""
+    [[ "${u_ref:-}" == "${RECEIPTS_REF}" ]] && continue
+    echo "Running pre-push quick lint gate..."
+    lint_log="$(mktemp "${TMPDIR:-/tmp}/pre-push-lint-XXXXXX.log")"
+    scope="changed"; ((PUSH_SEEN == 0)) && scope="all"
+    lint_cmd=(./scripts/governance/quick-deploy-lint.sh --mode fast --script-header-scope "${scope}")
+    [[ -n "${u_base}" ]] && lint_cmd+=(--base-ref "${u_base}")
+    [[ "${scope}" == "changed" ]] && lint_cmd+=(--head-ref "${u_head}")
+    if "${lint_cmd[@]}" 2>&1 | tee "${lint_log}"; then
+      rm -f "${lint_log}"
+    else
+      rc=${PIPESTATUS[0]}
+      summarize_lint_failure "${lint_log}"
+      rm -f "${lint_log}"
+      exit "${rc}"
+    fi
+  done
+fi
+
+for update in "${PUSH_UPDATES[@]+"${PUSH_UPDATES[@]}"}"; do
+  read -r u_head u_base u_ref <<<"${update}"
+  [[ "${u_base}" == "-" ]] && u_base=""
+  [[ "${u_ref:-}" == "${RECEIPTS_REF}" ]] && continue
+  run_ci_parity_opt_in "${u_head}" || { echo "pre-push: opt-in CI parity failed." >&2; exit 1; }
+  break
+done
+exit 0
