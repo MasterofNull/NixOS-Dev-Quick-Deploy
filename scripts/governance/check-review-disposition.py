@@ -24,6 +24,15 @@ branch that cannot be fetched, fails. Schema 1 receipts committed in the PR are 
 longer accepted (the migration path was removed when `aq-land` began issuing
 off-branch receipts); a `Review-Receipt:` body line is ignored.
 
+Trust boundary: the workflow runs on `pull_request_target`, so the workflow definition and
+this checker come from the base branch (main), never from the PR. The PR contributes only the
+event payload and git objects fetched as data (`refs/pull/<N>/head`); nothing from it is
+executed. A PR that edits this file, the workflow or check-pr-body-format.py is judged by main's
+copy. The change that introduces this arrangement is itself judged by the previous workflow on
+main (see the bootstrap note in its evidence file). Residual risk: a change to the checker is
+effective only after it merges, and anyone who can push to main or edit branch protection can
+still change the rules.
+
 Accepted limits: validation and result publication are not atomic, so a mutation after
 the final metadata read is possible; a clean merge from trusted main can carry unreviewed
 semantic interactions (the limit of the merge-exemption policy); and the same-second
