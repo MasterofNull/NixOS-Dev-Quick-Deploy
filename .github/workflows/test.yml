@@ -568,6 +568,8 @@ jobs:
           ./scripts/governance/run-ci-checks.sh --all \
             --only pm-tracker-untrusted-hold \
             --only pm-tracker-activation-cap \
+            --only sweep-tracker-claims \
+            --only sweep-tracker-claims-test \
             --only pm-tracker-owner-acceptance \
             --only check-workflow-masks-test \
             --only activation-manifest-tests \
