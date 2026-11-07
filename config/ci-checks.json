@@ -525,6 +525,19 @@
       "ci_workflow": ".github/workflows/test.yml#syntax"
     },
     {
+      "id": "sweep-enabled-units-test",
+      "cmd": "scripts/testing/test-sweep-enabled-units.py",
+      "paths": [
+        "scripts/testing/test-sweep-enabled-units.py",
+        "scripts/governance/sweep-enabled-units.py",
+        "config/ci-checks.json"
+      ],
+      "needs": [
+        "python3"
+      ],
+      "ci_workflow": ".github/workflows/test.yml#syntax"
+    },
+    {
       "id": "mcp-integrity-unit-path-test",
       "cmd": "scripts/testing/test-mcp-integrity-unit-path.sh",
       "paths": [
