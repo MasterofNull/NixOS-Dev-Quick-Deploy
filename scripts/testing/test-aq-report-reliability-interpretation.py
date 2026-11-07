@@ -129,6 +129,7 @@ def main() -> int:
         recent_health={"available": True, "window": "1h", "healthy": True, "slow_tools": [], "flaky_tools": []},
         continue_editor={"available": False},
         continue_editor_windows={"available": False, "windows": {}},
+        editor_rescue_windows_summary={"available": False},
         shared_skill_registry={"available": False},
         delegated_prompt_failures={"available": False},
         delegated_prompt_failure_windows={"available": False},
