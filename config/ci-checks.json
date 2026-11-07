@@ -649,6 +649,7 @@
         "scripts/testing/test-aq-editor-rescue.py",
         "scripts/testing/test-aq-eval.py",
         "scripts/testing/test-aq-evidence-collector.py",
+        "scripts/testing/test-aq-help-center.py",
         "scripts/testing/test-aq-index-knowledge-graph.py",
         "scripts/testing/test-aq-index-logic-patterns-backoff.py",
         "scripts/testing/test-aq-inference-bench.py",
@@ -727,6 +728,7 @@
         "scripts/testing/test-aq-editor-rescue.py",
         "scripts/testing/test-aq-eval.py",
         "scripts/testing/test-aq-evidence-collector.py",
+        "scripts/testing/test-aq-help-center.py",
         "scripts/testing/test-aq-index-knowledge-graph.py",
         "scripts/testing/test-aq-index-logic-patterns-backoff.py",
         "scripts/testing/test-aq-inference-bench.py",
@@ -2226,11 +2228,6 @@
       "script": "scripts/testing/test-aq-confine.py",
       "class": "live-service",
       "reason": "host-only: needs a live local service (switchboard/dashboard/coordinator/AIDB); last output: SUMMARY: 204 checks ran, 54 failed, 0 behavioral groups skipped (preflight: ok)"
-    },
-    {
-      "script": "scripts/testing/test-aq-help-center.py",
-      "class": "known-failing",
-      "reason": "fails on main (rc=1): AssertionError: Doc file missing for workspace-operator: /home/hyperd/Documents/NixOS-Dev-, tracked in backlog"
     },
     {
       "script": "scripts/testing/test-aq-loop-review-repair-guard.py",

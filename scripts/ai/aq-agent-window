@@ -3,10 +3,10 @@
 aq-agent-window — Dedicated interactive terminal window for any agent/model lane.
 
 Supported Models & Lanes:
-  • local     — Qwen3-35B on Local APU (llama.cpp :8080 / coordinator :8003)
-  • claude    — Claude 3.7 / Fable-5 (switchboard :8085 / anthropic)
-  • codex     — OpenAI Codex / GPT-6 Astra (coordinator :8003 / openai)
-  • gemini    — Google Gemini 3.8-Flash / 2.5 (switchboard :8085 / google)
+  • local     — Local Qwen on the APU (llama.cpp :8080 / coordinator :8003)
+  • claude    — Claude (switchboard :8085 / anthropic)
+  • codex     — Codex (coordinator :8003 / openai)
+  • gemini    — Gemini (switchboard :8085 / google)
   • deepseek  — DeepSeek V3 / R1 (switchboard :8085 / deepseek)
   • mistral   — Mistral Large / Codestral (switchboard :8085)
   • llama     — Llama 3.3 (local :8080 or switchboard :8085)
@@ -71,7 +71,7 @@ def reject_unsupported_gemini_editing_role(lane: str, role: str) -> bool:
 
 BUILTIN_LANES = {
     "local": {
-        "title": "󰚩 Qwen3-35B (Local APU)",
+        "title": "󰚩 Local Qwen",
         "color": "#00d9ff",
         "backend": "Local APU :8080 / Switchboard :8085",
         "url": f"{SWITCHBOARD_URL}/v1/chat/completions",
@@ -80,7 +80,7 @@ BUILTIN_LANES = {
         "prompt_symbol": "qwen",
     },
     "claude": {
-        "title": "󰚩 Claude 3.7 / Fable-5",
+        "title": "󰚩 Claude (CLI)",
         "color": "#ff79c6",
         "backend": "Switchboard :8085 (Anthropic)",
         "url": f"{SWITCHBOARD_URL}/v1/chat/completions",
@@ -89,7 +89,7 @@ BUILTIN_LANES = {
         "prompt_symbol": "claude",
     },
     "codex": {
-        "title": "󰚩 OpenAI Codex / GPT-6 Astra",
+        "title": "󰚩 Codex (CLI)",
         "color": "#50fa7b",
         "backend": "Coordinator :8003 / Switchboard :8085 (OpenAI)",
         "url": f"{SWITCHBOARD_URL}/v1/chat/completions",
@@ -98,22 +98,13 @@ BUILTIN_LANES = {
         "prompt_symbol": "codex",
     },
     "gemini": {
-        "title": "󰚩 Google Gemini 3.8-Flash",
+        "title": "󰚩 Gemini (CLI)",
         "color": "#bd93f9",
         "backend": "Switchboard :8085 (Google)",
         "url": f"{SWITCHBOARD_URL}/v1/chat/completions",
         "model": "gemini-3.8-flash",
         "profile": "remote-gemini",
         "prompt_symbol": "gemini",
-    },
-    "antigravity": {
-        "title": "󰚩 Google Antigravity / Gemini 3.8",
-        "color": "#bd93f9",
-        "backend": "Switchboard :8085 / Antigravity IDE",
-        "url": f"{SWITCHBOARD_URL}/v1/chat/completions",
-        "model": "gemini-3.8-flash",
-        "profile": "remote-gemini",
-        "prompt_symbol": "antigravity",
     },
     "deepseek": {
         "title": "󰚩 DeepSeek V3 / R1",
@@ -160,9 +151,9 @@ def resolve_lane_config(key_or_model: str, custom_backend: Optional[str] = None)
         url = f"{SWITCHBOARD_URL}/v1/chat/completions"
         backend = "Switchboard :8085 (Anthropic)"
         color = "#ff79c6"
-    elif any(k in norm for k in ("gemini", "google", "antigravity")):
+    elif any(k in norm for k in ("gemini", "google")):
         url = f"{SWITCHBOARD_URL}/v1/chat/completions"
-        backend = "Switchboard :8085 (Google / Antigravity)"
+        backend = "Switchboard :8085 (Google)"
         color = "#bd93f9"
     elif any(k in norm for k in ("gpt", "openai", "codex", "o1", "o3")):
         url = f"{HYBRID_URL}/v1/chat/completions"
