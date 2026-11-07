@@ -9,7 +9,7 @@ import json
 import importlib.util
 import os
 import re
-import subprocess
+import subprocess as _subprocess
 import sys
 import time
 from pathlib import Path
@@ -22,6 +22,33 @@ from ..core.helpers import (
     host_observer_service_status, is_sandbox_denied,
 )
 from ..core.result import CheckResult, passed, failed, skipped
+
+
+def _timeout_scale() -> float:
+    """Multiplier for subprocess timeouts so a check that takes 2 s alone is not failed by host contention
+    (QA 0.10.54 and friends). AQ_QA_TIMEOUT_SCALE overrides; otherwise 1..4 from load average per half the CPUs."""
+    forced = os.environ.get("AQ_QA_TIMEOUT_SCALE", "").strip()
+    try:
+        if forced:
+            return max(1.0, min(8.0, float(forced)))
+        return max(1.0, min(4.0, os.getloadavg()[0] / max(1, (os.cpu_count() or 2) / 2)))
+    except (OSError, ValueError):
+        return 1.0
+
+
+class _LoadScaledSubprocess:
+    """subprocess facade for this module: run() timeouts are scaled by _timeout_scale(); all else passes through."""
+
+    def __getattr__(self, name):
+        return getattr(_subprocess, name)
+
+    def run(self, *args, **kwargs):
+        if kwargs.get("timeout"):
+            kwargs["timeout"] = kwargs["timeout"] * _timeout_scale()
+        return _subprocess.run(*args, **kwargs)
+
+
+subprocess = _LoadScaledSubprocess()
 
 # ---------------------------------------------------------------------------
 # 0.1 Systemd service checks
@@ -1541,6 +1568,24 @@ def _check_frontier_fe2a_functional_eval(ctx: RunContext) -> list[CheckResult]:
     return [passed(5, "0.10.64", desc)]
 
 
+def _confine_context_gap() -> str:
+    """Why this process cannot run the behavioral aq-confine groups (cgroup scope needs the systemd user
+    manager), or "" when it can. Probes with the same env the launcher and test use."""
+    if os.environ.get("CI"):
+        return ""  # CI relies on the test's own SKIP-WARN preflight path (confine-tests.yml)
+    rt = os.environ.get("XDG_RUNTIME_DIR") or f"/run/user/{os.getuid()}"
+    env = {**os.environ, "XDG_RUNTIME_DIR": rt}
+    try:
+        probe = subprocess.run(["systemctl", "--user", "show", "-p", "Version", "--value"], env=env,
+                               capture_output=True, text=True, timeout=15, check=False)
+        if probe.returncode == 0 and probe.stdout.strip():
+            return ""
+        err = (probe.stderr or probe.stdout).strip()[:120]
+    except (OSError, subprocess.TimeoutExpired) as error:
+        err = str(error)[:120]
+    return f"systemd user manager unreachable from this process ({err})"
+
+
 def _check_aq_confine_behavioral(ctx: RunContext) -> list[CheckResult]:
     """0.10.66: aq-confine acceptance suite (cgroup scope, bwrap isolation, goldens). Local runs set AQ_CONFINE_REQUIRE=1 so a broken bwrap fails loudly."""
     desc = "aq-confine acceptance: profiles, goldens, cgroup scope limits, bwrap isolation (AQ_CONFINE_REQUIRE=1 locally)"
@@ -1550,6 +1595,13 @@ def _check_aq_confine_behavioral(ctx: RunContext) -> list[CheckResult]:
     env = dict(os.environ)
     if not env.get("CI"):
         env["AQ_CONFINE_REQUIRE"] = "1"
+    gap = _confine_context_gap()
+    if gap:
+        # An explicit skip, never a pass. --pre-deploy / aq-deploy-current run from the owner's shell set
+        # AQ_CONFINE_REQUIRE_CONTEXT=1, which turns the gap into a failure so the suite always runs somewhere.
+        if os.environ.get("AQ_CONFINE_REQUIRE_CONTEXT") == "1":
+            return [failed(5, "0.10.66", desc, f"{gap}; AQ_CONFINE_REQUIRE_CONTEXT=1 forbids skipping"[:240])]
+        return [skipped(5, "0.10.66", desc, f"not run: {gap}; runs in --pre-deploy (owner shell) and CI confine-tests.yml"[:240])]
     try:
         proc = subprocess.run([sys.executable, str(test)], cwd=str(ctx.repo_root), capture_output=True, text=True,
                               timeout=600, check=False, env=env)
