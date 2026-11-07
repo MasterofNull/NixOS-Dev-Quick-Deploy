@@ -14,6 +14,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "ai-stack" / "mcp-servers"))
 sys.path.insert(0, str(ROOT / "ai-stack" / "mcp-servers" / "hybrid-coordinator"))
+# synthetic_data / active_learning live in ai-stack/model-optimization (on PYTHONPATH in the deployed unit).
+sys.path.insert(0, str(ROOT / "ai-stack" / "model-optimization"))
 
 
 def assert_true(condition: bool, message: str) -> None:

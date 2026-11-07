@@ -41,7 +41,7 @@ HOOK_TYPES=(
 
 # Logging helpers
 log_debug() {
-  [[ "${VERBOSE:-0}" == "1" ]] && echo "[deployment-hooks] DEBUG: $*" >&2
+  [[ "${VERBOSE:-0}" != "1" ]] || echo "[deployment-hooks] DEBUG: $*" >&2
 }
 
 log_info() {
@@ -147,7 +147,7 @@ register_hook() {
   registry=$(echo "${registry}" | jq \
     --arg type "${hook_type}" \
     --argjson hook "${hook_entry}" \
-    '.hooks[$type] += [$hook] | .hooks[$type] |= sort_by(.priority) | .last_updated = now | strftime("%Y-%m-%dT%H:%M:%S%z")')
+    '.hooks[$type] += [$hook] | .hooks[$type] |= sort_by(.priority) | .last_updated = (now | strftime("%Y-%m-%dT%H:%M:%S%z"))')
 
   # Save registry
   echo "${registry}" > "${HOOKS_REGISTRY_FILE}"
@@ -174,7 +174,7 @@ remove_hook() {
   registry=$(echo "${registry}" | jq \
     --arg type "${hook_type}" \
     --arg name "${hook_name}" \
-    '.hooks[$type] = [.hooks[$type][] | select(.name != $name)] | .last_updated = now | strftime("%Y-%m-%dT%H:%M:%S%z")')
+    '.hooks[$type] = [.hooks[$type][] | select(.name != $name)] | .last_updated = (now | strftime("%Y-%m-%dT%H:%M:%S%z"))')
 
   # Save registry
   echo "${registry}" > "${HOOKS_REGISTRY_FILE}"
@@ -217,7 +217,7 @@ update_hook_status() {
     --arg type "${hook_type}" \
     --arg name "${hook_name}" \
     --argjson enabled "${enabled}" \
-    '.hooks[$type] = [.hooks[$type][] | if .name == $name then .enabled = $enabled else . end] | .last_updated = now | strftime("%Y-%m-%dT%H:%M:%S%z")')
+    '.hooks[$type] = [.hooks[$type][] | if .name == $name then .enabled = $enabled else . end] | .last_updated = (now | strftime("%Y-%m-%dT%H:%M:%S%z"))')
 
   # Save registry
   echo "${registry}" > "${HOOKS_REGISTRY_FILE}"

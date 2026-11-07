@@ -31,7 +31,7 @@ NOTIFICATION_CONFIG_FILE="${NOTIFICATION_CONFIG_FILE:-${ALERT_CONFIG_DIR}/notifi
 
 # Logging helpers
 log_debug() {
-  [[ "${VERBOSE:-0}" == "1" ]] && echo "[alert-config] DEBUG: $*" >&2
+  [[ "${VERBOSE:-0}" != "1" ]] || echo "[alert-config] DEBUG: $*" >&2
 }
 
 log_info() {

@@ -11,8 +11,9 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[2]
-ROUTE_HANDLER_PATH = ROOT / "ai-stack" / "mcp-servers" / "hybrid-coordinator" / "route_handler.py"
-COORDINATOR_DIR = ROUTE_HANDLER_PATH.parent
+# Implementation lives in core/ (route_handler.py at the top level is a re-export shim; patching it would not affect the code under test).
+ROUTE_HANDLER_PATH = ROOT / "ai-stack" / "mcp-servers" / "hybrid-coordinator" / "core" / "route_handler.py"
+COORDINATOR_DIR = ROUTE_HANDLER_PATH.parent.parent
 MCP_SERVERS_DIR = COORDINATOR_DIR.parent
 
 _TESTING_DIR = Path(__file__).parent
@@ -36,7 +37,14 @@ def load_route_handler():
     sys.modules.setdefault(
         "config",
         types.SimpleNamespace(
+            routing_config=_mc.ROUTING_CONFIG,
             Config=types.SimpleNamespace(
+                SWITCHBOARD_REMOTE_URL="",
+                AI_MODEL_HAS_THINKING=False,
+                AI_MODEL_CAN_DISABLE_THINKING=False,
+                AIDB_URL=_mc.AIDB_URL,
+                RALPH_WIGGUM_API_KEY_FILE="",
+                AI_SEARCH_SCORE_THRESHOLD=0.45,
                 LLAMA_CPP_URL=_mc.LLAMA_URL,
                 AI_AUTONOMY_MAX_RETRIEVAL_RESULTS=8,
                 AI_ROUTE_KEYWORD_POOL_DEFAULT=60,
@@ -85,6 +93,7 @@ def load_route_handler():
         types.SimpleNamespace(
             looks_like_sql=lambda _query: False,
             normalize_tokens=lambda text: [token for token in str(text).lower().split() if token],
+            query_targets_runtime_diagnostics=lambda _query, _tokens=None: False,
         ),
     )
     sys.modules.setdefault("query_expansion", types.SimpleNamespace(QueryExpander=lambda _url: object()))

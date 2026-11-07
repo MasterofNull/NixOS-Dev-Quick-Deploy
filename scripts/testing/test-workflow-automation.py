@@ -9,11 +9,13 @@ optimization, templates, adaptation, prediction, and execution.
 import sys
 import asyncio
 import logging
+import tempfile
 from pathlib import Path
 from typing import List, Dict, Any
 
-# Add lib to path
-lib_path = Path(__file__).parent.parent.parent / "lib"
+# Add lib/l4-coord to path
+# agents/ and workflows/ moved to lib/l4-coord (2e65cae38); l4-coord is not a package name, so put it on the path.
+lib_path = Path(__file__).resolve().parent.parent.parent / "lib" / "l4-coord"
 sys.path.insert(0, str(lib_path))
 
 from workflows import (
@@ -39,13 +41,15 @@ class WorkflowAutomationTests:
 
     def __init__(self):
         """Initialize test suite."""
+        # Per-run temp dir (TMPDIR-aware) instead of fixed /tmp paths that persist across runs.
+        self.work_dir = Path(tempfile.mkdtemp(prefix="workflow-automation-test-"))
         self.generator = WorkflowGenerator()
         self.optimizer = WorkflowOptimizer()
-        self.template_manager = TemplateManager("/tmp/test-templates")
+        self.template_manager = TemplateManager(str(self.work_dir / "templates"))
         self.adapter = WorkflowAdapter()
         self.predictor = SuccessPredictor()
-        self.executor = WorkflowExecutor(state_dir="/tmp/test-workflow-state")
-        self.store = WorkflowStore("/tmp/test-workflow-store.db")
+        self.executor = WorkflowExecutor(state_dir=str(self.work_dir / "state"))
+        self.store = WorkflowStore(str(self.work_dir / "store.db"))
 
         self.passed = 0
         self.failed = 0

@@ -8,8 +8,12 @@ import sys
 import json
 from pathlib import Path
 
+# Test env: no live service env vars required (config.Config strict-env check is a deploy-time guard).
+import os
+os.environ.setdefault("AI_STRICT_ENV", "false")
+
 # Add hybrid-coordinator to path
-sys.path.insert(0, str(Path(__file__).parent / "ai-stack/mcp-servers/hybrid-coordinator"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "ai-stack/mcp-servers/hybrid-coordinator"))
 
 try:
     from llm_router import get_router, AgentTier, TaskComplexity

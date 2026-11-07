@@ -616,6 +616,7 @@
         "scripts/testing/test-agent-agnostic-router.py",
         "scripts/testing/test-agent-artifact-policy.py",
         "scripts/testing/test-agent-auth-s10.py",
+        "scripts/testing/test-agent-auth-s5.py",
         "scripts/testing/test-agent-dispatch-budget.py",
         "scripts/testing/test-agent-dispatch-contract.py",
         "scripts/testing/test-agent-executor-analysis-finalization.py",
@@ -649,6 +650,7 @@
         "scripts/testing/test-agent-agnostic-router.py",
         "scripts/testing/test-agent-artifact-policy.py",
         "scripts/testing/test-agent-auth-s10.py",
+        "scripts/testing/test-agent-auth-s5.py",
         "scripts/testing/test-agent-dispatch-budget.py",
         "scripts/testing/test-agent-dispatch-contract.py",
         "scripts/testing/test-agent-executor-analysis-finalization.py",
@@ -755,7 +757,11 @@
         "scripts/testing/test-aq-usage-logging.py",
         "scripts/testing/test-aq-workspace.py",
         "scripts/testing/test-aq-worktree-reap.py",
-        "scripts/testing/test-rsi-convene-rounds.py"
+        "scripts/testing/test-rsi-convene-rounds.py",
+        "scripts/testing/test-approval-recovery.py",
+        "scripts/testing/test-approval-runbook-engine.py",
+        "scripts/testing/test-approval-signer.py",
+        "scripts/testing/test-aq-approve-headless.py"
       ],
       "needs": [
         "python3",
@@ -763,11 +769,15 @@
       ],
       "ci_workflow": ".github/workflows/test.yml#syntax",
       "tests": [
+        "scripts/testing/test-approval-recovery.py",
+        "scripts/testing/test-approval-runbook-engine.py",
+        "scripts/testing/test-approval-signer.py",
         "scripts/testing/test-aq-a2a-audit.py",
         "scripts/testing/test-aq-agent-launcher.py",
         "scripts/testing/test-aq-agent-reap.py",
         "scripts/testing/test-aq-alerts-json.py",
         "scripts/testing/test-aq-approval-ask-hook.py",
+        "scripts/testing/test-aq-approve-headless.py",
         "scripts/testing/test-aq-approve-inbox.py",
         "scripts/testing/test-aq-approve-single-use.py",
         "scripts/testing/test-aq-auto-update.py",
@@ -1162,6 +1172,7 @@
       "cmd": "scripts/testing/run-test-group.py tests-misc-a-c",
       "paths": [
         "scripts/testing/run-test-group.py",
+        "scripts/testing/test-a2a-compat.py",
         "scripts/testing/test-a2a-guard.py",
         "scripts/testing/test-activation-auto-revert-guard.py",
         "scripts/testing/test-adk-integration.py",
@@ -1249,6 +1260,7 @@
       ],
       "ci_workflow": ".github/workflows/test.yml#syntax",
       "tests": [
+        "scripts/testing/test-a2a-compat.py",
         "scripts/testing/test-a2a-guard.py",
         "scripts/testing/test-activation-auto-revert-guard.py",
         "scripts/testing/test-adk-integration.py",
@@ -1551,12 +1563,14 @@
         "scripts/testing/test-microarchitectural-isolation.py",
         "scripts/testing/test-modal-task-profiles.py",
         "scripts/testing/test-model-budget.py",
+        "scripts/testing/test-model-optimization-advanced-runtime.py",
         "scripts/testing/test-model-optimization-implementation.py",
         "scripts/testing/test-model-probe-freshness.py",
         "scripts/testing/test-model-symlink-verification.sh",
         "scripts/testing/test-model-tier.py",
         "scripts/testing/test-model-tiering-health.py",
         "scripts/testing/test-module-catalog.py",
+        "scripts/testing/test-multi-agent-collaboration.py",
         "scripts/testing/test-multi-agent-coordination.py",
         "scripts/testing/test-multi-modal-retrieval-ranking.py",
         "scripts/testing/test-multidomain-sweeper.py"
@@ -1606,12 +1620,14 @@
         "scripts/testing/test-microarchitectural-isolation.py",
         "scripts/testing/test-modal-task-profiles.py",
         "scripts/testing/test-model-budget.py",
+        "scripts/testing/test-model-optimization-advanced-runtime.py",
         "scripts/testing/test-model-optimization-implementation.py",
         "scripts/testing/test-model-probe-freshness.py",
         "scripts/testing/test-model-symlink-verification.sh",
         "scripts/testing/test-model-tier.py",
         "scripts/testing/test-model-tiering-health.py",
         "scripts/testing/test-module-catalog.py",
+        "scripts/testing/test-multi-agent-collaboration.py",
         "scripts/testing/test-multi-agent-coordination.py",
         "scripts/testing/test-multi-modal-retrieval-ranking.py",
         "scripts/testing/test-multidomain-sweeper.py"
@@ -1668,6 +1684,7 @@
         "scripts/testing/test-quality-cache.py",
         "scripts/testing/test-query-agent-storage-learning-loop.py",
         "scripts/testing/test-query-handler-attention-queue.py",
+        "scripts/testing/test-query-performance.py",
         "scripts/testing/test-query-result-caching.py",
         "scripts/testing/test-quick-deploy-target-discovery.py",
         "scripts/testing/test-quickstart.py",
@@ -1698,6 +1715,12 @@
         "scripts/testing/test-round-decision-authorization.py",
         "scripts/testing/test-round-golden.py",
         "scripts/testing/test-round-state-machine.py",
+        "scripts/testing/test-route-handler-adaptive-timeouts.py",
+        "scripts/testing/test-route-handler-backend-audit.py",
+        "scripts/testing/test-route-handler-classifier-context-cap.py",
+        "scripts/testing/test-route-handler-context-budget.py",
+        "scripts/testing/test-route-handler-discovery-gating.py",
+        "scripts/testing/test-route-handler-local-synthesis-budget.py",
         "scripts/testing/test-route-search-parallelization.py",
         "scripts/testing/test-route-search-pressure-diagnosis.py",
         "scripts/testing/test-routing-history.py",
@@ -1770,6 +1793,7 @@
         "scripts/testing/test-quality-cache.py",
         "scripts/testing/test-query-agent-storage-learning-loop.py",
         "scripts/testing/test-query-handler-attention-queue.py",
+        "scripts/testing/test-query-performance.py",
         "scripts/testing/test-query-result-caching.py",
         "scripts/testing/test-quick-deploy-target-discovery.py",
         "scripts/testing/test-quickstart.py",
@@ -1800,6 +1824,12 @@
         "scripts/testing/test-round-decision-authorization.py",
         "scripts/testing/test-round-golden.py",
         "scripts/testing/test-round-state-machine.py",
+        "scripts/testing/test-route-handler-adaptive-timeouts.py",
+        "scripts/testing/test-route-handler-backend-audit.py",
+        "scripts/testing/test-route-handler-classifier-context-cap.py",
+        "scripts/testing/test-route-handler-context-budget.py",
+        "scripts/testing/test-route-handler-discovery-gating.py",
+        "scripts/testing/test-route-handler-local-synthesis-budget.py",
         "scripts/testing/test-route-search-parallelization.py",
         "scripts/testing/test-route-search-pressure-diagnosis.py",
         "scripts/testing/test-routing-history.py",
@@ -1911,7 +1941,12 @@
         "scripts/testing/test-workflow-shadow-migration.py",
         "scripts/testing/test-working-memory-state-permissions.py",
         "scripts/testing/test-worktree-write-guard.py",
-        "scripts/testing/test-write-region.py"
+        "scripts/testing/test-write-region.py",
+        "scripts/testing/test-safety-layer.py",
+        "scripts/testing/test-search-router-collection-timeouts.py",
+        "scripts/testing/test-security-workflow-integration.py",
+        "scripts/testing/test-task-classifier-local-continuation.py",
+        "scripts/testing/test-workflow-automation.py"
       ],
       "needs": [
         "python3",
@@ -2001,7 +2036,12 @@
         "scripts/testing/test-workflow-shadow-migration.py",
         "scripts/testing/test-working-memory-state-permissions.py",
         "scripts/testing/test-worktree-write-guard.py",
-        "scripts/testing/test-write-region.py"
+        "scripts/testing/test-write-region.py",
+        "scripts/testing/test-safety-layer.py",
+        "scripts/testing/test-search-router-collection-timeouts.py",
+        "scripts/testing/test-security-workflow-integration.py",
+        "scripts/testing/test-task-classifier-local-continuation.py",
+        "scripts/testing/test-workflow-automation.py"
       ]
     },
     {
@@ -2309,11 +2349,6 @@
   ],
   "test_exempt": [
     {
-      "script": "scripts/testing/test-a2a-compat.py",
-      "class": "known-failing",
-      "reason": "fails on main: references missing file ai-stack/mcp-servers/hybrid-coordinator/http_server.py, tracked in backlog"
-    },
-    {
       "script": "scripts/testing/test-adk-declarative-wiring.sh",
       "class": "known-failing",
       "reason": "fails on main: references missing file lib/adk/wiring-validator.sh, tracked in backlog"
@@ -2332,11 +2367,6 @@
       "script": "scripts/testing/test-advanced-reasoning-patterns.py",
       "class": "known-failing",
       "reason": "fails on main: references missing file ai-stack/agentic-patterns/self_consistency.py, tracked in backlog"
-    },
-    {
-      "script": "scripts/testing/test-agent-auth-s5.py",
-      "class": "known-failing",
-      "reason": "fails on main: ModuleNotFoundError 'shared' (sys.path/dependency not available), tracked in backlog"
     },
     {
       "script": "scripts/testing/test-agent-auth-s7-s9.py",
@@ -2412,26 +2442,6 @@
       "script": "scripts/testing/test-aidb-library-catalog-sync-fetch.py",
       "class": "live-service",
       "reason": "host-only: needs a live local service (switchboard/dashboard/coordinator/AIDB); last output: Is the server running on that host and accepting TCP/IP connections?"
-    },
-    {
-      "script": "scripts/testing/test-approval-recovery.py",
-      "class": "known-failing",
-      "reason": "fails on main: ModuleNotFoundError 'fido2' (sys.path/dependency not available), tracked in backlog"
-    },
-    {
-      "script": "scripts/testing/test-approval-runbook-engine.py",
-      "class": "known-failing",
-      "reason": "fails on main (rc=1): - test_scope_bound_rejects_undeclared_effect: expected scope-effect rejection, got unautho, tracked in backlog"
-    },
-    {
-      "script": "scripts/testing/test-approval-signer.py",
-      "class": "known-failing",
-      "reason": "fails on main: ModuleNotFoundError 'fido2' (sys.path/dependency not available), tracked in backlog"
-    },
-    {
-      "script": "scripts/testing/test-aq-approve-headless.py",
-      "class": "known-failing",
-      "reason": "fails on main: ModuleNotFoundError 'fido2' (sys.path/dependency not available), tracked in backlog"
     },
     {
       "script": "scripts/testing/test-aq-confine.py",
@@ -2746,7 +2756,7 @@
     {
       "script": "scripts/testing/test-llm-router-integration.py",
       "class": "known-failing",
-      "reason": "fails on main (rc=1): Make sure llm_router.py and model_coordinator.py are in the hybrid-coordinator directory, tracked in backlog"
+      "reason": "known-failing (2026-11-07): imports and config now load (path + AI_STRICT_ENV fixed), but the script only prints PASS/FAIL and exits 0, so it cannot gate; its Test 2 expects a 'free' tier for 'implement a new REST API endpoint' while the router now returns local (visible '✗ FAIL'). Needs a routing-policy decision, then conversion to real asserts"
     },
     {
       "script": "scripts/testing/test-local-agent-config.py",
@@ -2756,7 +2766,7 @@
     {
       "script": "scripts/testing/test-local-agent-offline-resilience.py",
       "class": "known-failing",
-      "reason": "fails on main: ModuleNotFoundError 'task_router' (sys.path/dependency not available), tracked in backlog"
+      "reason": "known-failing (2026-11-07): the router half imports local-agents/task_router.py, retired by cc392da25 (no replacement implements offline_mode/allow_degraded_local); decision needed: archive the router test or port the offline-degrade feature to routing_contract. Executor half is unaffected"
     },
     {
       "script": "scripts/testing/test-local-delegation-reliability.py",
@@ -2784,11 +2794,6 @@
       "reason": "host-only: asserts the active llama.cpp model file (profile model_path under /var/lib) exists; a CI runner has no local model weights"
     },
     {
-      "script": "scripts/testing/test-model-optimization-advanced-runtime.py",
-      "class": "known-failing",
-      "reason": "fails on main: ModuleNotFoundError 'synthetic_data' (sys.path/dependency not available), tracked in backlog"
-    },
-    {
       "script": "scripts/testing/test-model-optimization-mcp-tools.py",
       "class": "known-failing",
       "reason": "fails on main (rc=1): AssertionError: MCP handlers should expose capture_training_example, tracked in backlog"
@@ -2797,11 +2802,6 @@
       "script": "scripts/testing/test-model-optimization-runtime-integration.py",
       "class": "known-failing",
       "reason": "fails on main (rc=1): AssertionError: interaction outcome should still update qdrant payload, tracked in backlog"
-    },
-    {
-      "script": "scripts/testing/test-multi-agent-collaboration.py",
-      "class": "known-failing",
-      "reason": "fails on main: ModuleNotFoundError 'agents' (sys.path/dependency not available), tracked in backlog"
     },
     {
       "script": "scripts/testing/test-network-policy-packaging.sh",
@@ -2860,8 +2860,8 @@
     },
     {
       "script": "scripts/testing/test-prompt-effectiveness.py",
-      "class": "known-failing",
-      "reason": "fails on main: ModuleNotFoundError 'local_orchestrator' (sys.path/dependency not available), tracked in backlog"
+      "class": "live-service",
+      "reason": "live-service (2026-11-07): drives LocalOrchestrator.process() against a running llama.cpp/coordinator over a prompt corpus; its import also needs ai-stack/local-orchestrator (hyphenated dir, not importable as local_orchestrator)"
     },
     {
       "script": "scripts/testing/test-prompt-injection-resilience.sh",
@@ -2879,11 +2879,6 @@
       "reason": "host-only: needs a live local service (switchboard/dashboard/coordinator/AIDB); last output: ============================================================"
     },
     {
-      "script": "scripts/testing/test-query-performance.py",
-      "class": "known-failing",
-      "reason": "fails on main: ModuleNotFoundError 'lib.search' (sys.path/dependency not available), tracked in backlog"
-    },
-    {
       "script": "scripts/testing/test-real-time-learning-integration.py",
       "class": "known-failing",
       "reason": "fails on main: references missing file ai-stack/mcp-servers/hybrid-coordinator/http_server.py, tracked in backlog"
@@ -2899,49 +2894,9 @@
       "reason": "fails on main (rc=1): 18 passed, 2 failed (of 20 assertions), tracked in backlog"
     },
     {
-      "script": "scripts/testing/test-route-handler-adaptive-timeouts.py",
-      "class": "known-failing",
-      "reason": "fails on main: ImportError 'routing_config' (module layout changed), tracked in backlog"
-    },
-    {
-      "script": "scripts/testing/test-route-handler-backend-audit.py",
-      "class": "known-failing",
-      "reason": "fails on main: ImportError 'routing_config' (module layout changed), tracked in backlog"
-    },
-    {
-      "script": "scripts/testing/test-route-handler-classifier-context-cap.py",
-      "class": "known-failing",
-      "reason": "fails on main: ImportError 'routing_config' (module layout changed), tracked in backlog"
-    },
-    {
-      "script": "scripts/testing/test-route-handler-context-budget.py",
-      "class": "known-failing",
-      "reason": "fails on main: ImportError 'routing_config' (module layout changed), tracked in backlog"
-    },
-    {
-      "script": "scripts/testing/test-route-handler-discovery-gating.py",
-      "class": "known-failing",
-      "reason": "fails on main: ImportError 'routing_config' (module layout changed), tracked in backlog"
-    },
-    {
-      "script": "scripts/testing/test-route-handler-local-synthesis-budget.py",
-      "class": "known-failing",
-      "reason": "fails on main: ImportError 'routing_config' (module layout changed), tracked in backlog"
-    },
-    {
-      "script": "scripts/testing/test-safety-layer.py",
-      "class": "known-failing",
-      "reason": "fails on main: ModuleNotFoundError 'tool_registry' (sys.path/dependency not available), tracked in backlog"
-    },
-    {
       "script": "scripts/testing/test-scope-gate.py",
       "class": "known-failing",
       "reason": "fails on main (rc=1): FAILED (failures=1), tracked in backlog"
-    },
-    {
-      "script": "scripts/testing/test-search-router-collection-timeouts.py",
-      "class": "known-failing",
-      "reason": "fails on main: ModuleNotFoundError 'knowledge' (sys.path/dependency not available), tracked in backlog"
     },
     {
       "script": "scripts/testing/test-security-contract-gates.py",
@@ -2959,11 +2914,6 @@
       "reason": "fails on main (rc=1): FAILED (failures=1), tracked in backlog"
     },
     {
-      "script": "scripts/testing/test-security-workflow-integration.py",
-      "class": "known-failing",
-      "reason": "fails on main: ModuleNotFoundError 'audit_logger' (sys.path/dependency not available), tracked in backlog"
-    },
-    {
       "script": "scripts/testing/test-switchboard-continue-context-window.sh",
       "class": "live-service",
       "reason": "host-only: needs a live local service (switchboard/dashboard/coordinator/AIDB); last output: [FAIL] switchboard /health unreachable at http://127.0.0.1:8085"
@@ -2972,11 +2922,6 @@
       "script": "scripts/testing/test-switchboard-local-tool-calling.sh",
       "class": "live-service",
       "reason": "host-only: needs a live local service (switchboard/dashboard/coordinator/AIDB); last output: curl: (7) Failed to connect to 127.0.0.1:8085 after 0 ms: Could not connect to server"
-    },
-    {
-      "script": "scripts/testing/test-task-classifier-local-continuation.py",
-      "class": "known-failing",
-      "reason": "fails on main: ModuleNotFoundError 'core' (sys.path/dependency not available), tracked in backlog"
     },
     {
       "script": "scripts/testing/test-tier0-staged-isolation.sh",
@@ -3002,11 +2947,6 @@
       "script": "scripts/testing/test-web-research-lane.py",
       "class": "unstable",
       "reason": "flaky under the parallel group runner: 'same-host pacing delay should be applied once' (passes standalone)"
-    },
-    {
-      "script": "scripts/testing/test-workflow-automation.py",
-      "class": "known-failing",
-      "reason": "fails on main: ModuleNotFoundError 'workflows' (sys.path/dependency not available), tracked in backlog"
     },
     {
       "script": "scripts/testing/test-workflow-deviation-broker.py",

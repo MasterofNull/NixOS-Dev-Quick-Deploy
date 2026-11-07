@@ -39,7 +39,7 @@ MAX_SECRETS_DETECTED="${MAX_SECRETS_DETECTED:-0}"
 
 # Logging helpers
 log_debug() {
-  [[ "${VERBOSE:-0}" == "1" ]] && echo "[security-workflow] DEBUG: $*" >&2
+  [[ "${VERBOSE:-0}" != "1" ]] || echo "[security-workflow] DEBUG: $*" >&2
 }
 
 log_info() {

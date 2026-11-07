@@ -21,7 +21,7 @@ DASHBOARD_ENABLED="${DASHBOARD_ENABLED:-true}"
 
 # Logging
 log_debug() {
-  [[ "${VERBOSE:-0}" == "1" ]] && echo "[dashboard-notify] $*" >&2
+  [[ "${VERBOSE:-0}" != "1" ]] || echo "[dashboard-notify] $*" >&2
 }
 
 log_error() {

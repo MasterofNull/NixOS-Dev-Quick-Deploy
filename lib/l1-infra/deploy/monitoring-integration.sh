@@ -34,7 +34,7 @@ SERVICE_HEALTH_EVENTS_FILE="${SERVICE_HEALTH_EVENTS_FILE:-${MONITORING_CONFIG_DI
 
 # Logging helpers
 log_debug() {
-  [[ "${VERBOSE:-0}" == "1" ]] && echo "[monitoring-integration] DEBUG: $*" >&2
+  [[ "${VERBOSE:-0}" != "1" ]] || echo "[monitoring-integration] DEBUG: $*" >&2
 }
 
 log_info() {

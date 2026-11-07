@@ -37,7 +37,7 @@ PARALLEL_SCAN_WORKERS="${PARALLEL_SCAN_WORKERS:-4}"
 
 # Logging helpers
 log_debug() {
-  [[ "${VERBOSE:-0}" == "1" ]] && echo "[security-scanner] DEBUG: $*" >&2
+  [[ "${VERBOSE:-0}" != "1" ]] || echo "[security-scanner] DEBUG: $*" >&2
 }
 
 log_info() {
@@ -429,12 +429,13 @@ scan_file_for_secrets() {
     return
   fi
 
-  # Common secret patterns
+  # Common secret patterns (POSIX classes: inside a bracket expression ERE treats \s and \047
+  # as the literal characters '\', 's', '0', '4', '7', which made values containing them undetectable)
   local patterns=(
-    'password\s*[:=]\s*["\047]?[^"\047\s]{8,}'
-    'api[-_]?key\s*[:=]\s*["\047]?[^"\047\s]{20,}'
-    'secret[-_]?key\s*[:=]\s*["\047]?[^"\047\s]{20,}'
-    'token\s*[:=]\s*["\047]?[^"\047\s]{20,}'
+    "password[[:space:]]*[:=][[:space:]]*['\"]?[^'\"[:space:]]{8,}"
+    "api[-_]?key[[:space:]]*[:=][[:space:]]*['\"]?[^'\"[:space:]]{20,}"
+    "secret[-_]?key[[:space:]]*[:=][[:space:]]*['\"]?[^'\"[:space:]]{20,}"
+    "token[[:space:]]*[:=][[:space:]]*['\"]?[^'\"[:space:]]{20,}"
     '-----BEGIN (RSA |DSA )?PRIVATE KEY-----'
   )
 

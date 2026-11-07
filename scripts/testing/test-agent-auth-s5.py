@@ -13,6 +13,8 @@ from aiohttp.test_utils import AioHTTPTestCase
 # Environment setup
 os.environ["AI_STRICT_ENV"] = "false"
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "ai-stack", "mcp-servers", "hybrid-coordinator")))
+# core/config.py imports `shared` from ai-stack/mcp-servers (on PYTHONPATH in the deployed unit).
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "ai-stack", "mcp-servers")))
 
 import middleware.authz as authz
 from middleware.auth import AUTH_CONTEXT_KEY

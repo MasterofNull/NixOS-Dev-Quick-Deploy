@@ -12,18 +12,30 @@ import sys
 import json
 import subprocess
 import tempfile
+import atexit
 import shutil
 from pathlib import Path
 from datetime import datetime
 import unittest
 
 # Add parent directory to path
-REPO_ROOT = Path(__file__).parent.parent.parent
+REPO_ROOT = Path(__file__).resolve().parent.parent.parent
+# The scripts under test write their state (.agent/security/...) below $REPO_ROOT; point that at a
+# throwaway dir so a run never writes into the checkout.
+DATA_ROOT = Path(tempfile.mkdtemp(prefix="security-workflow-test-"))
+atexit.register(shutil.rmtree, DATA_ROOT, ignore_errors=True)
 sys.path.insert(0, str(REPO_ROOT))
 
-# Import audit logger module
-sys.path.insert(0, str(REPO_ROOT / "lib" / "security"))
-from audit_logger import AuditLogger, EventType
+# Import audit logger module (hyphenated filename, moved to lib/cross-cutting by 2e65cae38)
+import importlib.util
+_AUDIT_SPEC = importlib.util.spec_from_file_location(
+    "audit_logger", REPO_ROOT / "lib" / "cross-cutting" / "security" / "audit-logger.py"
+)
+audit_logger_module = importlib.util.module_from_spec(_AUDIT_SPEC)
+sys.modules["audit_logger"] = audit_logger_module  # dataclasses need the module registered
+_AUDIT_SPEC.loader.exec_module(audit_logger_module)
+AuditLogger = audit_logger_module.AuditLogger
+EventType = audit_logger_module.EventType
 
 
 class SecurityScannerTests(unittest.TestCase):
@@ -31,7 +43,7 @@ class SecurityScannerTests(unittest.TestCase):
 
     def setUp(self):
         self.deployment_id = f"test_deploy_{int(datetime.now().timestamp())}"
-        self.scanner_script = REPO_ROOT / "lib" / "security" / "scanner.sh"
+        self.scanner_script = REPO_ROOT / "lib" / "cross-cutting" / "security" / "scanner.sh"
 
     def test_scanner_module_loads(self):
         """Test that scanner module loads successfully"""
@@ -56,12 +68,17 @@ class SecurityScannerTests(unittest.TestCase):
                 ["bash", "-c", f"source {self.scanner_script} && detect_secrets {temp_file}"],
                 capture_output=True,
                 text=True,
-                env={**os.environ, "REPO_ROOT": str(REPO_ROOT)},
+                env={**os.environ, "REPO_ROOT": str(DATA_ROOT)},
                 timeout=30
             )
 
-            # Check that function executed
-            self.assertIn("detect_secrets", result.stderr or result.stdout or "executed")
+            # The detector prints a JSON array of findings on stdout (logging goes to stderr).
+            self.assertEqual(result.returncode, 0, result.stderr)
+            findings = json.loads(result.stdout)
+            self.assertTrue(
+                any(f.get("type") == "password" for f in findings),
+                f"expected the hardcoded password to be reported, got: {findings}",
+            )
 
         finally:
             os.unlink(temp_file)
@@ -72,7 +89,7 @@ class SecurityScannerTests(unittest.TestCase):
             ["bash", "-c", f"source {self.scanner_script} && scan_service_vulnerabilities redis"],
             capture_output=True,
             text=True,
-            env={**os.environ, "REPO_ROOT": str(REPO_ROOT)},
+            env={**os.environ, "REPO_ROOT": str(DATA_ROOT)},
             timeout=30
         )
 
@@ -197,7 +214,7 @@ class ComplianceCheckerTests(unittest.TestCase):
 
     def setUp(self):
         self.deployment_id = f"test_deploy_{int(datetime.now().timestamp())}"
-        self.compliance_script = REPO_ROOT / "lib" / "security" / "compliance-checker.sh"
+        self.compliance_script = REPO_ROOT / "lib" / "cross-cutting" / "security" / "compliance-checker.sh"
 
     def test_compliance_module_loads(self):
         """Test that compliance checker module loads"""
@@ -214,7 +231,7 @@ class ComplianceCheckerTests(unittest.TestCase):
             ["bash", "-c", f"source {self.compliance_script} && check_soc2_compliance {self.deployment_id}"],
             capture_output=True,
             text=True,
-            env={**os.environ, "REPO_ROOT": str(REPO_ROOT)},
+            env={**os.environ, "REPO_ROOT": str(DATA_ROOT)},
             timeout=60
         )
 
@@ -228,7 +245,7 @@ class SecurityWorkflowTests(unittest.TestCase):
 
     def setUp(self):
         self.deployment_id = f"test_deploy_{int(datetime.now().timestamp())}"
-        self.workflow_script = REPO_ROOT / "lib" / "security" / "security-workflow-validator.sh"
+        self.workflow_script = REPO_ROOT / "lib" / "cross-cutting" / "security" / "security-workflow-validator.sh"
 
     def test_workflow_module_loads(self):
         """Test that workflow validator module loads"""
@@ -245,7 +262,7 @@ class DeploymentHooksTests(unittest.TestCase):
 
     def setUp(self):
         self.deployment_id = f"test_deploy_{int(datetime.now().timestamp())}"
-        self.hooks_script = REPO_ROOT / "lib" / "deploy" / "deployment-hooks.sh"
+        self.hooks_script = REPO_ROOT / "lib" / "l1-infra" / "deploy" / "deployment-hooks.sh"
 
     def test_hooks_module_loads(self):
         """Test that deployment hooks module loads"""
@@ -272,7 +289,7 @@ class DeploymentHooksTests(unittest.TestCase):
                 ["bash", "-c", f"source {self.hooks_script} && register_hook pre_deployment test_hook {hook_script} 50"],
                 capture_output=True,
                 text=True,
-                env={**os.environ, "REPO_ROOT": str(REPO_ROOT)},
+                env={**os.environ, "REPO_ROOT": str(DATA_ROOT)},
                 timeout=10
             )
 
@@ -294,14 +311,14 @@ class IntegrationTests(unittest.TestCase):
         # This test verifies the full workflow can be executed
         # Note: May require environment setup
 
-        workflow_script = REPO_ROOT / "lib" / "security" / "security-workflow-validator.sh"
+        workflow_script = REPO_ROOT / "lib" / "cross-cutting" / "security" / "security-workflow-validator.sh"
 
         # Run pre-deployment security gate
         result = subprocess.run(
             ["bash", "-c", f"source {workflow_script} && run_pre_deployment_security_gate {self.deployment_id} || true"],
             capture_output=True,
             text=True,
-            env={**os.environ, "REPO_ROOT": str(REPO_ROOT)},
+            env={**os.environ, "REPO_ROOT": str(DATA_ROOT)},
             timeout=180
         )
 
@@ -310,7 +327,7 @@ class IntegrationTests(unittest.TestCase):
 
     def test_audit_logger_cli(self):
         """Test audit logger CLI interface"""
-        audit_logger = REPO_ROOT / "lib" / "security" / "audit-logger.py"
+        audit_logger = REPO_ROOT / "lib" / "cross-cutting" / "security" / "audit-logger.py"
 
         # Test logging via CLI
         result = subprocess.run(
@@ -324,7 +341,7 @@ class IntegrationTests(unittest.TestCase):
             ],
             capture_output=True,
             text=True,
-            env={**os.environ, "REPO_ROOT": str(REPO_ROOT)},
+            env={**os.environ, "REPO_ROOT": str(DATA_ROOT)},
             timeout=10
         )
 
@@ -339,13 +356,13 @@ class IntegrationTests(unittest.TestCase):
 
     def test_compliance_frameworks_available(self):
         """Test that compliance framework policies are initialized"""
-        compliance_dir = REPO_ROOT / ".agent" / "security" / "compliance" / "policies"
+        compliance_dir = DATA_ROOT / ".agent" / "security" / "compliance" / "policies"
 
         # Run compliance checker to ensure initialization
-        compliance_script = REPO_ROOT / "lib" / "security" / "compliance-checker.sh"
+        compliance_script = REPO_ROOT / "lib" / "cross-cutting" / "security" / "compliance-checker.sh"
         subprocess.run(
             ["bash", "-c", f"source {compliance_script} && ensure_compliance_directories"],
-            env={**os.environ, "REPO_ROOT": str(REPO_ROOT)},
+            env={**os.environ, "REPO_ROOT": str(DATA_ROOT)},
             timeout=10
         )
 

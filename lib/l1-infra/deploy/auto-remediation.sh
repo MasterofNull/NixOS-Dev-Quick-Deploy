@@ -35,7 +35,7 @@ AUTO_REMEDIATION_TIMEOUT="${AUTO_REMEDIATION_TIMEOUT:-300}"
 
 # Logging helpers
 log_debug() {
-  [[ "${VERBOSE:-0}" == "1" ]] && echo "[auto-remediation] DEBUG: $*" >&2
+  [[ "${VERBOSE:-0}" != "1" ]] || echo "[auto-remediation] DEBUG: $*" >&2
 }
 
 log_info() {
