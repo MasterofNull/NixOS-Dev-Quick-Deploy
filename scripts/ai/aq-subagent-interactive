@@ -235,6 +235,12 @@ class InteractiveSubagentConsole:
             if res.returncode == 0:
                 action = "Cancellation" if cancel else "Steering injection"
                 console.print(f"[bold green]✓ {action} sent to {task_id}:[/bold green] {message}")
+                if cancel:
+                    console.print(
+                        "[yellow]Queued only: a local-lane agent loop reads it between turns and is asked to finalize; it does not "
+                        "kill the process or change the registry status. codex/gemini/claude tasks never read the queue and "
+                        "must be stopped outside this console.[/yellow]"
+                    )
             else:
                 console.print(f"[bold red]✗ Failed to send steering: {res.stderr.strip() or res.stdout.strip()}[/bold red]")
         except Exception as e:

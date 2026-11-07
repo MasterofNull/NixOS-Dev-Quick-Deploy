@@ -1,8 +1,8 @@
 # AQ-OS SOTA Agentic Workspace (`aq-workspace`)
 
-Status: ACTIVE & OPERATIONAL
+Status: ACTIVE (owner daily endpoint). Verified 2026-11-06, evidence `docs/harness-first/evidence/2026-11-06-aq-workspace-live.md`
 Owner: AI Stack Maintainers / Operator
-Last Updated: 2026-09-26
+Last Updated: 2026-11-06
 
 `aq-workspace` is the single-command entrypoint for the AQ-OS state-of-the-art agentic development environment. Inspired by the setups of IndyDevDan, Pi Agent, and Herdr, it provides a persistent, multi-tiled terminal workspace uniting interactive model coordination, real-time sub-agent fleet monitoring, live thought streaming, and system telemetry—completely eliminating the need to run an external IDE for agent collaboration.
 
@@ -20,10 +20,11 @@ aq-workspace
 aq-workspace resume
 
 # Directly launch dedicated remote agent windows:
-aq-workspace claude             # Claude 3.7 / Fable-5 (Switchboard :8085)
-aq-workspace codex              # OpenAI Codex / GPT-6 (Coordinator :8003)
-aq-workspace local              # Local Qwen3-35B on APU (:8080 / :8003)
-aq-workspace gemini             # Google Gemini 3.8-Flash (Switchboard :8085)
+aq-workspace claude             # Claude (CLI)
+aq-workspace codex              # Codex (CLI)
+aq-workspace local              # Local Qwen on the APU (:8080 / :8003)
+aq-workspace gemini             # Gemini (CLI), the headless `gemini` binary
+# `aq-workspace antigravity` is retired: it prints a one-line notice and exits 2. No IDE is launched.
 
 # Or run with a custom session name:
 aq-workspace my-session
@@ -45,7 +46,7 @@ aq-workspace kill [session-name]
 
 ## 2. Multi-Tiled Architecture
 
-The default workspace uses a native **Zellij** layout (`config/zellij/aq-agentic-workspace.kdl`):
+The default workspace uses a native **Zellij** layout (`config/zellij/aq-agentic-workspace.kdl`). The sketch below shows only the Coordinator Console tab; the full tab list follows it.
 
 ```
 ┌──────────────────────────────────────────────┬────────────────────────────────┐
@@ -63,10 +64,13 @@ The default workspace uses a native **Zellij** layout (`config/zellij/aq-agentic
 ```
 
 ### Workspace Tabs
-- **Tab 1: `󰚩 Agentic Workspace`**: Primary 3-pane layout (Coordinator Console + Fleet Matrix + Telemetry Cockpit).
-- **Tab 2: `󰓅 Fleet Matrix`**: Full-screen 2x2 grid tailing live inputs, outputs, and thought streams across all active workers.
-- **Tab 3: `󰒋 Operations & Mesh`**: Detailed system diagnostics, A2A safeguard audits, and process tables.
-- **Tab 4: ` Scratch Shell`**: Clean local terminal in the project directory with harness environment pre-loaded.
+Tabs, in order (names from the layout file):
+- `Swarm & Sub-Agents`: four main-agent panes (Local Qwen, Claude, Codex, Gemini CLIs) on the left; delegation tree and interactive sub-agent console on the right.
+- `Floating Swarm Board`: telemetry cockpit background with the same six panes floating.
+- `Coordinator Console`: coordinator REPL, fleet matrix and telemetry cockpit.
+- `Claude & Sub-Agents`, `Codex & Sub-Agents`, `Gemini & Sub-Agents`, `Local Qwen & Sub-Agents`: one agent CLI plus its filtered delegation tree and console.
+- `Any Model (Dynamic)`: `aq-agent-window` for any model string, plus tree and console.
+- `Scratch Shell`: plain shell.
 
 ---
 
@@ -76,7 +80,7 @@ The coordinator console (`aq-coordinator-repl`) supports rich slash commands:
 
 | Command | Action | Example |
 | :--- | :--- | :--- |
-| `/model <name>` | Switch active model route on the fly | `/model local` (Qwen3-35B), `/model claude`, `/model codex`, `/model gemini` |
+| `/model <name>` | Switch active model route on the fly | `/model local` (Local Qwen), `/model claude`, `/model codex`, `/model gemini` |
 | `/dispatch <role> "<task>"` | Dispatch a background sub-agent worker | `/dispatch implementer "Add unit test for auth router"` |
 | `/fleet` | List all running and recent sub-agents with PIDs and status | `/fleet` |
 | `/steer <task_id> "<msg>"` | Inject live human guidance/intervention into running agent | `/steer local-20260926-081239 "Refactor the parser instead"` |
@@ -96,7 +100,12 @@ The fleet monitor pane automatically:
 - Tails live output streams from `.agents/delegation/streams/<task_id>.stream`.
 - Highlights **Note-to-Self (N2S)** internal thoughts (`<think>...`) in italic cyan.
 - Displays tool execution badges (`⚡ [TOOL]`) and token economics (tokens in + tokens out).
-- Offers quick intervention command syntax for running tasks.
+- Marks a `running` row as **STALLED** when it has run longer than `AQ_FLEET_STALL_SECS` (default 900) and its output file is empty, missing or unchanged for that long.
+- `AQ_DELEGATION_DIR` overrides the registry/streams/outputs location (used by the tests).
+
+Coverage gap: the registry is written by the `delegate-to-*` scripts only. Claude Code sub-agents started through the Agent tool never write to it, so they do not appear in the tree or fleet matrix.
+
+Stopping a task (`aq-subagent-interactive`, `/cancel`): this only queues a `cancel` message in `.agents/delegation/control/<task_id>.jsonl` (via `aq-agent-send`). Only a local-lane agent loop reads that queue (between turns) and is asked to finalize. It does not kill any process or change the registry status, and codex/gemini/claude tasks never read it.
 
 ---
 
@@ -116,12 +125,12 @@ Also renders live model profile metadata, measured token throughput rates, APU s
 
 ## 6. Dedicated Streaming Remote Agent Windows (`aq-agent-window`)
 
-All agent panes in the workspace are powered by `aq-agent-window`, which connects directly to the harness remote model routing plane (Switchboard `:8085` and Hybrid Coordinator `:8003`) with live token streaming, Note-to-Self thought formatting, sub-agent delegation tracking, and dynamic model switching:
+Agent panes start through `aq-agent-launcher`, which runs the native CLI (`claude`, `codex`, `gemini`, `aq-chat`) and falls back to `aq-agent-window` when that binary is missing. `aq-agent-window` (also the `aq-workspace agent <model>` target) connects directly to the harness remote model routing plane (Switchboard `:8085` and Hybrid Coordinator `:8003`) with live token streaming, Note-to-Self thought formatting, sub-agent delegation tracking, and dynamic model switching:
 
-- **Claude 3.7 / Fable-5**: Switchboard `:8085` under `remote-reasoning` profile with Anthropic adapter.
-- **OpenAI Codex / GPT-6 Astra**: Coordinator `:8003` / Switchboard `:8085` under `remote-coding` profile with OpenAI adapter.
-- **Local Qwen3-35B APU**: llama.cpp `:8080` / Switchboard `:8085` under `continue-local` profile.
-- **Google Antigravity / Gemini 3.8-Flash**: Switchboard `:8085` under `remote-gemini` profile and Antigravity IDE OAuth lane.
+- **Claude (CLI)**: Switchboard `:8085` under `remote-reasoning` profile with Anthropic adapter.
+- **Codex (CLI)**: Coordinator `:8003` / Switchboard `:8085` under `remote-coding` profile with OpenAI adapter.
+- **Local Qwen**: llama.cpp `:8080` / Switchboard `:8085` under `continue-local` profile.
+- **Gemini (CLI)**: Switchboard `:8085` under `remote-gemini` profile. The Antigravity IDE lane is retired; the Gemini seat is the headless `gemini` CLI.
 
 ### Agent Window Capabilities
 - **Live Token Streaming**: Real-time SSE token stream with elapsed duration and measured throughput (tok/s).
@@ -145,7 +154,7 @@ aq-workspace --tui
 ## 8. Keyboard Navigation (Zellij)
 
 - `Alt + h/j/k/l` or `Alt + Arrows`: Move focus between tiled panes.
-- `Alt + n`: Next tab (`Workspace` → `Fleet Matrix` → `Operations` → `Scratch Shell`).
+- `Alt + n`: Next tab (follows the tab order in section 2).
 - `Alt + p`: Previous tab.
 - `Alt + f`: Toggle fullscreen on the focused pane.
 - `Ctrl + q`: Detach safely from the workspace session (leaves background agents running).
