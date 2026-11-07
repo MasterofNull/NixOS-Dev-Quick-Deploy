@@ -748,3 +748,29 @@ DP3 PR506 at 7f9ef0f4 has no release acceptance: real worktree confinement, brok
 ## Routing S1 preflight correction — 2026-11-01
 
 Source integration verified; 21 focused tests and independent review pass. Running activation, complete real dispatch journey, observability, intervention and live PM projection are explicitly deferred until landing and owner deployment. No activation or MVP acceptance claimed. Evidence: docs/harness-first/evidence/2026-11-01-routing-s1-preflight.md.
+
+## Rebuild 26c8dcfe5 and integrity-recovery wave — 2026-11-06
+
+Owner deployed via `scripts/maintenance/aq-deploy-current`: system and Home Manager; configuration revision 26c8dcfe5 == HEAD, not dirty. QA phase 0 after the switch: 208 passed, 0 failed, 8 skipped, from an owner-context shell.
+
+**P1.10, runtime jobs stop writing tracked files: ACTIVATED for RSI; frontier pending.**
+- Integrated and on: `RSI_STATE_DIR` and `FRONTIER_STATE_DIR` set on the units; dirs from tmpfiles; `ai-rsi-sweep` ReadWritePaths narrowed.
+- Validated live: the state ledger advanced (09:23) while the checkout copy stayed at 07:39, across a sweep at 09:20.
+- Not yet validated live: `ai-frontier-scan` writing to its state dir. Deferred to its next scheduled run; re-check by 2026-11-16.
+- Observable and intervenable: unit status, health monitor; explicit-dir failure raises `StateDirError` naming the path.
+
+**MCP integrity check: ACTIVATED.** The `jq` fix went live. The check first reported 2 changed files, both verified equal to HEAD with a clean tree. After the baseline refresh (358 hashes) the unit succeeds on its timer path. Baseline step found broken and fixed in fix/mcp-baseline-path.
+
+**Antigravity lane retirement: ACTIVATED.** `aq-antigravity*` user units: 0 after the switch; no IDE process; `gemini` routes in runtime-prsi-policy; IDE scripts archived. Regression guard: `scripts/testing/test-no-antigravity-ide-trigger.py`. The IDE package stays installed pending the owner's decision. A gemini-seat `aq-collab-round` has not yet run live on the merged code.
+
+**Flake refresh (#702): ACTIVATED.** All inputs current at deploy; nixified-ai on latest via a lockable override.
+
+**Knowledge sync `--dry-run` fix (#701): merged; unit run validated.** Manual `ai-sync-knowledge-sources` run succeeded (1m46s). The earlier Nov 2 failure's log was lost to journal rotation and did not reproduce. Re-check the 2026-11-09 scheduled run.
+
+**CI and test gates (#685, #690, #691, #695, #696, #697, #700, #703, #705): live in CI on merge; no system activation.**
+
+**P0.9 cap (#692) and tracker reconciliation (#699): live.** Items stay below SHIPPED until they have activation evidence and acceptance.
+
+**P1.6, no sleep during agent work: NOT attested.** No delegated task was running when checked. Validate with `systemd-inhibit --list` during a delegated task.
+
+**Known false alert:** QA 0.10.66 under the health monitor's sandbox; passes 212/0 from a shell. Fix in slice S2.

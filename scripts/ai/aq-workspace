@@ -65,11 +65,10 @@ AQ-OS SOTA Agentic Workspace
 Usage:
   aq-workspace                    Start or attach to floating/tiled workspace for current directory
   aq-workspace resume             Launch workspace with automatic session resumption on all agents
-  aq-workspace claude             Directly open Claude 3.7 / Fable-5 agent window (Switchboard :8085)
-  aq-workspace codex              Directly open OpenAI Codex / GPT-6 agent window (Coordinator :8003)
-  aq-workspace local              Directly open Local Qwen3-35B APU agent window (:8080 / :8003)
-  aq-workspace gemini             Directly open Google Gemini subscription CLI (agy)
-  aq-workspace antigravity        Directly open Google Gemini subscription CLI (agy)
+  aq-workspace claude             Directly open the Claude (CLI) agent window
+  aq-workspace codex              Directly open the Codex (CLI) agent window
+  aq-workspace local              Directly open the Local Qwen agent window (:8080 / :8003)
+  aq-workspace gemini             Directly open the Gemini (CLI) agent window
   aq-workspace agent <model>      Open dedicated window for ANY model (claude, codex, gemini, local, etc.)
   aq-workspace subagents          Live hierarchical sub-agent delegation tree & operations
   aq-workspace tree               View sub-agent delegation tree (--tree)
@@ -96,10 +95,10 @@ Floating Panes Navigation (Zellij):
   Ctrl + q                        Detach safely from workspace session (leaves agents running!)
 
 Supported Models in Windows:
-  local                           Qwen3-35B on Local APU (llama.cpp :8080 / Switchboard :8085)
-  claude                          Claude 3.7 / Fable-5 (Switchboard :8085 Anthropic)
-  codex                           OpenAI Codex / GPT-6 Astra (Coordinator :8003 OpenAI)
-  gemini / antigravity            Google Gemini Subscription CLI (~/.local/bin/agy)
+  local                           Local Qwen on the APU (llama.cpp :8080 / Switchboard :8085)
+  claude                          Claude (CLI) (Switchboard :8085 Anthropic)
+  codex                           Codex (CLI) (Coordinator :8003 OpenAI)
+  gemini                          Gemini (CLI) (~/.local/bin/gemini)
   deepseek                        DeepSeek V3 / R1 (Switchboard :8085 DeepSeek)
   mistral                         Mistral Large / Codestral (Switchboard :8085 Mistral)
   <any-model-name>                Any arbitrary model or switchboard profile!
@@ -134,7 +133,8 @@ case "${1:-}" in
     exec "${SCRIPT_DIR}/aq-agent-launcher" "gemini" "direct" "${@:2}"
     ;;
   antigravity)
-    exec "${SCRIPT_DIR}/aq-agent-launcher" "antigravity" "direct" "${@:2}"
+    echo "aq-workspace antigravity is retired (no IDE lane); use: aq-workspace gemini" >&2
+    exit 2
     ;;
   status)
     exec python3 "${SCRIPT_DIR}/aq-cockpit-monitor" --once

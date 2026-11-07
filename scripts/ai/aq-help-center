@@ -406,7 +406,7 @@ class HelpHandler(http.server.BaseHTTPRequestHandler):
         },
         "workspace-operator": {
             "title": "Workspace Swarm Operator Manual",
-            "path": OPERATIONS_DIR / "AQ-WORKSPACE-OPERATOR-MANUAL.md",
+            "path": OPERATIONS_DIR / "aq-workspace.md",
         },
         "workflow-canon": {
             "title": "8-Step Canonical Workflow",

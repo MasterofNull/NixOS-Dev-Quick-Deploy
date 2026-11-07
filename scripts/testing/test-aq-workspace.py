@@ -10,14 +10,20 @@ Verifies:
   5. aq-coordinator-repl CLI interface
   6. Zellij KDL layout syntax and dual-board floating panes structure
   7. File permissions (executable bits)
+  8. Every subcommand/pane target resolves to an executable; antigravity is retired
+  9. Stalled running tasks (no output) are flagged by the fleet monitor
 """
 
+import json
 import os
+import re
 import shutil
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
@@ -72,6 +78,122 @@ class TestAgenticWorkspace(unittest.TestCase):
             "REAPER_LOG": str(fixture / "reaper.log"),
         })
         return script_dir / "aq-workspace", env, fixture
+
+    def test_workspace_help_does_not_advertise_retired_ide_lane(self):
+        res = self.run_command([str(SCRIPTS_AI / "aq-workspace"), "--help"], capture_output=True, text=True, check=False)
+        self.assertEqual(res.returncode, 0, res.stderr)
+        self.assertNotIn("antigravity", res.stdout.lower())
+        self.assertNotRegex(res.stdout, r"\bagy\b")
+
+    def test_antigravity_subcommand_is_retired_and_launches_nothing(self):
+        with tempfile.TemporaryDirectory(prefix="aq-workspace-agy-") as root:
+            command, env, fixture = self.workspace_fixture(root)
+            launcher = fixture / "scripts" / "ai" / "aq-agent-launcher"
+            launcher.write_text("#!/usr/bin/env bash\nprintf '%s\\n' \"$*\" >> \"$REAPER_LOG\"\n", encoding="utf-8")
+            launcher.chmod(0o755)
+            result = subprocess.run([str(command), "antigravity"], capture_output=True, text=True, env=env, check=False)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("retired", result.stderr)
+            self.assertIn("aq-workspace gemini", result.stderr)
+            self.assertEqual(len(result.stderr.strip().splitlines()), 1)
+            self.assertFalse((fixture / "reaper.log").exists(), "retired lane must not run any launcher")
+            self.assertFalse((fixture / "zellij.log").exists(), "retired lane must not touch zellij")
+
+    def test_gemini_subcommand_goes_to_launcher_with_gemini_lane(self):
+        with tempfile.TemporaryDirectory(prefix="aq-workspace-gem-") as root:
+            command, env, fixture = self.workspace_fixture(root)
+            launcher = fixture / "scripts" / "ai" / "aq-agent-launcher"
+            launcher.write_text("#!/usr/bin/env bash\nprintf '%s\\n' \"$*\" >> \"$REAPER_LOG\"\n", encoding="utf-8")
+            launcher.chmod(0o755)
+            result = subprocess.run([str(command), "gemini"], capture_output=True, text=True, env=env, check=False)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual((fixture / "reaper.log").read_text().splitlines(), ["gemini direct"])
+
+    def test_every_subcommand_and_pane_target_resolves(self):
+        """Each helper aq-workspace execs, and each command a layout pane runs, must exist and be executable."""
+        text = (SCRIPTS_AI / "aq-workspace").read_text(encoding="utf-8")
+        targets = set(re.findall(r'\$\{SCRIPT_DIR\}/(aq-[\w-]+)', text))
+        targets |= set(re.findall(r'command "(aq-[\w-]+)"', ZELLIJ_LAYOUT.read_text(encoding="utf-8")))
+        self.assertGreaterEqual(len(targets), 10, targets)
+        for name in sorted(targets):
+            path = SCRIPTS_AI / name
+            self.assertTrue(path.is_file(), f"target missing: {name}")
+            self.assertTrue(os.access(path, os.X_OK), f"target not executable: {name}")
+        self.assertTrue((SCRIPTS_AI / "lib" / "unified_workspace_tui.py").is_file())
+
+    def test_layout_parses_with_zellij_when_available(self):
+        zellij = shutil.which("zellij")
+        if not zellij:
+            self.skipTest("zellij not installed")
+        res = self.run_command([zellij, "--layout", str(ZELLIJ_LAYOUT), "setup", "--check"],
+                               capture_output=True, text=True, check=False, cwd=self.temp_home.name)
+        self.assertEqual(res.returncode, 0, res.stdout + res.stderr)
+        self.assertNotIn("Failed to parse", res.stdout + res.stderr)
+
+    def test_layout_has_no_stale_model_labels_or_ide_lane(self):
+        content = ZELLIJ_LAYOUT.read_text(encoding="utf-8")
+        self.assertNotRegex(content, r"(?i)antigravity|\bagy\b")
+        self.assertNotRegex(content, r"\d\.\d+ ?/ ?Fable|GPT-\d")
+
+    def fleet_env(self, delegation_dir, stall_secs="60"):
+        env = self.env.copy()
+        env["AQ_DELEGATION_DIR"] = str(delegation_dir)
+        env["AQ_FLEET_STALL_SECS"] = stall_secs
+        return env
+
+    def write_registry(self, delegation_dir, rows):
+        delegation_dir.mkdir(parents=True, exist_ok=True)
+        (delegation_dir / "outputs").mkdir(exist_ok=True)
+        with open(delegation_dir / "registry.jsonl", "w", encoding="utf-8") as fh:
+            for row in rows:
+                fh.write(json.dumps(row) + "\n")
+
+    @staticmethod
+    def iso_ago(seconds):
+        return (datetime.now(timezone.utc) - timedelta(seconds=seconds)).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    def test_fleet_tree_reads_registry_and_flags_stalled_running_tasks(self):
+        with tempfile.TemporaryDirectory(prefix="aq-fleet-stall-") as root:
+            d = Path(root)
+            outputs = d / "outputs"
+            rows = [
+                {"id": "gemini-hung-empty", "agent": "gemini", "role": "reviewer", "status": "running", "created": self.iso_ago(5700)},
+                {"id": "gemini-hung-silent", "agent": "gemini", "role": "reviewer", "status": "running", "created": self.iso_ago(5700)},
+                {"id": "gemini-working", "agent": "gemini", "role": "reviewer", "status": "running", "created": self.iso_ago(5700)},
+                {"id": "gemini-young", "agent": "gemini", "role": "reviewer", "status": "running", "created": self.iso_ago(10)},
+                {"id": "gemini-finished", "agent": "gemini", "role": "reviewer", "status": "done", "created": self.iso_ago(5700)},
+            ]
+            self.write_registry(d, rows)
+            (outputs / "gemini-hung-empty.log").write_text("", encoding="utf-8")
+            (outputs / "gemini-hung-silent.log").write_text("started\n", encoding="utf-8")
+            old = time.time() - 3000
+            os.utime(outputs / "gemini-hung-silent.log", (old, old))
+            (outputs / "gemini-working.log").write_text("still going\n", encoding="utf-8")
+            (outputs / "gemini-finished.log").write_text("", encoding="utf-8")
+            res = subprocess.run(
+                [str(SCRIPTS_AI / "aq-fleet-monitor"), "--tree", "--once"],
+                capture_output=True, text=True, check=False,
+                env={**self.fleet_env(d), "COLUMNS": "200"},
+            )
+            self.assertEqual(res.returncode, 0, res.stderr)
+            lines = {name: next((l for l in res.stdout.splitlines() if name in l), "") for name in
+                     ("gemini-hung-empty", "gemini-hung-silent", "gemini-working", "gemini-young", "gemini-finished")}
+            for name in lines:
+                self.assertTrue(lines[name], f"{name} missing from tree:\n{res.stdout}")
+            self.assertIn("STALLED", lines["gemini-hung-empty"])
+            self.assertIn("no output after", lines["gemini-hung-empty"])
+            self.assertIn("STALLED", lines["gemini-hung-silent"])
+            self.assertIn("no new output for", lines["gemini-hung-silent"])
+            self.assertIn("ACTIVE", lines["gemini-working"])
+            self.assertNotIn("STALLED", lines["gemini-working"])
+            self.assertIn("ACTIVE", lines["gemini-young"])
+            self.assertIn("DONE", lines["gemini-finished"])
+            fleet = subprocess.run(
+                [str(SCRIPTS_AI / "aq-fleet-monitor"), "--once"],
+                capture_output=True, text=True, check=False, env={**self.fleet_env(d), "COLUMNS": "200"},
+            )
+            self.assertEqual(fleet.returncode, 0, fleet.stderr)
+            self.assertEqual(fleet.stdout.count("STALLED"), 2, fleet.stdout)
 
     def test_script_permissions(self):
         """Verify executable bits are set on all workspace tools."""

@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Mint, publish, verify and audit review receipts that back PR review claims.
 
-`mint --offbranch` writes a schema 2 receipt (repo, PR, head, tree, base, policy)
-and `publish` appends it to the `review-receipts` branch with git plumbing, so the
-PR head never moves. Plain `mint` still writes the legacy in-tree schema 1 receipt.
+`mint` writes a schema 2 receipt (repo, PR, head, tree, base, policy) and `publish`
+appends it to the `review-receipts` branch with git plumbing, so the PR head never
+moves. `verify` and `audit` still read old in-tree schema 1 receipts.
 
 A receipt ties a PR review claim to a real harness reviewer run recorded in
 .agents/delegation/registry.jsonl. Detection-grade only: lanes share one Unix
@@ -127,20 +127,17 @@ def cmd_mint(a) -> int:
         "output_file": rel, "output_sha256": hashlib.sha256(full.read_bytes()).hexdigest(),
         "created_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
     }
-    if a.offbranch:
-        try:
-            receipt.update(schema=2, repo=a.repo or _repo_slug(root), policy_version=POLICY_VERSION,
-                           tree=_git(root, "rev-parse", f"{a.head}^{{tree}}"),
-                           base_commit=a.base or _git(root, "merge-base", a.head, "refs/remotes/origin/main"))
-        except (subprocess.SubprocessError, OSError, ValueError) as exc:
-            print(f"mint FAILED: cannot bind head to tree/base/repo ({exc.__class__.__name__}); fetch the head and origin/main", file=sys.stderr)
-            return 1
-        out = Path(a.out) if a.out else MAIN_ROOT / ".agents/delegation/review-receipts" / f"pr{a.pr}-{a.head[:12]}.json"
-    else:
-        out = root / RECEIPT_DIR / f"pr{a.pr}-{a.head[:12]}.json"
+    try:
+        receipt.update(schema=2, repo=a.repo or _repo_slug(root), policy_version=POLICY_VERSION,
+                       tree=_git(root, "rev-parse", f"{a.head}^{{tree}}"),
+                       base_commit=a.base or _git(root, "merge-base", a.head, "refs/remotes/origin/main"))
+    except (subprocess.SubprocessError, OSError, ValueError) as exc:
+        print(f"mint FAILED: cannot bind head to tree/base/repo ({exc.__class__.__name__}); fetch the head and origin/main", file=sys.stderr)
+        return 1
+    out = Path(a.out) if a.out else MAIN_ROOT / ".agents/delegation/review-receipts" / f"pr{a.pr}-{a.head[:12]}.json"
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(receipt, indent=2) + "\n", encoding="utf-8")
-    print(f"wrote {out}" if a.offbranch else f"wrote {out.relative_to(root)}")
+    print(f"wrote {out}")
     return 0
 
 
@@ -208,7 +205,7 @@ def cmd_publish(a) -> int:
     except (OSError, ValueError):
         r = {}
     if r.get("schema") != 2:
-        errs.append("publish needs a schema 2 receipt (mint --offbranch)")
+        errs.append("publish needs a schema 2 receipt (from mint)")
     if errs:
         for e in errs:
             print(f"publish FAILED: {e}", file=sys.stderr)
@@ -305,7 +302,7 @@ def main() -> int:
     m.add_argument("--pr", type=int, required=True)
     m.add_argument("--head", required=True)
     m.add_argument("--author-lane", required=True)
-    m.add_argument("--offbranch", action="store_true", help="write a schema 2 receipt for `publish`")
+    m.add_argument("--offbranch", action="store_true", help="accepted for old callers; every mint is off-branch")
     m.add_argument("--repo", default="")
     m.add_argument("--base", default="")
     m.add_argument("--out", default="")

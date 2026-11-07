@@ -936,7 +936,12 @@ class GateWiring(unittest.TestCase):
         pre = "\n".join(lines[:idx])
         # reached before any early exit 0, and not under a conditional that could skip it
         self.assertNotIn("exit 0", pre)
-        self.assertTrue(lines[idx].lstrip().startswith("if ! owner_out="), lines[idx])
+        # S2 gate placement: the fetch-dependent check is a function; it runs unconditionally at every stage
+        # except local --pre-commit (offline subset only), and --owner-acceptance (pre-push) never skips it.
+        self.assertTrue(lines[idx - 1].startswith("run_full_owner_acceptance()"), lines[idx - 1])
+        self.assertIn('elif ! owner_out="$(run_full_owner_acceptance)"', text)
+        self.assertIn('[[ "${MODE}" == "--pre-commit" && "${TIER0_CI:-0}" != "1" ]]', text)
+        self.assertIn('if out="$(run_full_owner_acceptance)"', text)
         self.assertIn("exit 1", pre)    # missing projector/python fails, never passes
         literal = [l for l in lines if l.startswith("BASELINE_SHA256=")]
         self.assertEqual(len(literal), 1)

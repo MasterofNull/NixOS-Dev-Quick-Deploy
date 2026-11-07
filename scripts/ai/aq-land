@@ -1,0 +1,578 @@
+#!/usr/bin/env python3
+"""Land the current branch: gate, merge main, independent review, push, PR, receipt, checks, merge.
+
+One landing at a time (reviews run tests locally). Progress lives in git/GitHub state plus a
+checkpoint under .agents/delegation/outputs/aq-land/, so a re-run after a kill resumes without a
+second PR, review or receipt. Never skips hooks, never force-pushes, never auto-resolves a conflict.
+Replaces .agents/delegation/outputs/landing/land.sh (design: delivery-loop-simplification, S3).
+
+  aq-land --title T --body-file F [--commit-msg-file M] [--criteria-file C] [--author-lane claude]
+          [--allow-docs-only] [--lanes gemini,codex,local] [--optional-check NAME]...
+
+The body file holds `## Details` (without a review record), `## What`, `## How`, `## Why`; aq-land
+inserts the `### Review record` (and any lane substitution) before `## What`.
+"""
+from __future__ import annotations
+try:  # aq-usage-hook
+    import importlib.util as _aqu, os as _aqo
+    _aqs = _aqu.spec_from_file_location("aq_usage", _aqo.path.join(_aqo.path.dirname(_aqo.path.realpath(__file__)), "lib", "aq_usage.py"))
+    _aqm = _aqu.module_from_spec(_aqs); _aqs.loader.exec_module(_aqm); _aqm.record(__file__, __name__)
+except Exception:
+    pass
+
+import argparse
+import fcntl
+import hashlib
+import importlib.util
+import json
+import os
+import re
+import signal
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+HERE = Path(__file__).resolve().parent
+ROOT = HERE.parents[1]
+REVIEW_CHECK = "review-disposition"
+TRUST_CRITICAL = (".github/workflows/review-disposition.yml", "scripts/governance/", ".githooks/",
+                  "scripts/ai/aq-review-receipt", "scripts/ai/aq-land")
+DOC_PREFIXES = ("docs/", ".agent/", ".agents/")
+CODE_SUFFIXES = (".py", ".sh", ".nix", ".yml", ".yaml")
+# lane key -> (registry agent name, hard limit s, stall limit s). A stall limit assumes the lane writes
+# output while it works. Local answers in one non-streaming reply that can take many minutes on this
+# hardware. Gemini headless (-p) prints only its final answer: the log of a review is empty while it reads
+# files and runs tools, and completed review logs show 4-13 minutes from start to last write with no
+# progress text in them. A stall limit would kill a valid long review, so gemini and local rely on the
+# hard limit alone. Codex exec prints its tool activity as it goes, so it keeps a stall limit.
+LANES = {"gemini": ("gemini", 1800, 0), "codex": ("codex", 2400, 900), "local": ("local-direct", 2400, 0)}
+GEMINI_MODEL = "gemini-3.8-flash-high"
+GEMINI_FALLBACK_MODEL = "gemini-3.8-flash-medium"
+QUOTA = re.compile(r"quota|usage limit|rate.?limit|RESOURCE_EXHAUSTED|\b429\b|exhausted|capacity", re.I)
+VERDICTS = ("PASS_WITH_FOLLOWUPS", "PASS", "REQUEST_CHANGES", "FAIL")
+RECORD_KEYS = ("Author-lane", "Review-Disposition", "Reviewed-subject-sha256", "Reviewed-head-sha", "Reviewed-by",
+               "Review-Receipt", "Review history")
+
+
+class Stop(Exception):
+    def __init__(self, stage, msg):
+        super().__init__(msg)
+        self.stage = stage
+
+
+def env_int(name, default):
+    try:
+        return int(os.environ.get(name, default))
+    except ValueError:
+        return default
+
+
+def say(msg):
+    print(f"[aq-land] {msg}", flush=True)
+
+
+def run(cmd, cwd=None, timeout=180, check=True, stage="git", input=None):
+    try:
+        r = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, timeout=timeout, input=input)
+    except subprocess.TimeoutExpired:
+        raise Stop(stage, f"{Path(cmd[0]).name} {' '.join(cmd[1:3])} timed out after {timeout}s")
+    except OSError as e:
+        raise Stop(stage, f"cannot run {cmd[0]}: {e.strerror or e.__class__.__name__}")
+    if check and r.returncode != 0:
+        raise Stop(stage, f"{Path(cmd[0]).name} {' '.join(cmd[1:3])} failed: {(r.stderr or r.stdout).strip()[:200]}")
+    return r
+
+
+class Land:
+    def __init__(self, a):
+        self.a = a
+        self.W = str(Path(a.worktree).resolve())
+        os.chdir(self.W)
+        self.gh_bin = os.environ.get("AQ_LAND_GH", "gh")
+        self.delegates = Path(os.environ.get("AQ_LAND_DELEGATE_DIR", HERE))
+        self.receipt_tool = os.environ.get("AQ_LAND_RECEIPT_TOOL", str(HERE / "aq-review-receipt"))
+        self.tier0 = os.environ.get("AQ_LAND_TIER0", str(Path(self.W) / "scripts/governance/tier0-validation-gate.sh"))
+        common = self.git("rev-parse", "--path-format=absolute", "--git-common-dir")
+        self.state_root = Path(os.environ.get("AQ_LAND_STATE_DIR", Path(common).parent / ".agents/delegation/outputs/aq-land"))
+        self.branch = self.git("rev-parse", "--abbrev-ref", "HEAD")
+        if self.branch in ("HEAD", "main"):
+            raise Stop("preflight", f"cannot land from {self.branch!r}; check out the slice branch")
+        self.slug = re.sub(r"[^\w.-]", "_", self.branch)
+        self.dir = self.state_root / self.slug
+        self.dir.mkdir(parents=True, exist_ok=True)
+        self.cp_path = self.dir / "checkpoint.json"
+        try:
+            self.cp = json.loads(self.cp_path.read_text())
+        except (OSError, ValueError):
+            self.cp = {}
+        spec = importlib.util.spec_from_file_location("crd", ROOT / "scripts/governance/check-review-disposition.py")
+        self.crd = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(self.crd)
+
+    # ---- helpers
+    def git(self, *args, check=True, timeout=180):
+        return run(["git", "-C", self.W, *args], timeout=timeout, check=check).stdout.strip()
+
+    def gitrc(self, *args):
+        return run(["git", "-C", self.W, *args], check=False).returncode
+
+    def head(self):
+        return self.git("rev-parse", "HEAD")
+
+    def save(self, **kw):
+        self.cp.update(kw)
+        tmp = self.cp_path.with_suffix(".tmp")
+        tmp.write_text(json.dumps(self.cp, indent=2))
+        os.replace(tmp, self.cp_path)
+
+    def gh(self, *args, check=True, timeout=120):
+        return run([self.gh_bin, *args], timeout=timeout, check=check, stage="gh")
+
+    def ghjson(self, *args):
+        try:
+            return json.loads(self.gh(*args).stdout or "null")
+        except ValueError:
+            raise Stop("gh", f"gh {' '.join(args[:2])} returned non-JSON")
+
+    def find_pr(self):
+        rows = self.ghjson("pr", "list", "--head", self.branch, "--state", "all", "--json", "number,state") or []
+        open_ = [r for r in rows if r.get("state") == "OPEN"]
+        merged = [r for r in rows if r.get("state") == "MERGED"]
+        return (open_ or merged or [None])[0]
+
+    # ---- preflight
+    def changed_paths(self):
+        names = self.git("diff", "--name-only", "refs/remotes/origin/main...HEAD").split("\n")
+        names += self.git("diff", "--name-only", "--cached").split("\n")
+        return sorted({n for n in names if n})
+
+    def is_code(self, p):
+        if p.endswith(CODE_SUFFIXES) or "/scripts/" in "/" + p:
+            return True
+        if p.startswith(DOC_PREFIXES) or p.endswith(".md"):
+            ls = self.git("ls-files", "-s", "--", p)
+            return ls.startswith("100755")
+        return True
+
+    def preflight(self):
+        run(["git", "-C", self.W, "fetch", "-q", "origin"], timeout=180, stage="preflight")
+        paths = self.changed_paths()
+        if not paths:
+            raise Stop("preflight", "nothing to land: no change against origin/main")
+        if any(p.startswith(".agent/reviews/receipts/") for p in paths):
+            raise Stop("preflight", "receipt files in the diff: receipts live on the review-receipts branch, not in the PR")
+        if not self.a.allow_docs_only and not any(self.is_code(p) for p in paths):
+            raise Stop("preflight", "documentation-only change refused: documentation ships inside the code PR it describes "
+                                    "(owner 2026-11-06); pass --allow-docs-only to override")
+        self.trust_critical = any(p.startswith(TRUST_CRITICAL) for p in paths)
+
+    # ---- stages
+    def stage_commit(self):
+        if not self.a.commit_msg_file or not self.git("diff", "--cached", "--name-only"):
+            return
+        r = run([self.tier0, "--pre-commit"], cwd=self.W, timeout=3600, check=False, stage="tier0")
+        if r.returncode != 0:
+            fails = [l for l in (r.stdout + r.stderr).splitlines() if "FAIL" in l][:3]
+            raise Stop("tier0", "tier0 --pre-commit failed: " + " | ".join(fails)[:300])
+        run(["git", "-C", self.W, "commit", "-q", "-F", self.a.commit_msg_file], timeout=900, stage="commit")
+        say(f"committed {self.head()[:9]}")
+
+    def sync_main(self):
+        run(["git", "-C", self.W, "fetch", "-q", "origin"], timeout=180, stage="merge")
+        if self.gitrc("merge-base", "--is-ancestor", "refs/remotes/origin/main", "HEAD") == 0:
+            return False
+        if self.git("status", "--porcelain", "--untracked-files=no"):
+            raise Stop("merge", "worktree has uncommitted changes; commit them (--commit-msg-file) or stash")
+        r = run(["git", "-C", self.W, "merge", "--no-edit", "-q", "refs/remotes/origin/main"], check=False, stage="merge", timeout=300)
+        if r.returncode != 0:
+            files = self.git("diff", "--name-only", "--diff-filter=U", check=False).replace("\n", " ")
+            self.gitrc("merge", "--abort")
+            raise Stop("merge", f"conflict merging origin/main in: {files or r.stderr.strip()[:120]}; resolve by hand, never auto-resolved")
+        say(f"merged origin/main -> {self.head()[:9]}")
+        return True
+
+    def review_valid(self, rec, head):
+        """A review counts for head only if it is that head, or head is a clean automatic merge of main on it."""
+        if not rec or not rec.get("head"):
+            return False
+        if rec["head"] == head:
+            return True
+        ok, _ = self.crd.merge_only_update(rec["head"], head, self.git("rev-parse", "refs/remotes/origin/main"))
+        return ok
+
+    def lane_plan(self, diff_bytes):
+        author = (self.a.author_lane or "").strip().lower()
+        author = "local" if author.startswith("local") else author
+        order, skipped = [], []
+        for lane in [x for x in self.a.lanes.split(",") if x]:
+            if lane not in LANES:
+                raise Stop("review", f"unknown lane {lane!r}")
+            if lane == author:
+                skipped.append(f"{lane}: author's lane")
+            elif lane == "local" and self.trust_critical:
+                skipped.append("local: change touches gates/trunk/review authority; needs codex or gemini")
+            elif lane == "local" and diff_bytes > env_int("AQ_LAND_LOCAL_MAX_DIFF", 30000):
+                skipped.append(f"local: diff {diff_bytes} bytes over the small-diff limit")
+            else:
+                order.append(lane)
+        return order, skipped
+
+    def prompt(self, lane, head, diff_file, diff_text):
+        crit = Path(self.a.criteria_file).read_text() if self.a.criteria_file else "Check correctness, tests, and security of the change."
+        p = [f"Independent review (you are not the author). Subject: branch {self.branch}, head {head}, base origin/main."]
+        if lane == "local":
+            p += ["Answer from the diff below alone.", "", crit, "", "```diff", diff_text, "```"]
+        else:
+            p += [f"Full net diff vs main: {diff_file}", f"Worktree: {self.W}", "",
+                  f"Read every repository file under the worktree path {self.W}. The main checkout (any repository path outside "
+                  ".agents/delegation/worktrees) is out of date for this change: findings based on files read there are wrong. "
+                  "Do not run test suites; the author and CI run them.", "", crit]
+        p += ["", "End your answer with exactly these two lines:", f"Reviewed-head-sha: {head}",
+              "Review-Disposition: <PASS|PASS_WITH_FOLLOWUPS|REQUEST_CHANGES>", "Use REQUEST_CHANGES only for a concrete defect you can name."]
+        return "\n".join(p) + "\n"
+
+    def run_lane(self, lane, head, pfile, notes=None):
+        """Return (kind, detail, run_id, text): kind is ok|negative|unavailable. Gemini retries once on another model after a quota error."""
+        if lane != "gemini":
+            return self.run_once(lane, head, pfile)
+        model = os.environ.get("AQ_LAND_GEMINI_MODEL") or GEMINI_MODEL
+        res = self.run_once(lane, head, pfile, model)
+        if res[0] == "unavailable" and res[1] == "quota error" and model != GEMINI_FALLBACK_MODEL:
+            if notes is not None:
+                notes.append(f"gemini: model {model} quota error; retried with {GEMINI_FALLBACK_MODEL}")
+            say(f"gemini model {model} hit a quota error; retrying once with {GEMINI_FALLBACK_MODEL}")
+            res = self.run_once(lane, head, pfile, GEMINI_FALLBACK_MODEL)
+        return res
+
+    def run_once(self, lane, head, pfile, model=""):
+        agent, hard, stall = LANES[lane]
+        hard = env_int("AQ_LAND_REVIEW_TIMEOUT_S", hard)
+        stall = env_int("AQ_LAND_STALL_S", stall) if stall else 0  # the override tunes streaming lanes; it cannot re-enable it for the others
+        tool = str(self.delegates / f"delegate-to-{lane}")
+        if lane == "codex":
+            b = run([tool, "--budget-check-only", "--role", "review"], cwd=self.W, check=False, stage="review", timeout=60)
+            if b.returncode != 0:
+                return "unavailable", f"budget refused (exit {b.returncode})", "", ""
+        cmd = {"gemini": ["--role", "reviewer", "--mode", "plan", "--model", model, "--wait"],
+               "codex": ["--role", "review", "--mode", "safe", "--shared", "--wait"],
+               "local": ["--mode", "direct", "--role", "reviewer", "--wait", "--timeout", str(hard), "--max-tokens", "900"]}[lane]
+        out = self.dir / f"review-{lane}-{head[:12]}{'-' + model if model else ''}.out"
+        with open(out, "w") as fh:
+            try:
+                proc = subprocess.Popen([tool, *cmd, "--prompt-file", str(pfile)], cwd=self.W, stdout=fh, stderr=subprocess.STDOUT,
+                                        start_new_session=True, env={**os.environ, "AQ_DELEGATE_CWD": str(self.W)})
+            except OSError as e:
+                return "unavailable", f"cannot start {tool}: {e.strerror}", "", ""
+            t0 = last = time.time()
+            seen, why = -1, ""
+            poll = float(os.environ.get("AQ_LAND_POLL_S", "1"))
+            while proc.poll() is None:
+                time.sleep(min(poll, 1))
+                text = out.read_text(errors="replace")
+                m = re.search(r"Output file:\s+(\S+)", text)
+                size = len(text) + (Path(m.group(1)).stat().st_size if m and Path(m.group(1)).exists() else 0)
+                if size != seen:
+                    seen, last = size, time.time()
+                if time.time() - t0 > hard:
+                    why = f"timeout after {hard}s"
+                elif stall and time.time() - last > stall:
+                    why = f"stall: no output for {stall}s"
+                if why:
+                    try:
+                        os.killpg(proc.pid, signal.SIGTERM)
+                        proc.wait(5)
+                    except (OSError, subprocess.TimeoutExpired):
+                        os.killpg(proc.pid, signal.SIGKILL)
+                    return "unavailable", why, "", ""
+        text = out.read_text(errors="replace")
+        m = re.search(r"Output file:\s+(\S+)", text)
+        if m and Path(m.group(1)).is_file():
+            text += "\n" + Path(m.group(1)).read_text(errors="replace")
+        verdicts = re.findall(rf"^Review-Disposition:[ \t]*({'|'.join(VERDICTS)})[ \t]*$", text, re.M)
+        heads = re.findall(r"^Reviewed-head-sha:[ \t]*([0-9a-f]{40})[ \t]*$", text, re.M)
+        rid = re.search(rf"\b({lane}-\d{{8}}-\d{{6}}-[a-z0-9]+)", text)
+        if not verdicts:
+            kind = "quota error" if QUOTA.search(text) else f"no verdict (exit {proc.returncode})"
+            return "unavailable", kind, "", ""
+        if not heads or heads[-1] != head:
+            return "unavailable", f"review covers head {(heads or ['none'])[-1][:12]}, not {head[:12]}", "", ""
+        if not rid:
+            return "unavailable", "no run id in the delegate output", "", ""
+        return ("ok" if verdicts[-1].startswith("PASS") else "negative"), verdicts[-1], rid.group(1), text
+
+    def review(self, head):
+        base = "refs/remotes/origin/main"
+        diff = self.git("diff", f"{base}...{head}")
+        diff_file = self.dir / f"subject-{head[:12]}.diff"
+        diff_file.write_text(diff + "\n")
+        order, notes = self.lane_plan(len(diff.encode()))
+        if not order:
+            raise Stop("review", "no eligible independent lane: " + "; ".join(notes))
+        pfiles = {}
+        for lane in order:
+            pf = self.dir / f"prompt-{lane}-{head[:12]}.md"
+            pf.write_text(self.prompt(lane, head, diff_file, diff))
+            pfiles[lane] = pf
+        for lane in order:
+            say(f"review of {head[:9]} by {lane}")
+            kind, detail, rid, _ = self.run_lane(lane, head, pfiles[lane], notes)
+            if kind == "unavailable":
+                notes.append(f"{lane}: {detail}")
+                say(f"lane {lane} unavailable ({detail}); trying the next eligible lane")
+                continue
+            if kind == "negative":
+                raise Stop("review", f"{lane} run {rid} returned {detail}; fix the findings (see {self.dir})")
+            rec = {"head": head, "run_id": rid, "lane": lane, "reviewer": LANES[lane][0], "disposition": detail,
+                   "subject": hashlib.sha256((diff + "\n").encode()).hexdigest(), "notes": notes}
+            self.save(review=rec)
+            say(f"review {rid}: {detail}")
+            return rec
+        raise Stop("review", "no eligible independent lane left: " + "; ".join(notes))
+
+    def stage_push(self, head, rec):
+        if not self.review_valid(rec, head):
+            raise Stop("push", f"reviewed head {(rec or {}).get('head', 'none')[:12]} differs from head {head[:12]} and is not a clean merge of main")
+        r = run(["git", "-C", self.W, "ls-remote", "origin", f"refs/heads/{self.branch}"], timeout=120, stage="push").stdout.split()
+        remote = r[0] if r else ""
+        if remote == head:
+            return
+        if remote and self.gitrc("merge-base", "--is-ancestor", remote, head) != 0:
+            raise Stop("push", f"origin/{self.branch} has commits not in the local head; not forcing")
+        run(["git", "-C", self.W, "push", "-q", "-u", "origin", self.branch], timeout=3600, stage="push")
+        r = run(["git", "-C", self.W, "ls-remote", "origin", f"refs/heads/{self.branch}"], timeout=120, stage="push").stdout.split()
+        if not r or r[0] != head:
+            raise Stop("push", "push did not land the head on origin")
+        say(f"pushed {head[:9]}")
+
+    def body(self, rec):
+        lines = Path(self.a.body_file).read_text().splitlines()
+        keep, drop_heading = [], re.compile(r"^###\s+Review record\s*$")
+        for l in lines:
+            if drop_heading.match(l) or any(l.startswith(k + ":") for k in RECORD_KEYS):
+                continue
+            keep.append(l)
+        subs = "; ".join(rec["notes"]) or "none"
+        block = ["### Review record", f"Author-lane: {self.a.author_lane}", f"Review-Disposition: {rec['disposition']}",
+                 f"Reviewed-subject-sha256: {rec['subject']}", f"Reviewed-head-sha: {rec['head']}", f"Reviewed-by: {rec['reviewer']}", "",
+                 f"Review history: run {rec['run_id']} ({rec['lane']}) reviewed {rec['head'][:12]}. Lane substitutions: {subs}.", ""]
+        i = next((n for n, l in enumerate(keep) if l.strip() == "## What"), None)
+        if i is None:
+            raise Stop("pr", "body file has no '## What' heading")
+        return "\n".join(keep[:i] + block + keep[i:]) + "\n"
+
+    def stage_pr(self, rec):
+        pr = self.find_pr()
+        bf = self.dir / "body.md"
+        bf.write_text(self.body(rec))
+        if pr is None:
+            if not self.a.title or not self.a.body_file:
+                raise Stop("pr", "no open PR: --title and --body-file are required to create one")
+            out = self.gh("pr", "create", "--base", "main", "--head", self.branch, "--title", self.a.title, "--body-file", str(bf)).stdout
+            m = re.search(r"/pull/(\d+)", out) or re.search(r"(\d+)\s*$", out.strip())
+            if not m:
+                raise Stop("pr", "could not read the PR number from gh pr create")
+            n = int(m.group(1))
+            say(f"PR #{n} created")
+        else:
+            n = pr["number"]
+            live = self.ghjson("pr", "view", str(n), "--json", "body").get("body") or ""
+            if live.strip() != bf.read_text().strip():
+                self.gh("pr", "edit", str(n), "--body-file", str(bf))
+                say(f"PR #{n} body updated for reviewed head {rec['head'][:9]}")
+        self.save(pr=n)
+        return n
+
+    def stage_receipt(self, n, rec):
+        key = f"{n}:{rec['head']}"
+        if self.cp.get("receipt") == key:
+            return
+        f = self.dir / f"pr{n}-{rec['head'][:12]}.json"
+        r = run([self.receipt_tool, "mint", "--run-id", rec["run_id"], "--pr", str(n), "--head", rec["head"],
+                 "--author-lane", self.a.author_lane, "--out", str(f)], cwd=self.W, check=False, stage="receipt", timeout=300)
+        if r.returncode != 0 or not f.is_file():
+            raise Stop("receipt", f"mint failed: {(r.stderr or r.stdout).strip()[:200]}")
+        lane = json.loads(f.read_text()).get("reviewer_lane", "")
+        if lane.strip().lower() != rec["reviewer"]:
+            raise Stop("receipt", f"receipt reviewer_lane {lane!r} != Reviewed-by {rec['reviewer']!r} in the PR body")
+        r = run([self.receipt_tool, "publish", str(f)], cwd=self.W, check=False, stage="receipt", timeout=1800)
+        if r.returncode != 0:
+            raise Stop("receipt", f"publish failed: {(r.stderr or r.stdout).strip()[:200]}")
+        self.save(receipt=key)
+        say(f"receipt published for PR #{n}")
+
+    # ---- checks and merge
+    def required_checks(self, repo):
+        r = self.gh("api", f"repos/{repo}/branches/main/protection/required_status_checks", check=False)
+        if r.returncode != 0:
+            return None
+        try:
+            d = json.loads(r.stdout)
+        except ValueError:
+            return None
+        return set(d.get("contexts") or []) | {c.get("context") for c in d.get("checks") or [] if c.get("context")}
+
+    def classify(self, c, repo):
+        """-> (name, 'pass'|'pending'|'fail', run_id). A check stuck in progress is judged by its job's conclusion."""
+        name = c.get("name") or c.get("context") or "?"
+        if "state" in c and "status" not in c:
+            return name, {"SUCCESS": "pass", "PENDING": "pending", "EXPECTED": "pending"}.get(c["state"], "fail"), None
+        url = c.get("detailsUrl") or ""
+        run_id = (re.search(r"/actions/runs/(\d+)", url) or [None, None])[1]
+        if c.get("status") == "COMPLETED":
+            return name, "pass" if c.get("conclusion") in ("SUCCESS", "NEUTRAL", "SKIPPED") else "fail", run_id
+        if c.get("status") == "IN_PROGRESS":
+            m = re.search(r"/job/(\d+)", url)
+            if m:
+                r = self.gh("api", f"repos/{repo}/actions/jobs/{m.group(1)}", check=False)
+                try:
+                    job = json.loads(r.stdout) if r.returncode == 0 else {}
+                except ValueError:
+                    job = {}
+                if job.get("status") == "completed":
+                    return name, "pass" if job.get("conclusion") in ("success", "neutral", "skipped") else "fail", run_id
+        return name, "pending", run_id
+
+    def wait_and_merge(self, n, head):
+        repo = self.ghjson("repo", "view", "--json", "nameWithOwner")["nameWithOwner"]
+        required = (self.required_checks(repo) or set()) | {REVIEW_CHECK}
+        optional = set(self.a.optional_check)
+        deadline = time.time() + env_int("AQ_LAND_CHECKS_TIMEOUT_S", 14400)
+        poll = float(os.environ.get("AQ_LAND_POLL_S", "30"))
+        while True:
+            v = self.ghjson("pr", "view", str(n), "--json", "headRefOid,state,statusCheckRollup")
+            if v["state"] == "MERGED":
+                say(f"PR #{n} merged")
+                return
+            if v["state"] != "OPEN":
+                raise Stop("checks", f"PR #{n} is {v['state']}")
+            if v["headRefOid"] != head:
+                raise Stop("checks", f"PR head is {v['headRefOid'][:12]}, not {head[:12]}; refusing to reuse checks for another head")
+            seen = {}
+            for c in v.get("statusCheckRollup") or []:
+                name, st, run_id = self.classify(c, repo)
+                seen[name] = (st, run_id)
+            pending, failed = [], []
+            for name in sorted(set(seen) | required):
+                if name in optional and name not in required:
+                    continue
+                st, run_id = seen.get(name, ("pending", None))
+                if st == "fail" and name == REVIEW_CHECK and run_id and self.cp.get("reruns", 0) < 3:
+                    self.gh("run", "rerun", run_id)
+                    self.save(reruns=self.cp.get("reruns", 0) + 1)
+                    st = "pending"  # reads live PR state and the receipt branch, so a re-run after publish can pass
+                (failed if st == "fail" else pending if st == "pending" else []).append(name)
+            if failed:
+                raise Stop("checks", "failed: " + ", ".join(failed))
+            if not pending and seen.get(REVIEW_CHECK, ("pending",))[0] == "pass":
+                break
+            if not pending:
+                pending = [REVIEW_CHECK]
+            if time.time() > deadline:
+                raise Stop("checks", "timed out waiting for: " + ", ".join(pending) + "; re-run aq-land to resume")
+            time.sleep(poll)
+        self.gh("pr", "merge", str(n), "--squash", "--match-head-commit", head)
+        v = self.ghjson("pr", "view", str(n), "--json", "state")
+        if v["state"] != "MERGED":
+            raise Stop("merge", f"PR #{n} is {v['state']} after gh pr merge")
+        say(f"PR #{n} merged")
+
+    # ---- orchestration
+    def settled(self, pr):
+        h = self.head()
+        r = run(["git", "-C", self.W, "ls-remote", "origin", f"refs/heads/{self.branch}"], timeout=120, check=False).stdout.split()
+        rec = self.cp.get("review")
+        return bool(pr and pr["state"] == "OPEN" and r and r[0] == h and self.review_valid(rec, h)
+                    and self.cp.get("receipt") == f"{pr['number']}:{rec['head']}" and not self.git("diff", "--cached", "--name-only"))
+
+    def main_advanced(self):
+        run(["git", "-C", self.W, "fetch", "-q", "origin"], timeout=180, stage="merge")
+        return self.gitrc("merge-base", "--is-ancestor", "refs/remotes/origin/main", "HEAD") != 0
+
+    def locked(self):
+        self.stage_commit()
+        for _ in range(4):  # main or the branch can move during a review; re-judge the evidence each round
+            self.sync_main()
+            head = self.head()
+            rec = self.cp.get("review")
+            if not self.review_valid(rec, head):
+                self.review(head)
+                continue
+            if self.main_advanced():
+                say("origin/main moved during review; re-syncing")
+                continue
+            break
+        else:
+            raise Stop("merge", "origin/main or the branch kept moving; re-run aq-land")
+        self.stage_push(head, rec)
+        n = self.stage_pr(rec)
+        self.stage_receipt(n, rec)
+        return n
+
+    def go(self):
+        self.preflight()
+        pr = self.find_pr()
+        if pr and pr["state"] == "MERGED":
+            say(f"PR #{pr['number']} already merged")
+            return 0
+        if self.settled(pr):
+            say(f"resuming PR #{pr['number']}: pushed, reviewed and receipted")
+            n = self.stage_pr(self.cp["review"])
+        else:
+            with Lock(self.state_root / "lock", env_int("AQ_LAND_LOCK_WAIT_S", 7200), self.branch):
+                n = self.locked()
+        self.wait_and_merge(n, self.head())
+        return 0
+
+
+class Lock:
+    def __init__(self, path, wait, who):
+        self.path, self.wait, self.who = path, wait, who
+
+    def __enter__(self):
+        self.fh = open(self.path, "a+")
+        t0 = time.time()
+        while True:
+            try:
+                fcntl.flock(self.fh, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                break
+            except OSError:
+                if time.time() - t0 >= self.wait:
+                    self.fh.seek(0)
+                    raise Stop("lock", f"another landing holds the lock ({self.fh.read().strip()[:80]}); waited {int(time.time() - t0)}s")
+                time.sleep(1)
+        self.fh.seek(0)
+        self.fh.truncate()
+        self.fh.write(f"pid {os.getpid()} branch {self.who}")
+        self.fh.flush()
+        return self
+
+    def __exit__(self, *a):
+        self.fh.close()
+
+
+def main():
+    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap.add_argument("--worktree", default=os.getcwd())
+    ap.add_argument("--title", default="")
+    ap.add_argument("--body-file", default="")
+    ap.add_argument("--commit-msg-file", default="")
+    ap.add_argument("--criteria-file", default="")
+    ap.add_argument("--author-lane", default="claude")
+    ap.add_argument("--lanes", default=os.environ.get("AQ_LAND_LANES", "gemini,codex,local"))
+    ap.add_argument("--allow-docs-only", action="store_true")
+    ap.add_argument("--optional-check", action="append", default=[])
+    a = ap.parse_args()
+    stage = "start"
+    try:
+        land = Land(a)
+        return land.go()
+    except Stop as e:
+        print(f"aq-land: STOP {e.stage}: {e}", file=sys.stderr)
+    except Exception as e:  # one line, no traceback
+        print(f"aq-land: STOP {stage}: unexpected {e.__class__.__name__}: {str(e)[:200]}", file=sys.stderr)
+    return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())
