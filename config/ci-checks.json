@@ -2008,7 +2008,10 @@
         ".agents/plans/*/tracker.json",
         "config/activation-manifest.json"
       ],
-      "needs": ["python3", "git"],
+      "needs": [
+        "python3",
+        "git"
+      ],
       "ci_workflow": ".github/workflows/test.yml#syntax"
     },
     {
@@ -2020,7 +2023,10 @@
         "scripts/ai/aq-pm-tracker",
         ".agents/plans/*/tracker.json"
       ],
-      "needs": ["python3", "git"],
+      "needs": [
+        "python3",
+        "git"
+      ],
       "ci_workflow": ".github/workflows/test.yml#syntax"
     },
     {
@@ -2032,6 +2038,19 @@
         "git"
       ],
       "ci_workflow": ".github/workflows/test.yml#manifest-tests"
+    },
+    {
+      "id": "sweep-lanes-test",
+      "cmd": "scripts/testing/test-sweep-lanes.py",
+      "paths": [
+        "scripts/testing/test-sweep-lanes.py",
+        "scripts/governance/sweep-lanes.py",
+        "config/ci-checks.json"
+      ],
+      "needs": [
+        "python3"
+      ],
+      "ci_workflow": ".github/workflows/test.yml#syntax"
     }
   ],
   "ci_exempt": [
