@@ -580,6 +580,8 @@ jobs:
           ./scripts/governance/run-ci-checks.sh --all \
             --only pm-tracker-untrusted-hold \
             --only pm-tracker-activation-cap \
+            --only sweep-tracker-claims \
+            --only sweep-tracker-claims-test \
             --only pm-tracker-owner-acceptance \
             --only check-workflow-masks-test \
             --only tier0-gate-placement-tests \
@@ -600,7 +602,10 @@ jobs:
             --only tier0-qa-admission-test \
             --only mcp-integrity-baseline-test \
             --only mcp-integrity-unit-path-test \
+            --only sweep-dashboard-test \
+            --only sweep-dashboard-report \
             --only sweep-enabled-units-test \
+            --only dashboard-routing-ratio-test \
             --only tests-agent \
             --only tests-aq \
             --only tests-aqos \

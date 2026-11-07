@@ -12,6 +12,8 @@ Modes:
   aq-pm-tracker --all                 aggregate human summary across every .agents/plans/*/tracker.json
   aq-pm-tracker --all-json            aggregate projection (JSON): {generated_at, plans[], program_rollup_pct}
   aq-pm-tracker --check-owner-acceptance --baseline-sha256 <hex>   owner-acceptance gate (tier0.d/check-pm-tracker supplies the pinned digest)
+  aq-pm-tracker --request-acceptance <plan-dir> <item-id>   push one pm-acceptance alert for a proposed owner acceptance (shows in aq-approve)
+  aq-pm-tracker --record-acceptance <attn-id>   host-side: write the decision record for an owner-approved pm-acceptance alert (run in the slice worktree)
 Owner acceptances: items carry acceptance_assurance (recorded | unverified | null) and status_label; a SHIPPED item
 whose owner acceptance has no valid approval_ref projects "SHIPPED (unverified)" (ACTIVATED/held labels unchanged).
 Activation cap (P0.9): SHIPPED additionally requires an activation signal (a live systemd_unit/command check, a
@@ -1031,6 +1033,11 @@ APPROVAL_DIR = ".agent/approvals/acceptance/"
 APPROVAL_LOG_REL = APPROVAL_DIR + "LOG.jsonl"
 _HEX64 = re.compile(r"[0-9a-f]{64}")
 _REF_PATH = re.compile(r"\.agent/approvals/acceptance/[A-Za-z0-9][A-Za-z0-9._-]*\.json")
+# Doors an owner decision can come through (aq-approve --door); a record naming anything else, or an actor that is
+# not the owner seat (`_resolve_actor("owner")` -> "<user>:owner"), is not an owner decision.
+OWNER_DOORS = frozenset(("chat", "terminal", "dashboard"))
+_ALERT_ID = re.compile(r"attn-[0-9a-f]{16}")
+_OWNER_ACTOR = re.compile(r"[A-Za-z0-9_.-]+:owner")
 _RECORDED_KEYS = frozenset(("record", "sha256"))
 _SIGNED_KEYS = frozenset(("envelope_seq", "envelope_sha256"))
 # Unbacked owner acceptances (allowlisted) counted by the last validate_manifest() call (WARN only).
@@ -1123,7 +1130,10 @@ def _recorded_problem(ref: dict, plan: str, item_id, h: str) -> str | None:
     f = REPO / rec
     if f.is_symlink() or not f.is_file():
         return "record file missing"
-    raw = f.read_bytes()
+    try:
+        raw = f.read_bytes()
+    except OSError as e:  # fail closed: an unreadable store is never a pass
+        return f"record unreadable: {e}"
     if hashlib.sha256(raw).hexdigest() != sha:
         return "record bytes do not match approval_ref.sha256 (record modified)"
     try:
@@ -1136,6 +1146,13 @@ def _recorded_problem(ref: dict, plan: str, item_id, h: str) -> str | None:
         return "record kind != tracker-acceptance"
     if d.get("decision") != "approved":
         return f"record decision {d.get('decision')!r} is not 'approved'"
+    aid = d.get("alert_id")
+    if not (isinstance(aid, str) and _ALERT_ID.fullmatch(aid)) or Path(rec).stem != aid:
+        return "record alert_id must be an aq-approve alert id (attn-<16 hex>) equal to the record file name"
+    if d.get("door") not in OWNER_DOORS:
+        return f"record door {d.get('door')!r} is not an owner door {sorted(OWNER_DOORS)}"
+    if not (isinstance(d.get("resolved_by"), str) and _OWNER_ACTOR.fullmatch(d["resolved_by"])):
+        return "record resolved_by is not the owner seat (<user>:owner)"
     if d.get("plan") != plan:
         return "record plan does not match this plan"
     items = d.get("items")
@@ -1360,6 +1377,149 @@ def check_owner_acceptance(git=_git_run, pinned: str | None = None) -> int:
     return 0
 
 
+def _jsonl(path: Path) -> list[dict]:
+    """Every line must parse; a missing or unreadable store raises (the caller fails closed)."""
+    out = []
+    for n, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+        if not line.strip():
+            continue
+        try:
+            row = json.loads(line)
+        except ValueError:
+            raise ValueError(f"{path} line {n} is not JSON")
+        if isinstance(row, dict):
+            out.append(row)
+    return out
+
+
+def record_acceptance(alert_id: str) -> int:
+    """Host-side producer: turn one owner-approved aq-approve `pm-acceptance` alert into the committed decision
+    record + LOG line in THIS checkout (run it in the slice worktree), and print the approval_ref to paste into
+    the tracker. It never edits tracker.json and never decides anything: it refuses unless the host stores
+    (attention archive + approval-inbox audit) show the alert approved by the owner seat through an owner door,
+    for exactly this plan/item/acceptance hash. The stores are same-uid files, so this is evidence of a decision,
+    not authentication; the committed record stays reviewable in the PR diff (VERIFIED-ACCEPTANCE.md section 1).
+    CI cannot read these stores, so CI enforces only the committed record's shape and hash binding."""
+    tag = "[record-acceptance]"
+    if not _ALERT_ID.fullmatch(alert_id or ""):
+        print(f"{tag} FAIL: alert id must be attn-<16 hex>")
+        return 1
+    q_dir = Path(os.environ["ATTENTION_QUEUE_DIR"]) if "ATTENTION_QUEUE_DIR" in os.environ else REPO / ".agents" / "attention"
+    a_dir = Path(os.environ.get("AQ_APPROVAL_INBOX_DIR", "/var/lib/nixos-ai-stack/optimizer/prsi"))
+    try:
+        archive = [r for r in _jsonl(q_dir / "ATTENTION_ARCHIVE.jsonl") if r.get("id") == alert_id]
+        audit = [r for r in _jsonl(a_dir / "approval-inbox-audit.jsonl")
+                 if r.get("key") == f"attn:{alert_id}" and r.get("action") == "approve" and r.get("ok") is True]
+    except (OSError, ValueError) as e:
+        print(f"{tag} FAIL: approval store unreadable (fail closed): {e}")
+        return 1
+    al = archive[-1] if archive else None
+    if not al or al.get("status") != "approved" or al.get("source") != "pm-acceptance" \
+            or al.get("executor") != "tracker_acceptance":
+        print(f"{tag} FAIL: {alert_id} is not an approved pm-acceptance/tracker_acceptance alert in the archive")
+        return 1
+    if not (isinstance(al.get("resolved_by"), str) and _OWNER_ACTOR.fullmatch(al["resolved_by"])):
+        print(f"{tag} FAIL: alert was not resolved by the owner seat (<user>:owner): {al.get('resolved_by')!r}")
+        return 1
+    door = audit[-1].get("door") if audit else None
+    if door not in OWNER_DOORS:
+        print(f"{tag} FAIL: no approve audit line with an owner door for {alert_id} (door={door!r})")
+        return 1
+    pl = al.get("payload") if isinstance(al.get("payload"), dict) else {}
+    plan, items = pl.get("plan"), pl.get("items")
+    if not (isinstance(plan, str) and plan and isinstance(items, list) and items):
+        print(f"{tag} FAIL: payload needs plan and a non-empty items list")
+        return 1
+    try:
+        m = json.loads((REPO / ".agents" / "plans" / plan / "tracker.json").read_text())
+    except (OSError, ValueError) as e:
+        print(f"{tag} FAIL: cannot read tracker for plan {plan}: {e}")
+        return 1
+    by_id = {i.get("id"): i for i in m.get("items", []) if isinstance(i, dict)}
+    listed = []
+    for e in items:
+        iid, h = (e.get("id"), e.get("acceptance_sha256")) if isinstance(e, dict) else (None, None)
+        cur = by_id.get(iid, {}).get("acceptance")
+        if not (isinstance(cur, dict) and cur.get("status") == "accepted" and _is_owner_acceptor(cur.get("by"))
+                and h == acceptance_sha256(plan, iid, cur)):
+            print(f"{tag} FAIL: item {iid!r} is stale or not a current owner acceptance matching the approved hash")
+            return 1
+        listed.append({"id": iid, "acceptance_sha256": h})
+    rec_f = REPO / APPROVAL_DIR / f"{alert_id}.json"
+    if rec_f.exists():
+        print(f"{tag} FAIL: {rec_f.relative_to(REPO)} already exists (records are append-only)")
+        return 1
+    log, err = _load_decision_log()
+    if err:
+        print(f"{tag} FAIL: decision log invalid: {err}")
+        return 1
+    log_f = REPO / APPROVAL_LOG_REL
+    dseq = (len(log_f.read_text(encoding="utf-8").splitlines()) if log_f.exists() else 0) + 1
+    raw = (json.dumps({"schema": 1, "kind": "tracker-acceptance", "alert_id": alert_id, "decision": "approved",
+                       "resolved_at": al.get("resolved_at"), "resolved_by": al["resolved_by"], "door": door,
+                       "plan": plan, "items": listed}, indent=1, sort_keys=True) + "\n").encode()
+    rec_f.parent.mkdir(parents=True, exist_ok=True)
+    rec_f.write_bytes(raw)
+    with log_f.open("a", encoding="utf-8") as fh:
+        for e in listed:
+            fh.write(json.dumps({"dseq": dseq, "plan": plan, "item": e["id"], "acceptance_sha256": e["acceptance_sha256"],
+                                 "decision": "approved", "record": f"{APPROVAL_DIR}{alert_id}.json"}, sort_keys=True) + "\n")
+            dseq += 1
+    print(json.dumps({"record": f"{APPROVAL_DIR}{alert_id}.json", "sha256": hashlib.sha256(raw).hexdigest()}))
+    print(f"{tag} wrote the record + {len(listed)} LOG line(s); set approval_ref (above) on each listed item's acceptance")
+    return 0
+
+
+def request_acceptance(plan_arg: str, item_id: str) -> int:
+    """Producer: push ONE `pm-acceptance` attention alert so the owner sees the request in `aq-approve`.
+    The item must carry a proposed owner acceptance block (no approval_ref yet) and already project SHIPPED, i.e.
+    only the owner sign-off is missing; anything else is refused. Dedup is by (plan, item, acceptance hash), so
+    repeats add no alert. It never writes tracker.json or any acceptance: the owner's approval is the decision."""
+    tag = "[request-acceptance]"
+    plan_dir = Path(plan_arg) if Path(plan_arg).is_absolute() else REPO / plan_arg
+    if not (plan_dir / "tracker.json").is_file():
+        plan_dir = REPO / ".agents" / "plans" / plan_arg
+    try:
+        m = json.loads((plan_dir / "tracker.json").read_text())
+    except (OSError, ValueError) as e:
+        print(f"{tag} FAIL: cannot read tracker for {plan_arg}: {e}")
+        return 1
+    plan = plan_dir.name
+    it = next((i for i in m.get("items", []) if isinstance(i, dict) and i.get("id") == item_id), None)
+    a = it.get("acceptance") if it else None
+    if not (isinstance(a, dict) and a.get("status") == "accepted" and _is_owner_acceptor(a.get("by"))):
+        print(f"{tag} FAIL: {plan}:{item_id} has no proposed owner acceptance block to request")
+        return 1
+    if "approval_ref" in a:
+        print(f"{tag} FAIL: {plan}:{item_id} already carries an approval_ref; nothing to request")
+        return 1
+    pi = next((i for i in project(plan_dir)["items"] if i["id"] == item_id), None)
+    if not pi or pi["status"] != "SHIPPED":
+        print(f"{tag} FAIL: {plan}:{item_id} is not ready for acceptance (projects {pi['status'] if pi else 'missing'}; "
+              "needs complete evidence, activation signal and a registered test, with only sign-off missing)")
+        return 1
+    h = acceptance_sha256(plan, item_id, a)
+    sys.path.insert(0, str(Path(__file__).resolve().parent / "lib"))
+    import attention_queue
+    det = json.dumps(it.get("detection", {}), sort_keys=True)[:600]
+    detail = (f"{plan}:{item_id} {it.get('name', '')} | goal: {it.get('goal', '')} | validation: "
+              f"{it.get('validation_goal', '')} | status {pi['status']} | acceptance sha256 {h} | evidence: {det}")
+    try:
+        aid = attention_queue.push(
+            "pm-acceptance", "medium", "human_gate", f"{plan}:{item_id} owner acceptance"[:80], detail,
+            "Approve to record the owner's acceptance of this item",
+            payload={"plan": plan, "items": [{"id": item_id, "acceptance_sha256": h}]},
+            executor="tracker_acceptance", ttl_s=604800, dedup_key=f"pm-acceptance:{plan}:{item_id}:{h}",
+            why="owner acceptance needs an aq-approve record",
+            next_step=f"after approval run: aq-pm-tracker --record-acceptance <alert id> in the slice worktree")
+    except (OSError, RuntimeError, ValueError) as e:
+        print(f"{tag} FAIL: could not push the alert (fail closed): {e}")
+        return 1
+    print(f"{tag} {'pushed ' + aid if aid else 'already pending for this acceptance hash (deduped)'}: "
+          f"{plan}:{item_id} sha256 {h}")
+    return 0
+
+
 def validate_manifest(plan_dir: Path) -> list[str]:
     errs = []
     GRANDFATHERED_ACCEPTANCES.clear()
@@ -1442,6 +1602,15 @@ def main() -> int:
         return check_legacy_allowlist()
     if "--check-untrusted-items" in args:
         return check_untrusted_items()
+    if "--request-acceptance" in args:
+        i = args.index("--request-acceptance")
+        if len(args) < i + 3:
+            print("usage: aq-pm-tracker --request-acceptance <plan-dir> <item-id>", file=sys.stderr)
+            return 2
+        return request_acceptance(args[i + 1], args[i + 2])
+    if "--record-acceptance" in args:
+        i = args.index("--record-acceptance")
+        return record_acceptance(args[i + 1] if i + 1 < len(args) else "")
     if "--check-owner-acceptance" in args:
         pinned = args[args.index("--baseline-sha256") + 1] if "--baseline-sha256" in args[:-1] else None
         return check_owner_acceptance(pinned=pinned)

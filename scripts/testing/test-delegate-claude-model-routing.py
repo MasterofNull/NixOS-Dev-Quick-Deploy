@@ -53,6 +53,9 @@ class ClaudeModelRoutingTest(unittest.TestCase):
             "CLAUDE_BIN": str(self.fake_claude),
             "FAKE_CLAUDE_ARGV": str(self.argv_log),
             "HOME": self.temp.name,
+            # The wrapper honours an inherited AQ_DELEGATION_DIR; run-test-group.py and operator shells
+            # set one, which sends registry writes outside this temp repo and leaves registry() empty.
+            "AQ_DELEGATION_DIR": str(self.repo / ".agents/delegation"),
         }
 
     def tearDown(self) -> None:
