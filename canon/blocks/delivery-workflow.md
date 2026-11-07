@@ -58,8 +58,12 @@ tested. A slice is finished only after these four steps, in this order:
    A feature merged default-off is not finished until its enable lands. A feature that stays off by design
    (opt-in) needs a recorded owner decision with the reason, e.g. `enable: null` in
    `config/activation-manifest.json`.
-2. Rebuild: the owner runs `scripts/maintenance/aq-deploy-current` (fetch, ff-only pull, deploy guard, system
-   and home-manager switch, then verifies the running revision equals `origin/main`). Flake lock refreshes
+2. Rebuild: the owner runs `scripts/maintenance/aq-update` (on demand): it syncs the checkout and stops there when no
+   Nix-affecting file changed since the deployed revision; otherwise it refreshes every flake input in a worktree, verifies
+   with CI's commands, lands the lock through `aq-land`, then runs `scripts/maintenance/aq-deploy-current`
+   (fetch, ff-only pull, deploy guard, system and home-manager switch, then verifies the running revision equals
+   `origin/main`), refreshes the MCP baseline and validates, recording a ledger outside the checkout. `aq-update
+   --dry-run` changes nothing; `--resume` continues after an interruption. Flake lock refreshes
    arrive only as flake-refresh PRs; never run `nix flake update` in the main checkout. Runtime jobs never
    write tracked files.
 3. Validate: on the enabled, rebuilt system, record a Definition-of-Done attestation with real commands and

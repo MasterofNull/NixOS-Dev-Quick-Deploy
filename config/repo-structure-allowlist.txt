@@ -262,6 +262,7 @@ scripts/kernel/kdev
 scripts/kernel/ktest
 scripts/maintenance/system-update-full.sh
 scripts/maintenance/aq-deploy-current
+scripts/maintenance/aq-update
 scripts/maintenance/aq-auto-update
 scripts/maintenance/aq-pin-watch
 scripts/maintenance/aq-update-tiers
