@@ -16,11 +16,14 @@ from pathlib import Path
 from datetime import datetime, timezone
 
 ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_REGISTRY = ROOT / ".agents" / "delegation" / "registry.jsonl"
 LIB = ROOT / "scripts" / "ai" / "lib"
 sys.path.insert(0, str(LIB))
 
+from delegation_dir import resolve_delegation_dir  # noqa: E402
 from task_registry import TaskRegistry  # noqa: E402
+
+# Shared with the delegate wrappers: a worktree must see the main checkout's registry, not its own empty one.
+DEFAULT_REGISTRY = resolve_delegation_dir(Path(__file__).resolve().parent) / "registry.jsonl"
 
 
 def _pid_alive(pid: object) -> bool:
