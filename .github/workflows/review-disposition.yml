@@ -13,17 +13,8 @@ name: review-disposition
 # and the checkout does not persist it. `pull_request_review` is not a trigger:
 # GitHub runs it from the PR merge ref, which would reopen the hole, and the
 # checker reads the PR body and the receipts branch, not GitHub reviews.
-#
-# TRANSITIONAL (one PR only): `pull_request` is kept beside `pull_request_target`
-# because main still holds the old workflow, so this PR's own required
-# `review-disposition` check can only come from its merge-ref copy. That copy is
-# the old, PR-modifiable path. The very next PR removes the `pull_request`
-# trigger (patch: .agents/delegation/outputs/landing/review-target-only.patch).
-# Both events run this same job, name `review-disposition`, read-only token.
 on:
   pull_request_target:
-    types: [opened, edited, synchronize, reopened]
-  pull_request:  # TRANSITIONAL: remove in the next PR
     types: [opened, edited, synchronize, reopened]
 
 permissions:

@@ -183,79 +183,6 @@
       "ci_workflow": ".github/workflows/test.yml#syntax"
     },
     {
-      "id": "workflow-script-refs",
-      "cmd": "scripts/governance/check-workflow-script-refs.sh",
-      "paths": [
-        ".github/workflows/**",
-        "scripts/**"
-      ],
-      "needs": [
-        "python3"
-      ],
-      "ci_workflow": ".github/workflows/test.yml#syntax"
-    },
-    {
-      "id": "doc-lifecycle-hygiene",
-      "cmd": "scripts/governance/check-doc-lifecycle-hygiene.py",
-      "paths": [
-        "docs/**",
-        "scripts/governance/check-doc-lifecycle-hygiene.py"
-      ],
-      "needs": [
-        "python3"
-      ],
-      "ci_workflow": ".github/workflows/test.yml#syntax"
-    },
-    {
-      "id": "doc-frontmatter",
-      "cmd": "scripts/governance/check-doc-frontmatter.py --all",
-      "paths": [
-        "**/*.md",
-        "config/doc-frontmatter-schema.yaml",
-        "scripts/governance/check-doc-frontmatter.py"
-      ],
-      "needs": [
-        "python3"
-      ],
-      "ci_workflow": ".github/workflows/test.yml#syntax"
-    },
-    {
-      "id": "agent-context-tooling",
-      "cmd": "scripts/testing/check-agent-context-tooling.sh",
-      "paths": [
-        "scripts/ai/aq-context-card",
-        "scripts/testing/check-agent-context-tooling.sh"
-      ],
-      "needs": [
-        "python3"
-      ],
-      "ci_workflow": ".github/workflows/test.yml#syntax"
-    },
-    {
-      "id": "context-bootstrap",
-      "cmd": "scripts/testing/check-context-bootstrap.sh",
-      "paths": [
-        "scripts/ai/aq-context-bootstrap",
-        "scripts/testing/check-context-bootstrap.sh"
-      ],
-      "needs": [
-        "python3"
-      ],
-      "ci_workflow": ".github/workflows/test.yml#syntax"
-    },
-    {
-      "id": "aq-integrity-logical-baseline",
-      "cmd": "scripts/testing/check-aq-integrity-logical-baseline.py",
-      "paths": [
-        "ai-stack/**",
-        "scripts/testing/check-aq-integrity-logical-baseline.py"
-      ],
-      "needs": [
-        "python3"
-      ],
-      "ci_workflow": ".github/workflows/test.yml#syntax"
-    },
-    {
       "id": "check-workflow-masks-test",
       "cmd": "scripts/testing/test-check-workflow-masks.py",
       "paths": [],
@@ -824,7 +751,8 @@
         "scripts/testing/test-aq-update.py",
         "scripts/testing/test-aq-usage-logging.py",
         "scripts/testing/test-aq-workspace.py",
-        "scripts/testing/test-aq-worktree-reap.py"
+        "scripts/testing/test-aq-worktree-reap.py",
+        "scripts/testing/test-rsi-convene-rounds.py"
       ],
       "needs": [
         "python3",
@@ -906,7 +834,8 @@
         "scripts/testing/test-aq-update.py",
         "scripts/testing/test-aq-usage-logging.py",
         "scripts/testing/test-aq-workspace.py",
-        "scripts/testing/test-aq-worktree-reap.py"
+        "scripts/testing/test-aq-worktree-reap.py",
+        "scripts/testing/test-rsi-convene-rounds.py"
       ]
     },
     {
@@ -2081,7 +2010,10 @@
         ".agents/plans/*/tracker.json",
         "config/activation-manifest.json"
       ],
-      "needs": ["python3", "git"],
+      "needs": [
+        "python3",
+        "git"
+      ],
       "ci_workflow": ".github/workflows/test.yml#syntax"
     },
     {
@@ -2093,7 +2025,10 @@
         "scripts/ai/aq-pm-tracker",
         ".agents/plans/*/tracker.json"
       ],
-      "needs": ["python3", "git"],
+      "needs": [
+        "python3",
+        "git"
+      ],
       "ci_workflow": ".github/workflows/test.yml#syntax"
     },
     {
@@ -2105,6 +2040,92 @@
         "git"
       ],
       "ci_workflow": ".github/workflows/test.yml#manifest-tests"
+    },
+    {
+      "id": "sweep-lanes-test",
+      "cmd": "scripts/testing/test-sweep-lanes.py",
+      "paths": [
+        "scripts/testing/test-sweep-lanes.py",
+        "scripts/governance/sweep-lanes.py",
+        "config/ci-checks.json"
+      ],
+      "needs": [
+        "python3"
+      ],
+      "ci_workflow": ".github/workflows/test.yml#syntax"
+    },
+    {
+      "id": "workflow-script-refs",
+      "cmd": "scripts/governance/check-workflow-script-refs.sh",
+      "paths": [
+        ".github/workflows/**",
+        "scripts/**"
+      ],
+      "needs": [
+        "python3"
+      ],
+      "ci_workflow": ".github/workflows/test.yml#syntax"
+    },
+    {
+      "id": "doc-lifecycle-hygiene",
+      "cmd": "scripts/governance/check-doc-lifecycle-hygiene.py",
+      "paths": [
+        "docs/**",
+        "scripts/governance/check-doc-lifecycle-hygiene.py"
+      ],
+      "needs": [
+        "python3"
+      ],
+      "ci_workflow": ".github/workflows/test.yml#syntax"
+    },
+    {
+      "id": "doc-frontmatter",
+      "cmd": "scripts/governance/check-doc-frontmatter.py --all",
+      "paths": [
+        "**/*.md",
+        "config/doc-frontmatter-schema.yaml",
+        "scripts/governance/check-doc-frontmatter.py"
+      ],
+      "needs": [
+        "python3"
+      ],
+      "ci_workflow": ".github/workflows/test.yml#syntax"
+    },
+    {
+      "id": "agent-context-tooling",
+      "cmd": "scripts/testing/check-agent-context-tooling.sh",
+      "paths": [
+        "scripts/ai/aq-context-card",
+        "scripts/testing/check-agent-context-tooling.sh"
+      ],
+      "needs": [
+        "python3"
+      ],
+      "ci_workflow": ".github/workflows/test.yml#syntax"
+    },
+    {
+      "id": "context-bootstrap",
+      "cmd": "scripts/testing/check-context-bootstrap.sh",
+      "paths": [
+        "scripts/ai/aq-context-bootstrap",
+        "scripts/testing/check-context-bootstrap.sh"
+      ],
+      "needs": [
+        "python3"
+      ],
+      "ci_workflow": ".github/workflows/test.yml#syntax"
+    },
+    {
+      "id": "aq-integrity-logical-baseline",
+      "cmd": "scripts/testing/check-aq-integrity-logical-baseline.py",
+      "paths": [
+        "ai-stack/**",
+        "scripts/testing/check-aq-integrity-logical-baseline.py"
+      ],
+      "needs": [
+        "python3"
+      ],
+      "ci_workflow": ".github/workflows/test.yml#syntax"
     },
     {
       "id": "gate-lane-findings-tests",

@@ -2511,7 +2511,8 @@ in {
         # Agent mode imports httpx/pyyaml/etc., which only the system cliPython
         # (core/base.nix, let-scoped) provides — bare pkgs.python3 failed with
         # "No module named 'httpx'", so resolve python3 from the system profile.
-        path = [pkgs.git pkgs.bash pkgs.util-linux pkgs.curl "/run/current-system/sw"];
+        # pkgs.nodejs: ~/.npm-global/bin/codex is `#!/usr/bin/env node`; the RSI convene seats run it.
+        path = [pkgs.git pkgs.bash pkgs.util-linux pkgs.curl pkgs.nodejs "/run/current-system/sw"];
         serviceConfig = {
           Type = "oneshot";
           User = cfg.primaryUser;
@@ -2519,7 +2520,8 @@ in {
           ExecStart = "${pkgs.python3}/bin/python3 ${cfg.mcpServers.repoPath}/scripts/automation/prsi-orchestrator.py rsi-dispatch --execute --apply --limit=1 --timeout-seconds=2400";
           # Local agent-mode repair runs ~3-7 min per LLM step on the APU; a dependency
           # bump needs ~4-6 steps, so 600s guaranteed a timeout (rehearsal 2026-09-30).
-          TimeoutSec = "2460";
+          # 2400s repair dispatch + up to 900s for the RSI convene seats that run after it.
+          TimeoutSec = "3360";
           StandardOutput = "journal";
           StandardError = "journal";
           NoNewPrivileges = true;
@@ -2528,8 +2530,9 @@ in {
           PrivateTmp = true;
           # Worktree checkout (~665M read / 111M written) plus the agent loop; 256M was
           # reached in 11s. MemoryHigh reclaims page cache before the hard cap.
-          MemoryHigh = "768M";
-          MemoryMax = "1G";
+          # Convene seats add two parallel CLIs (codex is node); the 1G cap was sized for the repair alone.
+          MemoryHigh = "1536M";
+          MemoryMax = "2G";
           # The delegation chain appends to the repo's collaboration runtime (a2a event
           # log, PENDING/HANDOFF, rsi ledger) and rsi_lifecycle appends to the two
           # registers; ProtectHome=read-only made the first live repair fail EROFS.
@@ -2543,8 +2546,12 @@ in {
             "${cfg.mcpServers.repoPath}/.agent/WORKAROUND-REGISTER.md"
             # codex exec keeps sessions/logs under CODEX_HOME (default ~/.codex).
             "${config.users.users.${cfg.primaryUser}.home}/.codex"
+            # gemini keeps session/tmp state under ~/.gemini (the convene Gemini seat).
+            "${config.users.users.${cfg.primaryUser}.home}/.gemini"
           ];
           Environment = [
+            # Activates RSI convene rounds (code default is off); RSI_CONVENE=0 is the kill switch.
+            "RSI_CONVENE=1"
             "AQ_DELEGATION_DIR=${mutableOptimizerDir}/prsi/delegation"
             "PRSI_ACTION_QUEUE_PATH=${mutableOptimizerDir}/prsi/action-queue.json"
             "PRSI_ACTIONS_LOG_PATH=${mutableLogDir}/prsi-actions.jsonl"

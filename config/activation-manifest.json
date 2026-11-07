@@ -63,6 +63,18 @@
       "health_signal": "scripts/ai/aq-land:cp_path",
       "state": "live: landed PR #720 end to end (review lanes, merge, receipt) on 2026-11-07; aq-update runs it as its land stage",
       "observed_by": "per-landing checkpoint.json and pr<N>-<head12>.json receipts under .agents/delegation/outputs/aq-land/ (a stuck landing leaves its checkpoint and prints one STOP line); no dashboard panel yet"
+    },
+    {
+      "feature": "RSI convene expert rounds (Codex, Gemini, local design-only seats)",
+      "entrypoint": "scripts/ai/lib/rsi_convene.py",
+      "live_caller": "scripts/automation/prsi-orchestrator.py",
+      "enable": null,
+      "health_signal": "scripts/ai/aq-rsi:cmd_convene",
+      "deferral": {
+        "date": "2026-11-06",
+        "reason": "Code default is off (RSI_CONVENE unset). The ai-prsi-rsi-dispatch unit sets RSI_CONVENE=1, the ~/.gemini write path, pkgs.nodejs on PATH and a 2G memory cap in nix/modules/roles/ai-stack.nix, so rounds run only after the next rebuild (nixos-rebuild switch). Until then no seat runs.",
+        "tracking": ".agents/plans/delivery-loop-simplification/DESIGN.md S5; docs/harness-first/evidence/2026-11-06-rsi-convene-rounds.md"
+      }
     }
   ]
 }

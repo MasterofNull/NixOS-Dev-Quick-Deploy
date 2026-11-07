@@ -29,9 +29,9 @@ assert "pkgs.python3" not in dispatch_service.split("path = [", 1)[1].split("];"
 # Live repair appends to the collaboration runtime and RSI registers (EROFS 2026-09-30).
 for rw in ("/.agent/collaboration\"", "/.agent/memory/issues-backlog.md\"", "/.agent/WORKAROUND-REGISTER.md\""):
     assert rw in dispatch_service, rw
-# Repair budget must fit local agent-mode pacing and a worktree checkout.
-assert "--timeout-seconds=2400" in dispatch_service and 'TimeoutSec = "2460"' in dispatch_service
-assert 'MemoryMax = "1G"' in dispatch_service
+# Repair budget must fit local agent-mode pacing, a worktree checkout and convene seats (900 s local limit).
+assert "--timeout-seconds=2400" in dispatch_service and 'TimeoutSec = "3360"' in dispatch_service
+assert 'MemoryMax = "2G"' in dispatch_service
 print("PASS: RSI dispatcher systemd PATH provides Git")
 
 
