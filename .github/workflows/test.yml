@@ -586,6 +586,8 @@ jobs:
             --only tier0-qa-admission-test \
             --only mcp-integrity-baseline-test \
             --only mcp-integrity-unit-path-test \
+            --only sweep-dashboard-test \
+            --only sweep-dashboard-report \
             --only tests-agent \
             --only tests-aq \
             --only tests-aqos \

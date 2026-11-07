@@ -538,6 +538,33 @@
       "ci_workflow": ".github/workflows/test.yml#syntax"
     },
     {
+      "id": "sweep-dashboard-test",
+      "cmd": "scripts/testing/test-sweep-dashboard.py",
+      "paths": [
+        "scripts/testing/test-sweep-dashboard.py",
+        "scripts/governance/sweep-dashboard.py",
+        "config/ci-checks.json"
+      ],
+      "needs": [
+        "python3"
+      ],
+      "ci_workflow": ".github/workflows/test.yml#syntax"
+    },
+    {
+      "id": "sweep-dashboard-report",
+      "cmd": "scripts/governance/sweep-dashboard.py",
+      "paths": [
+        "scripts/governance/sweep-dashboard.py",
+        "dashboard.html",
+        "assets/dashboard.js",
+        "dashboard/backend/api/**"
+      ],
+      "needs": [
+        "python3"
+      ],
+      "ci_workflow": ".github/workflows/test.yml#syntax"
+    },
+    {
       "id": "tests-agent",
       "cmd": "scripts/testing/run-test-group.py tests-agent",
       "paths": [
