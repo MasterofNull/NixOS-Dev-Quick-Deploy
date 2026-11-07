@@ -60,7 +60,7 @@ def update_layout(layout: Layout):
     """Populate layout panes with live renderables."""
     coord_text = Text()
     coord_text.append("󰚩 LEFT BOARD — MAIN AGENT ORCHESTRATION\n", style="bold #00d9ff")
-    coord_text.append("Active Models: Qwen3-35B (APU) · Claude 3.7 · Codex · Gemini 3.8\n\n", style="dim white")
+    coord_text.append("Active Models: Local Qwen · Claude (CLI) · Codex (CLI) · Gemini (CLI)\n\n", style="dim white")
     coord_text.append("Launch dedicated interactive floating window with:\n", style="white")
     coord_text.append("  $ aq-workspace agent claude\n", style="bold #ff79c6")
     coord_text.append("  $ aq-workspace agent codex\n", style="bold #50fa7b")
