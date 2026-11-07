@@ -1,10 +1,30 @@
 name: review-disposition
 
+# Trust boundary: this workflow is `pull_request_target`, so GitHub runs the
+# definition and the checkout from the BASE branch (main), never from the PR.
+# A PR therefore cannot edit this file or the checker scripts to judge itself.
+#
+# No PR code executes. The only things taken from the PR are (a) the event
+# payload and (b) git objects that the checker fetches as DATA via
+# `refs/pull/<N>/head` (rev-parse, cat-file, merge-tree, show; no checkout, no
+# hooks, no scripts, no build). Do not add a step that checks out
+# github.event.pull_request.head, or runs anything from a PR path: that would
+# hand a token to untrusted code. The token is read-only (permissions below)
+# and the checkout does not persist it. `pull_request_review` is not a trigger:
+# GitHub runs it from the PR merge ref, which would reopen the hole, and the
+# checker reads the PR body and the receipts branch, not GitHub reviews.
+#
+# TRANSITIONAL (one PR only): `pull_request` is kept beside `pull_request_target`
+# because main still holds the old workflow, so this PR's own required
+# `review-disposition` check can only come from its merge-ref copy. That copy is
+# the old, PR-modifiable path. The very next PR removes the `pull_request`
+# trigger (patch: .agents/delegation/outputs/landing/review-target-only.patch).
+# Both events run this same job, name `review-disposition`, read-only token.
 on:
-  pull_request:
+  pull_request_target:
     types: [opened, edited, synchronize, reopened]
-  pull_request_review:
-    types: [submitted, edited, dismissed]
+  pull_request:  # TRANSITIONAL: remove in the next PR
+    types: [opened, edited, synchronize, reopened]
 
 permissions:
   contents: read
@@ -15,9 +35,13 @@ jobs:
     name: review-disposition
     runs-on: ubuntu-latest
     steps:
+      # No `ref:`: the default is the base branch tip. persist-credentials:false
+      # leaves no token in .git/config; the repo is public so the checker's
+      # anonymous `git fetch` of main, review-receipts and refs/pull/N/head works.
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09  # v5
         with:
           fetch-depth: 0
+          persist-credentials: false
       - name: Verify independent, head-bound review disposition (live PR state + review-receipts branch)
         env:
           GH_TOKEN: ${{ github.token }}

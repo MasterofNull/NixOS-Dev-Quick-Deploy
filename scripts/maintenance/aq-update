@@ -294,7 +294,7 @@ Every rebuild includes all current inputs, refreshed immediately before it; the 
         self.guard_main("deploy", target)
         if self.out("rev-parse", "HEAD") != target:
             raise Fail("deploy", f"checkout HEAD is not the verified revision {target[:8]}")
-        if run([self.deploy], cwd=self.repo, check=False, capture=False).returncode:
+        if run([self.deploy, "--rev", target], cwd=self.repo, check=False, capture=False).returncode:
             raise Fail("deploy", "aq-deploy-current failed (its output is above)")
 
     def baseline_stage(self, target):
