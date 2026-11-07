@@ -78,7 +78,7 @@ class InstallPlanSchemaTest(unittest.TestCase):
             "scripts/governance/tier0-validation-gate.sh",
         ):
             self.assertIn(path, gate)
-        self.assertIn("gate_aqos_install_plan_schema || true", source)
+        self.assertIn("run_timed gate_aqos_install_plan_schema", source)
 
     def test_valid_artifacts(self) -> None:
         for artifact in (REQUEST, RESOLVED, RECEIPT):
