@@ -56,6 +56,17 @@
       "observed_by": "aq-pm-tracker chain verification and activation_stale/grants_unverified counters; test scripts/testing/test-activation-signer.py"
     },
     {
+      "feature": "aq-land landing tool",
+      "entrypoint": "scripts/ai/aq-land",
+      "live_caller": "canon/blocks/delivery-workflow.md",
+      "health_signal": "scripts/ai/aq-land:def save",
+      "deferral": {
+        "date": "2026-11-06",
+        "reason": "Merged before its first real landing: tests stub gh and the review lanes. The next slice (S2 gate placement) lands through it as the end-to-end proof. No dashboard signal yet; failures print one STOP line and state is in its checkpoint. Remove this deferral after that landing and add a health signal.",
+        "tracking": ".agents/plans/delivery-loop-simplification/tracker.json: S3"
+      }
+    },
+    {
       "feature": "RSI convene expert rounds (Codex, Gemini, local design-only seats)",
       "entrypoint": "scripts/ai/lib/rsi_convene.py",
       "live_caller": "scripts/automation/prsi-orchestrator.py",

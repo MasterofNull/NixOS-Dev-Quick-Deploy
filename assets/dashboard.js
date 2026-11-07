@@ -43,7 +43,26 @@ async function apiFetch(path, opts = {}, ms = T_FAST) {
 // ─── DOM HELPERS ────────────────────────────────────────────────────────────
 function setText(id, v) {
   const el = document.getElementById(id);
-  if (el) el.textContent = v ?? "--";
+  if (!el) return;
+  el.textContent = v ?? "--";
+  if (el.dataset.unavail) {
+    el.title = "";
+    delete el.dataset.unavail;
+  }
+}
+// A failed or missing source must read as unavailable, never as a number.
+function setUnavailable(id, why) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.textContent = "--";
+  el.classList.remove("ok", "warn", "err", "cy", "info");
+  el.title = `Unavailable: ${why || "source did not respond"}`;
+  el.dataset.unavail = "1";
+}
+function setGaugeUnavailable(circleId, valId, why) {
+  updateRadialGauge(circleId, valId, 0, "--", "var(--fg3)");
+  const el = document.getElementById(valId);
+  if (el) el.title = `Unavailable: ${why || "source did not respond"}`;
 }
 function setHtml(id, h) {
   const el = document.getElementById(id);
@@ -328,10 +347,12 @@ async function loadCapabilities() {
   const sessSafety = safety.session_safety || {};
   const procWatchdog = safety.process_watchdog || {};
 
-  const sessTxt = sessSafety.safe
-    ? `0 bloated (${sessSafety.max_session_mb || 0} MB peak · <${sessSafety.threshold_mb || 2.5}MB limit)`
-    : `${sessSafety.bloated_sessions} bloated sessions (>2.5MB!)`;
-  const sessStatus = sessSafety.safe ? "ok" : "err";
+  const sessTxt = sessSafety.safe === undefined
+    ? "--"
+    : sessSafety.safe
+      ? `0 bloated${sessSafety.max_session_mb != null ? ` (${sessSafety.max_session_mb} MB peak${sessSafety.threshold_mb != null ? ` · <${sessSafety.threshold_mb}MB limit` : ""})` : ""}`
+      : `${sessSafety.bloated_sessions ?? "?"} bloated sessions${sessSafety.threshold_mb != null ? ` (>${sessSafety.threshold_mb}MB!)` : ""}`;
+  const sessStatus = sessSafety.safe === undefined ? "info" : sessSafety.safe ? "ok" : "err";
 
   const procTxt = procWatchdog.clean
     ? `0 orphans active (clean)`
@@ -361,8 +382,13 @@ async function loadAcpRunbooks() {
   const list = Array.isArray(approvalsList) ? approvalsList : [];
   if (badge) {
     const count = list.length;
-    badge.textContent = count > 0 ? `${count} Pending` : "0 Pending";
-    badge.className = `card-badge ${count > 0 ? "badge-warn" : "badge-ok"}`;
+    if (!Array.isArray(approvalsList)) {
+      badge.textContent = "unavailable";
+      badge.className = "card-badge badge-warn";
+    } else {
+      badge.textContent = `${count} Pending`;
+      badge.className = `card-badge ${count > 0 ? "badge-warn" : "badge-ok"}`;
+    }
   }
   if (list.length === 0) {
     el.innerHTML = '<div style="color:var(--fg3);font-size:.62rem;padding:.4rem 0">No pending ACP runbooks. All control actions authorized.</div>';
@@ -803,10 +829,27 @@ function toggleDrawer() {
 }
 
 // ─── KPI RIBBON ──────────────────────────────────────────────────────────────
+function showMetricsUnavailable(why) {
+  ["kpiLocalPct", "kpiCacheHit", "kpiEval", "kpiHintPct", "execLocalRatio",
+    "histCurCtx", "intelHeroSovereignty", "intelHeroPrecision"].forEach((id) => setUnavailable(id, why));
+  setGaugeUnavailable("circleGaugeSov", "gaugeSovVal", why);
+  setGaugeUnavailable("circleGaugeCtx", "gaugeCtxVal", why);
+}
 async function loadKPIs() {
   // Fast wave: instant telemetry (<50ms)
   apiFetch("/metrics/health-score").then((hs) => {
-    const healthVal = hs && hs.score != null ? hs.score : 98;
+    if (!hs || hs.score == null) {
+      const why = "/api/metrics/health-score returned no score";
+      ["healthScore", "kpiHealthScore", "execSwarmHealth"].forEach((id) => setUnavailable(id, why));
+      setGaugeUnavailable("circleGaugeHealth", "gaugeHealthVal", why);
+      const gb = document.getElementById("gaugeHealthBadge");
+      if (gb) {
+        gb.textContent = "UNAVAILABLE";
+        gb.className = "gauge-status-badge badge-critical";
+      }
+      return;
+    }
+    const healthVal = hs.score;
     const scoreEl = document.getElementById("healthScore");
     if (scoreEl) {
       scoreEl.textContent = healthVal;
@@ -832,68 +875,89 @@ async function loadKPIs() {
       gHBadgeEl.className = `gauge-status-badge ${hBadgeCls}`;
     }
   }).catch(() => {
-    setText("healthScore", "98");
-    setText("kpiHealthScore", "98");
-    setText("execSwarmHealth", "98%");
-    updateRadialGauge("circleGaugeHealth", "gaugeHealthVal", 98, "98", "var(--grn)");
+    const why = "health-score request failed";
+    ["healthScore", "kpiHealthScore", "execSwarmHealth"].forEach((id) => setUnavailable(id, why));
+    setGaugeUnavailable("circleGaugeHealth", "gaugeHealthVal", why);
   });
 
   apiFetch("/metrics").then((metrics) => {
-    if (metrics) {
-      const localPct = metrics.llm_routing_local_pct ?? 94;
-      const evalPct = metrics.eval_latest_pct ?? 100;
-      const cacheHit = metrics.embedding_cache_hit_rate_pct ?? 92;
-      const hintPct = metrics.hint_adoption_pct ?? 100;
-      setText("kpiLocalPct", `${Math.round(localPct)}%`);
-      setText("kpiCacheHit", `${Math.round(cacheHit)}%`);
-      setText("kpiEval", `${Math.round(evalPct)}%`);
-      setText("kpiHintPct", `${Math.round(hintPct)}%`);
-      setText("execLocalRatio", `${Math.round(localPct)}%`);
-      setColor("kpiLocalPct", localPct < 50 ? "warn" : "ok");
-      setColor("kpiEval", evalPct < 70 ? "warn" : "ok");
-      setColor("kpiCacheHit", cacheHit < 20 ? "warn" : "ok");
+    if (!metrics) {
+      showMetricsUnavailable("/api/metrics returned no data");
+      return;
+    }
+    {
+      const num = (v) => (Number.isFinite(v) ? v : null);
+      const localPct = num(metrics.llm_routing_local_pct);
+      const evalPct = num(metrics.eval_latest_pct);
+      const cacheHit = num(metrics.embedding_cache_hit_rate_pct);
+      const hintPct = num(metrics.hint_adoption_pct);
+      const pctOrNA = (id, v, warnBelow, extraIds = []) => {
+        if (v == null) {
+          [id, ...extraIds].forEach((i) => setUnavailable(i, "not measured in /api/metrics"));
+          return;
+        }
+        [id, ...extraIds].forEach((i) => setText(i, `${Math.round(v)}%`));
+        if (warnBelow != null) setColor(id, v < warnBelow ? "warn" : "ok");
+      };
+      pctOrNA("kpiLocalPct", localPct, 50, ["execLocalRatio"]);
+      pctOrNA("kpiCacheHit", cacheHit, 20);
+      pctOrNA("kpiEval", evalPct, 70);
+      pctOrNA("kpiHintPct", hintPct, null);
 
       // Update Radial Gauge 2: Compute Sovereignty
-      const sovColor = localPct >= 80 ? "var(--cyan)" : localPct >= 50 ? "var(--pur)" : "var(--yel)";
-      const sovBadge = localPct >= 80 ? "SOVEREIGN" : localPct >= 50 ? "HYBRID" : "CLOUD-HEAVY";
-      const sovBadgeCls = localPct >= 80 ? "badge-info" : localPct >= 50 ? "badge-attention" : "badge-warning";
-      updateRadialGauge("circleGaugeSov", "gaugeSovVal", Math.round(localPct), `${Math.round(localPct)}%`, sovColor);
-      const gSovBadgeEl = document.getElementById("gaugeSovBadge");
-      if (gSovBadgeEl) {
-        gSovBadgeEl.textContent = sovBadge;
-        gSovBadgeEl.className = `gauge-status-badge ${sovBadgeCls}`;
+      if (localPct == null) {
+        setGaugeUnavailable("circleGaugeSov", "gaugeSovVal", "local routing share not measured");
+        setText("intelHeroSovereignty", null);
+      } else {
+        const sovColor = localPct >= 80 ? "var(--cyan)" : localPct >= 50 ? "var(--pur)" : "var(--yel)";
+        const sovBadge = localPct >= 80 ? "SOVEREIGN" : localPct >= 50 ? "HYBRID" : "CLOUD-HEAVY";
+        const sovBadgeCls = localPct >= 80 ? "badge-info" : localPct >= 50 ? "badge-attention" : "badge-warning";
+        updateRadialGauge("circleGaugeSov", "gaugeSovVal", Math.round(localPct), `${Math.round(localPct)}%`, sovColor);
+        const gSovBadgeEl = document.getElementById("gaugeSovBadge");
+        if (gSovBadgeEl) {
+          gSovBadgeEl.textContent = sovBadge;
+          gSovBadgeEl.className = `gauge-status-badge ${sovBadgeCls}`;
+        }
+        setText("intelHeroSovereignty", `${Math.round(localPct)}%`);
       }
 
-      // Update Radial Gauge 4: Context Precision & Semantic Memory
-      const ctxPrec = metrics.context_precision_pct ?? metrics.embedding_cache_hit_rate_pct ?? 85;
-      const ctxColor = ctxPrec >= 80 ? "#bd93f9" : ctxPrec >= 60 ? "var(--yel)" : "var(--red)";
-      const ctxBadge = ctxPrec >= 80 ? "SYNCHRONIZED" : ctxPrec >= 60 ? "INDEXING" : "DEGRADED";
-      const ctxBadgeCls = ctxPrec >= 80 ? "badge-attention" : ctxPrec >= 60 ? "badge-warning" : "badge-critical";
-      updateRadialGauge("circleGaugeCtx", "gaugeCtxVal", Math.round(ctxPrec), `${Math.round(ctxPrec)}%`, ctxColor);
-      const gCtxBadgeEl = document.getElementById("gaugeCtxBadge");
-      if (gCtxBadgeEl) {
-        gCtxBadgeEl.textContent = ctxBadge;
-        gCtxBadgeEl.className = `gauge-status-badge ${ctxBadgeCls}`;
+      // Radial Gauge 4: Context Precision. /api/metrics does not return a
+      // precision figure (embedding cache hit rate is a different quantity),
+      // so this stays unavailable until a real source is wired.
+      const ctxPrec = num(metrics.context_precision_pct);
+      if (ctxPrec == null) {
+        setGaugeUnavailable("circleGaugeCtx", "gaugeCtxVal", "context precision is not reported by /api/metrics");
+        setUnavailable("histCurCtx", "context precision is not reported by /api/metrics");
+        setUnavailable("intelHeroPrecision", "context precision is not reported by /api/metrics");
+      } else {
+        const ctxColor = ctxPrec >= 80 ? "#bd93f9" : ctxPrec >= 60 ? "var(--yel)" : "var(--red)";
+        const ctxBadge = ctxPrec >= 80 ? "SYNCHRONIZED" : ctxPrec >= 60 ? "INDEXING" : "DEGRADED";
+        const ctxBadgeCls = ctxPrec >= 80 ? "badge-attention" : ctxPrec >= 60 ? "badge-warning" : "badge-critical";
+        updateRadialGauge("circleGaugeCtx", "gaugeCtxVal", Math.round(ctxPrec), `${Math.round(ctxPrec)}%`, ctxColor);
+        const gCtxBadgeEl = document.getElementById("gaugeCtxBadge");
+        if (gCtxBadgeEl) {
+          gCtxBadgeEl.textContent = ctxBadge;
+          gCtxBadgeEl.className = `gauge-status-badge ${ctxBadgeCls}`;
+        }
+        setText("histCurCtx", `${Math.round(ctxPrec)}%`);
+        setText("intelHeroPrecision", `${Math.round(ctxPrec)}%`);
       }
-      setText("histCurCtx", `${Math.round(ctxPrec)}%`);
-      setText("intelHeroSovereignty", `${Math.round(localPct)}%`);
-      setText("intelHeroPrecision", `${Math.round(ctxPrec)}%`);
     }
-  }).catch(() => {
-    updateRadialGauge("circleGaugeSov", "gaugeSovVal", 98, "98%", "var(--cyan)");
-    updateRadialGauge("circleGaugeCtx", "gaugeCtxVal", 85, "85%", "#bd93f9");
-    setText("histCurCtx", "85%");
-  });
+  }).catch(() => showMetricsUnavailable("/api/metrics request failed"));
 
   apiFetch("/metrics/system").then((sys) => {
     if (sys && sys.uptime != null) {
       setText("kpiUptime", `${(sys.uptime / 3600).toFixed(1)}h`);
     } else {
-      setText("kpiUptime", "22.5h");
+      setUnavailable("kpiUptime", "/api/metrics/system reported no uptime");
     }
-  }).catch(() => setText("kpiUptime", "22.5h"));
+  }).catch(() => setUnavailable("kpiUptime", "/api/metrics/system request failed"));
 
   // Slower wave: ai metrics (services, databases, vectors)
+  const aiMetricsUnavailable = () => {
+    ["kpiRedis", "kpiPg", "kpiQdrant", "kpiCoord", "kpiPgLat", "kpiRedisLat", "kpiVectors", "intelHeroVectors"]
+      .forEach((id) => setUnavailable(id, "/api/ai/metrics unavailable"));
+  };
   const _aiCacheFresh = window._aiMetrics && Date.now() - window._aiMetricsFetchedAt < 90_000;
   const aiPromise = _aiCacheFresh ? Promise.resolve(window._aiMetrics) : apiFetch("/ai/metrics", {}, T_SLOW);
   aiPromise.then((aiM) => {
@@ -909,45 +973,58 @@ async function loadKPIs() {
       setText("kpiPg", pgOk === true ? "OK" : pgOk === false ? "ERR" : "STANDBY");
       setColor("kpiRedis", redisOk === true ? "ok" : redisOk === false ? "err" : "info");
       setColor("kpiPg", pgOk === true ? "ok" : pgOk === false ? "err" : "info");
-      const qdStatus = (sv.qdrant || {}).status || "ONLINE";
-      setText("kpiQdrant", qdStatus);
-      setColor("kpiQdrant", statusColor(qdStatus));
-      setText("kpiVectors", kb.total_points != null ? kb.total_points.toLocaleString() : "100,680");
+      const qdStatus = (sv.qdrant || {}).status;
+      if (qdStatus) {
+        setText("kpiQdrant", qdStatus);
+        setColor("kpiQdrant", statusColor(qdStatus));
+      } else setUnavailable("kpiQdrant", "/api/ai/metrics has no qdrant status");
+      if (kb.total_points != null) setText("kpiVectors", kb.total_points.toLocaleString());
+      else setUnavailable("kpiVectors", "/api/ai/metrics has no vector count");
       const hc = sv.hybrid_coordinator || sv.hybrid || {};
-      setText("kpiCoord", hc.status || "ONLINE");
-      setColor("kpiCoord", statusColor(hc.status));
+      if (hc.status) {
+        setText("kpiCoord", hc.status);
+        setColor("kpiCoord", statusColor(hc.status));
+      } else setUnavailable("kpiCoord", "/api/ai/metrics has no coordinator status");
       const dbm = aiM.database_metrics || {};
       const pgLat = (dbm.postgresql || {}).latency_ms;
       const rdLat = (dbm.redis || {}).latency_ms;
-      setText("kpiPgLat", pgLat != null ? `${pgLat.toFixed(0)}ms` : "<1ms");
-      setText("kpiRedisLat", rdLat != null ? `${rdLat.toFixed(1)}ms` : "<1ms");
-      setColor("kpiPgLat", pgLat == null || pgLat < 100 ? "ok" : pgLat < 250 ? "warn" : "err");
-      setColor("kpiRedisLat", rdLat == null || rdLat < 50 ? "ok" : rdLat < 150 ? "warn" : "err");
-      setText("intelHeroVectors", kb.total_points != null ? kb.total_points.toLocaleString() : "100,781");
+      if (pgLat != null) {
+        setText("kpiPgLat", `${pgLat.toFixed(0)}ms`);
+        setColor("kpiPgLat", pgLat < 100 ? "ok" : pgLat < 250 ? "warn" : "err");
+      } else setUnavailable("kpiPgLat", "/api/ai/metrics has no postgres latency");
+      if (rdLat != null) {
+        setText("kpiRedisLat", `${rdLat.toFixed(1)}ms`);
+        setColor("kpiRedisLat", rdLat < 50 ? "ok" : rdLat < 150 ? "warn" : "err");
+      } else setUnavailable("kpiRedisLat", "/api/ai/metrics has no redis latency");
+      if (kb.total_points != null) setText("intelHeroVectors", kb.total_points.toLocaleString());
+      else setUnavailable("intelHeroVectors", "/api/ai/metrics has no vector count");
     } else {
-      ["kpiRedis", "kpiPg", "kpiQdrant", "kpiCoord"].forEach((id) => setText(id, "STANDBY"));
-      ["kpiPgLat", "kpiRedisLat"].forEach((id) => setText(id, "<1ms"));
+      aiMetricsUnavailable();
     }
-  }).catch(() => {
-    ["kpiRedis", "kpiPg", "kpiQdrant", "kpiCoord"].forEach((id) => setText(id, "STANDBY"));
-    ["kpiPgLat", "kpiRedisLat"].forEach((id) => setText(id, "<1ms"));
-  });
+  }).catch(aiMetricsUnavailable);
 
   apiFetch("/insights/routing/analytics").then((analytics) => {
     if (analytics) {
       const w7d = ((analytics.windows && analytics.windows.windows) || {})["7d"] || {};
       const cur = analytics.current || {};
-      const totalOps = w7d.query_ok_n ?? cur.query_ok_n ?? 2400;
+      const totalOps = w7d.query_ok_n ?? cur.query_ok_n;
       const backendN = w7d.local_n ?? cur.local_n ?? 0;
+      if (totalOps == null) {
+        ["kpiTokSaved", "vOpsDay", "histCurOps"].forEach((id) =>
+          setUnavailable(id, "/api/insights/routing/analytics has no query_ok_n"));
+        return;
+      }
       setText("kpiTokSaved", totalOps >= 1000 ? `${(totalOps / 1000).toFixed(1)}k` : String(totalOps));
       const opsDay = Math.round(totalOps / 7);
       setText("vOpsDay", opsDay >= 1000 ? `${(opsDay / 1000).toFixed(1)}k` : String(opsDay));
       setText("histCurOps", `${opsDay} ops`);
       if (backendN) setText("vBackendN", Math.round(backendN / 7).toLocaleString());
     } else {
-      setText("kpiTokSaved", "2.4k");
+      ["kpiTokSaved", "vOpsDay", "histCurOps"].forEach((id) =>
+        setUnavailable(id, "/api/insights/routing/analytics unavailable"));
     }
-  }).catch(() => setText("kpiTokSaved", "2.4k"));
+  }).catch(() => ["kpiTokSaved", "vOpsDay", "histCurOps"].forEach((id) =>
+    setUnavailable(id, "/api/insights/routing/analytics request failed")));
 
   loadApprovals().catch(() => {});
   loadSlotQueue().catch(() => {});
@@ -957,20 +1034,10 @@ async function loadKPIs() {
 
 // ─── RAG QUALITY (always visible, aq-qa 60.7.3 contract) ─────────────────────
 async function loadAqDecide() {
-  const elStatus = document.getElementById("decideEngineStatus");
-  const elPsi = document.getElementById("decidePsiDrift");
-  const elCalib = document.getElementById("decideCalibrationStatus");
-  if (!elStatus) return;
-  try {
-    const d = await apiFetch("/status");
-    if (d) {
-      elStatus.textContent = "Active (T0/T1)";
-      if (elPsi) elPsi.textContent = "0.002 (Stable)";
-      if (elCalib) elCalib.textContent = "Optimal";
-    }
-  } catch (e) {
-    if (elStatus) elStatus.textContent = "Standby";
-  }
+  // No backend route reports decision-engine status, PSI drift or calibration
+  // (the old GET /api/status does not exist), so these stay unavailable.
+  const why = "no backend route reports this yet";
+  ["decideEngineStatus", "decidePsiDrift", "decideCalibrationStatus"].forEach((id) => setUnavailable(id, why));
 }
 
 async function loadRagQuality() {
@@ -978,35 +1045,15 @@ async function loadRagQuality() {
   const r = d && d.ragas_metrics ? d.ragas_metrics : {};
   // noData only when both eval_trend runs AND RAGAS samples are absent
   const noData = !d || (d.count === 0 && !(r.sample_count > 0));
+  // Raw measured values only: a score is never rescaled, floored or capped.
   const p = (v, enabled = true) => {
     if (enabled === false) return "N/A";
-    return v != null && v > 0
-      ? `${(v * 100).toFixed(1)}%`
-      : noData
-        ? "N/A"
-        : "0.0%";
+    if (!Number.isFinite(v)) return noData ? "N/A" : "--";
+    return `${(v * 100).toFixed(1)}%`;
   };
-  const calibrateVal = (val, type) => {
-    if (val == null || val <= 0) return null;
-    if (val >= 0.88) return val;
-    if (type === "ar") {
-      const scaled = 0.72 + Math.min(0.24, Math.max(0, (val - 0.20) / 0.50) * 0.24);
-      return Math.min(0.98, scaled);
-    }
-    if (type === "faith") {
-      const scaled = 0.75 + Math.min(0.20, Math.max(0, (val - 0.20) / 0.30) * 0.20);
-      return Math.min(0.98, scaled);
-    }
-    if (type === "cp") {
-      const scaled = 0.80 + Math.min(0.18, Math.max(0, (val - 0.30) / 0.50) * 0.18);
-      return Math.min(0.98, scaled);
-    }
-    return val;
-  };
-
-  const calAR = calibrateVal(r.answer_relevance_avg, "ar");
-  const calCP = calibrateVal(r.context_precision_avg, "cp");
-  const calFaith = calibrateVal(r.faithfulness_avg, "faith");
+  const calAR = r.answer_relevance_avg;
+  const calCP = r.context_precision_avg;
+  const calFaith = r.faithfulness_avg;
 
   setText("ragAnswerRelevance", p(calAR));
   setText("ragContextPrecision", p(calCP));
@@ -1017,25 +1064,14 @@ async function loadRagQuality() {
     return p(v, enabled);
   };
   setText("ragFaithfulness", pf(calFaith, r.faithfulness_enabled));
-  setText(
-    "ragSampleCount",
-    noData ? "100" : r.sample_count != null ? r.sample_count : "100"
-  );
-  // Zero Blank Policy: populate remaining RAG strip indicators
-  setText("ragHarmfulness", "0.0%");
-  setText("ragRerankMrr", "0.84");
-  setText("ragCompRecall", "91.2%");
-  setText("ragHandoffParity", "100%");
+  setText("ragSampleCount", !noData && r.sample_count != null ? r.sample_count : "--");
 
   // Mirror into intelligence eval card
   setText("evalAR", p(calAR));
   setText("evalCP", p(calCP));
   setText("evalFaith", pf(calFaith, r.faithfulness_enabled));
-  setText(
-    "evalSamples",
-    noData ? "100" : r.sample_count != null ? r.sample_count : "100"
-  );
-  if (d) setText("evalRunCount", d.count ?? "3");
+  setText("evalSamples", !noData && r.sample_count != null ? r.sample_count : "--");
+  setText("evalRunCount", d && d.count != null ? d.count : "--");
 
   // Per-model RAGAS breakdown — model-agnostic eval visibility
   const byModel = d && d.ragas_by_model ? d.ragas_by_model : {};
@@ -1108,7 +1144,7 @@ async function loadSystem() {
       }
       if (memPct != null) {
         setText("vMem", pctD(memPct));
-        setText("histCurMem", `${mem.used ? bytes(mem.used) : "12.8G"} (${pctD(memPct)})`);
+        setText("histCurMem", mem.used != null ? `${bytes(mem.used)} (${pctD(memPct)})` : pctD(memPct));
         pushHist(histMem, memPct);
         updateSpark("spMem", histMem);
         colorStatTile("statMem", memPct, 80, 92, "spMem");
@@ -1117,39 +1153,49 @@ async function loadSystem() {
         setText("vDisk", pctD(dskPct));
         colorStatTile("statDisk", dskPct, 82, 94);
       }
-      const connCount = net.active_connections ?? 0;
-      const netMB =
-        net.bytes_sent != null
-          ? ((net.bytes_sent + net.bytes_recv) / 1e6).toFixed(0) + "MB"
-          : "0MB";
-      setText("vNet", netMB);
-      pushHist(histNet, connCount);
-      updateSpark("spNet", histNet);
-      setText("vConnections", net.active_connections ?? "0");
+      if (net.bytes_sent != null) {
+        setText("vNet", ((net.bytes_sent + net.bytes_recv) / 1e6).toFixed(0) + "MB");
+      } else setUnavailable("vNet", "network counters not reported");
+      if (net.active_connections != null) {
+        pushHist(histNet, net.active_connections);
+        updateSpark("spNet", histNet);
+        setText("vConnections", net.active_connections);
+      } else setUnavailable("vConnections", "connection count not reported");
       setText(
         "cpuModel",
         cpu.model ? cpu.model.replace(/\s+/g, " ").trim() : "N/A"
       );
       const tempStr = cpu.temperature || "";
-      const tempRaw = parseFloat(tempStr) || null;
+      const tempParsed = parseFloat(tempStr);
+      const tempRaw = Number.isFinite(tempParsed) ? tempParsed : null;
       setText("cpuTemp", tempStr || "N/A");
-      if (tempRaw) colorStatTile("statTemp", tempRaw, 75, 90);
+      if (tempRaw != null) colorStatTile("statTemp", tempRaw, 75, 90);
       setText("cpuCores", cpu.count ?? "N/A");
-      setText("histCurTemp", tempStr || "44.5°C");
 
       // Update Radial Gauge 3: Hardware Vitals & Thermal Headroom
-      const curTempNum = tempRaw || 44.5;
-      const curTempPct = Math.min(100, Math.max(0, (curTempNum / 90) * 100));
-      const hwColor = curTempNum < 55 ? "var(--grn)" : curTempNum < 75 ? "var(--yel)" : "var(--red)";
-      const hwBadge = curTempNum < 55 ? "OPTIMAL" : curTempNum < 75 ? "MODERATE" : "WARMING";
-      const hwBadgeCls = curTempNum < 55 ? "badge-healthy" : curTempNum < 75 ? "badge-warning" : "badge-critical";
-      updateRadialGauge("circleGaugeHw", "gaugeHwVal", curTempPct, `${curTempNum.toFixed(1)}°C`, hwColor);
       const gHwBadgeEl = document.getElementById("gaugeHwBadge");
-      if (gHwBadgeEl) {
-        gHwBadgeEl.textContent = hwBadge;
-        gHwBadgeEl.className = `gauge-status-badge ${hwBadgeCls}`;
+      if (tempRaw == null) {
+        const why = "cpu.temperature not reported by /api/metrics/system";
+        setUnavailable("histCurTemp", why);
+        setUnavailable("opsHeroTemp", why);
+        setGaugeUnavailable("circleGaugeHw", "gaugeHwVal", why);
+        if (gHwBadgeEl) {
+          gHwBadgeEl.textContent = "UNAVAILABLE";
+          gHwBadgeEl.className = "gauge-status-badge badge-critical";
+        }
+      } else {
+        setText("histCurTemp", tempStr);
+        const curTempPct = Math.min(100, Math.max(0, (tempRaw / 90) * 100));
+        const hwColor = tempRaw < 55 ? "var(--grn)" : tempRaw < 75 ? "var(--yel)" : "var(--red)";
+        const hwBadge = tempRaw < 55 ? "OPTIMAL" : tempRaw < 75 ? "MODERATE" : "WARMING";
+        const hwBadgeCls = tempRaw < 55 ? "badge-healthy" : tempRaw < 75 ? "badge-warning" : "badge-critical";
+        updateRadialGauge("circleGaugeHw", "gaugeHwVal", curTempPct, `${tempRaw.toFixed(1)}°C`, hwColor);
+        if (gHwBadgeEl) {
+          gHwBadgeEl.textContent = hwBadge;
+          gHwBadgeEl.className = `gauge-status-badge ${hwBadgeCls}`;
+        }
+        setText("opsHeroTemp", `${tempRaw.toFixed(1)}°C`);
       }
-      setText("opsHeroTemp", `${curTempNum.toFixed(1)}°C`);
       if (mem.free != null) {
         setText("opsHeroRam", `${(mem.free / (1024 ** 3)).toFixed(1)} GB FREE`);
       }
@@ -1191,8 +1237,10 @@ async function loadSystem() {
       const la = sys.load_average || {};
       if (la.one != null) {
         setText("vLoad1", la.one.toFixed(2));
-        setText("vLoad5", la.five != null ? la.five.toFixed(2) : "0.00");
-        setText("vLoad15", la.fifteen != null ? la.fifteen.toFixed(2) : "0.00");
+        if (la.five != null) setText("vLoad5", la.five.toFixed(2));
+        else setUnavailable("vLoad5", "5-minute load not reported");
+        if (la.fifteen != null) setText("vLoad15", la.fifteen.toFixed(2));
+        else setUnavailable("vLoad15", "15-minute load not reported");
         const cores = cpu.count || 1;
         const loadPct = (la.one / cores) * 100;
         const loadEl = document.getElementById("statLoad");
@@ -1228,18 +1276,15 @@ async function loadSystem() {
         tempRaw: sys?.cpu?.temperature ? parseFloat(sys.cpu.temperature) : null,
         cb: metrics.circuit_breakers,
       });
-      setText(
-        "kpiLocalPct",
-        metrics.llm_routing_local_pct != null
-          ? `${Math.round(metrics.llm_routing_local_pct)}%`
-          : "100%"
-      );
+      if (metrics.llm_routing_local_pct != null) {
+        setText("kpiLocalPct", `${Math.round(metrics.llm_routing_local_pct)}%`);
+      } else setUnavailable("kpiLocalPct", "local routing share not measured");
       const evalPct = metrics.eval_latest_pct;
       if (evalPct != null) {
         setText("vStack", `${Math.round(evalPct)}%`);
         colorStatTile("statEval", evalPct, 70, 50); // inverted: low score = bad
       } else {
-        setText("vStack", "0%");
+        setUnavailable("vStack", "eval_latest_pct not measured");
       }
     }
     hotspotsPromise.then((hotspots) => {
@@ -1254,17 +1299,14 @@ async function loadSystem() {
           setText("histCurLat", `${p95.toFixed(0)}ms`);
           colorStatTile("statLatP95", p95, 500, 2000);
         } else {
-          setText("vLatP95", "<1ms");
-          setText("histCurLat", "18 ms");
+          setUnavailable("vLatP95", "route_latency.backend_valid_p95_ms not reported");
+          setUnavailable("histCurLat", "route_latency.backend_valid_p95_ms not reported");
         }
         if (cacheHit != null) setText("vCacheHit", `${cacheHit.toFixed(0)}%`);
-        else {
-          setText("vCacheHit", "92%");
-        }
+        else setUnavailable("vCacheHit", "cache.hit_pct not reported");
       } else {
-        setText("vLatP95", "<1ms");
-        setText("histCurLat", "18 ms");
-        setText("vCacheHit", "92%");
+        const why = "hotspots endpoint unavailable";
+        ["vLatP95", "histCurLat", "vCacheHit"].forEach((id) => setUnavailable(id, why));
       }
     });
   } catch (err) {
@@ -1441,6 +1483,11 @@ window.switchTelemetryTab = switchTelemetryTab;
 
 let _lastRawTelemetrySnapshot = null;
 
+function gaugeReading(id) {
+  const t = (document.getElementById(id)?.textContent || "").trim();
+  return t && t !== "--" ? t : null;
+}
+
 function refreshRawTelemetryJson() {
   const viewer = document.getElementById("rawTelemetryJsonViewer");
   if (!viewer) return;
@@ -1449,11 +1496,12 @@ function refreshRawTelemetryJson() {
     system: window._lastSysMetrics || {},
     ai: window._aiMetrics || {},
     hotspots: window._lastHotspots || {},
+    // Gauge text as currently displayed; null when the gauge has no reading.
     distilled_vitals: {
-      factory_health_score: document.getElementById("gaugeHealthVal")?.textContent || "98",
-      compute_sovereignty: document.getElementById("gaugeSovVal")?.textContent || "94%",
-      hardware_temp: document.getElementById("gaugeHwVal")?.textContent || "44.5°C",
-      context_precision: document.getElementById("gaugeCtxVal")?.textContent || "95%"
+      factory_health_score: gaugeReading("gaugeHealthVal"),
+      compute_sovereignty: gaugeReading("gaugeSovVal"),
+      hardware_temp: gaugeReading("gaugeHwVal"),
+      context_precision: gaugeReading("gaugeCtxVal")
     }
   };
   _lastRawTelemetrySnapshot = snapshot;
@@ -1555,10 +1603,17 @@ async function loadServices() {
 async function loadDropZone() {
   try {
     const d = await apiFetch("/drops/status");
-    if (!d) return;
-
     const badge = document.getElementById("dropZoneBadge");
     const details = document.getElementById("dropZoneDetails");
+    if (!d || d.available === false || d.daemon_active == null) {
+      const errs = d && d.errors ? Object.entries(d.errors).map(([k, v]) => `${k}: ${v}`).join(", ") : "";
+      if (badge) {
+        badge.textContent = "unavailable";
+        badge.className = "card-badge badge-warn";
+      }
+      if (details) details.innerHTML = fwRow("Status", `Unavailable${errs ? ` (${errs})` : ""}`, "warn");
+      return;
+    }
 
     const ok = d.daemon_active;
     if (badge) {
@@ -1768,7 +1823,7 @@ async function loadOSI() {
     }
     setText("osiScore", "pending");
     const scoreEl = document.getElementById("healthScore");
-    if (scoreEl && scoreEl.textContent === "--") setText("healthScore", "0");
+    if (scoreEl && scoreEl.textContent === "--") setUnavailable("healthScore", "layer health run pending");
     setHtml(
       "checkList",
       `<div style="color:var(--fg3);font-size:.62rem;padding:.75rem">${data.message || "Run aq-qa to populate layer health."
@@ -1810,6 +1865,19 @@ async function loadOSI() {
       if (checks.length)
         tile.classList.add(lp === checks.length ? "ok" : "err");
     }
+  }
+  // Layer hero tile: same /api/health/layered payload as the layer strip.
+  const lv = [0, 1, 2, 3, 4, 5, 6, 7].map((i) => (data.layers || {})[String(i)] || []);
+  const withChecks = lv.filter((c) => c.length);
+  const okLayers = withChecks.filter((c) => c.every((x) => x.status === "PASS")).length;
+  if (withChecks.length) {
+    setText("spiderHeroLayers", `${okLayers} / ${withChecks.length} LAYERS`);
+    setText("spiderHeroBadge", `${okLayers}/${withChecks.length} LAYERS PASS`);
+    const lel = document.getElementById("spiderHeroLayers");
+    if (lel) lel.style.color = okLayers === withChecks.length ? "var(--grn)" : "var(--red)";
+    if (lel) lel.title = "";
+    const hb = document.getElementById("spiderHeroBadge");
+    if (hb) hb.className = `gauge-status-badge ${okLayers === withChecks.length ? "badge-healthy" : "badge-critical"}`;
   }
 }
 
@@ -1964,10 +2032,9 @@ async function loadCoordinator() {
       "vOpsDay",
       opsDay >= 1000 ? `${(opsDay / 1000).toFixed(1)}k` : String(opsDay)
     );
-    setText(
-      "vBackendN",
-      backendN ? Math.round(backendN / 7).toLocaleString() : "0"
-    );
+    if ((w7d.local_n ?? cur.local_n) != null) {
+      setText("vBackendN", Math.round(backendN / 7).toLocaleString());
+    } else setUnavailable("vBackendN", "local_n not reported by routing analytics");
   }
   // Phase 150: Logic Discipline tile populating.
   const logicRate = analytics.logic_discipline_rate;
@@ -1977,7 +2044,7 @@ async function loadCoordinator() {
     if (logicRate < 70) addClass("statLogicDiscipline", "err");
     else if (logicRate < 90) addClass("statLogicDiscipline", "warn");
   } else {
-    setText("vLogicDiscipline", "100%");
+    setUnavailable("vLogicDiscipline", "analytics.logic_discipline_rate not reported");
   }
   setText(
     "vLogicDisciplineDetail",
@@ -2053,8 +2120,8 @@ async function loadRouting() {
         tile.classList.add(unknownPct > 50 ? "err" : unknownPct > 20 ? "warn" : "ok");
       }
     } else {
-      setText("vIntentUnknown", "0%");
-      setText("vIntentUnknownDetail", "0 unclassified · 100% matched");
+      setUnavailable("vIntentUnknown", "no query traces to classify");
+      setText("vIntentUnknownDetail", "no traces");
     }
   }
   const profiles = w7d.top_profiles || cur.top_profiles || [];
@@ -2122,6 +2189,7 @@ async function loadModels() {
     return;
   }
   const models = Array.isArray(d) ? d : d.models || [];
+  const isStub = !Array.isArray(d) && d.available === false;
   const freshness = !Array.isArray(d) && d ? d.freshness || {} : {};
   const freshStatus = freshness.status || "--";
   const freshCls =
@@ -2129,9 +2197,13 @@ async function loadModels() {
   const freshBadge = document.getElementById("mlBadge");
   if (freshBadge) {
     freshBadge.className = `card-badge ${freshCls}`;
-    freshBadge.textContent = `${models.length} · ${freshStatus}`;
+    freshBadge.textContent = isStub ? `stub · ${models.length}` : `${models.length} · ${freshStatus}`;
+    if (isStub) freshBadge.className = "card-badge badge-warn";
   }
-  const freshnessHtml = `<div id="mlFreshness" style="border-bottom:1px solid rgba(255,255,255,.08);padding:.35rem .45rem .5rem;margin-bottom:.25rem">
+  const stubHtml = isStub
+    ? `<div style="color:var(--yel);font-size:.62rem;padding:.35rem .45rem">STUB CATALOG, not the live registry (${d.source || "stub"}: ${d.reason || "unavailable"})</div>`
+    : "";
+  const freshnessHtml = stubHtml + `<div id="mlFreshness" style="border-bottom:1px solid rgba(255,255,255,.08);padding:.35rem .45rem .5rem;margin-bottom:.25rem">
       <div class="fw-row"><span class="fk">Freshness</span><span class="fv ${freshness.action_required ? "warn" : "ok"
     }">${freshStatus}</span></div>
       <div class="fw-row"><span class="fk">Active / Probe</span><span class="fv">${freshness.active_model_id || "--"} / ${freshness.probe_model_id || "--"
@@ -2413,7 +2485,7 @@ async function loadLearning() {
     ),
     fwRow(
       "Unprocessed",
-      bp.unprocessed_mb != null ? `${bp.unprocessed_mb.toFixed(1)} MB` : "0 MB"
+      bp.unprocessed_mb != null ? `${bp.unprocessed_mb.toFixed(1)} MB` : "--"
     ),
     `<div style="display:flex;gap:.3rem;flex-wrap:wrap;margin-top:.45rem">
       <button class="mini-btn" onclick="controlLoop('start')">${loopStatus === "never_ran" || loopStatus === "healthy" ? "Trigger" : "Start"}</button>
@@ -2498,7 +2570,7 @@ async function loadDrift() {
         : "--",
       d.latency_degradation > 0 ? "warn" : "ok"
     ),
-    fwRow("Threshold", d.alert_threshold || "0.4"),
+    fwRow("Threshold", d.alert_threshold ?? "--"),
     fwRow("Trace Count", d.trace_count ?? "--"),
   ].join("");
 }
@@ -3355,16 +3427,27 @@ async function loadSlotQueue() {
   const el = document.getElementById("queueDetails");
   const badge = document.getElementById("queueBadge");
   const kpi = document.getElementById("kpiQueueDepth");
-  const depth = (d && d.depth != null) ? d.depth : 0;
+  if (!d || !d.available || d.depth == null) {
+    const why = d && d.error ? d.error : "no response from /api/scheduler/queue";
+    if (kpi) {
+      kpi.textContent = "--";
+      kpi.className = "kpi-v";
+      kpi.title = `Unavailable: ${why}`;
+    }
+    if (badge) {
+      badge.textContent = "unavailable";
+      badge.className = "card-badge badge-warn";
+    }
+    if (el) el.innerHTML = fwRow("Status", `Unavailable (${why})`, "warn");
+    return;
+  }
+  const depth = d.depth;
   if (kpi) {
     kpi.textContent = String(depth);
+    kpi.title = "";
     kpi.className = `kpi-v${depth > 2 ? " warn" : " ok"}`;
   }
   if (!el) return;
-  if (!d || !d.available) {
-    el.innerHTML = fwRow("Status", "OPTIMAL (IDLE)", "ok");
-    return;
-  }
   if (badge) {
     badge.textContent = d.depth > 0 ? `${d.depth} queued` : d.running ? "busy" : "idle";
     badge.className = `card-badge ${d.depth > 2 ? "badge-warn" : "badge-ok"}`;
@@ -3373,7 +3456,7 @@ async function loadSlotQueue() {
   const rows = [
     fwRow("Running", d.running ? `${bandShort(d.running.band)} ${String(d.running.id).split(":").pop()}` : "slot free", d.running ? "info" : "ok"),
     fwRow("Depth", d.depth, d.depth > 2 ? "warn" : "ok"),
-    fwRow("Max Wait", d.max_wait_s != null ? `${Math.round(d.max_wait_s)}s` : "0s", d.max_wait_s > 120 ? "warn" : ""),
+    fwRow("Max Wait", d.max_wait_s != null ? `${Math.round(d.max_wait_s)}s` : "--", d.max_wait_s > 120 ? "warn" : ""),
     ...(d.queue || []).slice(0, 5).map((j) =>
       fwRow(bandShort(j.band), `${String(j.id).split(":").pop()} · ${Math.round(j.wait_s)}s${j.task_class ? ` · ${j.task_class}` : ""}`,
         j.band === "P1_INTERACTIVE" ? "info" : "")),
@@ -4489,7 +4572,15 @@ async function loadAgentPool() {
   const el = document.getElementById("agentPoolDetails");
   const badge = document.getElementById("agentPoolBadge");
   if (!el) return;
-  const profiles = ((d || {}).raw || {}).quality_profiles || {};
+  if (!d) {
+    el.innerHTML = fwRow("Status", "Unavailable", "warn");
+    if (badge) {
+      badge.textContent = "--";
+      badge.className = "card-badge badge-warn";
+    }
+    return;
+  }
+  const profiles = (d.raw || {}).quality_profiles || {};
   const agents = profiles.profiles || [];
   if (!agents.length) {
     el.innerHTML = fwRow("Status", "no pool data", "info");
@@ -4535,9 +4626,10 @@ async function loadVulnAudit() {
   const dop = s.dashboard_operator || {};
   const vulnTotal =
     (pip.vulnerabilities_total || 0) + (npm.high || 0) + (npm.critical || 0);
+  const vulnMeasured = pip.vulnerabilities_total != null || npm.high != null || npm.critical != null;
   if (badge) {
-    badge.textContent = vulnTotal > 0 ? `${vulnTotal} issues` : "0 vulns";
-    badge.className = `card-badge ${vulnTotal > 0 ? "badge-err" : "badge-ok"}`;
+    badge.textContent = !vulnMeasured ? "--" : vulnTotal > 0 ? `${vulnTotal} issues` : "0 vulns";
+    badge.className = `card-badge ${!vulnMeasured ? "badge-warn" : vulnTotal > 0 ? "badge-err" : "badge-ok"}`;
   }
   el.innerHTML = [
     fwRow("Scan Date", d.generated_at ? relTime(d.generated_at) : "--", "info"),
@@ -5953,12 +6045,12 @@ async function loadHardwareState() {
     fwRow("Thermal Tier", tier.toUpperCase(), tierColor),
     fwRow(
       "CPU Temp",
-      d.temp_cpu_c != null ? `${d.temp_cpu_c.toFixed(1)}°C` : "62.0°C",
+      d.temp_cpu_c != null ? `${d.temp_cpu_c.toFixed(1)}°C` : "--",
       d.temp_cpu_c >= 85 ? "err" : d.temp_cpu_c >= 75 ? "warn" : "ok"
     ),
     fwRow(
       "GPU Temp",
-      d.temp_gpu_c != null ? `${d.temp_gpu_c.toFixed(1)}°C` : "58.0°C",
+      d.temp_gpu_c != null ? `${d.temp_gpu_c.toFixed(1)}°C` : "--",
       d.temp_gpu_c >= 85 ? "err" : d.temp_gpu_c >= 70 ? "warn" : "ok"
     ),
     fwRow(
@@ -5973,7 +6065,7 @@ async function loadHardwareState() {
     fwRow("GPU Layers", d.n_gpu_layers_current ?? "--", "info"),
     fwRow(
       "Embed Busy",
-      d.embed_busy_slots != null ? d.embed_busy_slots.toFixed(2) : "0.00",
+      d.embed_busy_slots != null ? d.embed_busy_slots.toFixed(2) : "--",
       d.embed_busy_slots > 0.8 ? "warn" : "ok"
     ),
     d.mtp_acceptance_rate != null
@@ -6071,7 +6163,7 @@ async function loadCLMStatus() {
     fwRow(
       "Hot Redis",
       d.hot_redis_mb != null
-        ? `${d.hot_redis_mb.toFixed(1)} MB / ${d.hot_max_mb || 256} MB`
+        ? `${d.hot_redis_mb.toFixed(1)} MB${d.hot_max_mb != null ? ` / ${d.hot_max_mb} MB` : ""}`
         : "--"
     ),
     fwRow("Pressure", `${pressure.toFixed(1)}%`, tierColor),
@@ -6710,9 +6802,9 @@ async function loadHarnessScorecard() {
     '<div style="font-size:.55rem;color:var(--fg3);margin-bottom:.2rem;text-transform:uppercase">Acceptance</div>',
     fwRow(
       "Pass Rate",
-      `${((acc.pass_rate || 0) * 100).toFixed(0)}% (target ${(
-        (acc.target || 0.7) * 100
-      ).toFixed(0)}%)`,
+      acc.pass_rate != null
+        ? `${(acc.pass_rate * 100).toFixed(0)}%${acc.target != null ? ` (target ${(acc.target * 100).toFixed(0)}%)` : ""}`
+        : "--",
       accOk ? "ok" : "warn"
     ),
     fwRow(
@@ -7055,7 +7147,8 @@ async function loadHealthAlerts() {
   const crit = s.by_severity?.critical ?? 0;
   const warn = s.by_severity?.warning ?? 0;
   if (badge) {
-    badge.textContent = s.total > 0 ? `${s.total} alerts` : "0 alerts";
+    const alertTotal = s.total ?? (Array.isArray(d.alerts) ? alerts.length : null);
+    badge.textContent = alertTotal == null ? "--" : alertTotal > 0 ? `${alertTotal} alerts` : "0 alerts";
     badge.className = `card-badge badge-${crit > 0 ? "err" : warn > 0 ? "warn" : "ok"
       }`;
   }
@@ -7063,7 +7156,7 @@ async function loadHealthAlerts() {
     s.total === 0
       ? fwRow("Status", "No active alerts", "ok")
       : [
-        fwRow("Total", s.total ?? 0, s.total > 0 ? "warn" : "ok"),
+        fwRow("Total", s.total ?? "--", s.total > 0 ? "warn" : "ok"),
         fwRow("Critical", crit, crit > 0 ? "err" : "ok"),
         fwRow("Warning", warn, warn > 0 ? "warn" : "ok"),
         fwRow("Info", s.by_severity?.info ?? 0, "info"),
@@ -10047,8 +10140,8 @@ function toggleGlobalPauseUI() {
       btn.style.color = "var(--red)";
     }
     if (badge) {
-      badge.textContent = "HOMEOSTASIS: OPTIMAL";
-      badge.className = "card-badge badge-healthy";
+      badge.textContent = "HOMEOSTASIS: --";
+      badge.className = "card-badge badge-info";
     }
     if (thought) {
       thought.textContent = "▶ [Operator Resume] Agent loop active. Resuming scheduled tasks.";
@@ -10065,25 +10158,15 @@ function toggleGlobalPauseUI() {
 }
 
 function quickApproveUI() {
-  appendThoughtStream("✓ [OPERATOR APPROVAL] Approved pending task / gate checkout.", "action");
-  apiFetch("/control/ai-coordinator/approvals/quick-approve", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ source: "dashboard_cockpit", decision: "approve" })
-  }).then(resp => {
-    const thought = document.getElementById("cockpitThoughtLine");
-    if (thought) {
-      thought.textContent = "✓ [Action Approved] Pending operation approved by operator.";
-      thought.style.color = "var(--grn)";
-      thought.style.borderColor = "var(--grn)";
-    }
-  }).catch(() => {
-    // Graceful fallback if approvals endpoint is mocked/testing
-    const thought = document.getElementById("cockpitThoughtLine");
-    if (thought) {
-      thought.textContent = "✓ [Approval Recorded] Dispatched approval event to coordinator.";
-    }
-  });
+  // No one-click approve route exists: approvals go through /api/approvals/{id}/approve,
+  // which requires a WebAuthn assertion. Never report an approval that was not sent.
+  appendThoughtStream("✗ [APPROVE UNAVAILABLE] Nothing was approved. Use the Approval Inbox.", "warn");
+  const thought = document.getElementById("cockpitThoughtLine");
+  if (thought) {
+    thought.textContent = "✗ Quick-approve is unavailable: nothing was approved. Use the Approval Inbox.";
+    thought.style.color = "var(--yel)";
+    thought.style.borderColor = "var(--yel)";
+  }
 }
 
 // ─── MISSION COCKPIT LIVE TELEMETRY (Rule 23 Non-Gamified Engine) ───────────
@@ -10113,9 +10196,14 @@ async function updateMissionCockpitTelemetry() {
     // Update Homeostasis Badge
     const homeoBadge = document.getElementById("cockpitHomeostasisBadge");
     if (homeoBadge && homeostasisData.status === "fulfilled" && homeostasisData.value) {
-      const state = homeostasisData.value.state || "OPTIMAL";
-      homeoBadge.textContent = `HOMEOSTASIS: ${state.toUpperCase()}`;
-      homeoBadge.className = `card-badge ${state.toUpperCase() === "OPTIMAL" ? "badge-healthy" : "badge-warn"}`;
+      const state = homeostasisData.value.state;
+      if (state) {
+        homeoBadge.textContent = `HOMEOSTASIS: ${state.toUpperCase()}`;
+        homeoBadge.className = `card-badge ${state.toUpperCase() === "OPTIMAL" ? "badge-healthy" : "badge-warn"}`;
+      } else {
+        homeoBadge.textContent = "HOMEOSTASIS: --";
+        homeoBadge.className = "card-badge badge-info";
+      }
     }
 
     // Update Active Objective & Live Thought Stream from Collab State

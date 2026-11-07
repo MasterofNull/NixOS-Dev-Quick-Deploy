@@ -19,7 +19,7 @@ import os
 import subprocess
 import sys
 import tempfile
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -57,6 +57,14 @@ def check(label: str, condition: bool) -> None:
     else:
         failed += 1
         print(f"FAIL: {label}")
+
+
+def relative_expiry_lease(lease: dict, ttl: timedelta) -> dict:
+    """Copy of `lease` re-signed (DEV key) to expire `ttl` after wall-clock now."""
+    out = copy.deepcopy(lease)
+    out["expires_at"] = (datetime.now(timezone.utc) + ttl).strftime("%Y-%m-%dT%H:%M:%SZ")
+    out["signature"] = cl.sign(out, cl.DEV_SIGNING_KEY)
+    return out
 
 
 def load_golden() -> dict:
@@ -221,7 +229,7 @@ def test_expiry() -> None:
     key = cl.DEV_SIGNING_KEY
 
     check("expiry: is_expired() true for past expires_at", cl.is_expired(golden["expired"]))
-    check("expiry: is_expired() false for future expires_at", not cl.is_expired(golden["valid"]))
+    check("expiry: is_expired() false for future expires_at", not cl.is_expired(golden["valid"], now=GOLDEN_NOW))
     check(
         "expiry: verify() on an expired-but-correctly-signed lease -> expired",
         cl.verify(golden["expired"], key) == cl.VERIFY_EXPIRED,
@@ -254,7 +262,8 @@ def test_epoch_stale() -> None:
     )
     check(
         "epoch-stale: verify() with stale current_epoch -> epoch-stale",
-        cl.verify(lease, key, current_epoch=current_epoch) == cl.VERIFY_EPOCH_STALE,
+        cl.verify(lease, key, current_epoch=current_epoch, now=GOLDEN_NOW)
+        == cl.VERIFY_EPOCH_STALE,
     )
     check(
         "epoch-stale: verify() with current current_epoch -> ok",
@@ -294,15 +303,21 @@ def test_attenuation_accepts_valid_subset() -> None:
         cl.verify(child, cl.DEV_SIGNING_KEY, now=GOLDEN_NOW) == cl.VERIFY_OK,
     )
 
-    # Build a fresh valid attenuation directly through the library too.
+    # Build a fresh valid attenuation directly through the library too. Parent
+    # and child are re-minted with expiries relative to wall-clock now, so this
+    # never depends on the golden dates (the golden parent expires 2026-12-31).
+    fresh_parent = relative_expiry_lease(parent, timedelta(hours=2))
+    fresh_child_expiry = (datetime.now(timezone.utc) + timedelta(hours=1)).strftime(
+        "%Y-%m-%dT%H:%M:%SZ"
+    )
     fresh_child = cl.attenuate(
-        parent,
+        fresh_parent,
         {
             "lease_id": "lease-c0-test-fresh-child",
             "actions": ["read"],
             "resources": [parent["permissions"]["resources"][0]],
             "trust_tier": parent["trust_tier"] - 1,
-            "expires_at": parent["expires_at"],
+            "expires_at": fresh_child_expiry,
         },
         key=cl.DEV_SIGNING_KEY,
     )
@@ -536,7 +551,12 @@ def test_dev_key_banner() -> None:
     # CLI-level: verify against the tampered fixture with no --key (forces
     # the missing-secret-path DEV fallback) and confirm the banner text
     # appears on stderr.
-    golden_valid = load_golden()["valid"]
+    # Minted relative to now: the golden lease's absolute expiry would make
+    # this assertion fail once the wall clock passes it. The CLI has no clock
+    # override by design (security tool), so expiry is exercised end to end
+    # with real time: a fresh lease -> ok, the golden 2020 lease -> expired.
+    golden = load_golden()
+    golden_valid = relative_expiry_lease(golden["valid"], timedelta(hours=1))
     with tempfile.TemporaryDirectory() as tmp:
         lease_path = Path(tmp) / "valid-lease.json"
         lease_path.write_text(json.dumps(golden_valid), encoding="utf-8")
@@ -553,7 +573,27 @@ def test_dev_key_banner() -> None:
         "dev-key: CLI prints the DEV-KEY banner to stderr when secret path is absent",
         cl.DEV_KEY_BANNER in result.stderr,
     )
-    check("dev-key: CLI verify of golden 'valid' lease -> ok", result.stdout.strip() == "ok")
+    check(
+        "dev-key: CLI verify of freshly-minted (golden-derived) lease -> ok",
+        result.stdout.strip() == "ok",
+    )
+
+    with tempfile.TemporaryDirectory() as tmp:
+        expired_path = Path(tmp) / "expired-lease.json"
+        expired_path.write_text(json.dumps(golden["expired"]), encoding="utf-8")
+        cli_env = dict(os.environ)
+        cli_env["AQ_LEASE_SIGNING_KEY"] = os.path.join(tmp, "does-not-exist")
+        expired_result = subprocess.run(
+            [sys.executable, str(CLI_PATH), "verify", str(expired_path)],
+            env=cli_env,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+    check(
+        "dev-key: CLI verify of golden 'expired' lease -> expired (rejected)",
+        expired_result.stdout.strip() == "expired" and expired_result.returncode != 0,
+    )
 
 
 def main() -> int:
