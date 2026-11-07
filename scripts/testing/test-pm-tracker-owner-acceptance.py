@@ -86,11 +86,14 @@ class Tree:
         self.write(self.mod.OWNER_ALLOWLIST_REL, cfg_bytes(entries))
 
     def record(self, name, plan, iid, h, **over):
-        d = {"schema": 1, "kind": "tracker-acceptance", "alert_id": "attn-1", "decision": "approved",
+        aid = "attn-" + sha(name.encode())[:16]
+        d = {"schema": 1, "kind": "tracker-acceptance", "alert_id": aid, "decision": "approved",
+             "resolved_by": "hyperd:owner", "door": "chat",
              "plan": plan, "items": [{"id": iid, "acceptance_sha256": h}]}
+        stem = over.pop("stem", None)
         d.update(over)
         raw = json.dumps(d, indent=1).encode()
-        rel = f".agent/approvals/acceptance/{name}.json"
+        rel = f".agent/approvals/acceptance/{stem or d['alert_id']}.json"
         self.write(rel, raw)
         return {"record": rel, "sha256": sha(raw)}
 
@@ -191,6 +194,46 @@ class RefValidation(unittest.TestCase):
         for edit in ({"note": "x"}, {"date": "2026-11-02"}, {"by": "hyperd (owner directive 2026-09-26)"}):
             errs = self.check({**self.with_ref(good), **edit})
             self.assertTrue(errs, edit)
+
+    def test_record_must_come_through_the_owner_door(self):
+        """P0.7: a record that merely names the plan/item is not enough; it must be an owner-door aq-approve decision."""
+        good = self.t.record("good", "plan-x", "I1", self.h)
+        self.assertEqual(self.check(self.with_ref(good)), [])
+        cases = {
+            "door missing": self.t.record("c1", "plan-x", "I1", self.h, door=None),
+            "door agent": self.t.record("c2", "plan-x", "I1", self.h, door="agent"),
+            "door api": self.t.record("c3", "plan-x", "I1", self.h, door="api"),
+            "actor agent": self.t.record("c4", "plan-x", "I1", self.h, resolved_by="claude"),
+            "actor not owner seat": self.t.record("c5", "plan-x", "I1", self.h, resolved_by="hyperd:codex"),
+            "actor missing": self.t.record("c6", "plan-x", "I1", self.h, resolved_by=None),
+            "alert id not attn": self.t.record("c7", "plan-x", "I1", self.h, alert_id="attn-1"),
+            "alert id != file name": self.t.record("c8", "plan-x", "I1", self.h, stem="renamed"),
+        }
+        for name, ref in cases.items():
+            errs = self.check(self.with_ref(ref))
+            self.assertTrue(errs and "approval_ref invalid" in errs[0], f"{name}: {errs}")
+
+    def test_agent_written_acceptance_without_record_fails(self):
+        # an agent-typed owner acceptance, including one pointing at a hand-made record with no owner door
+        self.assertIn("no approval_ref", self.check(self.a)[0])
+        forged = self.t.record("forged", "plan-x", "I1", self.h, door="agent", resolved_by="agent")
+        self.assertTrue(self.check(self.with_ref(forged)))
+
+    def test_unreadable_record_store_fails_closed(self):
+        ref = self.t.record("g", "plan-x", "I1", self.h)
+        a = self.with_ref(ref)
+        self.assertEqual(self.check(a), [])
+        p = self.t.root / ref["record"]
+        p.chmod(0)
+        self.addCleanup(p.chmod, 0o600)
+        if os.access(p, os.R_OK):
+            self.skipTest("cannot make a file unreadable (running as root)")
+        errs = self.check(a)
+        self.assertTrue(errs and "unreadable" in errs[0], errs)
+        p.chmod(0o600)
+        # a decision log that cannot be parsed also fails closed
+        self.t.write(".agent/approvals/acceptance/LOG.jsonl", "not json\n")
+        self.assertIn("decision log invalid", self.check(a)[0])
 
     def test_ref_shapes(self):
         good = self.t.record("g", "plan-x", "I1", self.h)
@@ -711,6 +754,176 @@ class GateAppendOnly(GitHarness):
         self.assertFail(pin, "append-only")
         p.unlink()
         self.assertFail(pin, "deleted")
+
+
+class GateAllowlistGrowth(GitHarness):
+    def test_new_owner_acceptance_cannot_be_added_to_the_allowlist(self):
+        pin = self.seed_main()
+        self.branch("feat")
+        self.accs["i4"] = acc("new owner acceptance")
+        self.write_trackers()
+        self.t.write(self.mod.OWNER_ALLOWLIST_REL, cfg_bytes(self.entries(list(self.accs))))
+        self.assertFail(pin, "not in the frozen baseline")
+
+    def test_new_owner_acceptance_without_record_or_allowlist_fails_on_state(self):
+        pin = self.seed_main()
+        self.branch("feat")
+        self.accs["i4"] = acc("new owner acceptance")
+        self.write_trackers()
+        self.assertFail(pin, "no approval_ref")
+
+
+class MintFlow(unittest.TestCase):
+    """aq-approve approve ... --door chat -> host stores -> --record-acceptance -> tracker acceptance passes."""
+
+    def setUp(self):
+        self._td = tempfile.TemporaryDirectory()
+        self.addCleanup(self._td.cleanup)
+        td = Path(self._td.name)
+        self.q, self.inbox = td / "attn", td / "inbox"
+        self.t = Tree(td / "repo")
+        self.mod = self.t.mod
+        self.a = acc("flow")
+        self.h = self.mod.acceptance_sha256("plan-x", "I1", self.a)
+        self.t.plan("plan-x", {"I1": self.a})
+        # the producer resolves REPO from its own path: run a copy placed inside the throwaway repo
+        self.script = self.t.root / "scripts" / "ai" / "aq-pm-tracker"
+        self.script.write_bytes(TRACKER.read_bytes())
+        (self.t.root / "scripts" / "ai" / "lib").symlink_to(REAL / "scripts" / "ai" / "lib")
+        self.env = {**os.environ, "ATTENTION_QUEUE_DIR": str(self.q), "AQ_APPROVAL_INBOX_DIR": str(self.inbox),
+                    "PRSI_ACTION_QUEUE_PATH": str(td / "none.json"), "ATTENTION_MIRROR_PATH": str(td / "mirror.json"),
+                    "ATTENTION_DESKTOP_NOTIFY": "0"}
+        os.environ.update({k: self.env[k] for k in ("ATTENTION_QUEUE_DIR", "AQ_APPROVAL_INBOX_DIR")})
+        self.addCleanup(lambda: [os.environ.pop(k, None) for k in ("ATTENTION_QUEUE_DIR", "AQ_APPROVAL_INBOX_DIR")])
+
+    def py(self, code, **kw):
+        return subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, env=self.env,
+                              cwd=str(REAL), **kw)
+
+    def request(self, plan="plan-x", iid="I1"):
+        """The real producer, as a CLI against the throwaway repo (REPO is derived from the script path, so a copy)."""
+        r = self.cli("--request-acceptance", plan, iid)
+        return r
+
+    def cli(self, *argv):
+        return subprocess.run([sys.executable, str(self.script), *argv], capture_output=True, text=True,
+                              env=self.env, cwd=str(self.t.root))
+
+    def pending_ids(self):
+        r = self.py("import sys, json; sys.path.insert(0, 'scripts/ai/lib'); import attention_queue as q; "
+                    "print(json.dumps([a['id'] for a in q.get_pending('pm-acceptance')]))")
+        return json.loads(r.stdout)
+
+    def push(self, plan="plan-x", iid="I1", h=None, source="pm-acceptance", executor="tracker_acceptance"):
+        payload = {"plan": plan, "items": [{"id": iid, "acceptance_sha256": h or self.h}]}
+        r = self.py("import sys; sys.path.insert(0, 'scripts/ai/lib'); import attention_queue as q, json; "
+                    f"print(q.push({source!r}, 'high', 'human_gate', 'plan-x: accept 1 item', 'd', 'accept', "
+                    f"payload={payload!r}, executor={executor!r}))")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        return r.stdout.strip()
+
+    def aq(self, *argv):
+        return subprocess.run([sys.executable, str(REAL / "scripts/ai/aq-approve"), *argv], capture_output=True,
+                              text=True, env=self.env, cwd=str(REAL))
+
+    def owner_approve(self, aid, door="chat"):
+        lst = json.loads(self.aq("list", "--json").stdout)
+        n = next(i["n"] for i in lst["items"] if i["key"] == f"attn:{aid}")
+        r = self.aq("approve", str(n), "--tag", lst["tag"], "--door", door)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+
+    def mint(self, aid):
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            rc = self.mod.record_acceptance(aid)
+        return rc, buf.getvalue()
+
+    def test_normal_owner_flow_chat_door_then_tracker_acceptance_passes(self):
+        r = self.request()
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        (aid,) = self.pending_ids()                                # the request is visible to aq-approve
+        self.owner_approve(aid)
+        rc, out = self.mint(aid)
+        self.assertEqual(rc, 0, out)
+        ref = json.loads(out.splitlines()[0])
+        pd = self.t.root / ".agents/plans/plan-x"
+        a = {**self.a, "approval_ref": ref}
+        self.t.write(".agents/plans/plan-x/tracker.json", json.dumps(tracker_doc({"I1": a})))
+        self.assertEqual(self.t.errors(pd), [])
+        self.assertEqual(self.mod.project(pd)["items"][0]["acceptance_assurance"], "recorded")
+        rec = json.loads((self.t.root / ref["record"]).read_text())
+        self.assertEqual((rec["door"], rec["alert_id"], rec["resolved_by"].endswith(":owner")), ("chat", aid, True))
+        self.assertEqual(self.mod.record_acceptance(aid), 1)      # second mint refused (append-only)
+
+    def test_unapproved_or_wrong_source_or_unowned_alert_is_refused(self):
+        aid = self.push()
+        self.assertEqual(self.mint(aid)[0], 1)                     # still pending
+        other = self.push(source="other")
+        self.owner_approve(other)
+        self.assertEqual(self.mint(other)[0], 1)                   # approved, but not a pm-acceptance alert
+        # an agent-resolved approved alert (actor is not the owner seat) never mints
+        self.py("import sys, json; sys.path.insert(0, 'scripts/ai/lib'); import attention_queue as q; "
+                f"aid=q.push('pm-acceptance','high','human_gate','t2','d','a',payload={{'plan':'plan-x','items':"
+                f"[{{'id':'I1','acceptance_sha256':'{self.h}'}}]}},executor='tracker_acceptance'); "
+                "q.claim_for_execution(aid,'claude'); q.finalize_claim(aid, True, actor='claude'); print(aid)")
+        archived = [json.loads(x) for x in (self.q / "ATTENTION_ARCHIVE.jsonl").read_text().splitlines()]
+        agent_aid = next(x["id"] for x in archived if x["resolved_by"] == "claude")
+        self.assertEqual(self.mint(agent_aid)[0], 1)
+
+    def test_request_is_deduped_by_acceptance_hash(self):
+        self.assertEqual(self.request().returncode, 0)
+        r2 = self.request()
+        self.assertEqual(r2.returncode, 0, r2.stdout + r2.stderr)
+        self.assertIn("deduped", r2.stdout)
+        self.assertEqual(len(self.pending_ids()), 1)
+        # an edited acceptance block is a different hash and a new request
+        doc = tracker_doc({"I1": acc("flow edited")})
+        self.t.write(".agents/plans/plan-x/tracker.json", json.dumps(doc))
+        self.assertEqual(self.request().returncode, 0)
+        self.assertEqual(len(self.pending_ids()), 2)
+
+    def test_request_refuses_not_ready_or_not_proposed_items(self):
+        # no activation signal / test -> projects BUILT or lower, not SHIPPED
+        doc = tracker_doc({"I1": self.a})
+        doc["items"][0]["detection"] = {}
+        self.t.write(".agents/plans/plan-x/tracker.json", json.dumps(doc))
+        r = self.request()
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("not ready", r.stdout)
+        # no acceptance block, unknown item, already backed
+        self.t.write(".agents/plans/plan-x/tracker.json", json.dumps(tracker_doc({"I1": None})))
+        self.assertIn("no proposed owner acceptance", self.request().stdout)
+        self.assertEqual(self.request(iid="NOPE").returncode, 1)
+        ref = self.t.record("g", "plan-x", "I1", self.h)
+        self.t.write(".agents/plans/plan-x/tracker.json", json.dumps(tracker_doc({"I1": {**self.a, "approval_ref": ref}})))
+        self.assertIn("already carries", self.request().stdout)
+        self.assertEqual(self.pending_ids(), [])
+
+    def test_stale_hash_is_refused(self):
+        aid = self.push(h="9" * 64)
+        self.owner_approve(aid)
+        rc, out = self.mint(aid)
+        self.assertEqual(rc, 1)
+        self.assertIn("stale", out)
+
+    def test_missing_audit_or_unreadable_store_fails_closed(self):
+        aid = self.push()
+        self.owner_approve(aid)
+        (self.inbox / "approval-inbox-audit.jsonl").unlink()
+        rc, out = self.mint(aid)
+        self.assertEqual(rc, 1)
+        self.assertIn("unreadable", out)
+        (self.inbox / "approval-inbox-audit.jsonl").write_text("garbage\n")
+        self.assertIn("unreadable", self.mint(aid)[1])
+
+    def test_audit_without_owner_door_is_refused(self):
+        aid = self.push()
+        self.owner_approve(aid)
+        f = self.inbox / "approval-inbox-audit.jsonl"
+        f.write_text(f.read_text().replace('"door": "chat"', '"door": "agent"'))
+        rc, out = self.mint(aid)
+        self.assertEqual(rc, 1)
+        self.assertIn("owner door", out)
 
 
 class GateWiring(unittest.TestCase):

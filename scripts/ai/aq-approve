@@ -144,7 +144,24 @@ def _handle_drop_dispatch(alert: dict) -> bool:
     return False
 
 
+def _handle_tracker_acceptance(alert: dict) -> bool:
+    """Validate-only: the approval itself is the record (archive + audit). `aq-pm-tracker --record-acceptance`
+    turns it into the committed decision record in a worktree; nothing is edited here."""
+    p = alert.get("payload", {})
+    items = p.get("items")
+    ok = (isinstance(p.get("plan"), str) and p["plan"] and isinstance(items, list) and items
+          and all(isinstance(i, dict) and isinstance(i.get("id"), str)
+                  and re.fullmatch(r"[0-9a-f]{64}", str(i.get("acceptance_sha256", ""))) for i in items))
+    if not ok:
+        print("  Malformed tracker_acceptance payload (plan + items[{id, acceptance_sha256}]).", file=sys.stderr)
+        return False
+    print(f"  Owner acceptance recorded for plan {p['plan']}: {len(items)} item(s). "
+          f"Next: aq-pm-tracker --record-acceptance {alert['id']} in a slice worktree.")
+    return True
+
+
 _EXECUTOR_TABLE = {
+    "tracker_acceptance": _handle_tracker_acceptance,
     "apparmor_fix":      _handle_apparmor_fix,
     "nixos_rebuild_hint": _handle_nixos_rebuild_hint,
     "drop_dispatch":     _handle_drop_dispatch,
