@@ -40,9 +40,15 @@ TRUST_CRITICAL = (".github/workflows/review-disposition.yml", "scripts/governanc
                   "scripts/ai/aq-review-receipt", "scripts/ai/aq-land")
 DOC_PREFIXES = ("docs/", ".agent/", ".agents/")
 CODE_SUFFIXES = (".py", ".sh", ".nix", ".yml", ".yaml")
-# lane key -> (registry agent name, hard limit s, stall limit s). Local answers in one non-streaming
-# reply that can take many minutes on this hardware, so it has no stall limit, only the hard one.
-LANES = {"gemini": ("gemini", 2400, 600), "codex": ("codex", 2400, 900), "local": ("local-direct", 2400, 0)}
+# lane key -> (registry agent name, hard limit s, stall limit s). A stall limit assumes the lane writes
+# output while it works. Local answers in one non-streaming reply that can take many minutes on this
+# hardware. Gemini headless (-p) prints only its final answer: the log of a review is empty while it reads
+# files and runs tools, and completed review logs show 4-13 minutes from start to last write with no
+# progress text in them. A stall limit would kill a valid long review, so gemini and local rely on the
+# hard limit alone. Codex exec prints its tool activity as it goes, so it keeps a stall limit.
+LANES = {"gemini": ("gemini", 1800, 0), "codex": ("codex", 2400, 900), "local": ("local-direct", 2400, 0)}
+GEMINI_MODEL = "gemini-3.8-flash-high"
+GEMINI_FALLBACK_MODEL = "gemini-3.8-flash-medium"
 QUOTA = re.compile(r"quota|usage limit|rate.?limit|RESOURCE_EXHAUSTED|\b429\b|exhausted|capacity", re.I)
 VERDICTS = ("PASS_WITH_FOLLOWUPS", "PASS", "REQUEST_CHANGES", "FAIL")
 RECORD_KEYS = ("Author-lane", "Review-Disposition", "Reviewed-subject-sha256", "Reviewed-head-sha", "Reviewed-by",
@@ -218,29 +224,44 @@ class Land:
         if lane == "local":
             p += ["Answer from the diff below alone.", "", crit, "", "```diff", diff_text, "```"]
         else:
-            p += [f"Full net diff vs main: {diff_file}", f"Worktree: {self.W}", "", crit]
+            p += [f"Full net diff vs main: {diff_file}", f"Worktree: {self.W}", "",
+                  f"Read every repository file under the worktree path {self.W}. The main checkout (any repository path outside "
+                  ".agents/delegation/worktrees) is out of date for this change: findings based on files read there are wrong. "
+                  "Do not run test suites; the author and CI run them.", "", crit]
         p += ["", "End your answer with exactly these two lines:", f"Reviewed-head-sha: {head}",
               "Review-Disposition: <PASS|PASS_WITH_FOLLOWUPS|REQUEST_CHANGES>", "Use REQUEST_CHANGES only for a concrete defect you can name."]
         return "\n".join(p) + "\n"
 
-    def run_lane(self, lane, head, pfile):
-        """Return (kind, detail, run_id, text): kind is ok|negative|unavailable."""
+    def run_lane(self, lane, head, pfile, notes=None):
+        """Return (kind, detail, run_id, text): kind is ok|negative|unavailable. Gemini retries once on another model after a quota error."""
+        if lane != "gemini":
+            return self.run_once(lane, head, pfile)
+        model = os.environ.get("AQ_LAND_GEMINI_MODEL") or GEMINI_MODEL
+        res = self.run_once(lane, head, pfile, model)
+        if res[0] == "unavailable" and res[1] == "quota error" and model != GEMINI_FALLBACK_MODEL:
+            if notes is not None:
+                notes.append(f"gemini: model {model} quota error; retried with {GEMINI_FALLBACK_MODEL}")
+            say(f"gemini model {model} hit a quota error; retrying once with {GEMINI_FALLBACK_MODEL}")
+            res = self.run_once(lane, head, pfile, GEMINI_FALLBACK_MODEL)
+        return res
+
+    def run_once(self, lane, head, pfile, model=""):
         agent, hard, stall = LANES[lane]
         hard = env_int("AQ_LAND_REVIEW_TIMEOUT_S", hard)
-        stall = env_int("AQ_LAND_STALL_S", stall)
+        stall = env_int("AQ_LAND_STALL_S", stall) if stall else 0  # the override tunes streaming lanes; it cannot re-enable it for the others
         tool = str(self.delegates / f"delegate-to-{lane}")
         if lane == "codex":
             b = run([tool, "--budget-check-only", "--role", "review"], cwd=self.W, check=False, stage="review", timeout=60)
             if b.returncode != 0:
                 return "unavailable", f"budget refused (exit {b.returncode})", "", ""
-        cmd = {"gemini": ["--role", "reviewer", "--mode", "plan", "--wait"],
-               "codex": ["--role", "review", "--mode", "safe", "--wait"],
+        cmd = {"gemini": ["--role", "reviewer", "--mode", "plan", "--model", model, "--wait"],
+               "codex": ["--role", "review", "--mode", "safe", "--shared", "--wait"],
                "local": ["--mode", "direct", "--role", "reviewer", "--wait", "--timeout", str(hard), "--max-tokens", "900"]}[lane]
-        out = self.dir / f"review-{lane}-{head[:12]}.out"
+        out = self.dir / f"review-{lane}-{head[:12]}{'-' + model if model else ''}.out"
         with open(out, "w") as fh:
             try:
                 proc = subprocess.Popen([tool, *cmd, "--prompt-file", str(pfile)], cwd=self.W, stdout=fh, stderr=subprocess.STDOUT,
-                                        start_new_session=True)
+                                        start_new_session=True, env={**os.environ, "AQ_DELEGATE_CWD": str(self.W)})
             except OSError as e:
                 return "unavailable", f"cannot start {tool}: {e.strerror}", "", ""
             t0 = last = time.time()
@@ -295,7 +316,7 @@ class Land:
             pfiles[lane] = pf
         for lane in order:
             say(f"review of {head[:9]} by {lane}")
-            kind, detail, rid, _ = self.run_lane(lane, head, pfiles[lane])
+            kind, detail, rid, _ = self.run_lane(lane, head, pfiles[lane], notes)
             if kind == "unavailable":
                 notes.append(f"{lane}: {detail}")
                 say(f"lane {lane} unavailable ({detail}); trying the next eligible lane")

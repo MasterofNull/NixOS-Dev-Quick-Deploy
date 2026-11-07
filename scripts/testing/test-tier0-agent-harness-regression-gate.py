@@ -147,7 +147,7 @@ def main() -> int:
 
     timed_out = run_gate(REQUIRED_SUITES, fake_timeout=True)
     assert timed_out.returncode != 0
-    assert "timed out after 60s" in timed_out.stdout
+    assert "timed out after 180s" in timed_out.stdout
     assert "simulated timeout" in timed_out.stderr
 
     evidence_passing = run_evidence_collector_gate(suite_present=True)

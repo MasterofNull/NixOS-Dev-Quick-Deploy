@@ -9,7 +9,8 @@ Features:
   • Real-time tool-call extraction (read_file, replace, run_command, git, grep)
   • Note-to-Self thought reflection streaming
   • Token usage metrics (tokens in/out) per agent
-  • Human intervention command reference (/steer, /pause, /kill, /inspect)
+  • Stalled marker: a running row with no output for AQ_FLEET_STALL_SECS (default 900) shows STALLED
+  • Human intervention command reference (/select, /steer, /cancel)
 
 Usage:
   aq-fleet-monitor                  # live continuous refresh of all agents
@@ -46,9 +47,13 @@ from rich.text import Text
 from rich.tree import Tree
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
-REGISTRY_FILE = REPO_ROOT / ".agents" / "delegation" / "registry.jsonl"
-STREAMS_DIR = REPO_ROOT / ".agents" / "delegation" / "streams"
-OUTPUTS_DIR = REPO_ROOT / ".agents" / "delegation" / "outputs"
+DELEGATION_DIR = Path(os.environ.get("AQ_DELEGATION_DIR") or REPO_ROOT / ".agents" / "delegation")
+REGISTRY_FILE = DELEGATION_DIR / "registry.jsonl"
+STREAMS_DIR = DELEGATION_DIR / "streams"
+OUTPUTS_DIR = DELEGATION_DIR / "outputs"
+RUNNING_STATES = ("running", "active", "in_flight")
+# A running row with no output for this long is flagged STALLED (a hung headless review printed nothing for 95 min and looked healthy).
+STALL_SECS = float(os.environ.get("AQ_FLEET_STALL_SECS") or 900)
 
 console = Console()
 
@@ -126,23 +131,53 @@ def extract_last_operation(task_id: str) -> str:
     return "idle"
 
 
+def format_secs(diff: float) -> str:
+    diff = max(0, int(diff))
+    if diff < 60:
+        return f"{diff}s"
+    elif diff < 3600:
+        return f"{diff // 60}m {diff % 60}s"
+    return f"{diff // 3600}h {(diff % 3600) // 60}m"
+
+
+def _created_epoch(created_iso: Optional[str]) -> Optional[float]:
+    if not created_iso:
+        return None
+    try:
+        return datetime.fromisoformat(created_iso.replace("Z", "+00:00")).timestamp()
+    except Exception:
+        return None
+
+
 def format_age(created_iso: Optional[str]) -> str:
     """Compute human-friendly age from ISO timestamp."""
-    if not created_iso:
-        return "—"
-    try:
-        dt_str = created_iso.replace("Z", "+00:00")
-        dt = datetime.fromisoformat(dt_str)
-        now = datetime.now(timezone.utc)
-        diff = max(0, int((now - dt).total_seconds()))
-        if diff < 60:
-            return f"{diff}s"
-        elif diff < 3600:
-            return f"{diff // 60}m {diff % 60}s"
-        else:
-            return f"{diff // 3600}h {(diff % 3600) // 60}m"
-    except Exception:
-        return "—"
+    ts = _created_epoch(created_iso)
+    return "—" if ts is None else format_secs(time.time() - ts)
+
+
+def stall_reason(rec: Dict[str, Any], now: Optional[float] = None) -> Optional[str]:
+    """Return why a running row looks hung, or None. Stalled = running longer than STALL_SECS with an
+    empty/missing output file, or an output file untouched for STALL_SECS."""
+    if str(rec.get("status", "")).lower() not in RUNNING_STATES:
+        return None
+    now = time.time() if now is None else now
+    started = _created_epoch(rec.get("created"))
+    if started is None or now - started < STALL_SECS:
+        return None
+    tid = str(rec.get("id", ""))
+    latest = None  # (mtime) of the freshest non-empty stream/output file
+    for f in (STREAMS_DIR / f"{tid}.stream", OUTPUTS_DIR / f"{tid}.log"):
+        try:
+            st = f.stat()
+        except OSError:
+            continue
+        if st.st_size > 0 and (latest is None or st.st_mtime > latest):
+            latest = st.st_mtime
+    if latest is None:
+        return f"no output after {format_secs(now - started)}"
+    if now - latest >= STALL_SECS:
+        return f"no new output for {format_secs(now - latest)}"
+    return None
 
 
 def render_tree_panel(agent_filter: Optional[str] = None) -> Panel:
@@ -158,13 +193,13 @@ def render_tree_panel(agent_filter: Optional[str] = None) -> Panel:
         # Identify parent model from task ID or description
         parent = "Local Inference APU"
         if "claude" in agent.lower():
-            parent = "Claude 3.7 / Fable-5"
+            parent = "Claude (CLI)"
         elif "codex" in agent.lower():
-            parent = "OpenAI Codex"
+            parent = "Codex (CLI)"
         elif "gemini" in agent.lower():
-            parent = "Google Gemini"
+            parent = "Gemini (CLI)"
         elif "local" in agent.lower():
-            parent = "Local Qwen3-35B APU"
+            parent = "Local Qwen"
         else:
             parent = f"Model {agent}"
 
@@ -182,7 +217,10 @@ def render_tree_panel(agent_filter: Optional[str] = None) -> Panel:
                 age = format_age(s.get("created"))
                 last_op = extract_last_operation(tid)
 
-                if st in ("running", "active", "in_flight"):
+                stalled = stall_reason(s)
+                if stalled:
+                    badge = f"[bold black on yellow]⚠ STALLED[/bold black on yellow] [yellow]{escape(stalled)}[/yellow]"
+                elif st in RUNNING_STATES:
                     badge = "[bold green]▶ ACTIVE[/bold green]"
                 elif st == "done":
                     badge = "[cyan]✓ DONE[/cyan]"
@@ -237,7 +275,13 @@ def render_fleet_panel(agent_filter: Optional[str] = None) -> Panel:
             if len(last_op) > 42:
                 last_op = last_op[:40] + "…"
 
-            if status in ("running", "in_flight", "active"):
+            stalled = stall_reason(rec)
+            if stalled:
+                status_badge = "[bold black on yellow]⚠ STALLED[/bold black on yellow]"
+                last_op = stalled
+                if running_task is None:
+                    running_task = rec
+            elif status in RUNNING_STATES:
                 status_badge = "[bold green]▶ RUNNING[/bold green]"
                 if running_task is None:
                     running_task = rec
@@ -279,7 +323,7 @@ def render_fleet_panel(agent_filter: Optional[str] = None) -> Panel:
     grid.add_row(Panel(table, title=f"[bold]Delegated Sub-Agent Fleet{filter_label}[/bold]", border_style="magenta", padding=(0, 0)))
     grid.add_row(Panel(stream_text, title="[bold]Live Output & Operation Stream[/bold]", border_style="cyan", padding=(0, 1)))
 
-    footer = Text("Interventions: /steer <id> \"msg\" · /pause <id> · /resume <id> · /kill <id> · /inspect <id>", style="dim cyan")
+    footer = Text("Interventions (aq-subagent-interactive): /select <#> · /steer msg · /cancel (honoured by local-lane agent loops only)", style="dim cyan")
     grid.add_row(footer)
 
     return Panel(

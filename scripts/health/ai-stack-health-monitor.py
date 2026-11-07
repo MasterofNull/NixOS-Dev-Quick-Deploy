@@ -54,6 +54,9 @@ def run_aq_qa(phase: str) -> dict:
         env = os.environ.copy()
         env.update({"TMPDIR": str(_TMPDIR), "TEMP": str(_TMPDIR), "TMP": str(_TMPDIR)})
         env["PYTHONDONTWRITEBYTECODE"] = "1"
+        # Scheduled monitoring must not read "cannot run here" as healthy: an unreachable systemd user manager
+        # fails 0.10.66 instead of skipping it (phase0._confine_context_gap). No unit change needed.
+        env["AQ_CONFINE_REQUIRE_CONTEXT"] = "1"
         env["PYTHONPYCACHEPREFIX"] = str(_PYTHONPYCACHEPREFIX)
         env["CARGO_TARGET_DIR"] = str(_CARGO_TARGET_DIR)
         env["PATH"] = f"{_PYTHON_BIN}:{_SYSTEM_BIN}:{env.get('PATH', '')}"
