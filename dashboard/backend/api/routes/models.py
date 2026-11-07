@@ -113,16 +113,16 @@ async def _sse_keep_alive(stop_event: asyncio.Event) -> AsyncGenerator[str, None
 async def list_models(request: Request):
     _check_auth(request)
     if not _LIFECYCLE_AVAILABLE:
-        return _stub_catalog()
+        return _stub_catalog("lifecycle modules not importable")
     try:
         registry = get_registry()
         models = await registry.list_models()
     except PermissionError as e:
         logger.warning("models route: permission denied scanning model dir: %s", e)
-        return _stub_catalog()
+        return _stub_catalog("PermissionError scanning model dir")
     except Exception as e:
         logger.error("models route: unexpected error listing models: %s", e)
-        return _stub_catalog()
+        return _stub_catalog(type(e).__name__)
     # Enrich with disk presence — guard against PermissionError on restricted model dirs
     for m in models:
         local = m.get("local_path")
@@ -552,8 +552,21 @@ def _model_freshness() -> Dict[str, Any]:
     }
 
 
-def _stub_catalog():
-    """Read model catalog from the persisted registry JSON; fall back to empty list."""
+def _stub_catalog(reason: str = "live registry unavailable"):
+    """Degraded catalog: the persisted registry JSON, else an empty list.
+
+    Always marked `available: False` / `stub: True` so a consumer cannot mistake
+    it for the live registry. The registry-file snapshot has `source: registry_file`.
+    """
+    out = _stub_catalog_body()
+    out["available"] = False
+    out["stub"] = True
+    out["reason"] = reason
+    out.setdefault("source", "stub")
+    return out
+
+
+def _stub_catalog_body():
     for reg_path in _REGISTRY_PATHS:
         if not reg_path or not reg_path.exists():
             continue

@@ -2248,14 +2248,14 @@
     <div class="rag-kpi"><span class="rl">Ans Relevance:</span><span class="rv" id="ragAnswerRelevance">0.96</span></div>
     <div class="rag-kpi"><span class="rl">Ctx Precision:</span><span class="rv" id="ragContextPrecision">0.94</span></div>
     <div class="rag-kpi"><span class="rl">Faithfulness:</span><span class="rv" id="ragFaithfulness">0.98</span></div>
-    <div class="rag-kpi"><span class="rl">Samples:</span><span class="rv" id="ragSampleCount">142</span></div>
+    <div class="rag-kpi"><span class="rl">Samples:</span><span class="rv" id="ragSampleCount">--</span></div>
   </div>
 
   <!-- ── AQ-DECIDE ORACLE STRIP — DEC-S8 ── -->
   <div id="section-aq-decide" style="display:flex;gap:.75rem;padding:.45rem 1.5rem;background:rgba(0,180,255,.04);border-bottom:1px solid rgba(0,180,255,.12);font-size:.8rem;align-items:center;">
-    <div class="rag-kpi"><span class="rl">Decision Engine:</span><span class="rv" id="decideEngineStatus" style="color:var(--accent,#00d4ff);font-weight:600;">Active (T0/T1)</span></div>
-    <div class="rag-kpi"><span class="rl">PSI Drift:</span><span class="rv" id="decidePsiDrift" style="color:#00ff9d;">0.002 (Stable)</span></div>
-    <div class="rag-kpi"><span class="rl">Calibration:</span><span class="rv" id="decideCalibrationStatus" style="color:#00ff9d;">Optimal</span></div>
+    <div class="rag-kpi"><span class="rl">Decision Engine:</span><span class="rv" id="decideEngineStatus" style="color:var(--fg3);font-weight:600;" title="Unavailable: no backend route reports this yet">--</span></div>
+    <div class="rag-kpi"><span class="rl">PSI Drift:</span><span class="rv" id="decidePsiDrift" style="color:var(--fg3);" title="Unavailable: no backend route reports this yet">--</span></div>
+    <div class="rag-kpi"><span class="rl">Calibration:</span><span class="rv" id="decideCalibrationStatus" style="color:var(--fg3);" title="Unavailable: no backend route reports this yet">--</span></div>
     <div class="rag-kpi"><span class="rl">Oracle Scope:</span><span class="rv" id="decideScopeStatus">Restricted (decide)</span></div>
   </div>
 
@@ -2275,12 +2275,12 @@
       <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:0.5rem;">
         <div style="display:flex;align-items:center;gap:0.6rem;">
           <span style="font-family:var(--hud);font-size:0.75rem;letter-spacing:0.12em;font-weight:700;color:var(--cyan);text-transform:uppercase;">MISSION COCKPIT &amp; HUMAN INTERVENTION DOCK</span>
-          <span class="card-badge badge-healthy" id="cockpitHomeostasisBadge">HOMEOSTASIS: OPTIMAL</span>
-          <span class="card-badge badge-info" id="cockpitLaneBadge">ORCHESTRATOR: ANTIGRAVITY</span>
+          <span class="card-badge badge-info" id="cockpitHomeostasisBadge" title="Filled from /api/affective/state">HOMEOSTASIS: --</span>
+          <span class="card-badge badge-info" id="cockpitLaneBadge" title="Filled from /api/aistack/agent/collab-state (resume.phase)">PHASE: --</span>
         </div>
         <div style="display:flex;align-items:center;gap:0.5rem;">
           <button class="action-btn" id="btnIntervenePause" onclick="toggleGlobalPauseUI()" style="font-size:0.65rem;padding:0.25rem 0.6rem;background:rgba(255,54,68,0.12);border:1px solid var(--red);color:var(--red);border-radius:3px;cursor:pointer;">⏸ PAUSE LOOP [Space]</button>
-          <button class="action-btn" id="btnInterveneApprove" onclick="quickApproveUI()" style="font-size:0.65rem;padding:0.25rem 0.6rem;background:rgba(57,255,20,0.12);border:1px solid var(--grn);color:var(--grn);border-radius:3px;cursor:pointer;">✓ APPROVE ACTION [A]</button>
+          <button class="action-btn" id="btnInterveneApprove" onclick="quickApproveUI()" title="Quick-approve is unavailable: no route serves it; use the Approval Inbox" style="font-size:0.65rem;padding:0.25rem 0.6rem;background:rgba(255,255,255,0.05);border:1px solid var(--fg3);color:var(--fg3);border-radius:3px;cursor:pointer;">✓ APPROVE ACTION [A]</button>
           <button class="action-btn" id="btnInterveneSteer" onclick="steerAgentUI('orchestrator')" style="font-size:0.65rem;padding:0.25rem 0.6rem;background:rgba(0,217,255,0.12);border:1px solid var(--cyan);color:var(--cyan);border-radius:3px;cursor:pointer;">⚡ STEER INTENT [S]</button>
         </div>
       </div>
@@ -2291,14 +2291,14 @@
           <div>
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.35rem;">
               <span style="font-size:0.6rem;color:var(--fg2);text-transform:uppercase;letter-spacing:0.06em;font-weight:600;">Active Objective &amp; Live Thought Stream</span>
-              <span style="font-size:0.55rem;color:var(--grn);font-family:var(--font);" id="cockpitStreamState">● STREAMING ACTIVE</span>
+              <span style="font-size:0.55rem;color:var(--fg3);font-family:var(--font);" id="cockpitStreamState" title="Not measured yet">● STREAM: --</span>
             </div>
             <div id="cockpitActiveObjective" style="font-size:0.75rem;color:var(--fg);font-weight:500;margin-bottom:0.4rem;line-height:1.35;">
-              Executing SOTA Command Center Dashboard Revamp &amp; Ergonomic Observability Cockpit
+              --
             </div>
           </div>
           <div id="cockpitThoughtLine" style="font-family:var(--font);font-size:0.65rem;color:var(--cyan);background:rgba(0,217,255,0.06);padding:0.35rem 0.5rem;border-radius:3px;border-left:2px solid var(--cyan);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
-            [antigravity] Mounting Tier 1 Human Intervention Dock &amp; Objective HUD in Overview panel
+            Waiting for the live collaboration pulse...
           </div>
         </div>
 
@@ -2666,7 +2666,7 @@
                 </tr>
                 <tr>
                   <td style="padding:0.45rem 0.6rem;font-weight:600;color:#fff">Tier-0 Pre-Commit Gates</td>
-                  <td style="padding:0.45rem 0.6rem"><span id="histCurGates">53 / 53 (100%)</span></td>
+                  <td style="padding:0.45rem 0.6rem"><span id="histCurGates" title="Not measured yet: no data source is wired to this value">--</span></td>
                   <td style="padding:0.45rem 0.6rem">53 / 53 (100%)</td>
                   <td style="padding:0.45rem 0.6rem">51 / 52 (98.1%)</td>
                   <td style="padding:0.45rem 0.6rem"><span class="delta-pos">▲ +1.9% gate</span></td>
@@ -2725,7 +2725,7 @@
               </div>
               <div class="exec-kpi-item">
                 <span class="ek-label">Governance</span>
-                <span class="ek-val" id="execGovernanceScore" style="color:var(--grn)">53/53 GATES</span>
+                <span class="ek-val" id="execGovernanceScore" style="color:var(--fg3)" title="Not measured yet: no data source is wired to this value">--</span>
               </div>
               <div class="exec-kpi-item">
                 <span class="ek-label">Local Ratio</span>
@@ -3821,7 +3821,7 @@
           <span class="subsystem-plane-badge">Plane 03 · Governance &amp; Safety</span>
         </div>
         <div class="card-badges">
-          <span class="gauge-status-badge badge-healthy" id="secHeroBadge">53/53 GATES PASS · HARDENED</span>
+          <span class="gauge-status-badge" id="secHeroBadge" title="Not measured yet: no data source is wired to this value">GATES NOT MEASURED</span>
         </div>
       </div>
       <div class="subsystem-hero-primer">
@@ -3830,8 +3830,8 @@
       <div class="subsystem-vitals-grid">
         <div class="subsystem-vital-tile">
           <span class="subsystem-vital-label">Pre-Commit Verification</span>
-          <span class="subsystem-vital-value" style="color:var(--grn)" id="secHeroGates">53 / 53 PASS</span>
-          <span class="subsystem-vital-delta delta-pos">● 0 Unvetted Commits</span>
+          <span class="subsystem-vital-value" style="color:var(--fg3)" id="secHeroGates" title="Not measured yet: no data source is wired to this value">--</span>
+          <span class="subsystem-vital-delta">not measured yet</span>
         </div>
         <div class="subsystem-vital-tile">
           <span class="subsystem-vital-label">AppArmor Confinement</span>
@@ -4023,7 +4023,7 @@
           <span class="subsystem-plane-badge">Plane 02 · System &amp; Hardware Foundation</span>
         </div>
         <div class="card-badges">
-          <span class="gauge-status-badge badge-healthy" id="opsHeroBadge">16/17 SERVICES ONLINE</span>
+          <span class="gauge-status-badge" id="opsHeroBadge" title="Not measured yet: no data source is wired to this value">SERVICES NOT MEASURED</span>
         </div>
       </div>
       <div class="subsystem-hero-primer">
@@ -4032,8 +4032,8 @@
       <div class="subsystem-vitals-grid">
         <div class="subsystem-vital-tile">
           <span class="subsystem-vital-label">Microservice Mesh</span>
-          <span class="subsystem-vital-value" style="color:var(--grn)" id="opsHeroServices">16 / 17</span>
-          <span class="subsystem-vital-delta delta-pos">● 1 Idle Standby · 0 Failed</span>
+          <span class="subsystem-vital-value" style="color:var(--fg3)" id="opsHeroServices" title="Not measured yet: no data source is wired to this value">--</span>
+          <span class="subsystem-vital-delta">not measured yet</span>
         </div>
         <div class="subsystem-vital-tile">
           <span class="subsystem-vital-label">APU Thermal Margin</span>
@@ -4325,7 +4325,7 @@
           <span class="subsystem-plane-badge">Deep Layer Diagnostics · L0-L7</span>
         </div>
         <div class="card-badges">
-          <span class="gauge-status-badge badge-healthy" id="spiderHeroBadge">8/8 LAYERS VERIFIED</span>
+          <span class="gauge-status-badge" id="spiderHeroBadge" title="Filled from /api/health/layered once the layer check has run">-- LAYERS</span>
         </div>
       </div>
       <div class="subsystem-hero-primer">
@@ -4334,8 +4334,8 @@
       <div class="subsystem-vitals-grid">
         <div class="subsystem-vital-tile">
           <span class="subsystem-vital-label">Layer Health Coverage</span>
-          <span class="subsystem-vital-value" style="color:var(--grn)" id="spiderHeroLayers">8 / 8 LAYERS</span>
-          <span class="subsystem-vital-delta delta-pos">● L0 Hardware to L7 UX</span>
+          <span class="subsystem-vital-value" style="color:var(--fg3)" id="spiderHeroLayers" title="Filled from /api/health/layered once the layer check has run">--</span>
+          <span class="subsystem-vital-delta">L0 Hardware to L7 UX</span>
         </div>
         <div class="subsystem-vital-tile">
           <span class="subsystem-vital-label">Active Anomalies</span>
@@ -4407,8 +4407,8 @@
         </div>
         <div class="subsystem-vital-tile">
           <span class="subsystem-vital-label">Consensus Quorum</span>
-          <span class="subsystem-vital-value" style="color:var(--grn)" id="fleetHeroConsensus">NOMINAL</span>
-          <span class="subsystem-vital-delta delta-pos">Multi-Model Peer Review</span>
+          <span class="subsystem-vital-value" style="color:var(--fg3)" id="fleetHeroConsensus" title="Not measured yet: no data source is wired to this value">--</span>
+          <span class="subsystem-vital-delta">Multi-Model Peer Review</span>
         </div>
       </div>
       <details class="telemetry-info-expander">
@@ -4442,7 +4442,7 @@
           <span class="em-tag tag-pass" style="cursor:pointer;" onclick="navigator.clipboard.writeText('aq-workspace claude')" title="Click to copy">claude</span>
           <span class="em-tag tag-pass" style="cursor:pointer;" onclick="navigator.clipboard.writeText('aq-workspace codex')" title="Click to copy">codex</span>
           <span class="em-tag tag-pass" style="cursor:pointer;" onclick="navigator.clipboard.writeText('aq-workspace local')" title="Click to copy">local (qwen)</span>
-          <span class="em-tag tag-pass" style="cursor:pointer;" onclick="navigator.clipboard.writeText('aq-workspace gemini')" title="Click to copy">gemini / antigravity</span>
+          <span class="em-tag tag-pass" style="cursor:pointer;" onclick="navigator.clipboard.writeText('aq-workspace gemini')" title="Click to copy">gemini (headless CLI)</span>
         </div>
         
         <!-- Quick Dispatch Toolbar -->
@@ -4451,7 +4451,7 @@
             <option value="local">󰚩 Local Qwen3-35B (APU :8080)</option>
             <option value="claude">󰚩 Claude 3.7 / Fable-5 (Switchboard :8085)</option>
             <option value="codex">󰚩 OpenAI Codex / GPT-4o (Hybrid :8003)</option>
-            <option value="gemini">󰚩 Google Antigravity / Gemini 3.8 (Switchboard :8085)</option>
+            <option value="gemini">󰚩 Gemini headless CLI (delegate-to-gemini)</option>
             <option value="all">󰚩 @All Broadcast</option>
           </select>
           <select class="dispatch-select" id="dispatch-role-select">
