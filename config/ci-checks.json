@@ -538,6 +538,19 @@
       "ci_workflow": ".github/workflows/test.yml#syntax"
     },
     {
+      "id": "sweep-lanes-test",
+      "cmd": "scripts/testing/test-sweep-lanes.py",
+      "paths": [
+        "scripts/testing/test-sweep-lanes.py",
+        "scripts/governance/sweep-lanes.py",
+        "config/ci-checks.json"
+      ],
+      "needs": [
+        "python3"
+      ],
+      "ci_workflow": ".github/workflows/test.yml#syntax"
+    },
+    {
       "id": "tests-agent",
       "cmd": "scripts/testing/run-test-group.py tests-agent",
       "paths": [
