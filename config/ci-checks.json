@@ -751,7 +751,8 @@
         "scripts/testing/test-aq-update.py",
         "scripts/testing/test-aq-usage-logging.py",
         "scripts/testing/test-aq-workspace.py",
-        "scripts/testing/test-aq-worktree-reap.py"
+        "scripts/testing/test-aq-worktree-reap.py",
+        "scripts/testing/test-rsi-convene-rounds.py"
       ],
       "needs": [
         "python3",
@@ -833,7 +834,8 @@
         "scripts/testing/test-aq-update.py",
         "scripts/testing/test-aq-usage-logging.py",
         "scripts/testing/test-aq-workspace.py",
-        "scripts/testing/test-aq-worktree-reap.py"
+        "scripts/testing/test-aq-worktree-reap.py",
+        "scripts/testing/test-rsi-convene-rounds.py"
       ]
     },
     {
@@ -1873,7 +1875,7 @@
         "scripts/testing/test-tier0-agent-harness-regression-gate.py",
         "scripts/testing/test-tier0-color-echo-extension.sh",
         "scripts/testing/test-tier0-qa-failed-detail.sh",
-        "scripts/testing/test-tier0d-gate-mutation.py",
+      "scripts/testing/test-tier0d-gate-mutation.py",
         "scripts/governance/tier0.d/**",
         "scripts/testing/test-timeout-guard-behavior.py",
         "scripts/testing/test-token-usage-coverage.py",
