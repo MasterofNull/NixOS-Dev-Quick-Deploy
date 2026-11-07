@@ -19,6 +19,9 @@ S = os.environ["STUB_DIR"]
 cfg = json.load(open(f"{S}/cfg.json"))
 args = sys.argv[1:]
 open(f"{S}/calls.log", "a").write(f"{lane} {' '.join(args)}\n")
+open(f"{S}/cwd.log", "a").write(f"{lane} {os.getcwd()}\n")
+if "--prompt-file" in args:
+    open(f"{S}/prompt-{lane}.txt", "w").write(open(args[args.index("--prompt-file") + 1]).read())
 if "--budget-check-only" in args:
     sys.exit(cfg.get(lane, {}).get("budget_rc", 0))
 c = cfg.get(lane, {"mode": "ok"})
@@ -40,6 +43,9 @@ if side == "local_commit":
     subprocess.run(["git", "add", "extra.txt"], check=True)
     subprocess.run(["git", "-c", "user.name=x", "-c", "user.email=x@x", "commit", "-q", "-m", "late edit"], check=True)
 mode = c["mode"]
+model = args[args.index("--model") + 1] if "--model" in args else ""
+if model and model in c.get("quota_models", []):
+    mode = "quota"
 if mode == "quota":
     print("Error: 429 RESOURCE_EXHAUSTED quota exceeded")
     sys.exit(1)
@@ -331,14 +337,74 @@ class StaleEvidence(Base):
 
 class Lanes(Base):
     def test_stall_and_budget_fall_through_to_local_and_are_recorded(self):
-        self.cfg({"gemini": {"mode": "silent"}, "codex": {"budget_rc": 3}, "local": {"mode": "ok"}})
-        self.land(expect=0)
+        self.cfg({"codex": {"mode": "silent"}, "local": {"mode": "ok"}})
+        self.land("--lanes", "codex,local", expect=0)
         body = self.pr_body()
-        self.assertIn("gemini: stall", body)
-        self.assertIn("codex: budget refused", body)
+        self.assertIn("codex: stall", body)
         self.assertIn("Reviewed-by: local-direct", body)
+        self.cfg({"gemini": {"mode": "ok"}, "codex": {"budget_rc": 3}, "local": {"mode": "ok"}})
+        self.tearDown_state(); self.gh_state({})
+        self.land("--lanes", "codex,local", expect=0)
+        self.assertIn("codex: budget refused", self.pr_body())
         self.assertEqual(self.calls("codex"), [])  # budget refused: never dispatched
         self.assertNotIn("--force-budget", (self.S / "calls.log").read_text())
+
+    def test_gemini_has_no_stall_limit_a_silent_review_hits_the_hard_limit(self):
+        # gemini -p prints only its final answer, so silence is normal for minutes; stall must not kill it
+        self.cfg({"gemini": {"mode": "silent"}, "local": {"mode": "ok"}})
+        self.land("--lanes", "gemini,local", expect=0)
+        body = self.pr_body()
+        self.assertIn("gemini: timeout after 4s", body)
+        self.assertNotIn("gemini: stall", body)
+
+    def test_gemini_gets_an_explicit_model_default_and_override(self):
+        self.land(expect=0)
+        self.assertIn("--model gemini-3.8-flash-high", self.calls("gemini")[0])
+        self.tearDown_state(); self.gh_state({})
+        self.env["AQ_LAND_GEMINI_MODEL"] = "gemini-x-custom"
+        self.land(expect=0)
+        self.assertIn("--model gemini-x-custom", self.calls("gemini")[-1])
+
+    def test_gemini_quota_retries_once_on_the_fallback_model_and_records_it(self):
+        self.cfg({"gemini": {"mode": "ok", "quota_models": ["gemini-3.8-flash-high"]}})
+        self.land(expect=0)
+        calls = self.calls("gemini")
+        self.assertEqual(len(calls), 2, calls)
+        self.assertIn("--model gemini-3.8-flash-high", calls[0])
+        self.assertIn("--model gemini-3.8-flash-medium", calls[1])
+        body = self.pr_body()
+        self.assertIn("gemini: model gemini-3.8-flash-high quota error; retried with gemini-3.8-flash-medium", body)
+        self.assertIn("Reviewed-by: gemini", body)
+
+    def test_gemini_quota_on_both_models_leaves_the_lane_after_one_retry(self):
+        self.cfg({"gemini": {"mode": "quota"}, "local": {"mode": "ok"}})
+        self.land("--lanes", "gemini,local", expect=0)
+        self.assertEqual(len(self.calls("gemini")), 2)
+        body = self.pr_body()
+        self.assertIn("retried with gemini-3.8-flash-medium", body)
+        self.assertIn("gemini: quota error", body)
+        self.assertIn("Reviewed-by: local-direct", body)
+
+    def test_reviewer_prompt_points_at_the_worktree_and_runs_there(self):
+        self.cfg({"gemini": {"mode": "ok"}, "codex": {"mode": "ok"}})
+        self.land("--lanes", "gemini", expect=0)
+        wd = str(self.wd)
+        text = (self.S / "prompt-gemini.txt").read_text()
+        self.assertIn(f"under the worktree path {wd}", text)
+        self.assertIn("main checkout", text)
+        self.assertIn("out of date", text)
+        self.assertIn("Do not run test suites", text)
+        cwd = [l for l in (self.S / "cwd.log").read_text().splitlines() if l.startswith("gemini ")][0].split(" ", 1)[1]
+        self.assertEqual(os.path.realpath(cwd), os.path.realpath(wd))
+        self.tearDown_state(); self.gh_state({})
+        self.land("--lanes", "local", expect=0)
+        self.assertNotIn("worktree path", (self.S / "prompt-local.txt").read_text())
+
+    def test_codex_wrapper_runs_in_the_directory_aq_land_names(self):
+        self.land("--lanes", "codex", expect=0)
+        self.assertIn("--shared", self.calls("codex")[0])
+        src = (ROOT / "scripts/ai/delegate-to-codex").read_text()
+        self.assertGreaterEqual(src.count("${AQ_DELEGATE_CWD:-$REPO_ROOT}"), 3)
 
     def test_hard_timeout_and_quota_error_fall_through(self):
         self.cfg({"gemini": {"mode": "hang"}, "codex": {"mode": "quota"}, "local": {"mode": "ok"}})

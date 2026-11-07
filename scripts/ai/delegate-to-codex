@@ -548,7 +548,7 @@ ${prompt}"
     # Shared mode: set codex's working directory to the repo root so it knows
     # where the project boundary is (prevents "writing outside of project" errors)
     if [[ "$shared_mode" == "true" ]]; then
-        cmd+=("-C" "$REPO_ROOT")
+        cmd+=("-C" "${AQ_DELEGATE_CWD:-$REPO_ROOT}")
     fi
     # Last argument: full prompt with harness constraints prepended
     cmd+=("$full_prompt")
@@ -572,7 +572,7 @@ ${prompt}"
             ( cd "$wt_path" && "${cmd[@]}" < /dev/null ) 2>&1 | tee "$output_file" || exit_code="${PIPESTATUS[0]}"
         else
             # For shared mode, run from repo root (though -C flag tells codex the root)
-            ( cd "$REPO_ROOT" && "${cmd[@]}" < /dev/null ) 2>&1 | tee "$output_file" || exit_code="${PIPESTATUS[0]}"
+            ( cd "${AQ_DELEGATE_CWD:-$REPO_ROOT}" && "${cmd[@]}" < /dev/null ) 2>&1 | tee "$output_file" || exit_code="${PIPESTATUS[0]}"
         fi
         quota_capture_from_output "$output_file" || true
         # CS-1: hand back the isolated worktree's changes (patch + commit on
@@ -600,7 +600,7 @@ ${prompt}"
         # CS-1: cd into the isolated worktree (if any) before running codex.
         # For shared mode, cd to repo root (even though -C flag tells codex the root).
         # CS-1: run inside the isolated worktree (if any); shared mode runs from repo root.
-        local _cd_dir="$REPO_ROOT"
+        local _cd_dir="${AQ_DELEGATE_CWD:-$REPO_ROOT}"
         [[ -n "$wt_path" ]] && _cd_dir="$wt_path"
         # Background: dynamic values travel as argv to a fixed worker (never re-parsed by a
         # shell). Launch errors go to the task output file, not /dev/null.
@@ -712,7 +712,7 @@ case "${SUBCMD:-}" in
             fi
             # Shared mode: set codex's working directory to the repo root
             if [[ "$SHARED_MODE" == "true" ]]; then
-                cmd+=("-C" "$REPO_ROOT")
+                cmd+=("-C" "${AQ_DELEGATE_CWD:-$REPO_ROOT}")
             fi
             cmd+=("$PROMPT")
             printf '%s\n' "${cmd[@]}"
