@@ -690,6 +690,7 @@
         "scripts/testing/test-aq-tempest.py",
         "scripts/testing/test-aq-triage.py",
         "scripts/testing/test-aq-update-tiers.py",
+        "scripts/testing/test-aq-update.py",
         "scripts/testing/test-aq-usage-logging.py",
         "scripts/testing/test-aq-workspace.py",
         "scripts/testing/test-aq-worktree-reap.py"
@@ -769,6 +770,7 @@
         "scripts/testing/test-aq-tempest.py",
         "scripts/testing/test-aq-triage.py",
         "scripts/testing/test-aq-update-tiers.py",
+        "scripts/testing/test-aq-update.py",
         "scripts/testing/test-aq-usage-logging.py",
         "scripts/testing/test-aq-workspace.py",
         "scripts/testing/test-aq-worktree-reap.py"
