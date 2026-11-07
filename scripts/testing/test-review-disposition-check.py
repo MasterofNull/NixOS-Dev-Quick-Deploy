@@ -4,6 +4,7 @@ import importlib.util
 import json
 import os
 import pathlib
+import re
 import subprocess
 import sys
 import tempfile
@@ -584,6 +585,110 @@ class Relocation(unittest.TestCase):
         self.g("merge", "-q", "--no-ff", "-m", "Update branch", "main")
         self.assertFalse([e for e in self.errs(base) if "stale" in e])
 
+
+WORKFLOW = ROOT / ".github/workflows/review-disposition.yml"
+
+
+def _code(text):
+    """Workflow text without comment lines or trailing comments."""
+    return "\n".join(re.sub(r"(^|\s)#.*$", "", ln).rstrip() for ln in text.splitlines())
+
+
+# TRANSITIONAL: the next PR flips this to True (and removes the `pull_request` trigger), after which
+# `pull_request` (and any other trigger) is rejected. Until then only `pull_request` is tolerated
+# beside `pull_request_target`; `pull_request_review` and anything else is never accepted.
+TARGET_ONLY = False
+
+
+def workflow_problems(text, target_only=None):
+    """Static trust-boundary problems in a review-disposition workflow (empty list = trusted-base design)."""
+    code, errs = _code(text), []
+    on = re.search(r"^on:\s*\n((?:[ \t]+.*\n|\n)*)", code + "\n", re.M)
+    triggers = set(re.findall(r"^  (\w+):", on.group(1), re.M)) if on else set()
+    if "pull_request_target" not in triggers:
+        errs.append("workflow is not triggered by pull_request_target (the PR's own workflow would judge it)")
+    allowed = {"pull_request_target"} | (set() if (TARGET_ONLY if target_only is None else target_only) else {"pull_request"})
+    extra = triggers - allowed
+    if extra:
+        errs.append(f"extra triggers run from the PR merge ref: {sorted(extra)}")
+    for ln in code.splitlines():
+        if re.search(r"github\.event\.pull_request\.head|github\.head_ref|refs/pull/|refs/merge", ln):
+            errs.append(f"references the PR head/merge ref: {ln.strip()}")
+        m = re.match(r"\s*(?:-\s+)?(ref|repository):\s*(.*)$", ln)
+        if m:
+            errs.append(f"checkout overrides {m.group(1)} (must default to the base branch): {ln.strip()}")
+        run = re.match(r"\s*(?:-\s+)?run:\s*(.*)$", ln)
+        if run and not re.fullmatch(r'python3 scripts/governance/[\w-]+\.py "\$GITHUB_EVENT_PATH"', run.group(1).strip()):
+            errs.append(f"run step is not a base-checkout governance script: {ln.strip()}")
+        if re.search(r"git (checkout|switch|worktree|merge|pull)|gh pr checkout|\./|\bbash\b|\bsource\b", ln) and "uses:" not in ln:
+            errs.append(f"step may execute or check out PR content: {ln.strip()}")
+    uses = re.findall(r"uses:\s*(\S+)", code)
+    if len(uses) != 1 or not uses[0].startswith("actions/checkout@"):
+        errs.append(f"the only action must be actions/checkout, got {uses}")
+    if not re.search(r"persist-credentials:\s*false\b", code):
+        errs.append("checkout lacks persist-credentials: false")
+    pblock = re.findall(r"permissions:\s*\n((?:[ \t]+[\w-]+:\s*\S+\n)+)", code + "\n")
+    if not pblock:
+        errs.append("no explicit permissions block")
+    for blk in pblock:
+        for k, v in re.findall(r"([\w-]+):\s*(\S+)", blk):
+            if v not in ("read", "none"):
+                errs.append(f"permission {k}: {v} is not read-only")
+    if re.search(r"permissions:\s*(write-all|read-all)", code):
+        errs.append("permissions shorthand is not minimal")
+    if re.search(r"secrets\.", code):
+        errs.append("workflow references secrets")
+    return errs
+
+
+class WorkflowTrustBoundary(unittest.TestCase):
+    """The required check must judge a PR with code from main, not from the PR."""
+
+    def test_current_workflow_is_trusted_base(self):
+        self.assertEqual(workflow_problems(WORKFLOW.read_text()), [])
+
+    def test_final_form_rejects_pull_request_trigger(self):
+        errs = workflow_problems(WORKFLOW.read_text(), target_only=True)
+        self.assertEqual([e for e in errs if "extra triggers" in e], ["extra triggers run from the PR merge ref: ['pull_request']"] if "\n  pull_request:" in _code(WORKFLOW.read_text()) else [])
+
+    def test_job_name_is_required_context(self):
+        self.assertEqual(re.findall(r"^    name: (.*)$", _code(WORKFLOW.read_text()), re.M), ["review-disposition"])
+
+    def test_old_pull_request_workflow_fails(self):
+        old = (
+            "on:\n  pull_request:\n    types: [opened]\n  pull_request_review:\n    types: [submitted]\n"
+            "permissions:\n  contents: read\n  pull-requests: read\njobs:\n  j:\n    steps:\n"
+            "      - uses: actions/checkout@abc  # v5\n        with:\n          fetch-depth: 0\n"
+            "      - run: python3 scripts/governance/check-review-disposition.py \"$GITHUB_EVENT_PATH\"\n"
+        )
+        errs = workflow_problems(old)
+        self.assertTrue(any("not triggered by pull_request_target" in e for e in errs), errs)
+        self.assertTrue(any("persist-credentials" in e for e in errs), errs)
+
+    def test_head_checkout_and_write_permission_fail(self):
+        bad = (
+            "on:\n  pull_request_target:\n    types: [opened]\npermissions:\n  contents: write\njobs:\n  j:\n    steps:\n"
+            "      - uses: actions/checkout@abc\n        with:\n          ref: ${{ github.event.pull_request.head.sha }}\n"
+            "          persist-credentials: false\n      - run: ./scripts/x.sh\n"
+        )
+        errs = workflow_problems(bad)
+        for needle in ("head/merge ref", "overrides ref", "not read-only", "not a base-checkout"):
+            self.assertTrue(any(needle in e for e in errs), (needle, errs))
+
+
+class PullRequestTargetPayload(unittest.TestCase):
+    """The event shape pull_request_target delivers must satisfy the checker's parsing."""
+
+    def test_payload_fields_and_stale_comparison(self):
+        live = {"head": {"sha": HEAD}, "base": {"sha": "e" * 40, "ref": "main", "repo": {"full_name": "o/r"}}, "body": BODY}
+        event = {"action": "synchronize", "number": 7, "repository": {"full_name": "o/r"},
+                 "pull_request": {"number": 7, "head": {"sha": "f" * 40, "ref": "x", "repo": {"full_name": "fork/r"}},
+                                  "base": {"ref": "main", "sha": "e" * 40}, "body": "ignored"}}
+        errs = crd.evaluate(event, get=lambda url: live)
+        self.assertTrue(any("stale run" in e for e in errs), errs)  # payload head differs from the live head
+        event["pull_request"]["head"]["sha"] = HEAD
+        errs = crd.evaluate(event, get=lambda url: live, remote="/nonexistent-remote", fetch_head=False)
+        self.assertFalse(any("stale run" in e or "lacks" in e for e in errs), errs)
 
 
 if __name__ == "__main__":
