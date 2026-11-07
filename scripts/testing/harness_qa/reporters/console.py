@@ -16,9 +16,13 @@ console = Console() if _RICH else None
 class ConsoleReporter:
     def render(self, rs: ResultSet, machine_mode: bool = False) -> None:
         if machine_mode:
+            # One line per failure, then ALWAYS a summary line: a run that prints nothing is
+            # indistinguishable from one that never ran (QA-MACHINE-MODE-EMPTY-OUTPUT).
             for result in rs.results:
                 if result.status == Status.FAIL:
-                    print(f"FAIL {result.id} {result.description}")
+                    reason = f" ({result.reason})" if result.reason else ""
+                    print(f"FAIL {result.id} {result.description}{reason}")
+            print(f"SUMMARY phase={rs.phase} {rs.passed} passed · {rs.failed} failed · {rs.skipped} skipped · {rs.duration_s}s")
             return
 
         if not _RICH:

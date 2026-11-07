@@ -525,6 +525,19 @@
       "ci_workflow": ".github/workflows/test.yml#syntax"
     },
     {
+      "id": "sweep-enabled-units-test",
+      "cmd": "scripts/testing/test-sweep-enabled-units.py",
+      "paths": [
+        "scripts/testing/test-sweep-enabled-units.py",
+        "scripts/governance/sweep-enabled-units.py",
+        "config/ci-checks.json"
+      ],
+      "needs": [
+        "python3"
+      ],
+      "ci_workflow": ".github/workflows/test.yml#syntax"
+    },
+    {
       "id": "mcp-integrity-unit-path-test",
       "cmd": "scripts/testing/test-mcp-integrity-unit-path.sh",
       "paths": [
@@ -636,6 +649,7 @@
         "scripts/testing/test-aq-editor-rescue.py",
         "scripts/testing/test-aq-eval.py",
         "scripts/testing/test-aq-evidence-collector.py",
+        "scripts/testing/test-aq-help-center.py",
         "scripts/testing/test-aq-index-knowledge-graph.py",
         "scripts/testing/test-aq-index-logic-patterns-backoff.py",
         "scripts/testing/test-aq-inference-bench.py",
@@ -714,6 +728,7 @@
         "scripts/testing/test-aq-editor-rescue.py",
         "scripts/testing/test-aq-eval.py",
         "scripts/testing/test-aq-evidence-collector.py",
+        "scripts/testing/test-aq-help-center.py",
         "scripts/testing/test-aq-index-knowledge-graph.py",
         "scripts/testing/test-aq-index-logic-patterns-backoff.py",
         "scripts/testing/test-aq-inference-bench.py",
@@ -1762,6 +1777,8 @@
         "scripts/testing/test-stateful-downgrade-policy.py",
         "scripts/testing/test-suggested-ai-repo-candidates.py",
         "scripts/testing/test-suspend-resume-contract.py",
+        "scripts/testing/test-sweep-gates.py",
+        "scripts/governance/sweep-gates.py",
         "scripts/testing/test-sweeper-taxonomy.py",
         "scripts/testing/test-switchboard-adaptive-local-budget.py",
         "scripts/testing/test-switchboard-context-output-gc.py",
@@ -1851,6 +1868,7 @@
         "scripts/testing/test-stateful-downgrade-policy.py",
         "scripts/testing/test-suggested-ai-repo-candidates.py",
         "scripts/testing/test-suspend-resume-contract.py",
+        "scripts/testing/test-sweep-gates.py",
         "scripts/testing/test-sweeper-taxonomy.py",
         "scripts/testing/test-switchboard-adaptive-local-budget.py",
         "scripts/testing/test-switchboard-context-output-gc.py",
@@ -1873,7 +1891,7 @@
         "scripts/testing/test-tier0-agent-harness-regression-gate.py",
         "scripts/testing/test-tier0-color-echo-extension.sh",
         "scripts/testing/test-tier0-qa-failed-detail.sh",
-      "scripts/testing/test-tier0d-gate-mutation.py",
+        "scripts/testing/test-tier0d-gate-mutation.py",
         "scripts/testing/test-timeout-guard-behavior.py",
         "scripts/testing/test-token-usage-coverage.py",
         "scripts/testing/test-tool-call-grammar.py",
@@ -1907,6 +1925,40 @@
         "scripts/testing/test-worktree-write-guard.py",
         "scripts/testing/test-write-region.py"
       ]
+    },
+    {
+      "id": "sweep-tracker-claims",
+      "cmd": "scripts/governance/sweep-tracker-claims.py",
+      "paths": [
+        "scripts/governance/sweep-tracker-claims.py",
+        "scripts/ai/aq-pm-tracker",
+        ".agents/plans/*/tracker.json",
+        "config/activation-manifest.json"
+      ],
+      "needs": ["python3", "git"],
+      "ci_workflow": ".github/workflows/test.yml#syntax"
+    },
+    {
+      "id": "sweep-tracker-claims-test",
+      "cmd": "scripts/testing/test-sweep-tracker-claims.py",
+      "paths": [
+        "scripts/governance/sweep-tracker-claims.py",
+        "scripts/testing/test-sweep-tracker-claims.py",
+        "scripts/ai/aq-pm-tracker",
+        ".agents/plans/*/tracker.json"
+      ],
+      "needs": ["python3", "git"],
+      "ci_workflow": ".github/workflows/test.yml#syntax"
+    },
+    {
+      "id": "tier0-gate-placement-tests",
+      "cmd": "scripts/testing/test-tier0-gate-placement.py",
+      "paths": [],
+      "needs": [
+        "python3",
+        "git"
+      ],
+      "ci_workflow": ".github/workflows/test.yml#manifest-tests"
     }
   ],
   "ci_exempt": [
@@ -2205,11 +2257,6 @@
       "script": "scripts/testing/test-aq-confine.py",
       "class": "live-service",
       "reason": "host-only: needs a live local service (switchboard/dashboard/coordinator/AIDB); last output: SUMMARY: 204 checks ran, 54 failed, 0 behavioral groups skipped (preflight: ok)"
-    },
-    {
-      "script": "scripts/testing/test-aq-help-center.py",
-      "class": "known-failing",
-      "reason": "fails on main (rc=1): AssertionError: Doc file missing for workspace-operator: /home/hyperd/Documents/NixOS-Dev-, tracked in backlog"
     },
     {
       "script": "scripts/testing/test-aq-loop-review-repair-guard.py",

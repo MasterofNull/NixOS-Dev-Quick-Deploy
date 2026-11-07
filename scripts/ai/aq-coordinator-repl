@@ -95,28 +95,28 @@ command_completer = WordCompleter(COMMANDS + [
 
 ROUTES = {
     "local": {
-        "label": "Local APU (Qwen3-35B)",
+        "label": "Local Qwen",
         "color": "#00d9ff",
         "backend": "llama.cpp / hybrid",
         "url": f"{HYBRID_URL}/v1/chat/completions",
         "model": "qwen3-35b",
     },
     "claude": {
-        "label": "Claude 3.7 / Fable-5",
+        "label": "Claude (CLI)",
         "color": "#ff79c6",
         "backend": "switchboard / anthropic",
         "url": f"{SWITCHBOARD_URL}/v1/chat/completions",
         "model": "claude-fable-5",
     },
     "codex": {
-        "label": "Codex / GPT-4o",
+        "label": "Codex (CLI)",
         "color": "#50fa7b",
         "backend": "hybrid / openai",
         "url": f"{HYBRID_URL}/v1/chat/completions",
         "model": "openai-codex",
     },
     "gemini": {
-        "label": "Gemini 2.5 / Antigravity",
+        "label": "Gemini (CLI)",
         "color": "#bd93f9",
         "backend": "switchboard / google",
         "url": f"{SWITCHBOARD_URL}/v1/chat/completions",
@@ -157,7 +157,7 @@ class CoordinatorSession:
         elif new_route in ("codex", "openai", "gpt"):
             self.active_route = "codex"
             return True
-        elif new_route in ("gemini", "antigravity", "google"):
+        elif new_route in ("gemini", "google"):
             self.active_route = "gemini"
             return True
         return False
@@ -186,7 +186,7 @@ def show_help():
     table.add_column("Command", style="bold cyan", width=22)
     table.add_column("Description", style="white")
 
-    table.add_row("/model <name>", "Switch model: local (Qwen-35B), claude (Fable-5), codex, gemini")
+    table.add_row("/model <name>", "Switch model: local (Qwen), claude, codex, gemini")
     table.add_row("@<agent> <prompt>", "Direct prompt to specific agent (@local, @claude, @codex, @gemini)")
     table.add_row("@all <prompt>", "Broadcast prompt to all 4 models with comparative benchmarks")
     table.add_row("/dispatch <role> \"task\"", "Dispatch background sub-agent (implementer, architect, researcher)")
@@ -496,7 +496,7 @@ async def main():
             elif target in ("codex", "openai", "gpt"):
                 await stream_chat(query, route_key="codex")
                 continue
-            elif target in ("gemini", "antigravity", "google"):
+            elif target in ("gemini", "google"):
                 await stream_chat(query, route_key="gemini")
                 continue
             else:

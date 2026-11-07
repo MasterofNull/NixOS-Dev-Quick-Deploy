@@ -114,4 +114,18 @@ if ((${#stale[@]})); then
   echo "sudo systemctl restart ${stale[*]}"
 fi
 
+# 9. prove the live stack from the owner's shell. QA phase 0 owns the live-state checks that tier0 --pre-commit
+# no longer runs (0.1.2, 0.16.2, 0.10.66 aq-confine needs this shell's systemd user manager). Context-required:
+# a skip for "cannot run here" becomes a failure so the suite always runs somewhere.
+if [[ -x scripts/ai/aq-qa ]]; then
+  qa_out="$(AQ_CONFINE_REQUIRE_CONTEXT=1 scripts/ai/aq-qa 0 --machine 2>&1)" || true
+  echo "$qa_out" | tail -n 25
+  if echo "$qa_out" | grep -qE '^SUMMARY .* 0 failed'; then
+    echo "$TAG PASS: aq-qa 0 (live stack) reports 0 failed"
+  else
+    echo "$TAG FAIL: aq-qa 0 --machine did not report '0 failed' (no SUMMARY line counts as failure)" >&2
+    rc=1
+  fi
+fi
+
 ((rc == 0)) || exit 1
