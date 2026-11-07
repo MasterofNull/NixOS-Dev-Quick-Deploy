@@ -89,6 +89,25 @@ def main() -> int:
             print(f"FAIL: aq-review-receipt MAIN_ROOT {r.stdout.strip()!r} != {str(expected)!r}\n{r.stderr}")
             return 1
         print("PASS: aq-review-receipt MAIN_ROOT matches delegation_dir.py from worktree")
+
+        # aq-delegation-registry from a worktree reads the main checkout's registry; --registry still overrides.
+        row = '{"id":"task-main-1","status":"done","agent":"codex","role":"review","pid":null,"description":"from main"}\n'
+        (main_repo / ".agents" / "delegation" / "registry.jsonl").write_text(row)
+        alt = Path(td) / "alt.jsonl"
+        alt.write_text(row.replace("task-main-1", "task-alt-1"))
+        cli = [sys.executable, str(wt / "scripts" / "ai" / "aq-delegation-registry")]
+        r = subprocess.run([*cli, "list"], capture_output=True, text=True, env=env, cwd=wt)
+        if "task-main-1" not in r.stdout:
+            print(f"FAIL: worktree registry list cannot see the main registry:\n{r.stdout}{r.stderr}")
+            return 1
+        r = subprocess.run([*cli, "--registry", str(alt), "list"], capture_output=True, text=True, env=env, cwd=wt)
+        if "task-alt-1" not in r.stdout or "task-main-1" in r.stdout:
+            print(f"FAIL: --registry override not honoured:\n{r.stdout}{r.stderr}")
+            return 1
+        if (wt / ".agents" / "delegation" / "registry.jsonl").exists():
+            print("FAIL: worktree-local registry created")
+            return 1
+        print("PASS: aq-delegation-registry from a worktree uses the main registry; --registry overrides")
         return 0
 
 
