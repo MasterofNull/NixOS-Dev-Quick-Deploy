@@ -593,6 +593,7 @@ jobs:
             --only mcp-integrity-baseline-test \
             --only mcp-integrity-unit-path-test \
             --only sweep-lanes-test \
+            --only sweep-enabled-units-test \
             --only tests-agent \
             --only tests-aq \
             --only tests-aqos \
