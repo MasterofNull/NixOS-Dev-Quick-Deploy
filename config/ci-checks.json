@@ -551,6 +551,33 @@
       "ci_workflow": ".github/workflows/test.yml#syntax"
     },
     {
+      "id": "sweep-dashboard-test",
+      "cmd": "scripts/testing/test-sweep-dashboard.py",
+      "paths": [
+        "scripts/testing/test-sweep-dashboard.py",
+        "scripts/governance/sweep-dashboard.py",
+        "config/ci-checks.json"
+      ],
+      "needs": [
+        "python3"
+      ],
+      "ci_workflow": ".github/workflows/test.yml#syntax"
+    },
+    {
+      "id": "sweep-dashboard-report",
+      "cmd": "scripts/governance/sweep-dashboard.py",
+      "paths": [
+        "scripts/governance/sweep-dashboard.py",
+        "dashboard.html",
+        "assets/dashboard.js",
+        "dashboard/backend/api/**"
+      ],
+      "needs": [
+        "python3"
+      ],
+      "ci_workflow": ".github/workflows/test.yml#syntax"
+    },
+    {
       "id": "tests-agent",
       "cmd": "scripts/testing/run-test-group.py tests-agent",
       "paths": [
@@ -690,6 +717,7 @@
         "scripts/testing/test-aq-tempest.py",
         "scripts/testing/test-aq-triage.py",
         "scripts/testing/test-aq-update-tiers.py",
+        "scripts/testing/test-aq-update.py",
         "scripts/testing/test-aq-usage-logging.py",
         "scripts/testing/test-aq-workspace.py",
         "scripts/testing/test-aq-worktree-reap.py"
@@ -769,6 +797,7 @@
         "scripts/testing/test-aq-tempest.py",
         "scripts/testing/test-aq-triage.py",
         "scripts/testing/test-aq-update-tiers.py",
+        "scripts/testing/test-aq-update.py",
         "scripts/testing/test-aq-usage-logging.py",
         "scripts/testing/test-aq-workspace.py",
         "scripts/testing/test-aq-worktree-reap.py"
@@ -1925,6 +1954,30 @@
         "scripts/testing/test-worktree-write-guard.py",
         "scripts/testing/test-write-region.py"
       ]
+    },
+    {
+      "id": "sweep-tracker-claims",
+      "cmd": "scripts/governance/sweep-tracker-claims.py",
+      "paths": [
+        "scripts/governance/sweep-tracker-claims.py",
+        "scripts/ai/aq-pm-tracker",
+        ".agents/plans/*/tracker.json",
+        "config/activation-manifest.json"
+      ],
+      "needs": ["python3", "git"],
+      "ci_workflow": ".github/workflows/test.yml#syntax"
+    },
+    {
+      "id": "sweep-tracker-claims-test",
+      "cmd": "scripts/testing/test-sweep-tracker-claims.py",
+      "paths": [
+        "scripts/governance/sweep-tracker-claims.py",
+        "scripts/testing/test-sweep-tracker-claims.py",
+        "scripts/ai/aq-pm-tracker",
+        ".agents/plans/*/tracker.json"
+      ],
+      "needs": ["python3", "git"],
+      "ci_workflow": ".github/workflows/test.yml#syntax"
     },
     {
       "id": "tier0-gate-placement-tests",

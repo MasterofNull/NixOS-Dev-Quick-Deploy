@@ -1,0 +1,439 @@
+#!/usr/bin/env python3
+"""aq-update: bring the primary checkout (and, only when Nix config changed, the running system) to origin/main.
+
+  aq-update [--dry-run | --resume]
+
+No Nix-affecting change since the deployed revision: fast-forward the checkout, no rebuild.
+Otherwise: refresh every flake input in a worktree, verify with CI's commands, land the lock
+through scripts/ai/aq-land, sync, run aq-deploy-current (sudo prompt for nixos-rebuild), refresh the MCP
+integrity baseline (a second sudo: the baseline is root-owned; usually still cached), validate the
+running revision, append to the ledger. If the baseline cannot be refreshed the run stops with the
+exact command to run, records the failure in the ledger, and `--resume` retries it.
+--dry-run changes nothing (not the checkout, refs, lock, ledger or state). --resume continues
+an interrupted run from the ledger and git state. On demand only; run it as the owner.
+
+Env (test seams): AQ_UPDATE_REPO, AQ_UPDATE_STATE_DIR, AQ_UPDATE_LAND, AQ_UPDATE_DEPLOY, AQ_UPDATE_BASELINE.
+Ledger: $AQ_UPDATE_STATE_DIR (default ${XDG_STATE_HOME:-~/.local/state}/nixos-ai-stack/aq-update)/ledger.jsonl
+"""
+import fcntl
+import fnmatch
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+import tempfile
+import time
+from pathlib import Path
+
+TAG = "aq-update"
+TRAIL = [".agent/memory/issues-backlog.md", ".agent/collaboration/AGENT-CATCHUP-QUEUE.md"]
+STATE = [".agent/collaboration/rsi-incidents.json",
+         ".agents/plans/frontier-evidence-intake/BACKLOG.jsonl",
+         ".agents/plans/frontier-evidence-intake/scan-state.json"]
+NIX = ["nix", "--extra-experimental-features", "nix-command flakes"]
+# CI: nix-build.yml "Check flake", test.yml "Flake Validation", pre-push-nix-eval.sh toplevel eval.
+CI_CMDS = [
+    NIX + ["flake", "check", "--all-systems", "--no-build"],
+    NIX + ["flake", "show", "--no-write-lock-file", "."],
+    NIX + ["flake", "check", "--offline", "--no-build", "--no-write-lock-file", "."],
+    NIX + ["eval", '.#nixosConfigurations."hyperd-ai-dev".config.system.build.toplevel.drvPath'],
+]
+
+
+class Fail(Exception):
+    def __init__(self, stage, reason):
+        super().__init__(reason)
+        self.stage, self.reason = stage, " ".join(str(reason).split())
+
+
+def run(cmd, cwd=None, check=True, stage="run", **kw):
+    try:
+        p = subprocess.run(cmd, cwd=cwd, text=True, capture_output=kw.pop("capture", True), **kw)
+    except OSError as e:
+        raise Fail(stage, f"cannot run {cmd[0]}: {e}")
+    if check and p.returncode:
+        tail = (p.stderr or p.stdout or "").strip().splitlines()[-1:] or [""]
+        raise Fail(stage, f"{' '.join(map(str, cmd[:4]))} exited {p.returncode}" + (f": {tail[0]}" if tail[0] else ""))
+    return p
+
+
+class Ctx:
+    def __init__(self, dry):
+        self.dry = dry
+        self.repo = Path(os.environ.get("AQ_UPDATE_REPO") or self._primary()).resolve()
+        base = os.environ.get("XDG_STATE_HOME") or str(Path.home() / ".local" / "state")
+        self.state = Path(os.environ.get("AQ_UPDATE_STATE_DIR") or Path(base) / "nixos-ai-stack" / "aq-update")
+        self.land_bin = os.environ.get("AQ_UPDATE_LAND") or str(self.repo / "scripts/ai/aq-land")
+        self.deploy = os.environ.get("AQ_UPDATE_DEPLOY") or str(self.repo / "scripts/maintenance/aq-deploy-current")
+        self.baseline = os.environ.get("AQ_UPDATE_BASELINE") or str(
+            self.repo / "scripts/security/update-mcp-integrity-baseline.sh")
+        self.ledger = self.state / "ledger.jsonl"
+        self.scratch = None
+        self.run_id = None
+
+    @staticmethod
+    def _primary():
+        d = Path(__file__).resolve().parent
+        common = run(["git", "-C", d, "rev-parse", "--path-format=absolute", "--git-common-dir"], stage="init").stdout.strip()
+        return Path(common).parent
+
+    # git against the primary checkout
+    def git(self, *a, check=True, stage="git", cwd=None):
+        return run(["git", "-C", cwd or self.repo, *a], check=check, stage=stage)
+
+    def out(self, *a, **kw):
+        return self.git(*a, **kw).stdout.strip()
+
+    # ---- ledger -------------------------------------------------------------------------
+    def events(self):
+        if not self.ledger.exists():
+            return []
+        return [json.loads(x) for x in self.ledger.read_text().splitlines() if x.strip()]
+
+    def log(self, stage, event, **kw):
+        if self.dry:
+            return
+        self.state.mkdir(parents=True, exist_ok=True)
+        rec = {"ts": time.strftime("%Y-%m-%dT%H:%M:%S%z"), "run": self.run_id, "stage": stage, "event": event, **kw}
+        with open(self.ledger, "a") as f:
+            f.write(json.dumps(rec) + "\n")
+            f.flush()
+            os.fsync(f.fileno())
+
+    def lock(self):
+        self.state.mkdir(parents=True, exist_ok=True)
+        self._lk = open(self.state / "lock", "w")
+        try:
+            fcntl.flock(self._lk, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError:
+            raise Fail("lock", "another aq-update is running")
+
+    # ---- git state ----------------------------------------------------------------------
+    def preflight(self):
+        c = self.out("rev-parse", "--absolute-git-dir", stage="preflight")
+        if c != str((self.repo / ".git").resolve()):
+            raise Fail("preflight", f"{self.repo} is not the primary checkout")
+        br = self.git("symbolic-ref", "-q", "--short", "HEAD", check=False).stdout.strip()
+        if br != "main":
+            raise Fail("preflight", f"on '{br or 'DETACHED'}', not main")
+        raw = self.git("diff", "--name-only", "-z", "HEAD", stage="preflight").stdout
+        bad = [f for f in raw.split("\0") if f and f not in TRAIL + STATE]
+        if bad:
+            raise Fail("preflight", f"dirty tracked files (only trail/state files may differ): {', '.join(bad[:5])}")
+
+    def origin_main(self):
+        """(git prefix, commit) of origin/main. Dry-run fetches into a throwaway repo, leaving this one untouched."""
+        if not self.dry:
+            self.git("fetch", "origin", stage="fetch")
+            return ["-C", str(self.repo)], self.out("rev-parse", "refs/remotes/origin/main", stage="fetch")
+        if not self.scratch:
+            self.scratch = tempfile.mkdtemp(prefix="aq-update-dry-")
+            run(["git", "init", "-q", "--bare", self.scratch], stage="fetch")
+            objs = self.out("rev-parse", "--path-format=absolute", "--git-path", "objects")
+            (Path(self.scratch) / "objects/info/alternates").write_text(objs + "\n")
+        url = self.out("config", "remote.origin.url", stage="fetch")
+        run(["git", "--git-dir", self.scratch, "fetch", "-q", url, "main"], stage="fetch")
+        return ["--git-dir", self.scratch], run(
+            ["git", "--git-dir", self.scratch, "rev-parse", "FETCH_HEAD"], stage="fetch").stdout.strip()
+
+    def guard_main(self, stage, target):
+        _, now = self.origin_main()
+        if now != target:
+            raise Fail(stage, f"origin/main moved {target[:8]} -> {now[:8]} since it was verified; re-run aq-update")
+
+    def nix_paths(self):
+        """Nix-impacting path patterns: the case arm in pre-push-nix-eval.sh is the single definition."""
+        src = (self.repo / "scripts/governance/pre-push-nix-eval.sh").read_text()
+        m = re.search(r"^\s*(flake\.nix\|[^)\n]*)\)\s*$", src, re.M)
+        if not m:
+            raise Fail("detect", "cannot read the Nix-impacting path list from scripts/governance/pre-push-nix-eval.sh")
+        return m.group(1).split("|")
+
+    def deployed(self):
+        p = run(["nixos-version", "--configuration-revision"], check=False, stage="detect")
+        rev = p.stdout.strip()
+        if p.returncode or not re.fullmatch(r"[0-9a-f]{40}", rev):
+            raise Fail("detect", f"deployed revision unknown (nixos-version gave '{rev or p.stderr.strip()}'); "
+                                 "run scripts/maintenance/aq-deploy-current directly")
+        return rev
+
+    def nix_delta(self, view, old, new):
+        names = run(["git", *view, "diff", "--name-only", old, new], stage="detect").stdout.split("\n")
+        pats = self.nix_paths()
+        return [f for f in names if f and any(fnmatch.fnmatch(f, p) for p in pats)]
+
+    # ---- stages -------------------------------------------------------------------------
+    def sync(self, rev):
+        head = self.out("rev-parse", "HEAD")
+        bk = self.repo / ".agents/archive" / f"{self.run_id}-aq-update-sync"
+        if head == rev and not bk.exists():
+            return
+        if not bk.exists():
+            if self.git("merge-base", "--is-ancestor", head, rev, check=False).returncode:
+                raise Fail("sync", f"HEAD {head[:8]} is not an ancestor of {rev[:8]} (local main diverged)")
+            raw = self.git("diff", "--name-only", "-z", "HEAD").stdout
+            files = [f for f in raw.split("\0") if f]
+            bad = [f for f in files if f not in TRAIL + STATE]
+            if bad:
+                raise Fail("sync", f"dirty tracked files: {', '.join(bad[:5])}")
+            bk.mkdir(parents=True)
+            (bk / "OLD").write_text(head)
+            for f in files:
+                (bk / f).parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(self.repo / f, bk / f)
+            if files:
+                self.git("checkout", "--", *files, stage="sync")
+        old = (bk / "OLD").read_text().strip()
+        if self.out("rev-parse", "HEAD") != rev:
+            self.git("merge", "--ff-only", rev, stage="sync")
+        for src in sorted(p for p in bk.rglob("*") if p.is_file() and p.name != "OLD" and not p.name.endswith(".base")):
+            f = str(src.relative_to(bk))
+            if f in TRAIL:  # keep appends made after the snapshot: union local copy over the new file
+                (bk / (f + ".base")).write_text(self.git("show", f"{old}:{f}", check=False).stdout)
+                self.git("merge-file", "--union", f, str(bk / (f + ".base")), str(src), check=False, stage="sync")
+            else:  # runtime state: restore exactly
+                shutil.copy2(src, self.repo / f)
+
+    def refresh(self, wt, branch, base):
+        if wt.exists():  # a killed earlier attempt: reset the throwaway worktree, never delete
+            self.git("checkout", "-q", "-B", branch, base, cwd=wt, stage="refresh")
+            self.git("reset", "-q", "--hard", base, cwd=wt, stage="refresh")
+        else:
+            wt.parent.mkdir(parents=True, exist_ok=True)
+            self.git("worktree", "add", "-q", "-b", branch, str(wt), base, stage="refresh")
+        if run(NIX + ["flake", "update"], cwd=wt, check=False).returncode:
+            bad = []
+            lock = json.loads((wt / "flake.lock").read_text())
+            for name in lock["nodes"]["root"]["inputs"]:
+                if run(NIX + ["flake", "update", name], cwd=wt, check=False).returncode:
+                    bad.append(name)
+            raise Fail("refresh", f"input(s) cannot be locked: {', '.join(bad) or '(whole update failed, no single input at fault)'}")
+        lock = json.loads((wt / "flake.lock").read_text())
+        unlocked = [k for k, n in lock["nodes"].items() if k != "root" and "locked" not in n]
+        if unlocked:
+            raise Fail("refresh", f"unlocked node(s) in flake.lock: {', '.join(unlocked)}")
+
+    def land_files(self, wt, base):
+        """Commit message, PR body and review criteria for the lock PR, under the run's state (never /tmp)."""
+        d = self.state / "runs" / self.run_id
+        d.mkdir(parents=True, exist_ok=True)
+        old = json.loads(self.git("show", f"{base}:flake.lock").stdout)["nodes"]
+        new = json.loads((wt / "flake.lock").read_text())["nodes"]
+        changed = sorted(k for k in new if k != "root" and new[k].get("locked") != old.get(k, {}).get("locked")) or ["(none)"]
+        title = f"chore(flake): refresh all inputs (aq-update {self.run_id})"
+        (d / "commit-msg.txt").write_text(
+            f"{title}\n\nInputs changed: {', '.join(changed)}.\nVerified with CI's nix flake check/show and the toplevel eval "
+            f"before landing; base {base[:8]}.\n\nCo-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>\n")
+        (d / "body.md").write_text(f"""## Details
+Flake lock refresh by `aq-update` run {self.run_id}: every input updated in a worktree off origin/main {base[:8]}.
+Inputs changed: {', '.join(changed)}.
+Verified before landing: `nix flake check --all-systems --no-build`, `nix flake show` and `nix flake check --offline --no-build --no-write-lock-file`, the hyperd-ai-dev toplevel drvPath eval, and no unlocked node in flake.lock.
+
+### Review record
+Author-lane: claude
+Review-Disposition: pending
+Reviewed-subject-sha256: pending
+Reviewed-head-sha: pending
+Reviewed-by: pending
+Review history: pending
+
+## What
+Updates `flake.lock` only.
+
+## How
+`nix flake update` in a throwaway worktree, CI's flake commands, then `aq-land` reviews and merges this PR.
+
+## Why
+Every rebuild includes all current inputs, refreshed immediately before it; the lock lands through a reviewed PR, never an in-place update of the main checkout.
+
+🤖 Generated with [Claude Code](https://claude.com/claude-code)
+""")
+        (d / "criteria.md").write_text("""Review of an automated flake.lock refresh.
+- The diff touches flake.lock only.
+- No input changed owner, repo, type or URL: only locked rev, narHash and lastModified move forward.
+- No node lost its `locked` entry; no input was added or removed.
+- No revision moves backwards (lastModified must not decrease).
+- Any large jump in a security-relevant input (nixpkgs, sops-nix, home-manager) is called out in the verdict.
+""")
+        return title, d
+
+    def verify(self, wt, base):
+        title, d = self.land_files(wt, base)
+        if self.git("diff", "--quiet", "--", "flake.lock", cwd=wt, check=False).returncode:
+            self.git("add", "flake.lock", cwd=wt)
+            self.git("commit", "-q", "-F", str(d / "commit-msg.txt"), cwd=wt, stage="refresh")
+        env = {**os.environ, "NIXPKGS_ALLOW_UNFREE": "1"}
+        for cmd in CI_CMDS:
+            if run(cmd, cwd=wt, check=False, env=env).returncode:
+                raise Fail("verify", f"CI check failed: {' '.join(cmd[3:])}")
+        return self.out("rev-parse", "HEAD^{tree}", cwd=wt)
+
+    def land(self, wt, branch, tree, base):
+        self.need_land()
+        if tree == self.out("rev-parse", f"{base}^{{tree}}"):  # lock unchanged: nothing to land
+            self.guard_main("land", base)
+            return base
+        _, tip = self.origin_main()
+        if self.out("rev-parse", f"{tip}^{{tree}}") != tree:
+            title, d = self.land_files(wt, base)
+            run([self.land_bin, "--worktree", str(wt), "--title", title, "--body-file", str(d / "body.md"),
+                 "--commit-msg-file", str(d / "commit-msg.txt"), "--criteria-file", str(d / "criteria.md")],
+                cwd=wt, stage="land", capture=False)
+            _, tip = self.origin_main()
+            if self.out("rev-parse", f"{tip}^{{tree}}") != tree:
+                raise Fail("land", f"origin/main {tip[:8]} does not hold the verified tree (main moved during landing); re-run aq-update")
+        return tip
+
+    def need_land(self):
+        if not os.access(self.land_bin, os.X_OK):
+            raise Fail("land", f"aq-land not found or not executable at {self.land_bin}")
+
+    def deploy_stage(self, target):
+        self.guard_main("deploy", target)
+        if self.out("rev-parse", "HEAD") != target:
+            raise Fail("deploy", f"checkout HEAD is not the verified revision {target[:8]}")
+        if run([self.deploy], cwd=self.repo, check=False, capture=False).returncode:
+            raise Fail("deploy", "aq-deploy-current failed (its output is above)")
+
+    def baseline_stage(self, target):
+        if self.out("rev-parse", "HEAD") != target:
+            raise Fail("baseline", f"checkout HEAD is not the verified revision {target[:8]}")
+        if self.git("status", "--porcelain", "--", "ai-stack/mcp-servers").stdout.strip():
+            raise Fail("baseline", "ai-stack/mcp-servers is not clean; refusing to baseline unverified code")
+        cmd = f"sudo {self.baseline}"  # /var/lib/nixos-ai-stack and the baseline are root-owned
+        hint = f"MCP baseline NOT refreshed; run `{cmd}` then `aq-update --resume`"
+        try:
+            rc = run(["sudo", self.baseline], cwd=self.repo, check=False, capture=False, stage="baseline").returncode
+        except Fail as e:
+            raise Fail("baseline", f"{e.reason}; {hint}")
+        if rc:
+            raise Fail("baseline", f"sudo exited {rc}; {hint}")
+
+    def deployed_or_none(self):
+        try:
+            return self.deployed()
+        except Fail:
+            return None
+
+    def validate(self, target):
+        got = self.deployed()
+        if got != target:
+            raise Fail("validate", f"running revision {got[:8]} != verified {target[:8]}")
+
+
+def main(argv):
+    if "--help" in argv or "-h" in argv:
+        print(__doc__)
+        return 0
+    flags = set(argv)
+    if flags - {"--dry-run", "--resume"} or {"--dry-run", "--resume"} <= flags:
+        print(f"{TAG}: usage: aq-update [--dry-run | --resume]", file=sys.stderr)
+        return 2
+    c = Ctx("--dry-run" in flags)
+    try:
+        return go(c, "--resume" in flags)
+    except Fail as e:
+        c.log(e.stage, "fail", reason=e.reason)
+        print(f"{TAG}: FAIL {e.stage}: {e.reason}", file=sys.stderr)
+        return 1
+    finally:
+        if c.scratch:
+            shutil.rmtree(c.scratch, ignore_errors=True)
+
+
+def go(c, resume):
+    if not c.dry:
+        c.lock()
+    c.preflight()
+    done, begin = {}, None
+    if resume:
+        runs = {}
+        for e in c.events():
+            runs.setdefault(e["run"], []).append(e)
+        open_runs = [r for r, ev in runs.items() if not any(x["event"] in ("finished", "superseded") for x in ev)]
+        if not open_runs:
+            print(f"{TAG}: nothing to resume")
+            return 0
+        c.run_id = open_runs[-1]
+        for e in runs[c.run_id]:
+            if e["event"] == "begin":
+                begin = e
+            elif e["event"] == "done":
+                done[e["stage"]] = e
+    else:
+        c.run_id = time.strftime("%Y%m%d-%H%M%S")
+        if not c.dry:
+            open_prev = {}
+            for e in c.events():
+                open_prev.setdefault(e["run"], []).append(e["event"])
+            for r, ev in open_prev.items():
+                if not {"finished", "superseded"} & set(ev):
+                    c.run_id, keep = r, c.run_id
+                    c.log("begin", "superseded")
+                    c.run_id = keep
+    if begin is None:
+        view, target0 = c.origin_main()
+        deployed = c.deployed()
+        run(["git", *view, "cat-file", "-e", f"{deployed}^{{commit}}"], stage="detect")
+        delta = c.nix_delta(view, deployed, target0)
+        begin = {"deployed": deployed, "target0": target0, "delta": delta}
+        if delta:
+            c.need_land()
+        if c.dry:
+            plan(c, begin)
+            return 0
+        c.log("begin", "begin", **begin)
+    d, t0, delta = begin["deployed"], begin["target0"], begin["delta"]
+    wt = c.repo / ".agents/delegation/worktrees" / f"aq-update-{c.run_id}"
+    branch = f"chore/aq-update-{c.run_id}"
+
+    def stage(name, fn, reality=None, trust_state=False):
+        """Run fn unless done: ledger says so and (when given) state agrees; or, with trust_state, state alone does
+        (a kill between the effect and its ledger line must not repeat a rebuild)."""
+        if reality and trust_state and reality() and name not in done:
+            c.log(name, "done", reconciled=True)
+            done[name] = {"stage": name}
+        if name in done and (reality is None or reality()):
+            return done[name]
+        c.log(name, "start")
+        data = fn() or {}
+        c.log(name, "done", **data)
+        done[name] = {"stage": name, **data}
+        return done[name]
+
+    if not delta:
+        stage("sync", lambda: (c.guard_main("sync", t0), c.sync(t0)) and None,
+              lambda: c.out("rev-parse", "HEAD") == t0)
+        c.log("finish", "finished", rebuild=False)
+        print(f"{TAG}: no Nix-affecting changes between deployed {d[:8]} and origin/main {t0[:8]}; "
+              "checkout synced, no rebuild needed.")
+        return 0
+
+    stage("refresh", lambda: c.refresh(wt, branch, t0), lambda: wt.exists())
+    tree = stage("verify", lambda: {"tree": c.verify(wt, t0)}, lambda: wt.exists())["tree"]
+    target = stage("land", lambda: {"rev": c.land(wt, branch, tree, t0)})["rev"]
+    stage("sync", lambda: (c.guard_main("sync", target), c.sync(target)) and None,
+          lambda: c.out("rev-parse", "HEAD") == target)
+    stage("deploy", lambda: c.deploy_stage(target), lambda: c.deployed_or_none() == target,
+          trust_state=True)
+    stage("baseline", lambda: c.baseline_stage(target))
+    c.validate(target)
+    c.log("finish", "finished", rebuild=True, rev=target)
+    print(f"{TAG}: OK deployed {d[:8]} -> {target[:8]} and validated; ledger {c.ledger}")
+    return 0
+
+
+def plan(c, b):
+    d, t, delta = b["deployed"][:8], b["target0"][:8], b["delta"]
+    if not delta:
+        print(f"{TAG}: dry-run: no Nix-affecting changes {d}..{t}; would sync the checkout only. No rebuild.")
+        return
+    print(f"{TAG}: dry-run: Nix-affecting changes {d}..{t}: {', '.join(delta[:5])}{' ...' if len(delta) > 5 else ''}")
+    print(f"{TAG}: dry-run: would: refresh inputs in a worktree, verify, land lock via aq-land, sync, aq-deploy-current, "
+          "baseline, validate. Nothing was changed.")
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))
