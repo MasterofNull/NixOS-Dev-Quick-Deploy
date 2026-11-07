@@ -1245,6 +1245,7 @@
       "paths": [
         "scripts/testing/run-test-group.py",
         "scripts/testing/test-decompose-loop.py",
+        "scripts/testing/test-delegate-real-stop.py",
         "scripts/testing/test-delegated-prompt-failure-history.py",
         "scripts/testing/test-delegated-prompt-failure-trend.py",
         "scripts/testing/test-delegation-feedback-contract.py",
@@ -1332,6 +1333,7 @@
       "ci_workflow": ".github/workflows/test.yml#syntax",
       "tests": [
         "scripts/testing/test-decompose-loop.py",
+        "scripts/testing/test-delegate-real-stop.py",
         "scripts/testing/test-delegated-prompt-failure-history.py",
         "scripts/testing/test-delegated-prompt-failure-trend.py",
         "scripts/testing/test-delegation-feedback-contract.py",
