@@ -600,6 +600,7 @@ jobs:
             --only ci-test-coverage-gate \
             --only service-manager-sudo-commands-test \
             --only tier0-qa-admission-test \
+            --only tier0-focused-ci-output-test \
             --only mcp-integrity-baseline-test \
             --only mcp-integrity-unit-path-test \
             --only sweep-dashboard-test \

@@ -50,6 +50,7 @@ REGISTRY_FILE = REPO_ROOT / ".agents" / "delegation" / "registry.jsonl"
 STREAMS_DIR = REPO_ROOT / ".agents" / "delegation" / "streams"
 OUTPUTS_DIR = REPO_ROOT / ".agents" / "delegation" / "outputs"
 SEND_SCRIPT = REPO_ROOT / "scripts" / "ai" / "aq-agent-send"
+STOP_SCRIPT = REPO_ROOT / "scripts" / "ai" / "aq-delegation-registry"
 
 console = Console()
 
@@ -236,14 +237,29 @@ class InteractiveSubagentConsole:
                 console.print(f"[bold green]✓ {action} sent to {task_id}:[/bold green] {message}")
                 if cancel:
                     console.print(
-                        "[yellow]Queued only: a local-lane agent loop reads it between turns and is asked to finalize; it does not "
-                        "kill the process or change the registry status. codex/gemini/claude tasks never read the queue and "
-                        "must be stopped outside this console.[/yellow]"
+                        "[yellow]/cancel is a queued polite request, read only by the local agent between turns; it does not "
+                        "kill the process or change the registry status. Use /kill to really stop a task on any lane "
+                        "(local, codex, gemini, claude).[/yellow]"
                     )
             else:
                 console.print(f"[bold red]✗ Failed to send steering: {res.stderr.strip() or res.stdout.strip()}[/bold red]")
         except Exception as e:
             console.print(f"[red]Error: {e}[/red]")
+
+    def stop_task(self, task_id: str) -> None:
+        """/kill: really stop the task (verified pid, process group SIGTERM then SIGKILL) and say what happened."""
+        cmd = [sys.executable, str(STOP_SCRIPT), "--registry", str(REGISTRY_FILE), "stop", task_id,
+               "--reason", "operator /kill in aq-subagent-interactive"]
+        try:
+            res = subprocess.run(cmd, capture_output=True, text=True, check=False)
+        except Exception as e:
+            console.print(f"[red]Stop NOT performed for {escape(task_id)}: {escape(str(e))}[/red]")
+            return
+        out = escape((res.stdout + res.stderr).strip())
+        if res.returncode == 0:
+            console.print(f"[bold green]{out}[/bold green]")
+        else:
+            console.print(f"[bold red]Stop NOT completed for {escape(task_id)} (exit {res.returncode}): {out}[/bold red]")
 
     def spawn_subagent(self, lane: str, prompt: str):
         """Spawn a new sub-agent."""
@@ -320,7 +336,8 @@ class InteractiveSubagentConsole:
                     "[bold cyan]Sub-Agent Interactive Commands:[/bold cyan]\n"
                     "  [bold]<message>[/bold]                 — Inject steering message directly into active sub-agent\n"
                     "  [bold]/select <# or ID>[/bold]         — Switch active sub-agent by list number or task ID\n"
-                    "  [bold]/cancel, /kill[/bold]            — Send cancellation signal to active sub-agent\n"
+                    "  [bold]/cancel[/bold]                   — Queue a polite cancel request (local lane only; does not kill)\n"
+                    "  [bold]/kill[/bold]                     — Really stop the active task: SIGTERM then SIGKILL to its process group\n"
                     "  [bold]/spawn <lane> \"<task>\"[/bold]   — Launch a new sub-agent\n"
                     "  [bold]/refresh[/bold]                  — Refresh operation stream and status\n"
                     "  [bold]/clear[/bold]                    — Clear terminal screen\n"
@@ -342,7 +359,9 @@ class InteractiveSubagentConsole:
                 continue
 
             if text in ("/cancel", "/kill", "cancel", "kill"):
-                if current_task:
+                if current_task and text.lstrip("/") == "kill":
+                    self.stop_task(current_task.get("id", ""))
+                elif current_task:
                     self.send_steering(current_task.get("id", ""), "Operator requested cancellation", cancel=True)
                 else:
                     console.print("[yellow]No active sub-agent selected.[/yellow]")

@@ -583,6 +583,20 @@
       "ci_workflow": ".github/workflows/test.yml#syntax"
     },
     {
+      "id": "tier0-focused-ci-output-test",
+      "cmd": "scripts/testing/test-tier0-focused-ci-output.sh",
+      "paths": [
+        "scripts/testing/test-tier0-focused-ci-output.sh",
+        "scripts/governance/tier0-validation-gate.sh",
+        "config/ci-checks.json"
+      ],
+      "needs": [
+        "bash",
+        "awk"
+      ],
+      "ci_workflow": ".github/workflows/test.yml#syntax"
+    },
+    {
       "id": "mcp-integrity-baseline-test",
       "cmd": "scripts/testing/test-mcp-integrity-baseline.sh",
       "paths": [
@@ -1391,6 +1405,7 @@
       "paths": [
         "scripts/testing/run-test-group.py",
         "scripts/testing/test-decompose-loop.py",
+        "scripts/testing/test-delegate-real-stop.py",
         "scripts/testing/test-delegated-prompt-failure-history.py",
         "scripts/testing/test-delegated-prompt-failure-trend.py",
         "scripts/testing/test-delegation-feedback-contract.py",
@@ -1478,6 +1493,7 @@
       "ci_workflow": ".github/workflows/test.yml#syntax",
       "tests": [
         "scripts/testing/test-decompose-loop.py",
+        "scripts/testing/test-delegate-real-stop.py",
         "scripts/testing/test-delegated-prompt-failure-history.py",
         "scripts/testing/test-delegated-prompt-failure-trend.py",
         "scripts/testing/test-delegation-feedback-contract.py",

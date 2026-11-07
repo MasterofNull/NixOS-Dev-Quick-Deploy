@@ -12,7 +12,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from task_registry import TaskRegistry  # noqa: E402
+from task_registry import TaskRegistry, proc_start_time  # noqa: E402
 
 
 def main(argv: list[str]) -> int:
@@ -28,7 +28,10 @@ def main(argv: list[str]) -> int:
             parsed = int(value)
         except ValueError:
             parsed = value
-        reg.update_fields_atomic(task_id, {field: parsed})
+        updates = {field: parsed}
+        if field == "pid" and proc_start_time(parsed) is not None:
+            updates["pid_start_time"] = proc_start_time(parsed)  # lets `stop` prove the pid is still this task
+        reg.update_fields_atomic(task_id, updates)
         return 0
     if op == "append" and len(argv) == 3:
         reg.append_row_atomic(json.loads(argv[2]))

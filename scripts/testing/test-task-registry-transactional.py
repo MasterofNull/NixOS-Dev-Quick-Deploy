@@ -135,7 +135,8 @@ class CancelEscalation(unittest.TestCase):
             stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
         )
         proc.stdout.readline()  # handler installed
-        r._locked_append(r.registry_file, json.dumps({"id": "k1", "status": "running", "pid": proc.pid}))
+        r._locked_append(r.registry_file, json.dumps({"id": "k1", "status": "running", "pid": proc.pid,
+                                                            "pid_start_time": tr.proc_start_time(proc.pid)}))
         return r, proc
 
     def test_term_ignorer_gets_killed_then_cancelled(self):
@@ -174,14 +175,19 @@ class CancelEscalation(unittest.TestCase):
     def test_survivor_records_cancel_failed(self):
         with tempfile.TemporaryDirectory() as d:
             r = _mk(Path(d))
-            r._locked_append(r.registry_file, json.dumps({"id": "k2", "status": "running", "pid": 424242}))
+            me = os.getpid()
+            r._locked_append(r.registry_file, json.dumps({"id": "k2", "status": "running", "pid": me,
+                                                          "pid_start_time": tr.proc_start_time(me)}))
             r._group_alive = lambda pid, pgid: True
             orig = tr.os.kill
+            origpg = tr.os.killpg
             tr.os.kill = lambda *a, **k: None
+            tr.os.killpg = lambda *a, **k: None
             try:
                 rc = r.cmd_cancel("k2", grace_s=0.1)
             finally:
                 tr.os.kill = orig
+                tr.os.killpg = origpg
             self.assertEqual(rc, 1)
             e = r.get("k2")
             self.assertEqual(e["status"], "cancel-failed")
