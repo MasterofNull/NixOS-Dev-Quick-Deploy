@@ -1,15 +1,19 @@
 #!/usr/bin/env python3
 """Required PR check: PR body layout.
 
-Reads the GitHub event payload (argv[1] or GITHUB_EVENT_PATH) and requires the
-`pull_request.body` to start with `## Details`, followed by `## What`,
-`## How`, `## Why` (each exactly once, in that order, with content).
-Headings inside fenced code blocks are ignored. Exit 0 ok, 1 problems, 2 no payload.
+Takes the PR number and repository from the event payload (argv[1] or
+GITHUB_EVENT_PATH) and reads the CURRENT body from the GitHub API, as
+check-review-disposition does, so a re-run after a body edit sees the edit. If the API
+cannot be read the check fails closed. The body must start with `## Details`, followed
+by `## What`, `## How`, `## Why` (each exactly once, in that order, with content).
+Headings inside fenced code blocks are ignored. Exit 0 ok, 1 problems or API failure,
+2 no payload.
 """
 import json
 import os
 import re
 import sys
+import urllib.request
 
 REQUIRED = ["What", "How", "Why"]
 
@@ -58,6 +62,25 @@ def problems(body):
     return errs
 
 
+def live_body(event):
+    """Return the PR's current body from the API; raises on any failure (caller fails closed)."""
+    pr = event["pull_request"]
+    repo = (event.get("repository") or {}).get("full_name") or os.environ.get("GITHUB_REPOSITORY", "")
+    number = pr.get("number", event.get("number"))
+    if type(number) is not int or not re.fullmatch(r"[\w.-]+/[\w.-]+", repo or ""):
+        raise ValueError("payload lacks repository/PR number")
+    url = f"{os.environ.get('GITHUB_API_URL', 'https://api.github.com').rstrip('/')}/repos/{repo}/pulls/{number}"
+    headers = {"Accept": "application/vnd.github+json", "User-Agent": "check-pr-body-format"}
+    token = os.environ.get("GH_TOKEN") or os.environ.get("GITHUB_TOKEN", "")
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    with urllib.request.urlopen(urllib.request.Request(url, headers=headers), timeout=30) as resp:
+        body = json.load(resp).get("body") or ""
+    if not isinstance(body, str):
+        raise ValueError("unexpected PR payload")
+    return body
+
+
 def main(argv):
     path = argv[1] if len(argv) > 1 else os.environ.get("GITHUB_EVENT_PATH", "")
     if not path or not os.path.isfile(path):
@@ -73,7 +96,12 @@ def main(argv):
     if not pr:
         print("check-pr-body-format: payload has no pull_request", file=sys.stderr)
         return 2
-    errs = problems(pr.get("body") or "")
+    try:
+        body = live_body(event)
+    except (OSError, ValueError, KeyError, TypeError, AttributeError) as e:
+        print(f"check-pr-body-format: cannot read the live PR body ({e.__class__.__name__}); failing closed, re-run when the API is reachable")
+        return 1
+    errs = problems(body)
     if errs:
         print("PR body format check FAILED (see .github/pull_request_template.md):")
         for e in errs:

@@ -1,6 +1,12 @@
 #!/usr/bin/env bash
 # Tier 0 Validation Gate — Enforce AGENTS.md workflow contract
-# Usage: ./scripts/governance/tier0-validation-gate.sh [--pre-commit|--pre-deploy] [--staged-isolated] [--tap]
+# Usage: ./scripts/governance/tier0-validation-gate.sh [--pre-commit|--pre-deploy|--maintenance] [--ci] [--staged-isolated] [--tap]
+#
+# Stage ownership (evidence: docs/harness-first/evidence/2026-11-06-gate-placement.md):
+#   --pre-commit  deterministic, offline, bounded, relevant to the staged change. QA phase 0 (live stack state)
+#                 is NOT run here; doc/receipt-only commits also skip the code-regression suites.
+#   --pre-deploy / --maintenance / --ci  also run QA phase 0 (HARD for live-service classes, except under --ci
+#                 where host-only checks are demoted to SKIP by harness_qa host_mode).
 
 set -euo pipefail
 
@@ -19,12 +25,14 @@ source "${SCRIPT_DIR}/lib/qa-admission.sh"
 # and do not override MODE.
 MODE="--pre-commit"
 TAP_MODE=0
+CI_MODE=0
 STAGED_ISOLATED=0
 NO_CHECKOUT="${TIER0_NO_CHECKOUT:-0}"
 TAP_JSON_FILE="${TIER0_TAP_JSON:-}"
 for arg in "$@"; do
   case "$arg" in
-    --pre-commit|--pre-deploy) MODE="$arg" ;;
+    --pre-commit|--pre-deploy|--maintenance) MODE="$arg" ;;
+    --ci) CI_MODE=1 ;;
     --tap) TAP_MODE=1 ;;
     --staged-isolated) STAGED_ISOLATED=1 ;;
     --no-checkout) NO_CHECKOUT=1 ;;
@@ -843,7 +851,13 @@ gate_repo_structure() {
 # Gate 11: Script header standards
 gate_script_headers() {
   log "Checking script header standards..."
-  if bash "${SCRIPT_DIR}/check-script-header-standards.sh" --all >/dev/null 2>&1; then
+  # --pre-commit checks only the staged scripts (pre-push re-checks the pushed range; --ci, --pre-deploy and
+  # --maintenance scan the whole tree). A whole-tree scan on every commit cost ~28 s for no added detection.
+  local header_args=(--all)
+  if [[ "${MODE}" == "--pre-commit" && "${CI_MODE}" != "1" ]]; then
+    header_args=(--changed --base HEAD --head "$(git write-tree 2>/dev/null || echo HEAD)")
+  fi
+  if bash "${SCRIPT_DIR}/check-script-header-standards.sh" "${header_args[@]}" >/dev/null 2>&1; then
     pass "Script header standards valid"
   else
     fail "Script header standards failed"
@@ -853,6 +867,7 @@ gate_script_headers() {
 
 # Gate 12: Config directory governance
 gate_config_dir_lint() {
+  skip_unless_staged "Config directory governance" '^config/|config-directory-lint' && return 0
   log "Checking config directory governance..."
   if bash "${SCRIPT_DIR}/config-directory-lint.sh" >/dev/null 2>&1; then
     pass "Config directory governance valid"
@@ -904,6 +919,14 @@ gate_roadmap_verification() {
 
 # Gate 8: QA phase 0
 gate_qa_phase0() {
+  # QA phase 0 probes live stack state (units, ports, inference, HTTP). It owns nothing a staged diff can
+  # break that the gates above and CI do not also check, and it flaked under load (0.16.2, 0.10.54).
+  # Owners: --pre-deploy (aq-deploy-current runs aq-qa 0 after the switch), --maintenance and the
+  # ai-stack-health-monitor timer (every 15 min), and CI (--ci, host-only checks demoted to SKIP).
+  if [[ "${MODE}" == "--pre-commit" && "${CI_MODE}" != "1" ]]; then
+    skip "QA phase 0 (live stack state) not run at --pre-commit; owned by --pre-deploy, --maintenance, ai-stack-health-monitor and CI"
+    return 0
+  fi
   log "Running QA phase 0..."
   local output
   local passes
@@ -921,6 +944,7 @@ gate_qa_phase0() {
     # Tier0 already runs focused CI-sensitive checks separately; skip the
     # aq-report-backed subchecks here so phase-0 remains a bounded health gate
     # instead of recursively launching another aq-qa/report loop.
+    AQ_CONFINE_REQUIRE_CONTEXT="$([[ "${MODE}" == "--pre-deploy" || "${MODE}" == "--maintenance" ]] && echo 1 || echo 0)" \
     AQ_QA_SKIP_REPORT_BACKED_CHECKS=1 \
     AQ_QA_CONTINUE_LOCAL_MAX_TIME="${continue_local_timeout}" \
     AQ_FLAGSHIP_HELP_TIMEOUT_SECONDS="${flagship_help_timeout}" \
@@ -996,11 +1020,12 @@ gate_qa_phase0() {
     # resident model warms/cold-loads/drifts-to-swap (a live-perf environmental signal: "is the model
     # fast right now"), never a regression a docs/code diff introduced. The calibration-constant drift
     # it also catches is maintenance, surfaced HARD on --pre-deploy/--maintenance, not a commit blocker.
+    # 0.16.2 Security Center live metadata — a live HTTP probe of the publisher endpoint.
     # 0.8.1 ai_coordinator_delegate 24h success rate — a rolling LIVE telemetry window ("are delegations
     # succeeding right now"). Drops below its floor when a provider/lane is quota-limited or down (e.g.
     # remote-reviewer/Luna quota exhaustion), never because a staged diff broke delegation; the same
     # 0.10.22 live-perf logic applies. Delegation health stays HARD on --pre-deploy/--maintenance.
-    local LIVE_SERVICE_CLASS_IDS="0.1.1 0.1.2 0.1.3 0.2.1 0.2.2 0.2.3 0.2.4 0.2.5 0.3.1 0.3.2 0.3.3 0.4.1 0.4.2 0.4.3 0.6.1 0.6.2 0.7.4 0.8.1 0.10.22"
+    local LIVE_SERVICE_CLASS_IDS="0.1.1 0.1.2 0.1.3 0.2.1 0.2.2 0.2.3 0.2.4 0.2.5 0.3.1 0.3.2 0.3.3 0.4.1 0.4.2 0.4.3 0.6.1 0.6.2 0.7.4 0.8.1 0.10.22 0.16.2"
     local fresh_failing nonclass_failing ffid base_id fresh_list live_list warn_summary
     # aq-qa renders failures as a table row (`│ <id> │ <desc> │ ✗ │`) — the id column
     # precedes the ✗ column, so match ✗ ROWS then extract the id token (NOT id-after-✗).
@@ -1186,6 +1211,7 @@ gate_llama_payload_ssot() {
 # repeated in-process and fresh-subprocess invocations. Additive-only: does
 # not touch any other gate's behavior.
 gate_canon_compiler_determinism() {
+  skip_unless_staged "Canon-compiler determinism" '^canon/|canon-compile|aq-canon|test-aq-canon-compiler|^(CLAUDE|AGENTS)\.md$|^\.agent/[^/]*\.md$' && return 0
   log "Checking canon-compiler determinism..."
   local test_script="${REPO_ROOT}/scripts/testing/test-aq-canon-compiler.py"
   if [[ ! -f "${test_script}" ]]; then
@@ -1242,7 +1268,13 @@ gate_agent_harness_regression_suites() {
   # manifest explicit so adding a local-agent safeguard requires adding it here too.
   # Each suite has an independent cap: one hung regression must not turn tier0 into
   # an unbounded wait or hide which suite stalled.
-  local suite_timeout_seconds=60
+  local suite_timeout_seconds="${TIER0_SUITE_TIMEOUT_SECONDS:-180}"
+  # Doc/receipt-only staged changes cannot regress these code suites; CI (manifest-tests tests-* groups) runs
+  # every one of them on every PR. TIER0_STAGED_NONCODE_ONLY is computed once at start-up.
+  if [[ "${TIER0_STAGED_NONCODE_ONLY:-0}" == "1" ]]; then
+    skip "Harness regression suites not run: only doc/receipt paths staged (CI manifest-tests owns them)"
+    return 0
+  fi
   local suites=(
     "test-context-assembler.py"
     "test-read-file-gate.py"
@@ -1295,6 +1327,38 @@ gate_agent_harness_regression_suites() {
   [[ ${any_failed} -eq 0 ]]
 }
 
+TIER0_STAGED_NONCODE_ONLY=0
+export TIER0_CI="${CI_MODE}"
+if [[ "${MODE}" == "--pre-commit" && "${CI_MODE}" != "1" ]]; then
+  _staged_all="$(git diff --cached --name-only --diff-filter=ACMRD 2>/dev/null || true)"
+  _staged_exec="$(git diff --cached --raw --diff-filter=ACMRD 2>/dev/null | awk '$1 ~ /^:100755$/ || $2 == "100755" { print $NF }' || true)"
+  if [[ -n "${_staged_all}" ]] \
+    && ! printf '%s\n' "${_staged_all}" | grep -qvE '^(docs/|\.agent/|\.agents/|[^/]+\.md$)' \
+    && ! printf '%s\n' "${_staged_all}" | grep -qE '\.(py|sh|nix|yml|yaml)$|(^|/)scripts/' \
+    && [[ -z "${_staged_exec}" ]]; then
+    TIER0_STAGED_NONCODE_ONLY=1
+  fi
+fi
+export TIER0_STAGED_NONCODE_ONLY
+
+# True (and logs a SKIP) when a --pre-commit run has no staged path matching REGEX, so a gate that only reads
+# those paths is not re-run for unrelated commits. Always false for --ci/--pre-deploy/--maintenance.
+skip_unless_staged() {
+  local name="$1" regex="$2"
+  [[ "${MODE}" == "--pre-commit" && "${CI_MODE}" != "1" ]] || return 1
+  if git diff --cached --name-only --diff-filter=ACMRD 2>/dev/null | grep -qE "${regex}"; then
+    return 1
+  fi
+  skip "${name} not run: nothing it reads is staged (runs in --ci/--pre-deploy/--maintenance and CI)"
+  return 0
+}
+
+run_timed() {
+  local started="$SECONDS"
+  "$@" || true
+  log "timing: $1 $((SECONDS - started))s"
+}
+
 log "=== Tier 0 Validation Gate ==="
 log "Mode: ${MODE}"
 log ""
@@ -1302,34 +1366,34 @@ log ""
 [[ $TAP_MODE -eq 1 ]] && printf 'TAP version 14\n'
 
 # Always-run gates
-gate_python_syntax || true
-gate_bash_syntax || true
-gate_nix_syntax || true
-gate_json_syntax || true
-gate_aqos_install_plan_schema || true
-gate_aqos_ai_fit_policy || true
-gate_aqos_module_catalog || true
-gate_aqos_install_resolver || true
-gate_aqos_mysystem_fieldset || true
-gate_aqos_install_execution_verifier || true
-gate_aqos_golden_profile || true
-gate_yaml_syntax || true
-gate_toml_syntax || true
-gate_js_syntax || true
-gate_ts_syntax || true
-gate_sql_syntax || true
-gate_repo_structure || true
-gate_script_headers || true
-gate_config_dir_lint || true
-gate_focused_ci_checks || true
-gate_roadmap_verification || true
-gate_qa_phase0 || true
-gate_env_contract || true
-gate_cross_surface_contract || true
-gate_llama_payload_ssot || true
-gate_canon_compiler_determinism || true
-gate_evidence_collector || true
-gate_agent_harness_regression_suites || true
+run_timed gate_python_syntax
+run_timed gate_bash_syntax
+run_timed gate_nix_syntax
+run_timed gate_json_syntax
+run_timed gate_aqos_install_plan_schema
+run_timed gate_aqos_ai_fit_policy
+run_timed gate_aqos_module_catalog
+run_timed gate_aqos_install_resolver
+run_timed gate_aqos_mysystem_fieldset
+run_timed gate_aqos_install_execution_verifier
+run_timed gate_aqos_golden_profile
+run_timed gate_yaml_syntax
+run_timed gate_toml_syntax
+run_timed gate_js_syntax
+run_timed gate_ts_syntax
+run_timed gate_sql_syntax
+run_timed gate_repo_structure
+run_timed gate_script_headers
+run_timed gate_config_dir_lint
+run_timed gate_focused_ci_checks
+run_timed gate_roadmap_verification
+run_timed gate_qa_phase0
+run_timed gate_env_contract
+run_timed gate_cross_surface_contract
+run_timed gate_llama_payload_ssot
+run_timed gate_canon_compiler_determinism
+run_timed gate_evidence_collector
+run_timed gate_agent_harness_regression_suites
 
 # Pre-deploy gates
 if [[ "$MODE" == "--pre-deploy" ]]; then

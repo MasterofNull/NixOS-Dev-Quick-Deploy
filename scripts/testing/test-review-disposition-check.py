@@ -19,84 +19,82 @@ HEAD = "a" * 40
 BODY = (
     "Author-lane: claude\nReview-Disposition: PASS\n"
     f"Reviewed-subject-sha256: {'b' * 64}\nReviewed-head-sha: {HEAD}\nReviewed-by: codex\n"
-    "Review-Receipt: .agent/reviews/receipts/pr1-aaaaaaaaaaaa.json\n"
 )
-RPATH = ".agent/reviews/receipts/pr1-aaaaaaaaaaaa.json"
+TREE = "d" * 40
 
 
 def receipt(**kw):
-    r = {"schema": 1, "pr": 1, "reviewed_head_sha": HEAD, "run_id": "r1", "reviewer_lane": "codex",
-         "author_lane": "claude", "verdict": "PASS", "output_file": "x.log", "output_sha256": "c" * 64,
-         "created_at": "2026-10-27T00:00:00Z"}
+    r = {"schema": 2, "repo": "o/r", "pr": 1, "reviewed_head_sha": HEAD, "tree": TREE, "base_commit": "e" * 40,
+         "policy_version": crd.POLICY_VERSION, "run_id": "r1", "reviewer_lane": "codex", "author_lane": "claude",
+         "verdict": "PASS", "output_file": "x.log", "output_sha256": "c" * 64, "created_at": "2026-11-06T00:00:00Z"}
     r.update(kw)
-    return json.dumps(r)
+    return r
 
 
 def ev(body, head=HEAD):
-    return {"pull_request": {"body": body, "head": {"sha": head}}}
+    return {"repository": {"full_name": "o/r"}, "pull_request": {"number": 1, "body": body, "head": {"sha": head}}}
 
 
 class T(unittest.TestCase):
+    """check() with a stubbed receipt loader: field rules and receipt binding."""
+
     def setUp(self):
         self._orig = crd._git
         self.rcpt = receipt()
-        self.mode = "100644"
-        crd._git = lambda *a: (self.rcpt if a[0] == "show" else f"{self.mode} blob {'e' * 40}\t{RPATH}" if a[0] == "ls-tree"
-                               else self._orig(*a))
+        crd._git = lambda *a: TREE if a[0] == "rev-parse" else self._orig(*a)
 
     def tearDown(self):
         crd._git = self._orig
 
-    def test_missing_receipt_field_fails(self):
-        errs = crd.check(ev(BODY.replace("Review-Receipt:", "X:")))
-        self.assertIn("missing Review-Receipt", errs)
+    def chk(self, event):
+        return crd.check(event, lambda n, rh: (self.rcpt, None))
 
-    def test_receipt_file_absent_fails(self):
-        def boom(*a):
-            raise subprocess.CalledProcessError(128, "git")
-        crd._git = boom
-        self.assertTrue(any("not found" in e for e in crd.check(ev(BODY))))
+    def test_missing_receipt_fails(self):
+        self.rcpt = None
+        self.assertTrue(any("missing receipt" in e for e in self.chk(ev(BODY))))
+
+    def test_legacy_review_receipt_line_is_ignored(self):
+        self.rcpt = None
+        errs = self.chk(ev(BODY + "Review-Receipt: .agent/reviews/receipts/pr1-aaaaaaaaaaaa.json\n"))
+        self.assertTrue(any("missing receipt" in e for e in errs), errs)
 
     def test_reviewer_mismatch_fails(self):
         self.rcpt = receipt(reviewer_lane="gemini")
-        self.assertTrue(any("reviewer_lane" in e for e in crd.check(ev(BODY))))
+        self.assertTrue(any("reviewer_lane" in e for e in self.chk(ev(BODY))))
 
     def test_request_changes_and_bad_hash_fail(self):
         self.rcpt = receipt(verdict="REQUEST_CHANGES", output_sha256="zz")
-        errs = crd.check(ev(BODY))
-        self.assertTrue(any("verdict" in e for e in errs) and any("output_sha256" in e for e in errs))
+        self.assertTrue(any("output_sha256" in e for e in self.chk(ev(BODY))))
+        self.rcpt = receipt(verdict="REQUEST_CHANGES")
+        self.assertTrue(any("verdict" in e for e in self.chk(ev(BODY))))
 
     def test_valid(self):
-        self.assertEqual(crd.check(ev(BODY)), [])
+        self.assertEqual(self.chk(ev(BODY)), [])
         self.rcpt = receipt(verdict="PASS_WITH_FOLLOWUPS")
-        self.assertEqual(crd.check(ev(BODY.replace("PASS", "PASS_WITH_FOLLOWUPS", 1).replace("\n", "\r\n"))), [])
+        self.assertEqual(self.chk(ev(BODY.replace("PASS", "PASS_WITH_FOLLOWUPS", 1).replace("\n", "\r\n"))), [])
 
     def test_missing_fields(self):
-        errs = crd.check(ev("just a summary"))
-        self.assertGreaterEqual(len(errs), 6)
-        self.assertEqual(crd.check(ev(None))[0], "missing Review-Disposition")
+        errs = self.chk(ev("just a summary"))
+        self.assertGreaterEqual(len(errs), 5)
+        self.assertEqual(self.chk(ev(None))[0], "missing Review-Disposition")
 
     def test_same_lane(self):
-        errs = crd.check(ev(BODY.replace("Reviewed-by: codex", "Reviewed-by: Claude")))
+        errs = self.chk(ev(BODY.replace("Reviewed-by: codex", "Reviewed-by: Claude")))
         self.assertTrue(any("must differ" in e for e in errs))
 
     def test_stale_head(self):
-        errs = crd.check(ev(BODY, head="c" * 40))
+        errs = self.chk(ev(BODY, head="c" * 40))
         self.assertTrue(any("stale review" in e for e in errs))
 
     def test_bad_disposition_and_hex(self):
-        errs = crd.check(ev(BODY.replace("PASS", "ACCEPTED", 1).replace("b" * 64, "xyz")))
+        errs = self.chk(ev(BODY.replace("PASS", "ACCEPTED", 1).replace("b" * 64, "xyz")))
         self.assertEqual(len(errs), 3)  # disposition, hex, receipt verdict mismatch
 
     def test_receipt_type_confusion_rejected(self):
         for kw in ({"schema": True}, {"run_id": {"a": 1}}, {"reviewer_lane": None}, {"author_lane": None},
-                   {"pr": True}, {"verdict": ""}, {"reviewed_head_sha": "a" * 12}, {"run_id": " "}):
+                   {"pr": True}, {"verdict": ""}, {"reviewed_head_sha": "a" * 12}, {"run_id": " "}, {"schema": 1}):
             self.rcpt = receipt(**kw)
-            self.assertNotEqual(crd.check(ev(BODY)), [], kw)
-
-    def test_receipt_symlink_rejected(self):
-        self.mode = "120000"
-        self.assertTrue(any("regular file" in e for e in crd.check(ev(BODY))))
+            self.assertNotEqual(self.chk(ev(BODY)), [], kw)
 
     def test_cli_exit_codes(self):
         with tempfile.TemporaryDirectory() as d:
@@ -104,6 +102,10 @@ class T(unittest.TestCase):
             p.write_text(json.dumps(ev("x")))
             r = subprocess.run([sys.executable, str(SCRIPT), str(p)], capture_output=True)
             self.assertEqual(r.returncode, 1)
+
+    def test_legacy_machinery_is_gone(self):
+        for name in ("LEGACY_MAX_PR", "receipt_only_update", "check_receipt", "RECEIPT_PREFIX"):
+            self.assertFalse(hasattr(crd, name), name)
 
 
 def _run(cwd, *a):
@@ -129,19 +131,12 @@ class MergeTolerant(unittest.TestCase):
         (pathlib.Path(self.d) / "feat.txt").write_text("feat\n")
         g("add", "."); g("commit", "-qm", "feat")
         self.reviewed = g("rev-parse", "HEAD")
-        self._commit_receipt(g)
         g("checkout", "-q", "main")
         (pathlib.Path(self.d) / "other.txt").write_text("other\n")
         g("add", "."); g("commit", "-qm", "main moves")
         self.base1 = g("rev-parse", "HEAD")
         g("checkout", "-q", "pr")
         self.g = g
-
-    def _commit_receipt(self, g):
-        rp = pathlib.Path(self.d) / RPATH
-        rp.parent.mkdir(parents=True, exist_ok=True)
-        rp.write_text(receipt(reviewed_head_sha=self.reviewed))
-        g("add", "."); g("commit", "-qm", "receipt")
 
     def tearDown(self):
         self._tmp.cleanup()
@@ -152,45 +147,10 @@ class MergeTolerant(unittest.TestCase):
         old = os.getcwd()
         os.chdir(self.d)
         try:
-            return crd.check(e)
+            errs = crd.check(e, lambda n, rh: (None, None))  # head binding only: drop receipt-lookup errors
+            return [x for x in errs if not x.startswith(('event lacks', 'missing receipt'))]
         finally:
             os.chdir(old)
-
-    def test_receipt_only_followup_accepted(self):
-        self.assertEqual(self._check(self.g("rev-parse", "HEAD"), base=self.base0), [])
-
-    def test_non_receipt_followup_rejected(self):
-        (pathlib.Path(self.d) / "feat.txt").write_text("changed\n")
-        self.g("commit", "-qam", "extra")
-        errs = self._check(self.g("rev-parse", "HEAD"), base=self.base0)
-        self.assertTrue(any("stale review" in e for e in errs), errs)
-
-    def _followup_errs(self, mutate):
-        mutate(self.g)
-        return self._check(self.g("rev-parse", "HEAD"), base=self.base0)
-
-    def test_rename_out_of_reviewed_path_into_receipts_rejected(self):
-        (pathlib.Path(self.d) / ".agent/reviews/receipts").mkdir(parents=True, exist_ok=True)
-
-        def mv(g):
-            g("mv", "feat.txt", ".agent/reviews/receipts/feat.json")
-            g("commit", "-qm", "sneak")
-        errs = self._followup_errs(mv)
-        self.assertTrue(any("stale review" in e for e in errs), errs)
-
-    def test_receipt_deletion_and_non_json_rejected(self):
-        def add_txt(g):
-            (pathlib.Path(self.d) / ".agent/reviews/receipts/x.txt").write_text("x")
-            g("add", "."); g("commit", "-qm", "txt")
-        errs = self._followup_errs(add_txt)
-        self.assertTrue(any("stale review" in e for e in errs), errs)
-
-    def test_receipt_symlink_followup_rejected(self):
-        def ln(g):
-            os.symlink("../../../feat.txt", pathlib.Path(self.d) / ".agent/reviews/receipts/l.json")
-            g("add", "."); g("commit", "-qm", "link")
-        errs = self._followup_errs(ln)
-        self.assertTrue(any("stale review" in e for e in errs), errs)
 
     def test_merge_only_update_passes(self):
         self.g("merge", "-q", "--no-ff", "-m", "Update branch", "main")
@@ -207,7 +167,6 @@ class MergeTolerant(unittest.TestCase):
         self.g("reset", "-q", "--hard", self.base0)
         (pathlib.Path(self.d) / "feat.txt").write_text("rewritten\n")
         self.g("add", "."); self.g("commit", "-qm", "rewritten")
-        self._commit_receipt(self.g)
         errs = self._check(self.g("rev-parse", "HEAD"))
         self.assertTrue(any("stale review" in e and "not an ancestor" in e for e in errs), errs)
 
@@ -221,7 +180,6 @@ class MergeTolerant(unittest.TestCase):
         f.write_text("if x:\n    a()\nb()\n")
         self.g("add", "."); self.g("commit", "-qm", "py")
         self.reviewed = self.g("rev-parse", "HEAD")
-        self._commit_receipt(self.g)
         f.write_text("if x:\n    a()\n    b()\n")
         self.g("commit", "-qam", "indent")
         self.g("merge", "-q", "--no-ff", "-m", "Update branch", "main")
@@ -428,64 +386,30 @@ class OffBranch(unittest.TestCase):
         self.live["head"]["sha"], self.live["base"]["sha"] = new, nb
         self.assertEqual(self.evaluate(), [])
 
-    def test_legacy_committed_receipt_still_validates(self):
-        rp = pathlib.Path(self.wd) / RPATH.replace("aaaaaaaaaaaa", self.head[:12])
-        rp.parent.mkdir(parents=True, exist_ok=True)
-        rp.write_text(receipt(reviewed_head_sha=self.head))
-        self.g("add", "."); self.g("commit", "-qm", "legacy receipt")
-        new = self.g("rev-parse", "HEAD")
-        self.g("push", "-q", "-f", "origin", f"{new}:refs/pull/1/head")
-        self.live["head"]["sha"] = new
-        self.live["body"] = self.body + f"Review-Receipt: {rp.relative_to(self.wd)}\n"
-        self.assertEqual(self.evaluate(), [])
-
-    def test_offbranch_receipt_takes_precedence_over_legacy(self):
-        rp = pathlib.Path(self.wd) / ".agent/reviews/receipts/pr1-x.json"
-        rp.parent.mkdir(parents=True, exist_ok=True)
-        rp.write_text(receipt(reviewed_head_sha=self.head))
-        self.g("add", "."); self.g("commit", "-qm", "legacy receipt")
-        new = self.g("rev-parse", "HEAD")
-        self.g("push", "-q", "-f", "origin", f"{new}:refs/pull/1/head")
-        self.live["head"]["sha"] = new
-        self.live["body"] = self.body + "Review-Receipt: .agent/reviews/receipts/pr1-x.json\n"
-        self.publish(self.rec(verdict="REQUEST_CHANGES"))
-        self.assertTrue(any("verdict" in e for e in self.evaluate()))
-
-    def _legacy_pr(self, number=1, receipt_pr=None):
-        rp = pathlib.Path(self.wd) / ".agent/reviews/receipts/pr-x.json"
-        rp.parent.mkdir(parents=True, exist_ok=True)
-        rp.write_text(receipt(reviewed_head_sha=self.head, pr=receipt_pr or number))
-        self.g("add", "."); self.g("commit", "-qm", "legacy receipt")
-        new = self.g("rev-parse", "HEAD")
-        self.g("push", "-q", "-f", "origin", f"{new}:refs/pull/{number}/head")
-        self.live["head"]["sha"] = new
-        self.live["body"] = self.body + "Review-Receipt: .agent/reviews/receipts/pr-x.json\n"
-
-    def test_unreadable_offbranch_receipt_never_falls_back_to_legacy(self):
-        self._legacy_pr()
-        self.assertEqual(self.evaluate(), [])  # sanity: legacy alone passes (branch absent)
+    def test_unreadable_offbranch_receipt_fails(self):
         cases = {"malformed": dict(raw="{nope"), "null": dict(raw="null"), "list": dict(raw="[]"),
                  "symlink": dict(mode="120000")}
         for name, kw in cases.items():
             self.setUp_branch_reset()
             self.publish(self.rec(), **kw)
-            errs = self.evaluate()
-            self.assertTrue(errs, name)
+            self.assertTrue(self.evaluate(), name)
         # branch exists but cannot be fetched
         self.setUp_branch_reset()
         self.publish(self.rec())
         self.g("remote", "set-url", "origin", str(pathlib.Path(self.wd) / "nowhere.git"))
         self.assertTrue(self.evaluate(fetch_head=False))
 
-    def test_legacy_fallback_frozen_to_cohort_and_bound_to_pr(self):
-        self.g("push", "-q", "origin", f"{self.head}:refs/pull/721/head")
-        self._legacy_pr(number=721)
-        errs = self.evaluate(number=721)
-        self.assertTrue(any("legacy cohort" in e for e in errs), errs)
-        self.g("reset", "-q", "--hard", self.head)
-        self._legacy_pr(number=1, receipt_pr=999)  # receipt names another PR
+    def test_committed_in_tree_receipt_is_no_longer_accepted(self):
+        rp = pathlib.Path(self.wd) / ".agent/reviews/receipts/pr1-x.json"
+        rp.parent.mkdir(parents=True, exist_ok=True)
+        rp.write_text(json.dumps({**self.rec(), "schema": 1}))
+        self.g("add", "."); self.g("commit", "-qm", "legacy receipt")
+        new = self.g("rev-parse", "HEAD")
+        self.g("push", "-q", "-f", "origin", f"{new}:refs/pull/1/head")
+        self.live["head"]["sha"] = new
+        self.live["body"] = self.body + "Review-Receipt: .agent/reviews/receipts/pr1-x.json\n"
         errs = self.evaluate()
-        self.assertTrue(any("replay" in e for e in errs), errs)
+        self.assertTrue(errs, errs)  # the new head is not the reviewed head and no off-branch receipt exists
 
 
     def _evil_merge(self):
@@ -615,7 +539,7 @@ class Relocation(unittest.TestCase):
         old = os.getcwd()
         os.chdir(self.d)
         try:
-            return crd.check({"pull_request": pr, "repository": {"full_name": REPO}})
+            return crd.check({"pull_request": pr, "repository": {"full_name": REPO}}, lambda n, rh: (None, None))
         finally:
             os.chdir(old)
 
@@ -660,14 +584,6 @@ class Relocation(unittest.TestCase):
         self.g("merge", "-q", "--no-ff", "-m", "Update branch", "main")
         self.assertFalse([e for e in self.errs(base) if "stale" in e])
 
-    def test_receipt_only_update_is_legacy_cohort_only(self):
-        base = self.main_commit()
-        rp = pathlib.Path(self.d) / ".agent/reviews/receipts/x.json"
-        rp.parent.mkdir(parents=True, exist_ok=True)
-        rp.write_text("{}")
-        self.g("add", "."); self.g("commit", "-qm", "receipt")
-        self.assertFalse([e for e in self.errs(base, number=5) if "stale" in e])
-        self.assertTrue([e for e in self.errs(base, number=721) if "stale" in e])
 
 
 if __name__ == "__main__":
