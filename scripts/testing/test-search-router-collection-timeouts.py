@@ -9,7 +9,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[2]
-SEARCH_ROUTER = ROOT / "ai-stack" / "mcp-servers" / "hybrid-coordinator" / "search_router.py"
+SEARCH_ROUTER = ROOT / "ai-stack" / "mcp-servers" / "hybrid-coordinator" / "knowledge" / "search_router.py"
 
 
 def assert_true(condition: bool, message: str) -> None:
@@ -22,6 +22,7 @@ def load_search_router():
 
     class DummyConfig:
         AI_AUTONOMY_MAX_RETRIEVAL_RESULTS = 8
+        AI_SEARCH_SCORE_THRESHOLD = 0.45
         AI_ROUTE_COLLECTION_SEMANTIC_TIMEOUT_SECONDS = 0.02
         AI_ROUTE_COLLECTION_KEYWORD_TIMEOUT_SECONDS = 0.02
 

@@ -22,14 +22,15 @@ from pathlib import Path
 from typing import Any, Dict, List
 
 # Add lib to path
-sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+# lib/search moved to lib/l6-cog/search (2e65cae38); l6-cog is not a valid package name, so put it on the path.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent / "lib" / "l6-cog"))
 
-from lib.search.vector_search_optimizer import VectorSearchOptimizer, SearchConfig
-from lib.search.query_cache import QueryCache, CacheConfig
-from lib.search.query_batcher import QueryBatcher, BatchConfig
-from lib.search.embedding_optimizer import EmbeddingOptimizer, EmbeddingConfig
-from lib.search.lazy_loader import LazyLoader, LoaderConfig
-from lib.search.query_profiler import QueryProfiler, ProfilerConfig
+from search.vector_search_optimizer import VectorSearchOptimizer, SearchConfig
+from search.query_cache import QueryCache, CacheConfig
+from search.query_batcher import QueryBatcher, BatchConfig
+from search.embedding_optimizer import EmbeddingOptimizer, EmbeddingConfig
+from search.lazy_loader import LazyLoader, LoaderConfig
+from search.query_profiler import QueryProfiler, ProfilerConfig
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
@@ -126,7 +127,12 @@ class PerformanceTestSuite:
 
             # Test cache operations
             test_query = "test query"
-            test_result = {"results": [{"id": "1", "score": 0.9}]}
+            # QueryCache.set() skips results below partial_cache_min_size (counted on combined_results).
+            test_result = {
+                "combined_results": [
+                    {"id": str(i), "score": 0.9 - i * 0.01} for i in range(config.partial_cache_min_size)
+                ]
+            }
 
             # Test set
             await cache.set(test_query, test_result, mode="semantic")

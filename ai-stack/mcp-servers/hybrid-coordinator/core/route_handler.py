@@ -91,6 +91,16 @@ def _thinking_kwargs(task_type: Optional[str]) -> dict:
     # content responses unless explicitly disabled. This is always correct for local.
     return {"chat_template_kwargs": {"enable_thinking": False}}
 
+def _build_dynamic_system_prompt(query: str) -> str:
+    """Local-lane system prompt for ``query``.
+
+    34b3db4ca switched both call sites to this name but never defined it, so every
+    local synthesis route raised NameError. Until a query-dependent prompt exists this
+    returns the static prompt the call sites used before that commit.
+    """
+    return Config.build_local_system_prompt()
+
+
 import capability_discovery
 try:
     from capability_guard import get_guard as _get_capability_guard

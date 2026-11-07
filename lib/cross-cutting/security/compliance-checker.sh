@@ -34,7 +34,7 @@ SUPPORTED_FRAMEWORKS=("SOC2" "ISO27001" "CIS-L1" "CIS-L2")
 
 # Logging helpers
 log_debug() {
-  [[ "${VERBOSE:-0}" == "1" ]] && echo "[compliance-checker] DEBUG: $*" >&2
+  [[ "${VERBOSE:-0}" != "1" ]] || echo "[compliance-checker] DEBUG: $*" >&2
 }
 
 log_info() {

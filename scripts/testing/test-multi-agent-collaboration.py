@@ -18,8 +18,9 @@ from pathlib import Path
 import tempfile
 import shutil
 
-# Add lib to path
-lib_path = Path(__file__).parent.parent.parent / "lib"
+# Add lib/l4-coord to path
+# agents/ and workflows/ moved to lib/l4-coord (2e65cae38); l4-coord is not a package name, so put it on the path.
+lib_path = Path(__file__).resolve().parent.parent.parent / "lib" / "l4-coord"
 sys.path.insert(0, str(lib_path))
 
 from agents import (

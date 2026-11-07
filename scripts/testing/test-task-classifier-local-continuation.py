@@ -4,10 +4,13 @@
 from __future__ import annotations
 
 import importlib.util
+import sys
 from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[2]
+# task_classifier.py is a shim over core.task_classifier; the hybrid-coordinator dir must be importable.
+sys.path.insert(0, str(ROOT / "ai-stack" / "mcp-servers" / "hybrid-coordinator"))
 MODULE_PATH = ROOT / "ai-stack" / "mcp-servers" / "hybrid-coordinator" / "task_classifier.py"
 SPEC = importlib.util.spec_from_file_location("task_classifier_test_mod", MODULE_PATH)
 if SPEC is None or SPEC.loader is None:
@@ -103,7 +106,12 @@ def main() -> int:
 
     large_reasoning = task_classifier.classify(
         "continue the architecture analysis for the current work",
-        context="x" * 5000,
+        # Oversize relative to the current local input ceilings (raised in 7718162a5), not a fixed 5000 chars.
+        context="x" * (
+            max(task_classifier.LOCAL_MAX_INPUT_TOKENS, task_classifier.LOCAL_CONTINUATION_MAX_INPUT_TOKENS)
+            * task_classifier.CHARS_PER_TOKEN
+            + 400
+        ),
         max_output_tokens=500,
     )
     assert_true(large_reasoning.remote_required is True, "expected oversized continuation task to stay remote-required")

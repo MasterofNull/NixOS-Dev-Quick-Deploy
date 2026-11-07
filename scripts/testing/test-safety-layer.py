@@ -4,12 +4,29 @@
 import asyncio
 import os
 import json
+import tempfile
+import sys
+from pathlib import Path
+
+# tool_registry lives in ai-stack/local-agents (on PYTHONPATH in the deployed units).
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "ai-stack" / "local-agents"))
 from tool_registry import ToolRegistry, ToolDefinition, ToolCall, SafetyPolicy, ToolCategory
 
 async def test_safety_interception():
     print("--- Testing Safety Control Layer Interception ---")
-    
-    registry = ToolRegistry()
+
+    # The safety layer writes proposals under a cwd-relative .agent/proposals; keep that in a temp dir.
+    with tempfile.TemporaryDirectory(prefix="safety-layer-test-") as tmp:
+        previous_cwd = os.getcwd()
+        os.chdir(tmp)
+        try:
+            await _run_interception_check(Path(tmp) / "tool_audit.db")
+        finally:
+            os.chdir(previous_cwd)
+
+
+async def _run_interception_check(db_path):
+    registry = ToolRegistry(db_path=db_path)
     
     # Register a "dangerous" tool
     async def destructive_handler(cmd: str):
@@ -43,6 +60,7 @@ async def test_safety_interception():
         print("\nSUCCESS: Action was intercepted and turned into a proposal.")
     else:
         print("\nFAILURE: Action was NOT intercepted.")
+        raise SystemExit(1)
 
 if __name__ == "__main__":
     asyncio.run(test_safety_interception())
