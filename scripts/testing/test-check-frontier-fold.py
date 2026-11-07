@@ -24,7 +24,7 @@ import frontier_fold as ff
 
 def run_check(repo_root: str | Path) -> tuple[int, str, str]:
     """Run check-frontier-fold as subprocess with FRONTIER_REPO_ROOT and CODE_REPO_ROOT env vars."""
-    check_path = Path(__file__).resolve().parent.parent / "governance" / "tier0.d" / "check-frontier-fold"
+    check_path = Path(__file__).resolve().parent.parent / "governance" / "tier0.d" / "check-frontier-fold.py"
     code_repo = Path(__file__).resolve().parents[2]  # Real repo (contains scripts/ai/lib)
 
     env = dict(__import__("os").environ)

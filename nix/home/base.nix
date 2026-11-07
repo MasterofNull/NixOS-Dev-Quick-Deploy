@@ -2046,6 +2046,15 @@ if changed:
           "args": ["${repoPath}/ai-stack/mcp-servers/osint-tools/server.py"],
           "default_tools_approval_mode": "prompt"
         }
+      | .mcp_servers.semgrep = {
+          "command": "/run/current-system/sw/bin/semgrep",
+          "args": ["mcp", "--transport", "stdio"],
+          "default_tools_approval_mode": "prompt",
+          "env": {
+            "SEMGREP_MCP_DISABLE_TRACING": "true",
+            "SEMGREP_SEND_METRICS": "off"
+          }
+        }
       | .mcp_servers.openaiDeveloperDocs = {
           "url": "https://developers.openai.com/mcp",
           "default_tools_approval_mode": "auto"

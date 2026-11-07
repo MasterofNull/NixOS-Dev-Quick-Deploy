@@ -484,6 +484,13 @@ jobs:
           chmod +x scripts/governance/run-ci-checks.sh
           ./scripts/governance/run-ci-checks.sh --all --only workflow-failure-masks
 
+      - name: Static governance checks (workflow refs, doc hygiene, context tooling)
+        run: |
+          chmod +x scripts/governance/run-ci-checks.sh
+          for id in workflow-script-refs doc-lifecycle-hygiene doc-frontmatter agent-context-tooling context-bootstrap aq-integrity-logical-baseline; do
+            ./scripts/governance/run-ci-checks.sh --all --only "$id"
+          done
+
       - name: Set up Python (activation chain test)
         uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6
         with:
@@ -578,6 +585,7 @@ jobs:
             --only pm-tracker-owner-acceptance \
             --only check-workflow-masks-test \
             --only tier0-gate-placement-tests \
+            --only gate-lane-findings-tests \
             --only activation-manifest-tests \
             --only rea-sandbox-tests \
             --only intelligence-classifier-tests \

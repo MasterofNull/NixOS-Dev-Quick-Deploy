@@ -102,16 +102,36 @@ fail_count=0
 tap_index=0
 declare -a _tap_results=()  # accumulate "ok|not ok|skip:description" entries
 
+# Failing to learn what changed must never read as "nothing changed": the per-language gates pass on an empty
+# list. A missing base ref (no origin/main: shallow or fresh clone) widens the scan to every tracked file;
+# a git error that leaves even that unknowable stops the whole run (callers read this through process
+# substitution, so a return code would be lost).
 collect_changed_files() {
+  local out
   if [[ "$MODE" == "--pre-commit" ]]; then
-    git diff --cached --name-only --diff-filter=ACM 2>/dev/null || true
+    if out="$(git diff --cached --name-only --diff-filter=ACM 2>/dev/null)"; then
+      [[ -n "$out" ]] && printf '%s\n' "$out"
+      return 0
+    fi
+    printf '[tier0] WARN: cannot read the staged diff; scanning every tracked file\n' >&2
+  elif git rev-parse --verify --quiet origin/main >/dev/null 2>&1; then
+    local committed worktree
+    if committed="$(git diff --name-only --diff-filter=ACM origin/main...HEAD 2>/dev/null)" \
+       && worktree="$(git diff --name-only --diff-filter=ACM 2>/dev/null)"; then
+      printf '%s\n%s\n' "$committed" "$worktree" | awk 'NF && !seen[$0]++'
+      return 0
+    fi
+    printf '[tier0] WARN: git diff against origin/main failed; scanning every tracked file\n' >&2
+  else
+    printf '[tier0] WARN: no origin/main to diff against; scanning every tracked file\n' >&2
+  fi
+  if out="$(git ls-files 2>/dev/null)"; then
+    printf '%s\n' "$out"
     return 0
   fi
-
-  {
-    git diff --name-only --diff-filter=ACM origin/main...HEAD 2>/dev/null || true
-    git diff --name-only --diff-filter=ACM 2>/dev/null || true
-  } | awk 'NF && !seen[$0]++'
+  printf '[tier0] ERROR: cannot determine changed files (git ls-files failed); aborting\n' >&2
+  kill -TERM "$$"
+  return 1
 }
 
 
@@ -1419,10 +1439,13 @@ fi
 TIER0D="${SCRIPT_DIR}/tier0.d"
 if [[ -d "$TIER0D" ]]; then
   shopt -s nullglob
-  for ext_check in "${TIER0D}"/*.sh; do
-    check_name="$(basename "$ext_check" .sh)"
+  for ext_check in "${TIER0D}"/*.sh "${TIER0D}"/*.py; do
+    check_name="$(basename "$ext_check")"
+    check_name="${check_name%.*}"
+    ext_runner=bash
+    [[ "$ext_check" == *.py ]] && ext_runner=python3
     log "Running tier0.d extension: ${check_name}..."
-    if bash "$ext_check" "${MODE}" 2>&1; then
+    if "$ext_runner" "$ext_check" "${MODE}" 2>&1; then
       pass "tier0.d/${check_name}"
     else
       fail "tier0.d/${check_name}"

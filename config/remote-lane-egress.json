@@ -29,18 +29,14 @@
       "provider_family": "google"
     },
     "antigravity": {
-      "allowlist": [
-        "cloudaicompanion.googleapis.com",
-        "generativelanguage.googleapis.com"
-      ],
-      "provider_family": "google"
+      "allowlist": [],
+      "provider_family": "google",
+      "retired": "2026-11-05: Antigravity IDE retired; empty allowlist makes any traffic labelled with this lane a hold (fail-closed). Lane key kept because LANES in scripts/ai/lib/remote_lane_egress.py still names it."
     },
     "agy": {
-      "allowlist": [
-        "cloudaicompanion.googleapis.com",
-        "generativelanguage.googleapis.com"
-      ],
-      "provider_family": "google"
+      "allowlist": [],
+      "provider_family": "google",
+      "retired": "2026-11-05: Antigravity IDE retired; empty allowlist makes any traffic labelled with this lane a hold (fail-closed). Lane key kept because LANES in scripts/ai/lib/remote_lane_egress.py still names it."
     },
     "gemini-legacy": {
       "allowlist": [
