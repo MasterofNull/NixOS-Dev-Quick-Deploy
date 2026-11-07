@@ -551,12 +551,26 @@
       "ci_workflow": ".github/workflows/test.yml#syntax"
     },
     {
-      "id": "sweep-lanes-test",
-      "cmd": "scripts/testing/test-sweep-lanes.py",
+      "id": "sweep-dashboard-test",
+      "cmd": "scripts/testing/test-sweep-dashboard.py",
       "paths": [
-        "scripts/testing/test-sweep-lanes.py",
-        "scripts/governance/sweep-lanes.py",
+        "scripts/testing/test-sweep-dashboard.py",
+        "scripts/governance/sweep-dashboard.py",
         "config/ci-checks.json"
+      ],
+      "needs": [
+        "python3"
+      ],
+      "ci_workflow": ".github/workflows/test.yml#syntax"
+    },
+    {
+      "id": "sweep-dashboard-report",
+      "cmd": "scripts/governance/sweep-dashboard.py",
+      "paths": [
+        "scripts/governance/sweep-dashboard.py",
+        "dashboard.html",
+        "assets/dashboard.js",
+        "dashboard/backend/api/**"
       ],
       "needs": [
         "python3"
@@ -703,6 +717,7 @@
         "scripts/testing/test-aq-tempest.py",
         "scripts/testing/test-aq-triage.py",
         "scripts/testing/test-aq-update-tiers.py",
+        "scripts/testing/test-aq-update.py",
         "scripts/testing/test-aq-usage-logging.py",
         "scripts/testing/test-aq-workspace.py",
         "scripts/testing/test-aq-worktree-reap.py"
@@ -782,6 +797,7 @@
         "scripts/testing/test-aq-tempest.py",
         "scripts/testing/test-aq-triage.py",
         "scripts/testing/test-aq-update-tiers.py",
+        "scripts/testing/test-aq-update.py",
         "scripts/testing/test-aq-usage-logging.py",
         "scripts/testing/test-aq-workspace.py",
         "scripts/testing/test-aq-worktree-reap.py"
@@ -1946,7 +1962,10 @@
         ".agents/plans/*/tracker.json",
         "config/activation-manifest.json"
       ],
-      "needs": ["python3", "git"],
+      "needs": [
+        "python3",
+        "git"
+      ],
       "ci_workflow": ".github/workflows/test.yml#syntax"
     },
     {
@@ -1958,7 +1977,10 @@
         "scripts/ai/aq-pm-tracker",
         ".agents/plans/*/tracker.json"
       ],
-      "needs": ["python3", "git"],
+      "needs": [
+        "python3",
+        "git"
+      ],
       "ci_workflow": ".github/workflows/test.yml#syntax"
     },
     {
@@ -1970,6 +1992,19 @@
         "git"
       ],
       "ci_workflow": ".github/workflows/test.yml#manifest-tests"
+    },
+    {
+      "id": "sweep-lanes-test",
+      "cmd": "scripts/testing/test-sweep-lanes.py",
+      "paths": [
+        "scripts/testing/test-sweep-lanes.py",
+        "scripts/governance/sweep-lanes.py",
+        "config/ci-checks.json"
+      ],
+      "needs": [
+        "python3"
+      ],
+      "ci_workflow": ".github/workflows/test.yml#syntax"
     }
   ],
   "ci_exempt": [
