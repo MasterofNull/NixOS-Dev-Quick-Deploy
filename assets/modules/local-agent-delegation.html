@@ -325,7 +325,7 @@
         <div class="card-title">System Workflow & Logical Data Flow</div>
         <div class="mermaid" style="background:#030509; padding: 1.5rem 1rem; border-radius: 4px; border: 1px solid var(--border); overflow-x: auto; display: flex; justify-content: center; min-height: 220px;">
 graph TD
-  A[Switchboard :8085] -->|Routes| B[antigravity CLI]
+  A[Switchboard :8085] -->|Routes| B[delegate-to-gemini headless CLI]
   B -->|Primary| C[Remote API Models]
   B -->|Fallback| D[Local Inference :8080]
   C & D -->|Returns| E[Executed tool calls]
