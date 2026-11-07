@@ -1871,7 +1871,7 @@
         "scripts/testing/test-tier0-agent-harness-regression-gate.py",
         "scripts/testing/test-tier0-color-echo-extension.sh",
         "scripts/testing/test-tier0-qa-failed-detail.sh",
-      "scripts/testing/test-tier0d-gate-mutation.py",
+        "scripts/testing/test-tier0d-gate-mutation.py",
         "scripts/testing/test-timeout-guard-behavior.py",
         "scripts/testing/test-token-usage-coverage.py",
         "scripts/testing/test-tool-call-grammar.py",
@@ -1905,6 +1905,16 @@
         "scripts/testing/test-worktree-write-guard.py",
         "scripts/testing/test-write-region.py"
       ]
+    },
+    {
+      "id": "tier0-gate-placement-tests",
+      "cmd": "scripts/testing/test-tier0-gate-placement.py",
+      "paths": [],
+      "needs": [
+        "python3",
+        "git"
+      ],
+      "ci_workflow": ".github/workflows/test.yml#manifest-tests"
     }
   ],
   "ci_exempt": [
