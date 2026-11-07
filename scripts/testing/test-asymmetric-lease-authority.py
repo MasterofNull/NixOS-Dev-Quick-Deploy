@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import copy
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -262,16 +263,19 @@ check(
 legacy_signature = cl.sign(legacy_lease, cl.DEV_SIGNING_KEY)
 check("byte-parity: legacy HMAC sign() reproduces the pinned golden signature", legacy_signature == EXPECTED_LEGACY_HMAC_SIGNATURE)
 
+# Legacy fixture expires 2026-12-31; pin verify() clock inside its window.
+LEGACY_NOW = datetime(2026, 8, 7, tzinfo=timezone.utc)
+
 legacy_signed = dict(legacy_lease)
 legacy_signed["signature"] = legacy_signature
-legacy_verify_result = cl.verify(legacy_signed, cl.DEV_SIGNING_KEY)
+legacy_verify_result = cl.verify(legacy_signed, cl.DEV_SIGNING_KEY, now=LEGACY_NOW)
 check("byte-parity: legacy HMAC verify() round-trips OK", legacy_verify_result == cl.VERIFY_OK)
 
 tampered_legacy = dict(legacy_signed)
 tampered_legacy["owner"] = "someone-else"
 check(
     "byte-parity: tampered legacy lease fails legacy HMAC verify()",
-    cl.verify(tampered_legacy, cl.DEV_SIGNING_KEY) == cl.VERIFY_BAD_SIGNATURE,
+    cl.verify(tampered_legacy, cl.DEV_SIGNING_KEY, now=LEGACY_NOW) == cl.VERIFY_BAD_SIGNATURE,
 )
 
 # --------------------------------------------------------------------------
