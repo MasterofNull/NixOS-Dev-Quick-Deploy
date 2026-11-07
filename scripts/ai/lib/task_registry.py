@@ -36,6 +36,19 @@ if _LIB_DIR not in sys.path:
 from dispatch_evidence import normalize_row, summarize as summarize_dispatch_evidence  # noqa: E402
 
 
+def proc_start_time(pid: object) -> Optional[int]:
+    """Process start time (clock ticks since boot, /proc/<pid>/stat field 22) or None.
+
+    PIDs are reused; (pid, start time) is what identifies one process for its lifetime.
+    """
+    try:
+        with open(f"/proc/{int(pid)}/stat") as fh:
+            return int(fh.read().rsplit(")", 1)[1].split()[19])
+    except (OSError, ValueError, IndexError, TypeError):
+        return None
+
+
+_STOP_TERMINAL = frozenset({"done", "completed", "failed", "cancelled", "stale", "orphaned", "error"})
 _MAX_COMPLETED = 750    # max completed/failed entries in PENDING.json
 _MAX_HANDOFF_LINES = 300  # max delegation tracking lines in HANDOFF.md
 _LOCAL_DIRECT_ANSWER_INSPECTION_BYTES = 64 * 1024
@@ -433,6 +446,8 @@ class TaskRegistry:
             "created": _now(),
         }
         entry.update(extra or {})
+        if pid and proc_start_time(pid) is not None:
+            entry["pid_start_time"] = proc_start_time(pid)
         self._locked_append(self.registry_file, json.dumps(normalize_row(entry)))
 
     def update_status(self, task_id: str, status: str) -> None:
@@ -1405,24 +1420,73 @@ class TaskRegistry:
                 return True
         return False
 
-    def cmd_cancel(self, task_id: str, grace_s: Optional[float] = None) -> int:
+    def _prove_task_process(self, task_id: str, entry: dict) -> tuple:
+        """Return (pid, why_not). pid is set only when the live process is provably this task."""
+        raw = entry.get("pid")
+        try:
+            pid = int(raw)
+        except (TypeError, ValueError):
+            return None, f"registry row has no pid ({raw!r})"
+        if pid <= 1:
+            return None, f"registry pid {pid} is not a task pid"
+        if not self._pid_alive(pid):
+            return None, "gone"
+        recorded = entry.get("pid_start_time")
+        live = proc_start_time(pid)
+        if recorded is not None:
+            if live != recorded:
+                return None, (f"pid {pid} is alive but its start time {live} differs from the recorded "
+                              f"{recorded}: the pid was reused by another process")
+            return pid, ""
+        # Task started before start times were recorded: fall back to the task id in argv.
+        try:
+            with open(f"/proc/{pid}/cmdline", "rb") as fh:
+                argv = fh.read().replace(b"\0", b" ").decode("utf-8", "replace")
+        except OSError as exc:
+            return None, f"cannot read /proc/{pid}/cmdline: {exc}"
+        if task_id in argv:
+            return pid, ""
+        return None, (f"pid {pid} has no recorded start time and its command line does not contain "
+                      f"{task_id}; cannot prove it is this task")
+
+    def cmd_cancel(self, task_id: str, grace_s: Optional[float] = None,
+                   reason: str = "", by: str = "") -> int:
+        """Really stop a task: verify identity, SIGTERM its group, SIGKILL after grace, record who/when/why.
+
+        Exit codes: 0 stopped or nothing to do, 1 process survived, 2 refused, 3 unknown task.
+        """
+        import getpass
         import signal
         if grace_s is None:
             try:
                 grace_s = float(os.environ.get("TASK_CANCEL_GRACE_S", "10"))
             except ValueError:
                 grace_s = 10.0
-        pid = self.get_pid(task_id)
+        entry = self.get(task_id)
+        if entry is None:
+            print(f"[stop] {task_id}: no such task in {self.registry_file}; nothing signalled", file=sys.stderr)
+            return 3
+        status = entry.get("status")
+        if status in _STOP_TERMINAL:
+            print(f"[stop] {task_id}: already {status}; nothing signalled, row unchanged")
+            return 0
+        pid, why = self._prove_task_process(task_id, entry)
+        if pid is None and why != "gone":
+            print(f"[stop] {task_id}: REFUSED, {why}. Nothing signalled, row unchanged.", file=sys.stderr)
+            return 2
         survived = False
         detail = ""
-        if pid:
+        sent = "no signal sent: process was already gone"
+        if pid is not None:
             try:
                 pgid = os.getpgid(pid)
             except OSError:
                 pgid = None
-            # Never signal our own group.
-            if pgid is not None and pgid == os.getpgrp():
+            scope = f"process group {pgid}"
+            # Only an own-group leader's group is provably the task's; never our own group.
+            if pgid is None or pgid != pid or pgid == os.getpgrp():
                 pgid = None
+                scope = f"pid {pid} only (not in its own process group; child processes may survive)"
 
             def _send(sig) -> None:
                 if pgid is not None:
@@ -1436,31 +1500,33 @@ class TaskRegistry:
                     pass
 
             _send(signal.SIGTERM)
-            print(f"[task_registry] Sent SIGTERM to pid {pid} for task {task_id}")
+            sent = f"SIGTERM to {scope}"
             deadline = time.monotonic() + max(0.0, grace_s)
             while self._group_alive(pid, pgid) and time.monotonic() < deadline:
                 time.sleep(0.05)
             if self._group_alive(pid, pgid):
                 _send(signal.SIGKILL)
-                print(f"[task_registry] Escalated to SIGKILL for pid {pid} (task {task_id})")
+                sent = f"SIGTERM then SIGKILL (after {grace_s:g}s grace) to {scope}"
                 kdl = time.monotonic() + 5.0
                 while self._group_alive(pid, pgid) and time.monotonic() < kdl:
                     time.sleep(0.05)
                 if self._group_alive(pid, pgid):
                     survived = True
                     detail = f"pid {pid} survived SIGTERM+SIGKILL"
-        else:
-            print(f"[task_registry] No PID found for {task_id}")
         if survived:
-            self.update_status(task_id, "cancel-failed")
-            try:
-                self._update_registry(task_id, {"cancel_detail": detail})
-            except Exception:
-                pass
-            print(f"[task_registry] cancel-failed: {detail}", file=sys.stderr)
+            self._update_registry(task_id, {"status": "cancel-failed", "cancel_detail": detail})
+            print(f"[stop] {task_id}: FAILED, {detail}. Row marked cancel-failed.", file=sys.stderr)
             return 1
-        self.update_status(task_id, "cancelled")
+        self._update_registry(task_id, {
+            "status": "cancelled",
+            "stopped_by": by or getpass.getuser(),
+            "stopped_at": _now(),
+            "stop_reason": reason or "operator stop",
+            "stop_detail": sent,
+        })
         self.record_completion(task_id, "cancelled")
+        print(f"[stop] {task_id}: stopped ({sent}); registry status cancelled, "
+              f"by {by or getpass.getuser()}. Worktree and output left in place.")
         return 0
 
     def cmd_kill_all(self) -> int:
