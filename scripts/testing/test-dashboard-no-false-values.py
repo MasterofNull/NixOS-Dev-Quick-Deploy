@@ -112,6 +112,62 @@ for m in re.finditer(r"textContent\s*\|\|\s*[\"']\d", JS):
 for m in re.finditer(r"\b(?:threshold_mb|hot_max_mb|target)\s*\|\|\s*\d", JS):
     fail(f"dashboard.js:{line_of(JS, m.start())} limit/target defaults to a number")
 
+# 4f. The class behind the individual cases above: a number-bearing fallback in any
+# display write. Matches `x || <number>`, `x ?? "<number-ish>"`, `cond ? v : "<number-ish>"`,
+# literal arguments to setText/fwRow/textContent, and hand-typed numbers in the HTML of ids
+# the script writes. Zero counts (`|| 0`, `?? 0`) are not matched here: they are tracked as a
+# separate, larger class (see the evidence file) and each remaining one needs its own source check.
+ALLOW = [
+    # (regex on the matched text, reason it is not a measurement)
+    (r"\|\|\s*(800|500|400)\b", "SVG canvas width/height default (layout size)"),
+    (r"\|\|\s*1(?![\d.])", "divisor guard against division by zero"),
+    (r"\|\|\s*3(?![\d.])", "graph node radius default (layout size)"),
+    (r"\|\|\s*\"v1\"", "API version label default, not a measurement"),
+    (r"\|\|\s*\"7d\"", "selected time-window default, not a measurement"),
+    (r"\?\?\s*2(?![\d.])", "fail-closed severity rank for an unknown lane, not displayed as a value"),
+    (r"\?\s*1000\s*:\s*2000", "poll cadence in ms"),
+    (r"\?\s*10\s*:\s*8", "font size"),
+    (r"\?\s*[\"']1[\"']\s*:\s*[\"']\.45[\"']", "CSS opacity"),
+    (r"\?\s*[\"']700[\"']\s*:\s*[\"']600[\"']", "CSS font weight"),
+    (r"\"0 vulns\"", "zero branch taken only when vulnMeasured is true"),
+    (r"\"0 alerts\"", "zero branch taken only when alertTotal is a measured number"),
+    (r"\"0 Pending\"|\bPending`", "count of a fetched list; unavailable handled in the else branch"),
+    (r"fwRow\(\"(Promoted Lessons|Events)\",\s*\"0\"", "empty list after an explicit `if (!d) unavailable` guard"),
+    (r"\"0 (runs|lanes)\"", "empty list after an explicit fetched-and-ok guard"),
+    (r"textContent\s*=\s*\"0\"", "agent pool badge shown only after the `!d` unavailable guard"),
+    (r"textContent\s*===\s*\"0\"", "comparison, not a write"),
+    (r"var\(--|rgba\(", "CSS colour value in a ternary, not displayed text"),
+    (r"D3_LOADING", "transient loading label replaced when the chart renders"),
+    (r"/mcp/v2|Phase 68|JSON-RPC 2\.0", "static protocol/endpoint label on the MCP card, not a measurement"),
+]
+NUMISH = r"""(?:"[^"\n<>#;]*\d[^"\n<>#;]*"|'[^'\n<>#;]*\d[^'\n<>#;]*')"""
+NONZERO = r"(?:[1-9]\d*(?:\.\d+)?|0\.\d*[1-9]\d*)\b"
+patterns = [
+    ("fallback literal", rf"(?:\|\||\?\?)\s*(?:{NUMISH}|{NONZERO})"),
+    ("ternary false-branch literal", rf"[^?.]\?\s[^?:;\n]*?:\s*(?:{NUMISH}|{NONZERO})\s*(?:[;,)\]}}]|$)"),
+    ("literal display argument", rf"\b(?:setText|fwRow)\(\s*[\"'][\w-]+[\"']\s*,\s*{NUMISH}\s*[,)]"),
+    ("literal textContent", rf"\.textContent\s*=\s*{NUMISH}"),
+]
+class_hits = 0
+allowlisted = 0
+for label, pat in patterns:
+    for m in re.finditer(pat, JS, flags=re.M):
+        text = m.group(0)
+        if any(re.search(rx, text) for rx, _ in ALLOW):
+            allowlisted += 1
+            continue
+        class_hits += 1
+        fail(f"dashboard.js:{line_of(JS, m.start())} {label}: {text.strip()[:70]!r}")
+# HTML: any id the script writes must not ship a number-bearing value (a failed fetch would leave it as a reading).
+JS_IDS_ALL = set(re.findall(r"""["'`#]([A-Za-z][\w-]{2,})["'`]""", JS)) | set(re.findall(r"#([A-Za-z][\w-]+)", JS))
+HTML_LABELS = {"tabSubmenuOverview", "tabSubmenuHistory"}  # tab titles ("All 14 Raw Sensors"), not values
+for source, name in ((HTML, "dashboard.html"), (STREAM, "stream-card.html")):
+    for m in re.finditer(r"""<\w+[^>]*\bid="([^"]+)"[^>]*>([^<]*)<""", source):
+        ident, text = m.group(1), m.group(2).strip()
+        if ident in JS_IDS_ALL and ident not in HTML_LABELS and re.search(r"\d", text) and "${" not in text:
+            fail(f"{name}:{line_of(source, m.start())} #{ident} is written by script but ships {text[:40]!r}")
+print(f"class scan: {class_hits} unallowlisted and {allowlisted} allowlisted JS fallback hits")
+
 # 5. retired Antigravity lane shown as live
 for text, name in ((HTML, "dashboard.html"), (STREAM, "stream-card.html"), (DELEG, "local-agent-delegation.html")):
     for m in re.finditer(r"antigravity", text, flags=re.I):

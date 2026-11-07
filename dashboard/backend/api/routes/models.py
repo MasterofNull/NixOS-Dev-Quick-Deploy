@@ -558,7 +558,7 @@ def _stub_catalog(reason: str = "live registry unavailable"):
     Always marked `available: False` / `stub: True` so a consumer cannot mistake
     it for the live registry. The registry-file snapshot has `source: registry_file`.
     """
-    out = _stub_catalog_body()
+    out = _registry_snapshot_body()
     out["available"] = False
     out["stub"] = True
     out["reason"] = reason
@@ -566,7 +566,7 @@ def _stub_catalog(reason: str = "live registry unavailable"):
     return out
 
 
-def _stub_catalog_body():
+def _registry_snapshot_body():
     for reg_path in _REGISTRY_PATHS:
         if not reg_path or not reg_path.exists():
             continue

@@ -382,8 +382,13 @@ async function loadAcpRunbooks() {
   const list = Array.isArray(approvalsList) ? approvalsList : [];
   if (badge) {
     const count = list.length;
-    badge.textContent = count > 0 ? `${count} Pending` : "0 Pending";
-    badge.className = `card-badge ${count > 0 ? "badge-warn" : "badge-ok"}`;
+    if (!Array.isArray(approvalsList)) {
+      badge.textContent = "unavailable";
+      badge.className = "card-badge badge-warn";
+    } else {
+      badge.textContent = `${count} Pending`;
+      badge.className = `card-badge ${count > 0 ? "badge-warn" : "badge-ok"}`;
+    }
   }
   if (list.length === 0) {
     el.innerHTML = '<div style="color:var(--fg3);font-size:.62rem;padding:.4rem 0">No pending ACP runbooks. All control actions authorized.</div>';
@@ -1015,9 +1020,11 @@ async function loadKPIs() {
       setText("histCurOps", `${opsDay} ops`);
       if (backendN) setText("vBackendN", Math.round(backendN / 7).toLocaleString());
     } else {
-      setUnavailable("kpiTokSaved", "/api/insights/routing/analytics unavailable");
+      ["kpiTokSaved", "vOpsDay", "histCurOps"].forEach((id) =>
+        setUnavailable(id, "/api/insights/routing/analytics unavailable"));
     }
-  }).catch(() => setUnavailable("kpiTokSaved", "/api/insights/routing/analytics request failed"));
+  }).catch(() => ["kpiTokSaved", "vOpsDay", "histCurOps"].forEach((id) =>
+    setUnavailable(id, "/api/insights/routing/analytics request failed")));
 
   loadApprovals().catch(() => {});
   loadSlotQueue().catch(() => {});
@@ -1137,7 +1144,7 @@ async function loadSystem() {
       }
       if (memPct != null) {
         setText("vMem", pctD(memPct));
-        setText("histCurMem", `${mem.used ? bytes(mem.used) : "12.8G"} (${pctD(memPct)})`);
+        setText("histCurMem", mem.used != null ? `${bytes(mem.used)} (${pctD(memPct)})` : pctD(memPct));
         pushHist(histMem, memPct);
         updateSpark("spMem", histMem);
         colorStatTile("statMem", memPct, 80, 92, "spMem");
@@ -1146,39 +1153,49 @@ async function loadSystem() {
         setText("vDisk", pctD(dskPct));
         colorStatTile("statDisk", dskPct, 82, 94);
       }
-      const connCount = net.active_connections ?? 0;
-      const netMB =
-        net.bytes_sent != null
-          ? ((net.bytes_sent + net.bytes_recv) / 1e6).toFixed(0) + "MB"
-          : "0MB";
-      setText("vNet", netMB);
-      pushHist(histNet, connCount);
-      updateSpark("spNet", histNet);
-      setText("vConnections", net.active_connections ?? "0");
+      if (net.bytes_sent != null) {
+        setText("vNet", ((net.bytes_sent + net.bytes_recv) / 1e6).toFixed(0) + "MB");
+      } else setUnavailable("vNet", "network counters not reported");
+      if (net.active_connections != null) {
+        pushHist(histNet, net.active_connections);
+        updateSpark("spNet", histNet);
+        setText("vConnections", net.active_connections);
+      } else setUnavailable("vConnections", "connection count not reported");
       setText(
         "cpuModel",
         cpu.model ? cpu.model.replace(/\s+/g, " ").trim() : "N/A"
       );
       const tempStr = cpu.temperature || "";
-      const tempRaw = parseFloat(tempStr) || null;
+      const tempParsed = parseFloat(tempStr);
+      const tempRaw = Number.isFinite(tempParsed) ? tempParsed : null;
       setText("cpuTemp", tempStr || "N/A");
-      if (tempRaw) colorStatTile("statTemp", tempRaw, 75, 90);
+      if (tempRaw != null) colorStatTile("statTemp", tempRaw, 75, 90);
       setText("cpuCores", cpu.count ?? "N/A");
-      setText("histCurTemp", tempStr || "44.5°C");
 
       // Update Radial Gauge 3: Hardware Vitals & Thermal Headroom
-      const curTempNum = tempRaw || 44.5;
-      const curTempPct = Math.min(100, Math.max(0, (curTempNum / 90) * 100));
-      const hwColor = curTempNum < 55 ? "var(--grn)" : curTempNum < 75 ? "var(--yel)" : "var(--red)";
-      const hwBadge = curTempNum < 55 ? "OPTIMAL" : curTempNum < 75 ? "MODERATE" : "WARMING";
-      const hwBadgeCls = curTempNum < 55 ? "badge-healthy" : curTempNum < 75 ? "badge-warning" : "badge-critical";
-      updateRadialGauge("circleGaugeHw", "gaugeHwVal", curTempPct, `${curTempNum.toFixed(1)}°C`, hwColor);
       const gHwBadgeEl = document.getElementById("gaugeHwBadge");
-      if (gHwBadgeEl) {
-        gHwBadgeEl.textContent = hwBadge;
-        gHwBadgeEl.className = `gauge-status-badge ${hwBadgeCls}`;
+      if (tempRaw == null) {
+        const why = "cpu.temperature not reported by /api/metrics/system";
+        setUnavailable("histCurTemp", why);
+        setUnavailable("opsHeroTemp", why);
+        setGaugeUnavailable("circleGaugeHw", "gaugeHwVal", why);
+        if (gHwBadgeEl) {
+          gHwBadgeEl.textContent = "UNAVAILABLE";
+          gHwBadgeEl.className = "gauge-status-badge badge-critical";
+        }
+      } else {
+        setText("histCurTemp", tempStr);
+        const curTempPct = Math.min(100, Math.max(0, (tempRaw / 90) * 100));
+        const hwColor = tempRaw < 55 ? "var(--grn)" : tempRaw < 75 ? "var(--yel)" : "var(--red)";
+        const hwBadge = tempRaw < 55 ? "OPTIMAL" : tempRaw < 75 ? "MODERATE" : "WARMING";
+        const hwBadgeCls = tempRaw < 55 ? "badge-healthy" : tempRaw < 75 ? "badge-warning" : "badge-critical";
+        updateRadialGauge("circleGaugeHw", "gaugeHwVal", curTempPct, `${tempRaw.toFixed(1)}°C`, hwColor);
+        if (gHwBadgeEl) {
+          gHwBadgeEl.textContent = hwBadge;
+          gHwBadgeEl.className = `gauge-status-badge ${hwBadgeCls}`;
+        }
+        setText("opsHeroTemp", `${tempRaw.toFixed(1)}°C`);
       }
-      setText("opsHeroTemp", `${curTempNum.toFixed(1)}°C`);
       if (mem.free != null) {
         setText("opsHeroRam", `${(mem.free / (1024 ** 3)).toFixed(1)} GB FREE`);
       }
@@ -1220,8 +1237,10 @@ async function loadSystem() {
       const la = sys.load_average || {};
       if (la.one != null) {
         setText("vLoad1", la.one.toFixed(2));
-        setText("vLoad5", la.five != null ? la.five.toFixed(2) : "0.00");
-        setText("vLoad15", la.fifteen != null ? la.fifteen.toFixed(2) : "0.00");
+        if (la.five != null) setText("vLoad5", la.five.toFixed(2));
+        else setUnavailable("vLoad5", "5-minute load not reported");
+        if (la.fifteen != null) setText("vLoad15", la.fifteen.toFixed(2));
+        else setUnavailable("vLoad15", "15-minute load not reported");
         const cores = cpu.count || 1;
         const loadPct = (la.one / cores) * 100;
         const loadEl = document.getElementById("statLoad");
@@ -2013,10 +2032,9 @@ async function loadCoordinator() {
       "vOpsDay",
       opsDay >= 1000 ? `${(opsDay / 1000).toFixed(1)}k` : String(opsDay)
     );
-    setText(
-      "vBackendN",
-      backendN ? Math.round(backendN / 7).toLocaleString() : "0"
-    );
+    if ((w7d.local_n ?? cur.local_n) != null) {
+      setText("vBackendN", Math.round(backendN / 7).toLocaleString());
+    } else setUnavailable("vBackendN", "local_n not reported by routing analytics");
   }
   // Phase 150: Logic Discipline tile populating.
   const logicRate = analytics.logic_discipline_rate;
@@ -2467,7 +2485,7 @@ async function loadLearning() {
     ),
     fwRow(
       "Unprocessed",
-      bp.unprocessed_mb != null ? `${bp.unprocessed_mb.toFixed(1)} MB` : "0 MB"
+      bp.unprocessed_mb != null ? `${bp.unprocessed_mb.toFixed(1)} MB` : "--"
     ),
     `<div style="display:flex;gap:.3rem;flex-wrap:wrap;margin-top:.45rem">
       <button class="mini-btn" onclick="controlLoop('start')">${loopStatus === "never_ran" || loopStatus === "healthy" ? "Trigger" : "Start"}</button>
@@ -2552,7 +2570,7 @@ async function loadDrift() {
         : "--",
       d.latency_degradation > 0 ? "warn" : "ok"
     ),
-    fwRow("Threshold", d.alert_threshold || "0.4"),
+    fwRow("Threshold", d.alert_threshold ?? "--"),
     fwRow("Trace Count", d.trace_count ?? "--"),
   ].join("");
 }
@@ -3438,7 +3456,7 @@ async function loadSlotQueue() {
   const rows = [
     fwRow("Running", d.running ? `${bandShort(d.running.band)} ${String(d.running.id).split(":").pop()}` : "slot free", d.running ? "info" : "ok"),
     fwRow("Depth", d.depth, d.depth > 2 ? "warn" : "ok"),
-    fwRow("Max Wait", d.max_wait_s != null ? `${Math.round(d.max_wait_s)}s` : "0s", d.max_wait_s > 120 ? "warn" : ""),
+    fwRow("Max Wait", d.max_wait_s != null ? `${Math.round(d.max_wait_s)}s` : "--", d.max_wait_s > 120 ? "warn" : ""),
     ...(d.queue || []).slice(0, 5).map((j) =>
       fwRow(bandShort(j.band), `${String(j.id).split(":").pop()} · ${Math.round(j.wait_s)}s${j.task_class ? ` · ${j.task_class}` : ""}`,
         j.band === "P1_INTERACTIVE" ? "info" : "")),
@@ -4554,7 +4572,15 @@ async function loadAgentPool() {
   const el = document.getElementById("agentPoolDetails");
   const badge = document.getElementById("agentPoolBadge");
   if (!el) return;
-  const profiles = ((d || {}).raw || {}).quality_profiles || {};
+  if (!d) {
+    el.innerHTML = fwRow("Status", "Unavailable", "warn");
+    if (badge) {
+      badge.textContent = "--";
+      badge.className = "card-badge badge-warn";
+    }
+    return;
+  }
+  const profiles = (d.raw || {}).quality_profiles || {};
   const agents = profiles.profiles || [];
   if (!agents.length) {
     el.innerHTML = fwRow("Status", "no pool data", "info");
@@ -4600,9 +4626,10 @@ async function loadVulnAudit() {
   const dop = s.dashboard_operator || {};
   const vulnTotal =
     (pip.vulnerabilities_total || 0) + (npm.high || 0) + (npm.critical || 0);
+  const vulnMeasured = pip.vulnerabilities_total != null || npm.high != null || npm.critical != null;
   if (badge) {
-    badge.textContent = vulnTotal > 0 ? `${vulnTotal} issues` : "0 vulns";
-    badge.className = `card-badge ${vulnTotal > 0 ? "badge-err" : "badge-ok"}`;
+    badge.textContent = !vulnMeasured ? "--" : vulnTotal > 0 ? `${vulnTotal} issues` : "0 vulns";
+    badge.className = `card-badge ${!vulnMeasured ? "badge-warn" : vulnTotal > 0 ? "badge-err" : "badge-ok"}`;
   }
   el.innerHTML = [
     fwRow("Scan Date", d.generated_at ? relTime(d.generated_at) : "--", "info"),
@@ -6018,12 +6045,12 @@ async function loadHardwareState() {
     fwRow("Thermal Tier", tier.toUpperCase(), tierColor),
     fwRow(
       "CPU Temp",
-      d.temp_cpu_c != null ? `${d.temp_cpu_c.toFixed(1)}°C` : "62.0°C",
+      d.temp_cpu_c != null ? `${d.temp_cpu_c.toFixed(1)}°C` : "--",
       d.temp_cpu_c >= 85 ? "err" : d.temp_cpu_c >= 75 ? "warn" : "ok"
     ),
     fwRow(
       "GPU Temp",
-      d.temp_gpu_c != null ? `${d.temp_gpu_c.toFixed(1)}°C` : "58.0°C",
+      d.temp_gpu_c != null ? `${d.temp_gpu_c.toFixed(1)}°C` : "--",
       d.temp_gpu_c >= 85 ? "err" : d.temp_gpu_c >= 70 ? "warn" : "ok"
     ),
     fwRow(
@@ -6038,7 +6065,7 @@ async function loadHardwareState() {
     fwRow("GPU Layers", d.n_gpu_layers_current ?? "--", "info"),
     fwRow(
       "Embed Busy",
-      d.embed_busy_slots != null ? d.embed_busy_slots.toFixed(2) : "0.00",
+      d.embed_busy_slots != null ? d.embed_busy_slots.toFixed(2) : "--",
       d.embed_busy_slots > 0.8 ? "warn" : "ok"
     ),
     d.mtp_acceptance_rate != null
@@ -7120,7 +7147,8 @@ async function loadHealthAlerts() {
   const crit = s.by_severity?.critical ?? 0;
   const warn = s.by_severity?.warning ?? 0;
   if (badge) {
-    badge.textContent = s.total > 0 ? `${s.total} alerts` : "0 alerts";
+    const alertTotal = s.total ?? (Array.isArray(d.alerts) ? alerts.length : null);
+    badge.textContent = alertTotal == null ? "--" : alertTotal > 0 ? `${alertTotal} alerts` : "0 alerts";
     badge.className = `card-badge badge-${crit > 0 ? "err" : warn > 0 ? "warn" : "ok"
       }`;
   }
@@ -7128,7 +7156,7 @@ async function loadHealthAlerts() {
     s.total === 0
       ? fwRow("Status", "No active alerts", "ok")
       : [
-        fwRow("Total", s.total ?? 0, s.total > 0 ? "warn" : "ok"),
+        fwRow("Total", s.total ?? "--", s.total > 0 ? "warn" : "ok"),
         fwRow("Critical", crit, crit > 0 ? "err" : "ok"),
         fwRow("Warning", warn, warn > 0 ? "warn" : "ok"),
         fwRow("Info", s.by_severity?.info ?? 0, "info"),
