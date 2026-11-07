@@ -38,6 +38,11 @@ if side == "main_moves":
     subprocess.run(["git", "-C", f"{S}/c2", "add", "."], check=True)
     subprocess.run(["git", "-C", f"{S}/c2", "-c", "user.name=x", "-c", "user.email=x@x", "commit", "-q", "-m", "main moves"], check=True)
     subprocess.run(["git", "-C", f"{S}/c2", "push", "-q", "origin", "HEAD:main"], check=True)
+if side == "main_manifest":
+    subprocess.run(["git", "clone", "-q", f"{S}/origin.git", f"{S}/c2"], check=True)
+    open(f"{S}/c2/{c['theirs_path']}", "w").write(c["theirs_text"])
+    subprocess.run(["git", "-C", f"{S}/c2", "-c", "user.name=x", "-c", "user.email=x@x", "commit", "-qam", "main edits manifest"], check=True)
+    subprocess.run(["git", "-C", f"{S}/c2", "push", "-q", "origin", "HEAD:main"], check=True)
 if side == "local_commit":
     open("extra.txt", "w").write("x\n")
     subprocess.run(["git", "add", "extra.txt"], check=True)
@@ -86,6 +91,10 @@ def bump(k):
     return st[k]
 st.setdefault("calls", []).append(" ".join(a[:3]))
 cmd = " ".join(a[:2])
+fl = st.get("flaky")
+if fl and cmd == fl["cmd"] and bump("n_flaky") <= fl["times"]:
+    sys.stderr.write(fl["msg"] + "\n")
+    sys.exit(1)
 branch_head = lambda b: subprocess.run(["git", "--git-dir", f"{S}/origin.git", "rev-parse", f"refs/heads/{b}"], capture_output=True, text=True).stdout.strip()
 if cmd == "pr list":
     if bump("n_list") == 2:
@@ -363,6 +372,108 @@ behind="$(git rev-list --count "HEAD..$up")"
         self.assertEqual(self.calls("gemini"), [])
 
 
+CI0 = {"checks": [{"id": "a", "cmd": "x"}], "test_exempt": []}
+WF0 = "jobs:\n  a:\n    steps: []\n"
+
+
+def jtext(d):
+    return json.dumps(d, indent=2, ensure_ascii=False) + "\n"
+
+
+class Manifests(Base):
+    """main moves into conflict only in additive manifests: structural merge, fresh review; anything else stops."""
+
+    def conflict(self, base, ours, theirs):
+        """Each arg maps path -> text: base lands on main (and the branch), ours on the branch, theirs on main."""
+        self.g("checkout", "-q", "main")
+        for pth, t in base.items():
+            self.change(pth, t)
+        self.g("push", "-q", "origin", "main")
+        self.g("checkout", "-q", "feat/x")
+        self.g("merge", "-q", "--no-edit", "main")
+        for pth, t in ours.items():
+            self.change(pth, t)
+        sh(self.S, "git", "clone", "-q", str(self.origin), str(self.S / "c3"))
+        for pth, t in theirs.items():
+            (self.S / "c3" / pth).parent.mkdir(parents=True, exist_ok=True)
+            (self.S / "c3" / pth).write_text(t)
+        if theirs:
+            sh(self.S / "c3", "git", "-c", "user.name=x", "-c", "user.email=x@x", "commit", "-qam", "main edits")
+            sh(self.S / "c3", "git", "push", "-q", "origin", "HEAD:main")
+
+    def clean_stop(self, r, *needles):
+        line = self.stop_line(r)
+        self.assertIn("STOP merge", line)
+        for n in needles:
+            self.assertIn(n, line)
+        self.assertFalse((self.wd / ".git/MERGE_HEAD").exists())
+        self.assertEqual(self.g("status", "--porcelain", "--untracked-files=no"), "")
+        self.assertEqual(self.calls("gemini"), [])
+
+    def test_two_sides_adding_entries_merge_and_keep_formatting(self):
+        b = {"checks": [{"id": "a", "cmd": "x"}], "test_exempt": []}
+        o = {"checks": [{"id": "a", "cmd": "x"}, {"id": "ours", "cmd": "o"}], "test_exempt": []}
+        t = {"checks": [{"id": "a", "cmd": "x"}, {"id": "theirs", "cmd": "t"}], "test_exempt": [{"script": "s", "reason": "r"}]}
+        wf = lambda extra: WF0 + extra
+        self.conflict({"config/ci-checks.json": jtext(b), ".github/workflows/test.yml": WF0},
+                      {"config/ci-checks.json": jtext(o), ".github/workflows/test.yml": wf("  ours:\n    steps: []\n")},
+                      {"config/ci-checks.json": jtext(t), ".github/workflows/test.yml": wf("  theirs:\n    steps: []\n")})
+        r = self.land(expect=0)
+        self.assertIn("resolved additive manifest conflicts", r.stdout)
+        ids = [c["id"] for c in json.loads((self.wd / "config/ci-checks.json").read_text())["checks"]]
+        self.assertEqual(sorted(ids), ["a", "ours", "theirs"])
+        text = (self.wd / "config/ci-checks.json").read_text()
+        self.assertEqual(text, jtext(json.loads(text)))
+        self.assertEqual(json.loads(text)["test_exempt"], t["test_exempt"])
+        wf_text = (self.wd / ".github/workflows/test.yml").read_text()
+        self.assertIn("  ours:", wf_text)
+        self.assertIn("  theirs:", wf_text)
+        self.assertEqual(len(self.g("rev-list", "--parents", "-n1", "HEAD").split()), 3)  # a real merge commit
+
+    def test_resolved_merge_during_review_gets_a_fresh_review(self):
+        b = {"checks": [{"id": "a", "cmd": "x"}]}
+        o = {"checks": [{"id": "a", "cmd": "x"}, {"id": "ours", "cmd": "o"}]}
+        t = {"checks": [{"id": "a", "cmd": "x"}, {"id": "theirs", "cmd": "t"}]}
+        self.conflict({"config/ci-checks.json": jtext(b)}, {"config/ci-checks.json": jtext(o)}, {})
+        self.cfg({"gemini": {"mode": "ok", "side": "main_manifest", "theirs_path": "config/ci-checks.json", "theirs_text": jtext(t)}})
+        self.land(expect=0)
+        self.assertEqual(len(self.calls("gemini")), 2)  # the first review does not cover the hand-resolved merge
+        head = self.g("rev-parse", "HEAD")
+        self.assertIn(f"Reviewed-head-sha: {head}", self.pr_body())
+        ids = [c["id"] for c in json.loads((self.wd / "config/ci-checks.json").read_text())["checks"]]
+        self.assertEqual(sorted(ids), ["a", "ours", "theirs"])
+
+    def test_deletion_on_one_side_is_kept(self):
+        b = {"checks": [{"id": "a", "cmd": "x"}, {"id": "b", "cmd": "y"}]}
+        o = {"checks": [{"id": "a", "cmd": "x"}]}
+        t = {"checks": [{"id": "a", "cmd": "x"}, {"id": "b", "cmd": "y"}, {"id": "c", "cmd": "z"}]}
+        self.conflict({"config/ci-checks.json": jtext(b)}, {"config/ci-checks.json": jtext(o)}, {"config/ci-checks.json": jtext(t)})
+        self.land(expect=0)
+        ids = [c["id"] for c in json.loads((self.wd / "config/ci-checks.json").read_text())["checks"]]
+        self.assertEqual(ids, ["a", "c"])
+
+    def test_true_conflict_on_a_scalar_stops_and_aborts(self):
+        mk = lambda v: jtext({"checks": [{"id": "a", "cmd": v}]})
+        self.conflict({"config/ci-checks.json": mk("x")}, {"config/ci-checks.json": mk("y")}, {"config/ci-checks.json": mk("z")})
+        self.clean_stop(self.land(expect=1), "ci-checks.json", "both sides changed")
+
+    def test_invalid_result_stops(self):
+        self.conflict({"config/ci-checks.json": jtext(CI0)}, {"config/ci-checks.json": jtext({**CI0, "n": 1})},
+                      {"config/ci-checks.json": "{not json\n"})
+        self.clean_stop(self.land(expect=1), "not valid JSON")
+
+    def test_invalid_workflow_union_stops(self):
+        self.conflict({".github/workflows/test.yml": "a: 1\n"}, {".github/workflows/test.yml": "a: 1\nb: [\n"},
+                      {".github/workflows/test.yml": "a: 1\nc: 2\n"})
+        self.clean_stop(self.land(expect=1), "not valid YAML")
+
+    def test_non_manifest_conflict_alongside_a_manifest_stops(self):
+        self.conflict({"config/ci-checks.json": jtext(CI0), "shared2.txt": "b\n"},
+                      {"config/ci-checks.json": jtext({**CI0, "p": 1}), "shared2.txt": "o\n"},
+                      {"config/ci-checks.json": jtext({**CI0, "q": 1}), "shared2.txt": "t\n"})
+        self.clean_stop(self.land(expect=1), "shared2.txt", "outside the additive manifests")
+
+
 class Lanes(Base):
     def test_stall_and_budget_fall_through_to_local_and_are_recorded(self):
         self.cfg({"codex": {"mode": "silent"}, "local": {"mode": "ok"}})
@@ -514,7 +625,11 @@ class Preflight(Base):
         (self.S / "tier0.fail").write_text("")
         before = self.g("rev-parse", "HEAD")
         r = self.land("--commit-msg-file", str(msg), expect=1)
-        self.assertIn("STOP tier0", self.stop_line(r))
+        line = self.stop_line(r)
+        self.assertIn("STOP tier0", line)
+        self.assertIn("FAIL: stub gate", line)  # the blocker, never just "tier0 failed"
+        log = line.split("full output ")[1]
+        self.assertIn("FAIL: stub gate", pathlib.Path(log).read_text())
         self.assertEqual(self.g("rev-parse", "HEAD"), before)
         (self.S / "tier0.fail").unlink()
         hook = self.wd / ".git/hooks/pre-commit"
@@ -523,6 +638,18 @@ class Preflight(Base):
         self.land("--commit-msg-file", str(msg), expect=0)
         self.assertNotEqual(self.g("rev-parse", "HEAD"), before)
         self.assertTrue((self.S / "hook.log").exists())  # hooks ran: no --no-verify
+
+    def test_failing_commit_hook_shows_its_output_and_a_log(self):
+        self.change("scripts/bar.py", "print(2)\n", commit=False)
+        msg = self.S / "msg.txt"
+        msg.write_text("feat(x): bar\n")
+        hook = self.wd / ".git/hooks/pre-commit"
+        hook.write_text("#!/bin/sh\necho 'ERROR: hook says no' >&2\nexit 1\n")
+        hook.chmod(0o755)
+        line = self.stop_line(self.land("--commit-msg-file", str(msg), expect=1))
+        self.assertIn("STOP commit", line)
+        self.assertIn("hook says no", line)
+        self.assertTrue(pathlib.Path(line.split("full output ")[1]).is_file())
 
     def test_source_has_no_no_verify_or_force_push(self):
         src = TOOL.read_text()
@@ -537,6 +664,24 @@ class Checks(Base):
             rollups = [r if any(c.get("name") == "review-disposition" for c in r) or not r else r + [RD_OK] for r in rollups]
         self.gh_state({"rollups": rollups, "required": list(required) if required is not None else None, "jobs": jobs or {}, **extra})
         return self.land(expect=expect)
+
+    def test_transient_network_error_is_retried_within_the_deadline(self):
+        self.env["AQ_LAND_RETRY_S"] = "0.05"
+        r = self.run_checks([[{"name": "test", "status": "COMPLETED", "conclusion": "SUCCESS"}]],
+                            flaky={"cmd": "pr view", "times": 3, "msg": "error connecting to api.github.com\nCheck your internet connection"})
+        self.assertEqual(self.ghs()["merges"], 1)
+        self.assertEqual(r.stdout.count("transient gh error"), 1)  # one line for the whole outage
+
+    def test_persistent_network_failure_stops_at_the_deadline(self):
+        self.env.update({"AQ_LAND_RETRY_S": "0.05", "AQ_LAND_CHECKS_TIMEOUT_S": "1"})
+        r = self.run_checks([[]], flaky={"cmd": "pr view", "times": 100000, "msg": "error connecting to api.github.com"}, expect=1)
+        self.assertIn("still failing", self.stop_line(r))
+        self.assertNotIn("merges", self.ghs())
+
+    def test_non_transient_gh_error_stops_at_once(self):
+        r = self.run_checks([[]], flaky={"cmd": "pr view", "times": 100000, "msg": "HTTP 404: Not Found"}, expect=1)
+        self.assertIn("STOP gh: gh pr view failed: HTTP 404", self.stop_line(r))
+        self.assertEqual(self.ghs()["n_flaky"], 1)
 
     def test_empty_rollup_and_unreadable_protection_never_merges(self):
         r = self.run_checks([[]], required=None, review=False, expect=1)

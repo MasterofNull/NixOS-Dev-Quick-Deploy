@@ -3,7 +3,9 @@
 
 One landing at a time (reviews run tests locally). Progress lives in git/GitHub state plus a
 checkpoint under .agents/delegation/outputs/aq-land/, so a re-run after a kill resumes without a
-second PR, review or receipt. Never skips hooks, never force-pushes, never auto-resolves a conflict.
+second PR, review or receipt. Never skips hooks, never force-pushes. A merge of main that conflicts only in the additive manifests
+(config/ci-checks.json, config/activation-manifest.json, .github/workflows/test.yml) is resolved structurally by
+scripts/ai/lib/merge_manifests.py and re-reviewed; any other conflict stops and aborts the merge.
 Replaces .agents/delegation/outputs/landing/land.sh (design: delivery-loop-simplification, S3).
 
   aq-land --title T --body-file F [--commit-msg-file M] [--criteria-file C] [--author-lane claude]
@@ -51,6 +53,11 @@ GEMINI_MODEL = "gemini-3.8-flash-high"
 GEMINI_FALLBACK_MODEL = "gemini-3.8-flash-medium"
 QUOTA = re.compile(r"quota|usage limit|rate.?limit|RESOURCE_EXHAUSTED|\b429\b|exhausted|capacity", re.I)
 VERDICTS = ("PASS_WITH_FOLLOWUPS", "PASS", "REQUEST_CHANGES", "FAIL")
+# Network and server blips gh reports while polling; anything else (404, auth, bad request) stops at once.
+TRANSIENT = re.compile(r"error connecting|could not resolve host|no such host|temporary failure|connection (?:reset|refused|timed out)|"
+                       r"timed? ?out|\bEOF\b|TLS handshake|network is unreachable|HTTP 5\d\d|\b50[234]\b|bad gateway|service unavailable|"
+                       r"i/o timeout", re.I)
+FAILLINE = re.compile(r"FAIL|ERROR|error:|not ok|Traceback|\bfatal\b", re.I)
 RECORD_KEYS = ("Author-lane", "Review-Disposition", "Reviewed-subject-sha256", "Reviewed-head-sha", "Reviewed-by",
                "Review-Receipt", "Review history")
 
@@ -106,6 +113,9 @@ class Land:
             self.cp = json.loads(self.cp_path.read_text())
         except (OSError, ValueError):
             self.cp = {}
+        mm = importlib.util.spec_from_file_location("merge_manifests", HERE / "lib/merge_manifests.py")
+        self.mm = importlib.util.module_from_spec(mm)
+        mm.loader.exec_module(self.mm)
         spec = importlib.util.spec_from_file_location("crd", ROOT / "scripts/governance/check-review-disposition.py")
         self.crd = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(self.crd)
@@ -128,6 +138,47 @@ class Land:
 
     def gh(self, *args, check=True, timeout=120):
         return run([self.gh_bin, *args], timeout=timeout, check=check, stage="gh")
+
+    def blocker(self, label, r):
+        """One-line failure text with the failing lines and the path of the full output."""
+        text = (r.stdout or "") + (r.stderr or "")
+        log = self.dir / f"{label.replace(' ', '-')}-{int(time.time())}.log"
+        log.write_text(text)
+        lines = [l.strip() for l in text.splitlines() if l.strip()]
+        hit = [l for l in lines if FAILLINE.search(l)][:5] or lines[-5:]
+        return f"{label} failed (exit {r.returncode}): {' | '.join(hit)[:500] or 'no output'}; full output {log}"
+
+    def gh_poll(self, deadline, *args, soft=False):
+        """gh stdout, retrying transient network/server failures with backoff until the deadline (one line printed per outage).
+        A non-transient failure stops at once, or returns None when soft."""
+        delay, tries = float(os.environ.get("AQ_LAND_RETRY_S", "5")), 0
+        while True:
+            try:
+                r = run([self.gh_bin, *args], timeout=120, check=False, stage="gh")
+                err = None if r.returncode == 0 else (r.stderr or r.stdout).strip()
+            except Stop as e:
+                if "timed out" not in str(e):
+                    raise
+                err = str(e)
+            if err is None:
+                return r.stdout
+            if not TRANSIENT.search(err):
+                if soft:
+                    return None
+                raise Stop("gh", f"gh {' '.join(args[:2])} failed: {err[:200]}")
+            tries += 1
+            if time.time() + delay > deadline:
+                raise Stop("checks", f"gh {' '.join(args[:2])} still failing after {tries} tries: {err[:150]}; re-run aq-land to resume")
+            if tries == 1:
+                say(f"transient gh error ({err[:100]}); retrying with backoff until the checks deadline")
+            time.sleep(delay)
+            delay = min(delay * 2, 60)
+
+    def ghjson_poll(self, deadline, *args):
+        try:
+            return json.loads(self.gh_poll(deadline, *args) or "null")
+        except ValueError:
+            raise Stop("gh", f"gh {' '.join(args[:2])} returned non-JSON")
 
     def ghjson(self, *args):
         try:
@@ -173,9 +224,10 @@ class Land:
             return
         r = run([self.tier0, "--pre-commit"], cwd=self.W, timeout=3600, check=False, stage="tier0")
         if r.returncode != 0:
-            fails = [l for l in (r.stdout + r.stderr).splitlines() if "FAIL" in l][:3]
-            raise Stop("tier0", "tier0 --pre-commit failed: " + " | ".join(fails)[:300])
-        run(["git", "-C", self.W, "commit", "-q", "-F", self.a.commit_msg_file], timeout=900, stage="commit")
+            raise Stop("tier0", self.blocker("tier0", r))
+        r = run(["git", "-C", self.W, "commit", "-q", "-F", self.a.commit_msg_file], timeout=900, check=False, stage="commit")
+        if r.returncode != 0:
+            raise Stop("commit", self.blocker("commit", r))
         say(f"committed {self.head()[:9]}")
 
     def sync_main(self):
@@ -187,8 +239,17 @@ class Land:
         r = run(["git", "-C", self.W, "merge", "--no-edit", "-q", "refs/remotes/origin/main"], check=False, stage="merge", timeout=300)
         if r.returncode != 0:
             files = self.git("diff", "--name-only", "--diff-filter=U", check=False).replace("\n", " ")
-            self.gitrc("merge", "--abort")
-            raise Stop("merge", f"conflict merging origin/main in: {files or r.stderr.strip()[:120]}; resolve by hand, never auto-resolved")
+            try:
+                resolved = self.mm.resolve(self.W)
+            except self.mm.ManifestConflict as e:
+                self.gitrc("merge", "--abort")
+                raise Stop("merge", f"conflict merging origin/main in: {files or r.stderr.strip()[:120]}; not auto-resolvable ({e}); resolve by hand")
+            c = run(["git", "-C", self.W, "commit", "--no-edit", "-q"], check=False, stage="merge", timeout=900)
+            if c.returncode != 0:
+                msg = self.blocker("merge commit", c)
+                self.gitrc("merge", "--abort")
+                raise Stop("merge", msg)
+            say(f"resolved additive manifest conflicts in {' '.join(resolved)}; a hand-resolved merge needs a fresh review")
         say(f"merged origin/main -> {self.head()[:9]}")
         return True
 
@@ -408,12 +469,12 @@ class Land:
         say(f"receipt published for PR #{n}")
 
     # ---- checks and merge
-    def required_checks(self, repo):
-        r = self.gh("api", f"repos/{repo}/branches/main/protection/required_status_checks", check=False)
-        if r.returncode != 0:
+    def required_checks(self, repo, deadline):
+        out = self.gh_poll(deadline, "api", f"repos/{repo}/branches/main/protection/required_status_checks", soft=True)
+        if out is None:
             return None
         try:
-            d = json.loads(r.stdout)
+            d = json.loads(out)
         except ValueError:
             return None
         return set(d.get("contexts") or []) | {c.get("context") for c in d.get("checks") or [] if c.get("context")}
@@ -440,13 +501,13 @@ class Land:
         return name, "pending", run_id
 
     def wait_and_merge(self, n, head):
-        repo = self.ghjson("repo", "view", "--json", "nameWithOwner")["nameWithOwner"]
-        required = (self.required_checks(repo) or set()) | {REVIEW_CHECK}
-        optional = set(self.a.optional_check)
         deadline = time.time() + env_int("AQ_LAND_CHECKS_TIMEOUT_S", 14400)
+        repo = self.ghjson_poll(deadline, "repo", "view", "--json", "nameWithOwner")["nameWithOwner"]
+        required = (self.required_checks(repo, deadline) or set()) | {REVIEW_CHECK}
+        optional = set(self.a.optional_check)
         poll = float(os.environ.get("AQ_LAND_POLL_S", "30"))
         while True:
-            v = self.ghjson("pr", "view", str(n), "--json", "headRefOid,state,statusCheckRollup")
+            v = self.ghjson_poll(deadline, "pr", "view", str(n), "--json", "headRefOid,state,statusCheckRollup")
             if v["state"] == "MERGED":
                 say(f"PR #{n} merged")
                 return
@@ -478,7 +539,7 @@ class Land:
                 raise Stop("checks", "timed out waiting for: " + ", ".join(pending) + "; re-run aq-land to resume")
             time.sleep(poll)
         self.gh("pr", "merge", str(n), "--squash", "--match-head-commit", head)
-        v = self.ghjson("pr", "view", str(n), "--json", "state")
+        v = self.ghjson_poll(deadline, "pr", "view", str(n), "--json", "state")
         if v["state"] != "MERGED":
             raise Stop("merge", f"PR #{n} is {v['state']} after gh pr merge")
         say(f"PR #{n} merged")

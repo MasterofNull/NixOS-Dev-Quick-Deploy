@@ -356,6 +356,7 @@
       "paths": [
         "scripts/ai/lib/delegation-dir.sh",
         "scripts/ai/lib/delegation_dir.py",
+        "scripts/ai/aq-delegation-registry",
         "scripts/testing/test-delegation-dir-resolution.py"
       ],
       "needs": [
@@ -677,6 +678,8 @@
       "cmd": "scripts/testing/run-test-group.py tests-aq",
       "paths": [
         "scripts/testing/run-test-group.py",
+        "scripts/ai/aq-land",
+        "scripts/ai/lib/merge_manifests.py",
         "scripts/testing/test-aq-a2a-audit.py",
         "scripts/testing/test-aq-agent-launcher.py",
         "scripts/testing/test-aq-agent-reap.py",
