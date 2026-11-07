@@ -594,10 +594,8 @@ def _code(text):
     return "\n".join(re.sub(r"(^|\s)#.*$", "", ln).rstrip() for ln in text.splitlines())
 
 
-# TRANSITIONAL: the next PR flips this to True (and removes the `pull_request` trigger), after which
-# `pull_request` (and any other trigger) is rejected. Until then only `pull_request` is tolerated
-# beside `pull_request_target`; `pull_request_review` and anything else is never accepted.
-TARGET_ONLY = False
+# Only `pull_request_target` is accepted as a trigger; `pull_request` and any other trigger is rejected.
+TARGET_ONLY = True
 
 
 def workflow_problems(text, target_only=None):
