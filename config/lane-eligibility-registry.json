@@ -3,23 +3,16 @@
   "default_ttl_days": 45,
   "lanes": {
     "antigravity": {
-      "eligible": {
-        "research": {
-          "evidence": "owner ratified renewal 2026-10-14 (chat door): .agents/plans/unified-program/LANE-GRANT-RENEWAL-OWNER-RATIFICATION-20261014.md (supersedes unbacked PR #494 citation)",
-          "expires_at": "2026-11-26T00:00:00Z",
-          "measured_at": "2026-10-12T00:00:00Z"
-        },
-        "reviewer": {
-          "evidence": "owner ratified renewal 2026-10-14 (chat door): .agents/plans/unified-program/LANE-GRANT-RENEWAL-OWNER-RATIFICATION-20261014.md (supersedes unbacked PR #494 citation)",
-          "expires_at": "2026-11-26T00:00:00Z",
-          "measured_at": "2026-10-12T00:00:00Z"
-        }
-      },
+      "eligible": {},
       "ineligible": {
         "implementer": {
           "hard": true,
           "reason": "owner Q5 2026-07-23: implementation-INELIGIBLE until measured promotion; ungoverned external IDE agent"
         }
+      },
+      "retired": {
+        "reason": "Antigravity IDE retired; the Gemini seat is the headless CLI (lane gemini). Eligible grants withdrawn 2026-11-07; the implementer hard block is kept as load-bearing governance (aq-role-route backstop, test-lane-eligibility).",
+        "since": "2026-11-05"
       }
     },
     "codex": {

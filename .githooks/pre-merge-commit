@@ -9,8 +9,8 @@ REPO_ROOT="$(git rev-parse --show-toplevel)"
 GUARD="${REPO_ROOT}/scripts/governance/check-mergeable.sh"
 
 if [[ ! -x "${GUARD}" ]]; then
-  echo "pre-merge-commit: WARN missing ${GUARD} — skipping shallow-merge guard" >&2
-  exit 0
+  echo "pre-merge-commit: FAIL missing or non-executable ${GUARD} — the shallow-merge guard cannot run, so the merge is refused (restore the script: git checkout -- scripts/governance/check-mergeable.sh)" >&2
+  exit 1
 fi
 
 if ! "${GUARD}"; then

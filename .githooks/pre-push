@@ -174,10 +174,15 @@ run_ci_parity_opt_in() {
   elif [[ -x "scripts/governance/run-ci-checks.sh" ]]; then
     echo "Running opt-in CI-manifest checks (config/ci-checks.json --changed)..."
     clean_git_env_run ./scripts/governance/run-ci-checks.sh --changed --base "${CI_CHECKS_BASE:-origin/main}" || return 1
+  else
+    echo "pre-push: PRE_PUSH_CI_PARITY=1 but neither ci-merge-parity.sh nor run-ci-checks.sh is present; the requested parity run cannot happen" >&2
+    return 1
   fi
-  if [[ -x "scripts/governance/pre-push-nix-eval.sh" ]]; then
-    ./scripts/governance/pre-push-nix-eval.sh "${CI_CHECKS_BASE:-origin/main}" "${1:-HEAD}" || return 1
+  if [[ ! -x "scripts/governance/pre-push-nix-eval.sh" ]]; then
+    echo "pre-push: PRE_PUSH_CI_PARITY=1 but scripts/governance/pre-push-nix-eval.sh is missing; the requested Nix evaluation cannot happen" >&2
+    return 1
   fi
+  ./scripts/governance/pre-push-nix-eval.sh "${CI_CHECKS_BASE:-origin/main}" "${1:-HEAD}" || return 1
 }
 
 # Owner-acceptance (fetch-dependent half of tier0.d/check-pm-tracker): fail-closed, never passes offline.

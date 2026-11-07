@@ -55,6 +55,8 @@ for wf in targets:
             continue
         for m in ref_re.finditer(line):
             token = strip_trailing_punct(m.group(0))
+            if line[m.end():m.end() + 1] in ("*", "?", "["):
+                continue  # a glob pattern (e.g. scripts/testing/test-*), not a path
             if not token or (idx, token) in seen_on_line:
                 continue
             seen_on_line.add((idx, token))

@@ -136,6 +136,11 @@ command = "preserve-me"
         ":8002"
     )
     assert projected["mcp_servers"]["osint-tools"]["default_tools_approval_mode"] == "prompt"
+    # catalog semgrep-mcp lists codex in agent_access; the repo .mcp.json and Gemini config already carry it
+    semgrep = projected["mcp_servers"]["semgrep"]
+    assert semgrep["command"] == "/run/current-system/sw/bin/semgrep"
+    assert semgrep["args"] == ["mcp", "--transport", "stdio"]
+    assert semgrep["env"]["SEMGREP_SEND_METRICS"] == "off"
     assert (
         projected["mcp_servers"]["openaiDeveloperDocs"]["default_tools_approval_mode"]
         == "auto"

@@ -5,6 +5,7 @@ set -euo pipefail
 repo_root="$(git rev-parse --show-toplevel 2>/dev/null || true)"
 [[ -n "$repo_root" ]] || exit 0
 freshness_script="${repo_root}/scripts/ai/aq-ctx-freshness"
+# Advisory by design: this hook only refreshes context caches and gates nothing, so an absent script is not an error.
 [[ -x "$freshness_script" ]] || exit 0
 
 "$freshness_script" --ensure || true

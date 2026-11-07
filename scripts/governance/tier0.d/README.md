@@ -1,6 +1,6 @@
 # tier0.d/ — Tier 0 Extension Checks
 
-Drop executable `.sh` scripts here to add new gates to the Tier 0 validation
+Drop `.sh` (run with bash) or `.py` (run with python3) scripts here to add new gates to the Tier 0 validation
 pipeline **without editing `tier0-validation-gate.sh`**.
 
 ## Contract
