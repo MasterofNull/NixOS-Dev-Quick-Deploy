@@ -594,6 +594,7 @@ jobs:
             --only mcp-integrity-unit-path-test \
             --only sweep-dashboard-test \
             --only sweep-dashboard-report \
+            --only sweep-enabled-units-test \
             --only tests-agent \
             --only tests-aq \
             --only tests-aqos \
