@@ -54,6 +54,18 @@
       "health_signal": "scripts/ai/aq-pm-tracker:_ACTIVATION_LOG_DIR",
       "state": "enabled-but-unpinned (see the provisioning entry: aq-activation-keygen); no grant can verify before the owner pins the key",
       "observed_by": "aq-pm-tracker chain verification and activation_stale/grants_unverified counters; test scripts/testing/test-activation-signer.py"
+    },
+    {
+      "feature": "RSI convene expert rounds (Codex, Gemini, local design-only seats)",
+      "entrypoint": "scripts/ai/lib/rsi_convene.py",
+      "live_caller": "scripts/automation/prsi-orchestrator.py",
+      "enable": null,
+      "health_signal": "scripts/ai/aq-rsi:cmd_convene",
+      "deferral": {
+        "date": "2026-11-06",
+        "reason": "Code default is off (RSI_CONVENE unset). The ai-prsi-rsi-dispatch unit sets RSI_CONVENE=1, the ~/.gemini write path, pkgs.nodejs on PATH and a 2G memory cap in nix/modules/roles/ai-stack.nix, so rounds run only after the next rebuild (nixos-rebuild switch). Until then no seat runs.",
+        "tracking": ".agents/plans/delivery-loop-simplification/DESIGN.md S5; docs/harness-first/evidence/2026-11-06-rsi-convene-rounds.md"
+      }
     }
   ]
 }

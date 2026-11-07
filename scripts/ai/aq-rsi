@@ -6,6 +6,7 @@
   pending  high-risk rows awaiting owner sign-off (delegates to aq-rsi-pending)
   approve  print the exact owner verify command for a row; never approves anything
   reconcile resolve code-scanning incidents whose alerts are all closed upstream (positive evidence only)
+  convene  probe: ask the next dispatch run for one tiny real expert round (proves the unit sandbox); result in `status`
   sweep    observation-only ingest of persistent signals into the ledger (unknown != healthy)
 """
 from __future__ import annotations
@@ -130,6 +131,8 @@ def cmd_status(args) -> int:
         return 2
     out = compute_status(queue, (incidents or {}).get("incidents", {}))
     out["auto_update"] = au
+    import rsi_convene
+    out["convene"] = rsi_convene.summary()
     if args.json:
         print(json.dumps(out, sort_keys=True))
     else:
@@ -142,6 +145,11 @@ def cmd_status(args) -> int:
             print(f"skipped {reason}: {n}")
         for alert in out["alerts"]:
             print(f"ALERT: {alert}")
+        c = out["convene"]
+        print(f"convene rounds: enabled={c['enabled']} open={c['open']} opened_24h={c['opened_24h']} "
+              f"queued={c['queued']} complete={c['complete']} incomplete={c['incomplete']}")
+        if c.get("last"):
+            print(f"convene last: trigger={c['last']['trigger']} status={c['last']['status']} seats={c['last']['seats']}")
         for line in auto_update_status.format_lines(au):
             print(line)
     return 0 if out["healthy"] else 1
@@ -208,6 +216,14 @@ def cmd_reconcile(args) -> int:
     return rsi_sweep.reconcile(alerts=alerts, dry_run=args.dry_run, as_json=args.json)
 
 
+def cmd_convene(args) -> int:
+    import rsi_convene
+    path = rsi_convene._probe_path()
+    path.write_text(datetime.now(timezone.utc).isoformat() + "\n")
+    print(f"probe requested ({path}); the next ai-prsi-rsi-dispatch run executes it, then see `aq-rsi status`")
+    return 0
+
+
 def cmd_sweep(args) -> int:
     import rsi_sweep
     return rsi_sweep.run(dry_run=args.dry_run, as_json=args.json)
@@ -245,6 +261,9 @@ def main() -> int:
     p.add_argument("--dry-run", action="store_true")
     p.add_argument("--json", action="store_true")
     p.set_defaults(fn=cmd_reconcile)
+    p = sub.add_parser("convene", help="request a convene sandbox probe")
+    p.add_argument("action", choices=("probe",))
+    p.set_defaults(fn=cmd_convene)
     p = sub.add_parser("sweep", help="observation-only persistent-signal ingest")
     p.add_argument("--dry-run", action="store_true")
     p.add_argument("--json", action="store_true")

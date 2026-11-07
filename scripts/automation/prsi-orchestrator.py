@@ -59,6 +59,7 @@ _WORKFLOW_DEVIATIONS = Path(os.getenv(
 # projects only a small, inert candidate into PRSI; it never forwards the raw
 # error text to an optimizer or an agent task.
 import rsi_paths  # noqa: E402
+import rsi_convene  # noqa: E402
 
 _RSI_INCIDENTS = rsi_paths.incidents_path(REPO_ROOT)
 _MAX_RSI_INCIDENTS_PER_SYNC = 50
@@ -1711,11 +1712,23 @@ def cmd_rsi_requeue(args: argparse.Namespace) -> int:
     return 0
 
 
+def _convene_tick() -> None:
+    """Design-only expert round for qualifying incidents (RSI_CONVENE=0 disables). Never fails dispatch."""
+    try:
+        incidents = _read_json(_incidents_file(), {}).get("incidents", {})
+        _log_event({"ts": _now(), "event": "rsi_convene", **rsi_convene.tick(incidents)})
+    except Exception as exc:  # noqa: BLE001
+        _log_event({"ts": _now(), "event": "rsi_convene_error", "error": str(exc)[:200]})
+
+
 def main() -> int:
     parser = build_parser()
     args = parser.parse_args()
     try:
-        return args.func(args)
+        rc = args.func(args)
+        if args.func is cmd_rsi_dispatch:
+            _convene_tick()
+        return rc
     except Exception as exc:  # noqa: BLE001
         print(json.dumps({"ok": False, "error": str(exc)}), file=sys.stderr)
         return 1
