@@ -159,6 +159,12 @@ check(any(s.endswith("@gemini") for s in drift) and any(s.endswith("@codex") for
 check("fake-good.py@claude" not in drift and "fake-good.py@codex" not in drift, f"good server wrongly drifted: {drift}")
 check(any("npx" in u["what"] for u in res["unknown"]), "side-effect launcher must be unknown, not started")
 check(not any(c == "MCP_CONNECT_FAIL" and s == "npx" for c, s in got), "npx server must not be started")
+with tempfile.TemporaryDirectory() as wd:
+    wrapper = Path(wd) / "pip-wrapper.sh"
+    wrapper.write_text("#!/bin/sh\npip install some-pkg\n", encoding="utf-8")
+    wrapper.chmod(0o755)
+    reason = sw.side_effect_reason({"command": str(wrapper), "args": []}) or ""
+    check("side effect" in reason, f"pip wrapper not classified as side-effecting: {reason!r}")
 good = [r for r in res["mcp"] if r["agents"].count(",") == 2]
 check(good and good[0]["result"] == "ok" and good[0]["protocol"] == "2025-03-26", f"good server not ok across 3 agents: {res['mcp']}")
 check("do-not-print" not in json.dumps(res) and "SECRET_TEST_VALUE" not in json.dumps(mcp), "env value or key leaked into output")

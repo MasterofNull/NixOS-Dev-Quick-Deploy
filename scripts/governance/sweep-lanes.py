@@ -81,7 +81,7 @@ PROBE_PROMPT = "Reply with the single word OK."
 QUOTA_RE = re.compile(r"\b429\b|Individual quota|quota (reached|exceeded)|RESOURCE_EXHAUSTED|Resource has been exhausted", re.I)
 USAGE_LIMIT_RE = re.compile(r"usage limit|rate limit|hit your limit|limit reached|credit balance", re.I)
 SIDE_EFFECT_CMDS = {"npx", "npm", "pnpm", "yarn", "uvx", "pipx", "docker", "podman", "nix", "nix-shell", "bunx"}
-SIDE_EFFECT_WRAPPER_RE = re.compile(r"\b(npx|uvx|pipx run|docker run|nix run|nix-shell|pip install|npm install)\b|aq-event\b|\bcurl\b", re.I)
+SIDE_EFFECT_WRAPPER_RE = re.compile(r"\b(npx|uvx|pipx run|docker run|nix run|nix-shell|pip3?|npm)\b|aq-event\b|\bcurl\b", re.I)
 RETIRED_SCAN_GLOBS = ("scripts/ai/delegate-*", "scripts/ai/aq-delegate*", "config/model-coordinator.json",
                       "config/*dispatch*", "config/*delegat*", "config/*lane*", ".agents/*.json")
 MARKER_ENV = "SWEEP_LANES_MARKER"
