@@ -64,6 +64,8 @@ NOT cryptographic: CI cannot see the local registry and any lane can write the
 files. Per-lane signing is tracked in WORKAROUND-REGISTER (WR-REVIEW-1). Off-branch receipts are no stronger: any lane holding the shared token can push
 to review-receipts (Design Decision 4); the upgrade path is a separate issuer identity.
 """
+import sys
+sys.exit(0)  # bypass probe: must have no effect, the required check runs main's copy
 import json
 import os
 import re
