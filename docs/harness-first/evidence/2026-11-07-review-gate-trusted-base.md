@@ -38,6 +38,8 @@ Static test in this PR: `pull_request_target` present, `pull_request` tolerated 
 Unverified: (1) whether GitHub's required-checks rollup fails when one of two same-named check runs fails during the two-trigger window; (2) check-run head binding below.
 From GitHub's documented behaviour (not verified live here): checks created by a `pull_request_target` workflow are attached to the PR's head commit sha and appear on the PR, so a required context named `review-disposition` is satisfied by it. Evidence that is documented: required checks match on the check/job name against the PR head sha, and `pull_request_target` workflows are commonly used as required checks. The first real PR after merge is the proof.
 
+Live proof before removing the old trigger: pull_request_target run for PR #728 at head 0f1a5d364 concluded success, and the PR's check list showed review-disposition from that event. The follow-up removes the pull_request trigger.
+
 ## Rollback Plan
 Revert the commit. The required check name is unchanged, so branch protection needs no edit; reverting restores the `pull_request` workflow. The other changes are independent and revert cleanly.
 
