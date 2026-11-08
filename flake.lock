@@ -36,11 +36,11 @@
     "enable-container-tests": {
       "locked": {
         "dir": "flags/container-tests/disabled",
-        "lastModified": 1794067464,
-        "narHash": "sha256-flWKqXqMjDNpYw+s1ImEY+P9oCWhO4BncIXFLMVlXxY=",
+        "lastModified": 1794069091,
+        "narHash": "sha256-m0ZJiaM/AxCAtNOWssIlmEE/WeB0m/0FSVz9iFwvhM0=",
         "owner": "nixified-ai",
         "repo": "flake",
-        "rev": "7a6b12dd326e25c2a64d9a0ea5a3dc3b5cc48a64",
+        "rev": "459c59b0376e8c5b3f2e91fcc0a05fba640b67f7",
         "type": "github"
       },
       "original": {
@@ -223,11 +223,11 @@
         "treefmt-nix": "treefmt-nix"
       },
       "locked": {
-        "lastModified": 1794067464,
-        "narHash": "sha256-flWKqXqMjDNpYw+s1ImEY+P9oCWhO4BncIXFLMVlXxY=",
+        "lastModified": 1794069091,
+        "narHash": "sha256-m0ZJiaM/AxCAtNOWssIlmEE/WeB0m/0FSVz9iFwvhM0=",
         "owner": "nixified-ai",
         "repo": "flake",
-        "rev": "7a6b12dd326e25c2a64d9a0ea5a3dc3b5cc48a64",
+        "rev": "459c59b0376e8c5b3f2e91fcc0a05fba640b67f7",
         "type": "github"
       },
       "original": {
