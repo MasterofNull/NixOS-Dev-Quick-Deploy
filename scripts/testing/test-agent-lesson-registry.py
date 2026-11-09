@@ -6,6 +6,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import os
+import tempfile
 from datetime import datetime, timedelta, timezone
 from importlib.machinery import SourceFileLoader
 from pathlib import Path
@@ -28,40 +29,53 @@ def assert_true(condition: bool, message: str) -> None:
 def main() -> int:
     original_hint_path = MODULE.HINT_FEEDBACK_PATH
     original_registry_path = MODULE.AGENT_LESSON_REGISTRY_PATH
-    tmp_hint_path = ROOT / ".tmp-agent-lesson-registry-feedback.jsonl"
-    tmp_registry_path = ROOT / ".tmp-agent-lesson-registry.json"
-    try:
-        tmp_hint_path.write_text(
-            "\n".join(
-                [
-                    '{"timestamp":"2026-03-13T12:00:00Z","hint_id":"runtime_rag_low_sample","agent":"codex","helpful":true}',
-                    '{"timestamp":"2026-03-13T12:05:00Z","hint_id":"runtime_rag_low_sample","agent":"codex","helpful":true}',
-                    '{"timestamp":"2026-03-13T12:10:00Z","hint_id":"runtime_rag_low_sample","agent":"codex","helpful":true}',
-                ]
-            )
-            + "\n",
-            encoding="utf-8",
-        )
-        MODULE.HINT_FEEDBACK_PATH = tmp_hint_path
-        MODULE.AGENT_LESSON_REGISTRY_PATH = tmp_registry_path
-        since = datetime.now(tz=timezone.utc) - timedelta(days=7)
-        lessons = MODULE.agent_lesson_candidates(since)
-        registry = MODULE.sync_agent_lesson_registry(lessons)
+    now = datetime.now(tz=timezone.utc)
 
-        counts = registry.get("counts") or {}
-        assert_true(counts.get("total") == 1, "expected one registry lesson")
-        assert_true(counts.get("pending_review") == 1, "expected one pending lesson")
-        saved = json.loads(tmp_registry_path.read_text(encoding="utf-8"))
-        entries = saved.get("entries") or []
-        assert_true(len(entries) == 1, "registry file should contain one entry")
-        assert_true(entries[0].get("state") == "pending_review", "new lessons should default to pending_review")
+    def feedback_line(timestamp: datetime) -> str:
+        return json.dumps(
+            {
+                "timestamp": timestamp.isoformat(timespec="seconds").replace("+00:00", "Z"),
+                "hint_id": "runtime_rag_low_sample",
+                "agent": "codex",
+                "helpful": True,
+            }
+        )
+
+    try:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            temporary_root = Path(temporary_directory)
+            tmp_hint_path = temporary_root / "agent-lesson-registry-feedback.jsonl"
+            tmp_registry_path = temporary_root / "agent-lesson-registry.json"
+            fresh_events = [now - timedelta(minutes=10), now - timedelta(minutes=5), now]
+            expired_events = [
+                now - timedelta(days=8, minutes=10),
+                now - timedelta(days=8, minutes=5),
+                now - timedelta(days=8),
+            ]
+            tmp_hint_path.write_text(
+                "\n".join(feedback_line(timestamp) for timestamp in fresh_events + expired_events) + "\n",
+                encoding="utf-8",
+            )
+            MODULE.HINT_FEEDBACK_PATH = tmp_hint_path
+            MODULE.AGENT_LESSON_REGISTRY_PATH = tmp_registry_path
+            lessons = MODULE.agent_lesson_candidates(now - timedelta(days=7))
+            candidates = lessons.get("candidates") or []
+            assert_true(lessons.get("total_events") == 3, "expired feedback must be excluded before grouping")
+            assert_true(len(candidates) == 1, "expected one lesson candidate")
+            assert_true(candidates[0].get("event_count") == 3, "expected only fresh event count")
+            assert_true(candidates[0].get("evidence_count") == 3, "expected only fresh evidence count")
+
+            registry = MODULE.sync_agent_lesson_registry(lessons, now=now)
+            counts = registry.get("counts") or {}
+            assert_true(counts.get("total") == 1, "expected one registry lesson")
+            assert_true(counts.get("pending_review") == 1, "expected one pending lesson")
+            saved = json.loads(tmp_registry_path.read_text(encoding="utf-8"))
+            entries = saved.get("entries") or []
+            assert_true(len(entries) == 1, "registry file should contain one entry")
+            assert_true(entries[0].get("state") == "pending_review", "new lessons should default to pending_review")
     finally:
         MODULE.HINT_FEEDBACK_PATH = original_hint_path
         MODULE.AGENT_LESSON_REGISTRY_PATH = original_registry_path
-        if tmp_hint_path.exists():
-            tmp_hint_path.unlink()
-        if tmp_registry_path.exists():
-            tmp_registry_path.unlink()
 
     print("PASS: aq-report persists agent lesson candidates into the durable registry")
     return 0

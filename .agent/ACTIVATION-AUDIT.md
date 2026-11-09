@@ -774,3 +774,11 @@ Owner deployed via `scripts/maintenance/aq-deploy-current`: system and Home Mana
 **P1.6, no sleep during agent work: NOT attested.** No delegated task was running when checked. Validate with `systemd-inhibit --list` during a delegated task.
 
 **Known false alert:** QA 0.10.66 under the health monitor's sandbox; passes 212/0 from a shell. Fix in slice S2.
+
+## Lesson-test relative-time recovery — repository-only deferral (2026-11-09)
+
+- Status: **DEFERRED**; this slice repairs test fixtures and CI registration only.
+- Integrated / turned on: no service, runtime configuration, deployment, dashboard, or operator control changed.
+- Functionally validated: focused direct fixture scripts and manifest validation are recorded in `docs/harness-first/evidence/2026-11-09-lesson-tests-relative-time-recovery.md`.
+- Observable / intervenable / PM-tracked: no runtime capability was introduced; parent owns tier0, exact-head review, CI, commit, and landing.
+- Deferral: the activation dimensions do not apply to this repository-only maintenance slice as of 2026-11-09. This does not claim full integrity-recovery completion.
