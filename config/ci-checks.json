@@ -1179,6 +1179,8 @@
         "scripts/testing/test-adk-protocol-compliance.py",
         "scripts/testing/test-advanced-features-implementation.py",
         "scripts/testing/test-affective-reciprocity-wiring.py",
+        "scripts/testing/test-agent-lesson-registry.py",
+        "scripts/testing/test-agent-lesson-schema.py",
         "scripts/testing/test-agentic-toolchain-baseline.py",
         "scripts/testing/test-agentic-workflow-parity.py",
         "scripts/testing/test-ai-capability-implementation-backlog.py",
@@ -1267,6 +1269,8 @@
         "scripts/testing/test-adk-protocol-compliance.py",
         "scripts/testing/test-advanced-features-implementation.py",
         "scripts/testing/test-affective-reciprocity-wiring.py",
+        "scripts/testing/test-agent-lesson-registry.py",
+        "scripts/testing/test-agent-lesson-schema.py",
         "scripts/testing/test-agentic-toolchain-baseline.py",
         "scripts/testing/test-agentic-workflow-parity.py",
         "scripts/testing/test-ai-capability-implementation-backlog.py",
@@ -2377,16 +2381,6 @@
       "script": "scripts/testing/test-agent-evaluation-bias.py",
       "class": "known-failing",
       "reason": "fails on main: references missing file ai-stack/mcp-servers/hybrid-coordinator/http_server.py, tracked in backlog"
-    },
-    {
-      "script": "scripts/testing/test-agent-lesson-registry.py",
-      "class": "known-failing",
-      "reason": "fails on main (rc=1): AssertionError: expected one registry lesson, tracked in backlog"
-    },
-    {
-      "script": "scripts/testing/test-agent-lesson-schema.py",
-      "class": "known-failing",
-      "reason": "fails on main (rc=1): AssertionError: expected at least one lesson candidate, tracked in backlog"
     },
     {
       "script": "scripts/testing/test-agent-monitoring-audit.py",
