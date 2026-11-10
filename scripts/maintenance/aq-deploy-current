@@ -8,13 +8,13 @@
 # auto-discarded; prints archive + restore commands) -> ff-only pull -> check-deploy-source.sh +
 # pre-rebuild-preflight.sh (as `nrs`) -> [--dry-run stops after dry-build/build] ->
 # sudo nixos-rebuild switch -> guarded home-manager switch (as `hms`) -> verify configuration
-# revision == HEAD and not -dirty, and list working-tree-backed units not restarted by the switch.
+# revision == HEAD and not -dirty, list stale units -> 8b audited MCP baseline reseed + check -> 9 live QA.
 #
 # --rev <sha>: refuse (exit 1, before any guard or rebuild) unless HEAD after the pull is exactly that
 # 40-hex revision; aq-update passes the revision it verified, so a main that moved is never deployed.
 #
 # Usage: scripts/maintenance/aq-deploy-current [--dry-run] [--rev <sha>] [--help]
-# Run as the owner (not root); sudo is invoked only for nixos-rebuild switch.
+# Run as the owner (not root); sudo switches NixOS and refreshes/checks the MCP integrity baseline.
 set -euo pipefail
 
 TAG="[aq-deploy-current]"
@@ -93,6 +93,7 @@ if ((DRY)); then
   nix build --no-link --print-out-paths "$FLAKE#homeConfigurations.hyperd.activationPackage"
   echo "$TAG DRY RUN OK. A real run would: sudo nixos-rebuild switch --flake <HEAD-pinned>#hyperd-ai-dev;"
   echo "$TAG   home-manager switch --flake .#hyperd; then verify revision == $(git rev-parse --short=8 HEAD)."
+  echo "$TAG   8b would reseed the MCP integrity baseline with audit diff and start its check after revision verification."
   exit 0
 fi
 
@@ -127,6 +128,28 @@ done < <({ echo command-center-dashboard-api.service; systemctl list-units --typ
 if ((${#stale[@]})); then
   echo "$TAG These units run code from the working tree and were not restarted by the switch:"
   echo "sudo systemctl restart ${stale[*]}"
+fi
+
+# 8b. Only bless MCP sources after the deployed revision has been verified.
+if ((rc == 0)); then
+  mcp_environment="$(systemctl show -p Environment --value ai-mcp-integrity-check.service 2>/dev/null || true)"
+  mapfile -d '' -t mcp_paths < <(printf '%s' "$mcp_environment" | python3 -c '
+import shlex
+import sys
+values = dict(item.split("=", 1) for item in shlex.split(sys.stdin.read()) if "=" in item)
+for key in ("MCP_SERVER_DIR", "MCP_INTEGRITY_BASELINE"):
+    sys.stdout.write(values.get(key, "") + "\0")
+')
+  if [[ ${#mcp_paths[@]} -ne 2 || -z "${mcp_paths[0]:-}" || -z "${mcp_paths[1]:-}" ]]; then
+    echo "$TAG WARN: MCP integrity unit/environment absent; skipping baseline reseed."
+  elif sudo env MCP_SERVER_DIR="${mcp_paths[0]}" MCP_INTEGRITY_BASELINE="${mcp_paths[1]}" \
+      MCP_BASELINE_GIT_REV="$want" bash scripts/security/update-mcp-integrity-baseline.sh && \
+      sudo systemctl start ai-mcp-integrity-check.service; then
+    echo "$TAG PASS: MCP baseline reseeded with audit diff and integrity check passed"
+  else
+    echo "$TAG FAIL: MCP baseline reseed or subsequent integrity check failed" >&2
+    rc=1
+  fi
 fi
 
 # 9. prove the live stack from the owner's shell. QA phase 0 owns the live-state checks that tier0 --pre-commit
