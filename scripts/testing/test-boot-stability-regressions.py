@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Static regression checks for recent boot-stability fixes."""
 
+import ast
+import re
 from pathlib import Path
 
 
@@ -37,8 +39,14 @@ def main() -> int:
     phase0_text = (ROOT / "scripts" / "testing" / "harness_qa" / "phases" / "phase0.py").read_text(encoding="utf-8")
 
     assert_true(
-        'mutableUserServicePaths = lib.unique [mutableOptimizerDir mutableLogDir];' in base_text,
-        "base module should identify user-writable service workdirs separately from root-owned state roots",
+        re.search(
+            r'mutableUserServicePaths\s*=\s*lib\.unique\s*\(\s*'
+            r'\[\s*mutableOptimizerDir\s*\]\s*'
+            r'\+\+\s*lib\.optional\s*\(\s*!cfg\.roles\.aiStack\.enable\s*\)\s*'
+            r'mutableLogDir\s*\)\s*;',
+            base_text,
+        ) is not None,
+        "user service paths must always include optimizer dir and include log dir only when aiStack is disabled",
     )
     assert_true(
         'mutableSharedTraversePaths = [mutableStateDir];' in base_text,
@@ -257,9 +265,13 @@ def main() -> int:
         "aq-approve should resolve AppArmor alerts when proposed rules are already committed",
     )
     assert_true(
-        "git\", \"-C\", str(REPO_ROOT), \"check-ignore\", \"-q\"" in apparmor_fix_text
-        and "paths.append(HANDOFF_MD.relative_to(REPO_ROOT))" in apparmor_fix_text,
-        "apparmor-fix-agent should not force-add ignored HANDOFF.md during commits",
+        '"status": "applied_uncommitted"' in apparmor_fix_text
+        and '_insert_rules_for_profile(target_profile, rules_tuples)' in apparmor_fix_text
+        and not any(
+            isinstance(node, ast.Constant) and node.value == "git"
+            for node in ast.walk(ast.parse(apparmor_fix_text))
+        ),
+        "apparmor-fix-agent should apply rules without Git operations, including staging ignored HANDOFF.md",
     )
     assert_true(
         'operation == "mknod"' in apparmor_fix_text

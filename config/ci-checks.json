@@ -1218,6 +1218,7 @@
         "scripts/testing/test-bitnet-compare.py",
         "scripts/testing/test-bitnet-feasibility.py",
         "scripts/testing/test-blast-radius-classifier.py",
+        "scripts/testing/test-boot-stability-regressions.py",
         "scripts/testing/test-browser-research.py",
         "scripts/testing/test-c2-gate-dispatch-wiring.py",
         "scripts/testing/test-c2-sci-live-mint.py",
@@ -1308,6 +1309,7 @@
         "scripts/testing/test-bitnet-compare.py",
         "scripts/testing/test-bitnet-feasibility.py",
         "scripts/testing/test-blast-radius-classifier.py",
+        "scripts/testing/test-boot-stability-regressions.py",
         "scripts/testing/test-browser-research.py",
         "scripts/testing/test-c2-gate-dispatch-wiring.py",
         "scripts/testing/test-c2-sci-live-mint.py",
@@ -2481,11 +2483,6 @@
       "script": "scripts/testing/test-autonomous-capability-discovery.sh",
       "class": "live-service",
       "reason": "host-only: needs a live local service (switchboard/dashboard/coordinator/AIDB); last output: Hybrid capability-discovery probe failed (HTTP 000)"
-    },
-    {
-      "script": "scripts/testing/test-boot-stability-regressions.py",
-      "class": "known-failing",
-      "reason": "fails on main (rc=1): AssertionError: apparmor-fix-agent should not force-add ignored HANDOFF.md during commits, tracked in backlog"
     },
     {
       "script": "scripts/testing/test-c6a-launch-dashboard-runtime-probe.py",

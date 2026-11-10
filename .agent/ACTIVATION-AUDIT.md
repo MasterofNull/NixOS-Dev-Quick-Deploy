@@ -782,3 +782,11 @@ Owner deployed via `scripts/maintenance/aq-deploy-current`: system and Home Mana
 - Functionally validated: focused direct fixture scripts and manifest validation are recorded in `docs/harness-first/evidence/2026-11-09-lesson-tests-relative-time-recovery.md`.
 - Observable / intervenable / PM-tracked: no runtime capability was introduced; parent owns tier0, exact-head review, CI, commit, and landing.
 - Deferral: the activation dimensions do not apply to this repository-only maintenance slice as of 2026-11-09. This does not claim full integrity-recovery completion.
+
+## Boot-stability regression expectation — repository-only deferral (2026-11-10)
+
+- Status: **DEFERRED**; this slice repairs two stale static assertions and CI registration only.
+- Integrated / turned on: no service, runtime configuration, deployment, dashboard, or operator control changed; the test now runs in CI (`tests-misc-a-c`).
+- Functionally validated: direct test, py_compile and manifest validation recorded in `docs/harness-first/evidence/2026-11-10-boot-stability-regression-expectation.md`.
+- Observable / intervenable / PM-tracked: observable through existing CI results; system-integrity recovery P0.5.
+- Deferral: activation dimensions do not apply to this repository-only maintenance slice as of 2026-11-10.
