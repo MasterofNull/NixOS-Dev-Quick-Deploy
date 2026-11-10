@@ -798,3 +798,11 @@ Owner deployed via `scripts/maintenance/aq-deploy-current`: system and Home Mana
 - Functionally validated: offline temp-repo matrix in `scripts/testing/test-worktree-isolation.py`; recorded in `docs/harness-first/evidence/2026-11-10-delegate-worktree-origin-main-base.md`.
 - Observable / intervenable / PM-tracked: records chosen base commit in `refs/delegate-base/<task_id>`; overridable via `AQ_DELEGATE_BASE`.
 - Deferral: main-checkout activation occurs on next `aq-deploy-current` ff-only pull (2026-11-10).
+
+## Knowledge source sync bounded retry & per-source isolation (2026-11-10)
+
+- Status: **ACTIVE (service script)**; live on next `ai-sync-knowledge-sources.service` run after merge/deploy.
+- Integrated / turned on: `scripts/data/sync-knowledge-sources` is the `ExecStart` of `ai-sync-knowledge-sources.service`.
+- Functionally validated: `scripts/testing/test-sync-knowledge-sources-retry.py` (8 tests) and `sync-knowledge-sources --dry-run`; recorded in `docs/harness-first/evidence/2026-11-10-knowledge-sync-retry-isolation.md`.
+- Observable / intervenable / PM-tracked: QA 0.1.2 (`failed_units`), summary line `synced=N skipped=N fetch_failed=N`, configurable via `KNOWLEDGE_FETCH_MAX_RETRIES`.
+- Deferral: systemd unit clear occurs on next `aq-deploy-current` / `systemctl start ai-sync-knowledge-sources.service` (2026-11-10).
