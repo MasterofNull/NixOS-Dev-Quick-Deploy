@@ -806,3 +806,11 @@ Owner deployed via `scripts/maintenance/aq-deploy-current`: system and Home Mana
 - Functionally validated: `scripts/testing/test-sync-knowledge-sources-retry.py` (8 tests) and `sync-knowledge-sources --dry-run`; recorded in `docs/harness-first/evidence/2026-11-10-knowledge-sync-retry-isolation.md`.
 - Observable / intervenable / PM-tracked: QA 0.1.2 (`failed_units`), summary line `synced=N skipped=N fetch_failed=N`, configurable via `KNOWLEDGE_FETCH_MAX_RETRIES`.
 - Deferral: systemd unit clear occurs on next `aq-deploy-current` / `systemctl start ai-sync-knowledge-sources.service` (2026-11-10).
+
+## MCP integrity baseline reseed on deploy with SHA-256 diff audit log (2026-11-10)
+
+- Status: **ACTIVE (deploy pipeline + baseline helper)**; runs automatically at Step 8b of `aq-deploy-current` after revision match.
+- Integrated / turned on: `scripts/maintenance/aq-deploy-current` invokes `scripts/security/update-mcp-integrity-baseline.sh` with `--baseline-file /var/lib/nixos-ai-stack/mcp-source-baseline.sha256` and `--audit-log /var/lib/nixos-ai-stack/mcp-baseline-audit.jsonl` before Step 9 `aq-qa 0`.
+- Functionally validated: `scripts/testing/test-mcp-baseline-reseed.py` (6 tests: initial seed, drift detection, reseed + JSONL old->new diff, post-reseed clean verify, read-only check enforcement, and deploy-ordering static check); recorded in `docs/harness-first/evidence/2026-11-10-mcp-baseline-reseed-on-deploy.md`.
+- Observable / intervenable / PM-tracked: QA 0.1.2 (`failed_units`), `ai-mcp-integrity-check.service`, `/var/lib/nixos-ai-stack/mcp-baseline-audit.jsonl`.
+- Deferral: live `/var/lib/nixos-ai-stack/mcp-source-baseline.sha256` reseed executes on next owner `aq-deploy-current` (2026-11-10).
