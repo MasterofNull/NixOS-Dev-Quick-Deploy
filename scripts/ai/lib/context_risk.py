@@ -36,8 +36,10 @@ def _safe_label(value: str) -> str:
     return (cleaned or "context")[:64]
 
 
-def _preview(text: str, limit: int) -> str:
-    compact = " ".join(str(text or "").replace("\x00", "").split())
+def _preview(text: str, limit: int, *, preserve_newlines: bool = False) -> str:
+    compact = str(text or "").replace("\x00", "")
+    if not preserve_newlines:
+        compact = " ".join(compact.split())
     if len(compact) <= limit:
         return compact
     return compact[: max(0, limit - 3)].rstrip() + "..."
@@ -55,13 +57,13 @@ def classify_context_risk(
     line_count = raw.count("\n") + (1 if raw else 0)
     if len(raw) >= min_chars:
         reasons.append("large_payload")
-    if line_count >= 80:
+    if source != "read_file" and line_count >= 80:
         reasons.append("many_lines")
     if _HIGH_PAYLOAD_HINT_RE.search(source or "") and len(raw) >= max(800, min_chars // 2):
         reasons.append("source_high_payload")
     if raw.count("Traceback (most recent call last)") >= 2:
         reasons.append("repeated_traceback")
-    if raw.count("<html") or raw.count("<div"):
+    if source != "read_file" and (raw.count("<html") or raw.count("<div")):
         if len(raw) >= max(800, min_chars // 2):
             reasons.append("html_snapshot")
     return {
@@ -121,7 +123,7 @@ def compact_context_if_needed(
         "raw_chars": len(raw),
         "raw_output_compacted": True,
         "summary_chars": summary_chars,
-        "summary": _preview(raw, summary_chars),
+        "summary": _preview(raw, summary_chars, preserve_newlines=source == "read_file"),
         "resume_command": f'aq-context-manage summary --task "{_safe_label(label)}" --json',
         "usage": "Pass artifact_path and summary forward; do not paste the raw payload into model context.",
     }

@@ -383,7 +383,6 @@ async def run_task(
     task_type: str | None = None,
 ) -> int:
     """Run the agent loop. Returns 0 on success, 1 on failure."""
-    del max_calls  # Deprecated: loops are progress-guarded, not count-guarded.
     lifecycle_subject = output_file or "aq-agent-loop"
     rsi_start("aq-agent-loop", lifecycle_subject, task_text)
 
@@ -476,7 +475,12 @@ async def run_task(
         "agent_step_start",
         {"tool_call_count": 0},
     )
-    result_task = await executor.execute_task(task, AgentType.AGENT)
+    result_task = await executor.execute_task(
+        task,
+        AgentType.AGENT,
+        max_tool_calls=max_calls,
+        wall_budget_s=float(timeout_secs),
+    )
     elapsed = time.time() - start
 
     incomplete_result = _is_incomplete_result(result_task.result)

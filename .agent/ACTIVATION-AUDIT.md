@@ -822,3 +822,11 @@ Owner deployed via `scripts/maintenance/aq-deploy-current`: system and Home Mana
 - Functionally validated: `scripts/testing/test-model-probe-freshness.py` (PASS), `scripts/testing/test-model-catalog-freshness.py` (PASS, QA 0.10.5), and live `aq-model-eval --force` against `:8080`; recorded in `docs/harness-first/evidence/2026-11-10-model-freshness-and-dashboard-catalog.md`.
 - Observable / intervenable / PM-tracked: QA `0.10.5` (`model_catalog_freshness`), `/api/models/catalog`, `/api/models/status`, `scripts/ai/aq-model-eval --force`.
 - Deferral: `command-center-dashboard` `pyyaml` Nix store path activates on next owner `aq-deploy-current` (2026-11-10).
+
+## Local-agent tooling, IPM idle polling, and aq-confine TMPDIR fixes (2026-11-10)
+
+- Status: **ACTIVE (local-agent CLI/tools + test-aq-confine)**; `ai-hybrid-coordinator` IPM and `ai-stack-health-monitor` `MemoryMax=1280M` activate on next `aq-deploy-current`.
+- Integrated / turned on: `scripts/testing/test-aq-confine.py`, `nix/modules/roles/ai-stack.nix`, `ai-stack/local-agents/builtin_tools/file_operations.py`, `scripts/ai/lib/context_risk.py`, `ai-stack/local-agents/agent_executor.py`, `scripts/ai/aq-agent-loop`, and `ai-stack/mcp-servers/hybrid-coordinator/inference_param_manager.py`.
+- Functionally validated: `scripts/testing/test-aq-confine.py` (213/213 PASS), `scripts/testing/test-context-compaction-sandwich.py` (PASS), and `scripts/testing/test-ipm-thermal-thresholds.py` (7/7 PASS); recorded in `docs/harness-first/evidence/2026-11-10-local-agent-ipm-and-confine-fixes.md`.
+- Observable / intervenable / PM-tracked: QA `0.10.66` (`test-aq-confine`), `ai-stack-health-monitor.service`, `ai-hybrid-coordinator` `/health` IPM state, `aq-agent-loop --timeout / --max-calls`.
+- Deferral: systemd unit reload for `ai-stack-health-monitor` (`MemoryMax=1280M`) and `ai-hybrid-coordinator` (`InferenceParamManager`) executes on next owner `aq-deploy-current` (2026-11-10).
