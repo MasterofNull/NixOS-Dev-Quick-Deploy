@@ -5,6 +5,8 @@ from __future__ import annotations
 
 import asyncio
 import importlib.util
+import datetime
+import json
 import sys
 import tempfile
 from pathlib import Path
@@ -86,11 +88,109 @@ async def check_successful_measurement_is_source_labelled(module) -> None:
         assert '"reviewed_at"' in payload
 
 
+def cached_payload(module):
+    payload = module._default_profile().to_dict()
+    now = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    payload.update(probe_model_id="active.gguf", probed_at=now, freshness_max_age_days=50)
+    payload["_meta"] = {"reviewed_at": now, "custom_policy": "retained"}
+    return payload
+
+
+async def check_cache_freshness_and_force(module) -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        path = Path(tmp) / "profile.json"
+        payload = cached_payload(module)
+        for stale_field in ("probed_at", "reviewed_at"):
+            stale = json.loads(json.dumps(payload))
+            old = (datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=51)).isoformat()
+            if stale_field == "reviewed_at":
+                stale["_meta"][stale_field] = old
+            else:
+                stale[stale_field] = old
+            path.write_text(json.dumps(stale))
+            with (
+                patch.object(module.httpx, "AsyncClient", return_value=Client()),
+                patch.object(module, "_probe_speed", new=AsyncMock(return_value=2.5)) as speed,
+            ):
+                result = await module.probe("http://llama.invalid", path)
+            speed.assert_awaited_once()
+            assert result.measured_tps_output == 2.5
+            saved = json.loads(path.read_text())
+            assert saved["freshness_max_age_days"] == 50
+            assert saved["_meta"]["custom_policy"] == "retained"
+            assert module._is_cache_fresh(path)
+
+        original = json.dumps(payload)
+        path.write_text(original)
+        with (
+            patch.object(module.httpx, "AsyncClient", return_value=Client()),
+            patch.object(module, "_probe_speed", new=AsyncMock(return_value=None)) as speed,
+        ):
+            await module.probe("http://llama.invalid", path)
+            speed.assert_not_awaited()
+            await module.probe("http://llama.invalid", path, force=True)
+            speed.assert_awaited_once()
+        assert path.read_text() == original, "failed forced probe must preserve the existing file byte-for-byte"
+        with (
+            patch.object(module.httpx, "AsyncClient", return_value=Client()),
+            patch.object(module, "_probe_speed", new=AsyncMock(return_value=3.0)) as speed,
+        ):
+            await module.probe("http://llama.invalid", path, force=True)
+            speed.assert_awaited_once()
+        saved = json.loads(path.read_text())
+        assert saved["freshness_max_age_days"] == 50
+        assert saved["_meta"]["custom_policy"] == "retained"
+        for bad_stamp in (None, "invalid", "2026-01-01T00:00:00"):
+            saved["probed_at"] = bad_stamp
+            path.write_text(json.dumps(saved))
+            assert not module._is_cache_fresh(path)
+
+
+def check_registry_reconciliation() -> None:
+    spec = importlib.util.spec_from_file_location(
+        "model_registry_under_test", MODULE_PATH.parent.parent / "model_registry.py"
+    )
+    registry = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(registry)
+    with tempfile.TemporaryDirectory() as tmp:
+        model_dir = Path(tmp)
+        current = model_dir / "current.gguf"
+        previous = model_dir / "previous.gguf"
+        current.touch()
+        previous.touch()
+        (model_dir / "active.gguf").symlink_to(current)
+        models = {
+            "current": {"file": current.name, "state": "failed", "local_path": None, "error": "cancelled"},
+            "previous": {"file": previous.name, "state": "active", "promoted_at": 123},
+            "missing": {"file": "missing.gguf", "state": "active"},
+            "failed": {"file": previous.name, "state": "failed", "error": "cancelled"},
+        }
+        for state in ("downloading", "warming", "retiring"):
+            models[state] = {"file": current.name, "state": state}
+        with patch.object(registry, "MODEL_DIR", model_dir):
+            registry._reconcile_disk_state(models)
+            first = json.loads(json.dumps(models))
+            registry._reconcile_disk_state(models)
+        assert models == first, "repeated reconciliation must not append duplicate audit events"
+        assert models["current"]["state"] == "active"
+        assert models["current"]["local_path"] == str(current)
+        assert models["current"]["error"] is None
+        assert models["current"]["promoted_at"]
+        assert models["previous"]["state"] == "verified"
+        assert models["missing"]["state"] == "available"
+        assert models["failed"]["state"] == "verified"
+        assert models["failed"]["error"] is None
+        for state in ("downloading", "warming", "retiring"):
+            assert models[state] == {"file": current.name, "state": state}
+
+
 def main() -> int:
     module = load_module()
     asyncio.run(check_failed_measurement_does_not_refresh(module))
     asyncio.run(check_successful_measurement_is_source_labelled(module))
-    print("PASS: model probe only refreshes receipts after live throughput measurement")
+    asyncio.run(check_cache_freshness_and_force(module))
+    check_registry_reconciliation()
+    print("PASS: model probe receipts, cache freshness, force preservation, and registry reconciliation")
     return 0
 
 

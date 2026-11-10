@@ -814,3 +814,11 @@ Owner deployed via `scripts/maintenance/aq-deploy-current`: system and Home Mana
 - Functionally validated: `scripts/testing/test-mcp-baseline-reseed.py` (6 tests: initial seed, drift detection, reseed + JSONL old->new diff, post-reseed clean verify, read-only check enforcement, and deploy-ordering static check); recorded in `docs/harness-first/evidence/2026-11-10-mcp-baseline-reseed-on-deploy.md`.
 - Observable / intervenable / PM-tracked: QA 0.1.2 (`failed_units`), `ai-mcp-integrity-check.service`, `/var/lib/nixos-ai-stack/mcp-baseline-audit.jsonl`.
 - Deferral: live `/var/lib/nixos-ai-stack/mcp-source-baseline.sha256` reseed executes on next owner `aq-deploy-current` (2026-11-10).
+
+## Model probe cache freshness, dashboard PyYAML, and registry disk reconciliation (2026-11-10)
+
+- Status: **ACTIVE (repo + hybrid-coordinator + dashboard)**; `config/model-profile.json` and `config/model-catalog.yaml` refreshed live; `command-center-dashboard.nix` `pyyaml` activates on next `aq-deploy-current`.
+- Integrated / turned on: `ai-stack/mcp-servers/hybrid-coordinator/extensions/model_probe.py`, `ai-stack/mcp-servers/hybrid-coordinator/model_probe.py`, `scripts/ai/aq-model-eval`, `ai-stack/mcp-servers/hybrid-coordinator/model_registry.py`, and `nix/modules/services/command-center-dashboard.nix`.
+- Functionally validated: `scripts/testing/test-model-probe-freshness.py` (PASS), `scripts/testing/test-model-catalog-freshness.py` (PASS, QA 0.10.5), and live `aq-model-eval --force` against `:8080`; recorded in `docs/harness-first/evidence/2026-11-10-model-freshness-and-dashboard-catalog.md`.
+- Observable / intervenable / PM-tracked: QA `0.10.5` (`model_catalog_freshness`), `/api/models/catalog`, `/api/models/status`, `scripts/ai/aq-model-eval --force`.
+- Deferral: `command-center-dashboard` `pyyaml` Nix store path activates on next owner `aq-deploy-current` (2026-11-10).

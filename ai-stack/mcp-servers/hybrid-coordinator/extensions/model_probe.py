@@ -10,7 +10,7 @@ Queries the loaded llama.cpp model at startup to detect:
 Derives token budgets from measured speed × timeout windows so the harness
 automatically scales when the model is swapped — no hardcoded model names.
 
-Profile is cached to AI_MODEL_PROFILE_PATH and re-used unless stale (model changed).
+Profile is cached to AI_MODEL_PROFILE_PATH and re-used while fresh and the model identity matches.
 """
 
 from __future__ import annotations
@@ -177,11 +177,13 @@ def _detect_thinking(chat_template: str, caps: Dict[str, Any]) -> tuple[bool, bo
     return has, can_disable
 
 
-async def probe(llama_cpp_url: str, profile_path: Optional[Path] = None) -> ModelProfile:
+async def probe(
+    llama_cpp_url: str, profile_path: Optional[Path] = None, *, force: bool = False
+) -> ModelProfile:
     """
     Probe the loaded model and return (and cache) its ModelProfile.
 
-    Uses cached profile if the model_id matches and version is current.
+    Uses cached profile if the model_id matches, version is current, and receipts are fresh.
     """
     profile_path = profile_path or _default_profile_path()
 
@@ -200,7 +202,7 @@ async def probe(llama_cpp_url: str, profile_path: Optional[Path] = None) -> Mode
             logger.warning("model_probe models_fetch_failed: %s — using fallback", exc)
             return cached or _default_profile()
 
-        if cached and cached.probe_model_id == model_id:
+        if not force and cached and cached.probe_model_id == model_id and _is_cache_fresh(profile_path):
             logger.info("model_probe cache_hit model_id=%s", model_id)
             return cached
 
@@ -274,6 +276,20 @@ def _default_profile_path() -> Path:
     return Path("/var/lib/ai-stack/model-profile.json")
 
 
+def _is_cache_fresh(path: Path) -> bool:
+    try:
+        data = json.loads(path.read_text())
+        max_age = datetime.timedelta(days=float(data.get("freshness_max_age_days", 45)))
+        now = datetime.datetime.now(datetime.timezone.utc)
+        for value in (data.get("probed_at"), data.get("_meta", {}).get("reviewed_at")):
+            stamp = datetime.datetime.fromisoformat(value.replace("Z", "+00:00"))
+            if stamp.tzinfo is None or not datetime.timedelta(0) <= now - stamp <= max_age:
+                return False
+        return True
+    except (OSError, ValueError, TypeError, AttributeError, OverflowError):
+        return False
+
+
 def _load_cached(path: Path) -> Optional[ModelProfile]:
     try:
         if path.exists():
@@ -318,6 +334,8 @@ def _save(profile: ModelProfile, path: Path) -> None:
 
 
 # Synchronous probe for use in scripts
-def probe_sync(llama_cpp_url: str, profile_path: Optional[Path] = None) -> ModelProfile:
+def probe_sync(
+    llama_cpp_url: str, profile_path: Optional[Path] = None, *, force: bool = False
+) -> ModelProfile:
     import asyncio
-    return asyncio.run(probe(llama_cpp_url, profile_path))
+    return asyncio.run(probe(llama_cpp_url, profile_path, force=force))
