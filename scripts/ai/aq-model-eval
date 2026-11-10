@@ -44,15 +44,10 @@ async def _run(args: argparse.Namespace) -> None:
         else model_probe._default_profile_path()
     )
 
-    if args.force and profile_path.exists():
-        profile_path.unlink()
-        if not args.json_only:
-            print(f"Cleared cached profile at {profile_path}", file=sys.stderr)
-
     if not args.json_only:
         print(f"Probing {llama_url} ...", file=sys.stderr)
 
-    profile = await model_probe.probe(llama_url, profile_path)
+    profile = await model_probe.probe(llama_url, profile_path, force=args.force)
     d = profile.to_dict()
 
     if args.json_only:

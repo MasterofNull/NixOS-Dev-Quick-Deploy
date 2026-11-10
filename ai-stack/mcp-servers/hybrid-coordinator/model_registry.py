@@ -317,10 +317,8 @@ def _default_entry(base: Dict[str, Any]) -> Dict[str, Any]:
 def _reconcile_disk_state(models: Dict[str, Dict[str, Any]]) -> None:
     """Promote registry entries whose files already exist on disk.
 
-    Called during first load when no persisted registry exists.
-    - available + file on disk → verified (local_path set)
-    - matches active.gguf symlink target → active (promoted_at set)
-    Entries already in a non-available state are left unchanged.
+    Reconcile settled entries with files and the active.gguf symlink target.
+    Transient download, warmup, and retirement operations retain their state.
     """
     try:
         active_target: Optional[str] = None
@@ -332,29 +330,32 @@ def _reconcile_disk_state(models: Dict[str, Dict[str, Any]]) -> None:
 
     now = time.time()
     for entry in models.values():
-        if entry.get("state") != ModelState.AVAILABLE.value:
+        if entry.get("state") in (
+            ModelState.DOWNLOADING.value, ModelState.WARMING.value, ModelState.RETIRING.value,
+        ):
             continue
         fname = entry.get("file")
         if not fname:
             continue
         candidate = MODEL_DIR / fname
-        if not candidate.exists():
-            continue
-        local_path = str(candidate)
-        entry["local_path"] = local_path
-        entry["updated_at"] = now
-        if active_target and local_path == active_target:
+        exists = candidate.exists()
+        previous_state = entry.get("state")
+        if exists:
+            entry["local_path"] = str(candidate)
+        if active_target and str(candidate) == active_target:
             entry["state"] = ModelState.ACTIVE.value
+            entry["error"] = None
             entry["promoted_at"] = entry.get("promoted_at") or now
-            entry["audit_log"].append({
-                "ts": now, "event": "auto_discovered_active",
-                "note": "file matched active.gguf symlink on startup"
-            })
-        else:
+        elif previous_state == ModelState.ACTIVE.value and active_target:
+            entry["state"] = ModelState.VERIFIED.value if exists else ModelState.AVAILABLE.value
+        elif exists and previous_state in (ModelState.AVAILABLE.value, ModelState.FAILED.value):
             entry["state"] = ModelState.VERIFIED.value
-            entry["audit_log"].append({
-                "ts": now, "event": "auto_discovered_verified",
-                "note": "file found on disk during registry init"
+            entry["error"] = None
+        if entry.get("state") != previous_state:
+            entry["updated_at"] = now
+            entry.setdefault("audit_log", []).append({
+                "ts": now, "event": "auto_discovered_" + entry["state"],
+                "note": "reconciled file and active.gguf symlink on startup"
             })
 
 

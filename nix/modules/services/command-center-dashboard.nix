@@ -145,6 +145,7 @@
 
   dashboardPython = pkgs.python3.withPackages (ps:
     with ps; [
+      pyyaml
       fastapi
       uvicorn
       pydantic
