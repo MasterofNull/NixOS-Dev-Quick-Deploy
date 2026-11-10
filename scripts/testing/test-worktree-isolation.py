@@ -41,6 +41,45 @@ for path in (HELPER, CODEX, LOCAL):
 assert run([str(CODEX), "--shared", "--mode", "edit", "--prompt", "fixture"], check=False).returncode
 assert run([str(LOCAL), "--shared", "--mode", "agent", "--prompt", "fixture", "--no-consult"], check=False).returncode
 
+with tempfile.TemporaryDirectory(prefix="worktree-base-") as temp:
+    repo = Path(temp) / "repo"
+    origin = Path(temp) / "origin.git"
+    git(Path(temp), "init", "-q", "-b", "main", str(repo))
+    git(repo, "config", "user.email", "fixture@example.invalid")
+    git(repo, "config", "user.name", "fixture")
+    git(repo, "commit", "--allow-empty", "-qm", "base")
+    initial = git(repo, "rev-parse", "HEAD").stdout.strip()
+
+    def assert_base(task, expected, override=""):
+        env = {**os.environ, "AQ_AUDIT_DISABLE": "1", "AQ_DELEGATE_BASE": override,
+               "AQ_DELEGATION_DIR": str(repo / ".agents/delegation")}
+        wt = Path(bash(f'set -eu; source "{HELPER}"; wt_create "{repo}" "{task}"', env=env).stdout.strip())
+        assert git(wt, "rev-parse", "HEAD").stdout.strip() == expected, task
+        assert git(repo, "rev-parse", f"refs/delegate-base/{task}").stdout.strip() == expected, task
+
+    assert_base("task-no-origin", initial)
+    git(Path(temp), "init", "--bare", "-q", "-b", "main", str(origin))
+    git(repo, "remote", "add", "origin", str(origin))
+    git(repo, "push", "-q", "origin", "main")
+    upstream = Path(temp) / "upstream"
+    git(Path(temp), "clone", "-q", str(origin), str(upstream))
+    git(upstream, "-c", "user.email=fixture@example.invalid", "-c", "user.name=fixture",
+        "commit", "--allow-empty", "-qm", "upstream advances")
+    git(upstream, "push", "-q", "origin", "main")
+    git(repo, "fetch", "-q", "origin")
+    remote_head = git(repo, "rev-parse", "origin/main").stdout.strip()
+    assert remote_head != initial
+    assert_base("task-behind", remote_head)
+    assert_base("task-invalid-override", remote_head, "missing-ref")
+    git(repo, "tag", "-a", "-m", "explicit base", "delegate-base", initial)
+    assert_base("task-override", initial, "delegate-base")
+    git(repo, "commit", "--allow-empty", "-qm", "unpushed diverged work")
+    assert_base("task-diverged", git(repo, "rev-parse", "HEAD").stdout.strip())
+    git(repo, "merge", "-q", "--no-edit", "origin/main")
+    assert_base("task-ahead", git(repo, "rev-parse", "HEAD").stdout.strip())
+    assert_base("task-invalid-override-ahead", git(repo, "rev-parse", "HEAD").stdout.strip(), "missing-ref")
+    print("PASS worktree base selection: no origin, behind, override, invalid override, diverged, ahead")
+
 with tempfile.TemporaryDirectory(prefix="worktree-isolation-") as temp:
     repo = Path(temp) / "repo"
     git(Path(temp), "init", "-q", str(repo))

@@ -25,7 +25,9 @@
 # Functions:
 #   wt_create       <repo_root> <task_id>
 #       Creates .agents/delegation/worktrees/<task_id> on branch
-#       delegate/<task_id> from HEAD. Echoes the worktree path and returns 0
+#       delegate/<task_id> from a valid AQ_DELEGATE_BASE override, otherwise
+#       origin/main when HEAD is its ancestor, otherwise HEAD (offline).
+#       Echoes the worktree path and returns 0
 #       on success; returns 1 (nothing echoed) on failure so the caller refuses
 #       the editing dispatch and preserves existing evidence.
 #   wt_handback     <repo_root> <worktree_path> <task_id> <outputs_dir>
@@ -47,7 +49,15 @@ wt_create() {
     repo_root="$(cd "$repo_root" 2>/dev/null && pwd -P)" || return 1
     [[ -d "$repo_root/.git" || -f "$repo_root/.git" ]] || return 1
     local base wt_root
-    base="$(git -C "$repo_root" rev-parse --verify HEAD 2>/dev/null)" || return 1
+    if [[ -n "${AQ_DELEGATE_BASE:-}" ]] &&
+       base="$(git -C "$repo_root" rev-parse --verify "${AQ_DELEGATE_BASE}^{commit}" 2>/dev/null)"; then
+        :
+    elif base="$(git -C "$repo_root" rev-parse --verify 'origin/main^{commit}' 2>/dev/null)" &&
+         git -C "$repo_root" merge-base --is-ancestor HEAD "$base" 2>/dev/null; then
+        :
+    else
+        base="$(git -C "$repo_root" rev-parse --verify 'HEAD^{commit}' 2>/dev/null)" || return 1
+    fi
     wt_root="${AQ_DELEGATION_DIR:-$repo_root/.agents/delegation}/worktrees"
     local wt_path="$wt_root/$task_id"
     local branch="delegate/$task_id"

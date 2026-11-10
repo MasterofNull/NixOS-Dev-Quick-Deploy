@@ -790,3 +790,11 @@ Owner deployed via `scripts/maintenance/aq-deploy-current`: system and Home Mana
 - Functionally validated: direct test, py_compile and manifest validation recorded in `docs/harness-first/evidence/2026-11-10-boot-stability-regression-expectation.md`.
 - Observable / intervenable / PM-tracked: observable through existing CI results; system-integrity recovery P0.5.
 - Deferral: activation dimensions do not apply to this repository-only maintenance slice as of 2026-11-10.
+
+## Delegate worktree `origin/main` base selection (2026-11-10)
+
+- Status: **ACTIVE (repo tooling)**; live after merge on next `git pull` / `aq-deploy-current`.
+- Integrated / turned on: `wt_create` in `scripts/ai/lib/worktree-isolation.sh` is sourced by `delegate-to-codex` and `delegate-to-local`.
+- Functionally validated: offline temp-repo matrix in `scripts/testing/test-worktree-isolation.py`; recorded in `docs/harness-first/evidence/2026-11-10-delegate-worktree-origin-main-base.md`.
+- Observable / intervenable / PM-tracked: records chosen base commit in `refs/delegate-base/<task_id>`; overridable via `AQ_DELEGATE_BASE`.
+- Deferral: main-checkout activation occurs on next `aq-deploy-current` ff-only pull (2026-11-10).
