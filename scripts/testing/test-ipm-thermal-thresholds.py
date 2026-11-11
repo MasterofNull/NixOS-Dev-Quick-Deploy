@@ -88,6 +88,19 @@ def test_no_temps_returns_unknown():
     assert_true(tier == "unknown", f"no sensors should return 'unknown', got '{tier}'")
 
 
+def test_idle_slots():
+    mod = _load_ipm()
+    ipm = mod.InferenceParamManager()
+    ipm._state.slots = [{"id": 0, "is_processing": False}]
+    ipm._state.embed_busy_slots = 0.0
+    assert_true(ipm._is_idle(), "non-processing slots should be idle")
+    ipm._state.slots[0]["is_processing"] = True
+    assert_true(not ipm._is_idle(), "processing slot should be busy")
+    ipm._state.slots[0]["is_processing"] = False
+    ipm._state.embed_busy_slots = 1.0
+    assert_true(not ipm._is_idle(), "embedding activity should be busy")
+
+
 if __name__ == "__main__":
     tests = [
         ("default thresholds: 81°C is warn (unblocks batch)", test_default_thresholds),
@@ -96,6 +109,7 @@ if __name__ == "__main__":
         ("optimal below 73°C warn", test_optimal_below_warn),
         ("THERMAL_CRITICAL_C env override respected", test_env_override_critical),
         ("no sensors returns unknown", test_no_temps_returns_unknown),
+        ("idle slots and processing activity", test_idle_slots),
     ]
     failed = 0
     for name, fn in tests:

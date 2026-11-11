@@ -24,7 +24,7 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO / "scripts" / "ai" / "lib"))
 
-SCRATCH = tempfile.mkdtemp(prefix="aqc-test-")
+SCRATCH = tempfile.mkdtemp(prefix="aqc-test-", dir="/tmp")
 os.environ["AQ_CONFINE_STATE_DIR"] = os.path.join(SCRATCH, "state")
 os.environ["AQ_TELEMETRY_DIR"] = os.path.join(SCRATCH, "telemetry")
 os.environ["ATTENTION_QUEUE_DIR"] = os.path.join(SCRATCH, "attention")
@@ -284,6 +284,7 @@ def test_explain_goldens():
 
 
 def test_env_and_path_policy():
+    check("scratch dir is under /tmp for bwrap mount compatibility", SCRATCH.startswith("/tmp/"))
     for name in ("GITHUB_TOKEN", "FOO_SECRET", "MY_API_KEY", "SSH_AUTH_SOCK", "AWS_REGION", "LD_PRELOAD", "GIT_DIR", "PATH", "lower"):
         try:
             confine.check_env_name(name)
