@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import importlib.util
 import json
 import os
@@ -43,6 +44,41 @@ def main() -> int:
         os.environ["SWB_CONTEXT_OUTPUT_GC_MIN_CHARS"] = "256"
         os.environ["SWB_CONTEXT_OUTPUT_GC_SUMMARY_CHARS"] = "120"
         context_risk = load_module(LIB, "context_risk_under_test")
+        code = "    value = 'bound code'\n" * 120
+        assert_true(len(code) == 3000, "code fixture should contain 3,000 characters")
+        risk = context_risk.classify_context_risk(code, source="read_file", min_chars=16000)
+        assert_true(not risk["context_risk"], "bounded 120-line code read should stay inline")
+        html = "    <div>bounded HTML</div>\n" * 400
+        risk = context_risk.classify_context_risk(html, source="read_file", min_chars=16000)
+        assert_true(not risk["context_risk"], "bounded HTML read should stay inline")
+        read_compact, _ = context_risk.compact_context_if_needed(
+            code * 6,
+            source="read_file",
+            label="large code read",
+            min_chars=16000,
+            summary_chars=120,
+            artifact_dir=artifact_dir,
+        )
+        assert_true(json.loads(read_compact)["summary"] == (code * 6)[:117].rstrip() + "...",
+                    "compacted read preview should preserve newlines and indentation")
+        assert_true(context_risk._preview("    x\x00\n    y", 100, preserve_newlines=True) == "    x\n    y",
+                    "read preview should strip NUL without collapsing whitespace")
+
+        sys.path.insert(0, str(ROOT / "ai-stack" / "local-agents"))
+        try:
+            file_ops = load_module(
+                ROOT / "ai-stack" / "local-agents" / "builtin_tools" / "file_operations.py",
+                "file_operations_under_test",
+            )
+            single_file = artifact_dir / "single-file.py"
+            single_file.write_text("first line\nneedle: matching text\n", encoding="utf-8")
+            result = asyncio.run(file_ops.search_files_handler("needle", str(single_file)))
+            assert_true(result["success"], "single-file search should succeed")
+            assert_true(result["matches"] == [{"file": str(single_file), "line": 2, "text": "needle: matching text"}],
+                        "single-file search should preserve path, line number, and text")
+        finally:
+            sys.path.pop(0)
+
         payload = "pytest log line\n" + ("Traceback (most recent call last)\n" * 10) + ("x" * 600)
 
         compact, meta = context_risk.compact_context_if_needed(
@@ -74,6 +110,12 @@ def main() -> int:
     agent_src = AGENT_EXECUTOR.read_text(encoding="utf-8")
     assert_true("compact_context_if_needed" in agent_src, "local-agent executor should use shared context compaction")
     assert_true('"context_compaction"' in agent_src, "local-agent executor should emit context_compaction event")
+    loop_src = (ROOT / "scripts" / "ai" / "aq-agent-loop").read_text(encoding="utf-8")
+    assert_true("del max_calls" in loop_src, "aq-agent-loop must ignore deprecated max_calls")
+    assert_true(
+        "wall_budget_s=float(timeout_secs)" in loop_src,
+        "aq-agent-loop must forward wall_budget_s=float(timeout_secs) to executor.execute_task",
+    )
     print("PASS: context-risk routing uses switchboard artifacts and aq-context-manage resume guidance")
     return 0
 

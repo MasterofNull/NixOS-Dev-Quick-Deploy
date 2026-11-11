@@ -316,7 +316,7 @@ async def search_files_handler(
 
     try:
         # Build grep command
-        cmd = ["grep", "-rn", pattern, path]
+        cmd = ["grep", "-rnH", pattern, path]
 
         if file_pattern:
             cmd.extend(["--include", file_pattern])

@@ -2144,7 +2144,7 @@ in {
           TimeoutStartSec = "765";
           # MemoryMax: measured MemoryPeak 551M with all checks running (2026-10-08);
           # ~1.6x headroom.
-          MemoryMax = "896M";
+          MemoryMax = "1280M";
         };
       };
 

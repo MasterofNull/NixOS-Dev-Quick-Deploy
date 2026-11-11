@@ -142,7 +142,7 @@ class InferenceParamManager:
                 elapsed = time.perf_counter() - start_time
                 
                 # Dynamic backoff: increase interval if idle
-                is_idle = not (self._state.slots or self._state.embed_busy_slots > 0)
+                is_idle = self._is_idle()
                 interval = min(self._poll_interval * (2 if is_idle else 1), 5.0)
                 
                 await asyncio.sleep(max(0, interval - elapsed))
@@ -151,6 +151,12 @@ class InferenceParamManager:
             except Exception as e:
                 logger.error(f"Error in IPM poll loop: {e}")
                 await asyncio.sleep(5.0)
+
+    def _is_idle(self) -> bool:
+        return not (
+            any(bool(s.get("is_processing")) for s in self._state.slots)
+            or self._state.embed_busy_slots > 0
+        )
 
     # Renoir APU (Ryzen 4xxx) Tctl reads ~2-4°C above Tdie; safe_max is 95°C.
     # Defaults calibrated for the harness hardware. Override via env to tune.
@@ -287,7 +293,7 @@ class InferenceParamManager:
     async def _fetch_mtp_rate(self) -> Optional[float]:
         """Derive MTP acceptance rate from llama.cpp Prometheus metrics."""
         try:
-            async with httpx.AsyncClient(timeout=0.2) as client:
+            async with httpx.AsyncClient(timeout=float(os.getenv("IPM_HTTP_TIMEOUT_S", "2.0"))) as client:
                 resp = await client.get(f"{self._llama_url}/metrics")
                 if resp.status_code != 200:
                     return None
@@ -321,7 +327,7 @@ class InferenceParamManager:
     async def _fetch_embed_busy(self) -> float:
         """Fetch active slot count from llama-cpp-embed server."""
         try:
-            async with httpx.AsyncClient(timeout=0.2) as client:
+            async with httpx.AsyncClient(timeout=float(os.getenv("IPM_HTTP_TIMEOUT_S", "2.0"))) as client:
                 resp = await client.get(f"{self._embed_url}/metrics")
                 if resp.status_code != 200:
                     return 0.0
@@ -335,7 +341,7 @@ class InferenceParamManager:
     async def _fetch_full_slots(self, url: str) -> List[Dict[str, Any]]:
         """Fetch full slot list from a llama.cpp server."""
         try:
-            async with httpx.AsyncClient(timeout=0.2) as client:
+            async with httpx.AsyncClient(timeout=float(os.getenv("IPM_HTTP_TIMEOUT_S", "2.0"))) as client:
                 resp = await client.get(f"{url}/slots")
                 if resp.status_code == 200:
                     return resp.json()

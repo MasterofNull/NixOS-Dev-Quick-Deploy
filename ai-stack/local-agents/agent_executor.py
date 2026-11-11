@@ -3329,7 +3329,11 @@ class LocalAgentExecutor:
                     source=result.tool_name,
                     label=f"{task.id}-{result.tool_name}",
                     kind="agent-tool-result",
-                    min_chars=int(os.getenv("SWB_CONTEXT_OUTPUT_GC_MIN_CHARS", "2400")),
+                    min_chars=(
+                        int(os.getenv("SWB_CONTEXT_READ_FILE_GC_MIN_CHARS", "16000"))
+                        if result.tool_name == "read_file"
+                        else int(os.getenv("SWB_CONTEXT_OUTPUT_GC_MIN_CHARS", "2400"))
+                    ),
                     summary_chars=int(os.getenv("SWB_CONTEXT_OUTPUT_GC_SUMMARY_CHARS", "900")),
                 )
                 if _context_risk.get("context_risk"):
