@@ -3,9 +3,10 @@
 
 from pathlib import Path
 
+from _coordinator_src import read
+
 
 ROOT = Path(__file__).resolve().parents[2]
-HTTP_SERVER = ROOT / "ai-stack" / "mcp-servers" / "hybrid-coordinator" / "http_server.py"
 
 
 def assert_true(condition: bool, message: str) -> None:
@@ -14,10 +15,18 @@ def assert_true(condition: bool, message: str) -> None:
 
 
 def main() -> int:
-    text = HTTP_SERVER.read_text(encoding="utf-8")
+    # http_server.py is gone: the manager and status snapshot live in http_server_impl.py /
+    # core/status_service.py, pool selection in workflow/delegation_handlers.py, the delegate
+    # route in extensions/ai_coordinator_handlers.py.
+    text = read(
+        "http_server_impl.py",
+        "core/status_service.py",
+        "workflow/delegation_handlers.py",
+        "extensions/ai_coordinator_handlers.py",
+    )
 
     assert_true(
-        "from agent_pool_manager import AgentPoolManager, AgentTier, RemoteAgent" in text,
+        "from agent_pool_manager import AgentPoolManager, RemoteAgent" in text,  # AgentTier dropped as dead in 80d2fd4a3
         "hybrid coordinator should import the offloading agent pool manager",
     )
     assert_true(

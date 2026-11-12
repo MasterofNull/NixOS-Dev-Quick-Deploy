@@ -5,7 +5,23 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[2]
-HTTP_SERVER = ROOT / "ai-stack" / "mcp-servers" / "hybrid-coordinator" / "http_server.py"
+HTTP_SERVER = ROOT / "ai-stack" / "mcp-servers" / "hybrid-coordinator" / "http_server_impl.py"
+
+
+# Explicit live owners of the asserted behavior; coordinator_source() fails if http_server_impl.py
+# (first entry) does not reference an owner module, so dormant files cannot satisfy assertions.
+COORDINATOR_OWNERS = (
+    "http_server_impl.py",
+)
+
+
+def coordinator_source() -> str:
+    root = Path(__file__).resolve().parents[2] / "ai-stack" / "mcp-servers" / "hybrid-coordinator"
+    http_text = (root / COORDINATOR_OWNERS[0]).read_text(encoding="utf-8")
+    for owner in COORDINATOR_OWNERS[1:]:
+        if Path(owner).stem not in http_text:
+            raise AssertionError(f"{owner} is not referenced by {COORDINATOR_OWNERS[0]}; owner is not wired")
+    return "\n".join((root / owner).read_text(encoding="utf-8") for owner in COORDINATOR_OWNERS)
 
 
 def assert_true(condition: bool, message: str) -> None:
@@ -14,8 +30,13 @@ def assert_true(condition: bool, message: str) -> None:
 
 
 def main() -> int:
-    text = HTTP_SERVER.read_text(encoding="utf-8")
+    text = coordinator_source()
 
+    assert_true(
+        "def _collect_query_audit(request, result" in text
+        and "_collect_query_audit(request, result" in text.split("def _collect_query_audit(request, result", 1)[1],
+        "query handler should call the result-derived audit collector",
+    )
     assert_true(
         '"generate_response": generate_response' in text,
         "query audit metadata should propagate generate_response into tool-audit rows",
@@ -29,31 +50,31 @@ def main() -> int:
         "query error path should classify failed requests with a bounded backend label",
     )
     assert_true(
-        'request["audit_metadata"]["prompt_cache_cached_tokens"] = cached_tokens' in text,
+        'audit["prompt_cache_cached_tokens"] = cached_tokens' in text,
         "query audit metadata should propagate prompt-cache sample counts into tool-audit rows",
     )
     assert_true(
-        'request["audit_metadata"]["task_complexity_tokens"] = task_complexity_tokens' in text,
+        'audit["task_complexity_tokens"] = tc_tokens' in text,
         "query audit metadata should propagate task complexity token estimates into tool-audit rows",
     )
     assert_true(
-        'request["audit_metadata"]["task_complexity_local_suitable"] = bool(' in text,
+        'for flag in ("local_suitable", "remote_required"):' in text,
         "query audit metadata should propagate local suitability into tool-audit rows",
     )
     assert_true(
-        'request["audit_metadata"]["task_complexity_remote_required"] = bool(' in text,
+        'audit[f"task_complexity_{flag}"] = bool(task_complexity.get(flag))' in text,
         "query audit metadata should propagate remote-required flags into tool-audit rows",
     )
     assert_true(
-        'request["audit_metadata"]["strategy_tag"] = str(result.get("route", "unknown"))' in text,
+        'audit["strategy_tag"] = str(result.get("route", "unknown"))' in text,
         "query audit metadata should propagate strategy_tag into tool-audit rows",
     )
     assert_true(
-        'request["audit_metadata"]["local_inference_lane"] = local_inference_lane' in text,
+        '("local_inference_lane", "local_inference_lane"),' in text,
         "query audit metadata should propagate the selected local inference lane into tool-audit rows",
     )
     assert_true(
-        'request["audit_metadata"]["local_inference_lane_reason"] = local_inference_lane_reason' in text,
+        '("local_inference_lane_reason", "local_inference_lane_reason"),' in text,
         "query audit metadata should propagate the local inference lane reason into tool-audit rows",
     )
 

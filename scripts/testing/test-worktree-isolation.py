@@ -16,10 +16,16 @@ GIT = shutil.which("git")
 assert GIT, "git is required for this fixture"
 
 
+def hermetic_environ():
+    # AQ_DELEGATION_DIR is dropped: the fixtures assert repo-relative worktree roots and registries, and an
+    # ambient value (run-test-group, CI runner, operator shell) relocates them.
+    return {k: v for k, v in os.environ.items() if k != "AQ_DELEGATION_DIR"}
+
+
 def run(args, *, env=None, check=True):
     # Fixture failures must never reach the production audit log read by /stats/delegate.
     if env is None:
-        env = {**os.environ, "AQ_AUDIT_DISABLE": "1"}
+        env = {**hermetic_environ(), "AQ_AUDIT_DISABLE": "1"}
     result = subprocess.run(args, env=env, text=True, capture_output=True)
     if check and result.returncode:
         raise AssertionError(f"command failed ({result.returncode}): {args}\n{result.stderr}")
@@ -51,7 +57,7 @@ with tempfile.TemporaryDirectory(prefix="worktree-base-") as temp:
     initial = git(repo, "rev-parse", "HEAD").stdout.strip()
 
     def assert_base(task, expected, override=""):
-        env = {**os.environ, "AQ_AUDIT_DISABLE": "1", "AQ_DELEGATE_BASE": override,
+        env = {**hermetic_environ(), "AQ_AUDIT_DISABLE": "1", "AQ_DELEGATE_BASE": override,
                "AQ_DELEGATION_DIR": str(repo / ".agents/delegation")}
         wt = Path(bash(f'set -eu; source "{HELPER}"; wt_create "{repo}" "{task}"', env=env).stdout.strip())
         assert git(wt, "rev-parse", "HEAD").stdout.strip() == expected, task
@@ -151,7 +157,7 @@ with tempfile.TemporaryDirectory(prefix="worktree-isolation-") as temp:
     shim.mkdir()
     (shim / "git").write_text('#!/bin/sh\nfor arg in "$@"; do [ "$arg" = add ] && exit 77; done\nexec "$REAL_GIT" "$@"\n')
     (shim / "git").chmod(0o755)
-    shim_env = {**os.environ, "PATH": f"{shim}:{os.environ['PATH']}", "REAL_GIT": GIT}
+    shim_env = {**hermetic_environ(), "PATH": f"{shim}:{os.environ['PATH']}", "REAL_GIT": GIT}
     assert bash(f'source "{HELPER}"; wt_handback "{repo}" "{stage_wt}" task-stage "{repo}/stage-outputs"', env=shim_env, check=False).returncode
     assert (stage_wt / "stage.txt").exists() and stage_wt.is_dir()
 
@@ -213,7 +219,7 @@ def caller_fixture(wrapper: Path, *, local: bool, background: bool) -> None:
             codex_stub.write_text('#!/bin/sh\nprintf "child change\\n" > child.txt\nexit 0\n')
             codex_stub.chmod(0o755)
 
-        env = {**os.environ, "PATH": f"{stub_bin}:{os.environ['PATH']}", "CURL_CAPTURE": str(capture),
+        env = {**hermetic_environ(), "PATH": f"{stub_bin}:{os.environ['PATH']}", "CURL_CAPTURE": str(capture),
                "REAL_PYTHON": shutil.which("python3") or "python3"}
         args = [str(repo / "scripts/ai" / wrapper.name), "--mode", "agent" if local else "safe",
                 "--prompt", "fixture child"]
