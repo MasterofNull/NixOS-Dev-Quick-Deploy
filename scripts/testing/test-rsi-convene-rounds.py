@@ -123,6 +123,22 @@ class Seats(Base):
         self.assertEqual(rnd["seats"]["codex"]["state"], "delivered")
         self.assertEqual(rnd["seats"]["local"]["state"], "delivered")
 
+    def test_short_reply_is_short_not_down_and_not_delivered(self):
+        self.stub("delegate-to-local", 'echo "' + "y" * 150 + '"')
+        self.tick([inc("a", count=3)])
+        rnd = next(iter(self.st()["rounds"].values()))
+        seat = rnd["seats"]["local"]
+        self.assertEqual(seat["state"], "short")
+        self.assertIn("150 chars", seat["reason"])
+        self.assertNotIn("local", rnd["delivered"])
+        self.assertTrue(any(Path(self.tmp.name).rglob(seat["file"])))
+
+    def test_empty_reply_is_down(self):
+        self.stub("delegate-to-local", "exit 0")
+        self.tick([inc("a", count=3)])
+        rnd = next(iter(self.st()["rounds"].values()))
+        self.assertEqual(rnd["seats"]["local"]["state"], "down")
+
     def test_hung_seat_killed_at_limit(self):
         os.environ["RSI_CONVENE_SEAT_TIMEOUT"] = "1"
         self.stub("delegate-to-gemini", "sleep 60")

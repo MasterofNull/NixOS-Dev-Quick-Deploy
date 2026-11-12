@@ -134,10 +134,41 @@ def test_6b_measurement():
 
         check(findings("2") == [], "echoed prose and out-of-window logs must not raise 6b (--days must be honoured)")
         got = findings("7")
-        check(len(got) == 1 and got[0]["severity"] == "high", "real ERROR line inside the window raises 6b")
+        check(len(got) == 1 and got[0]["severity"] == "low", "real ERROR line whose reset has passed is low, not HIGH")
+        check("since reset" in got[0]["measured"], got[0]["measured"])
         check("codex-real-old.log" in got[0]["evidence_path"] and "resets Nov 12th, 2026 1:05 AM" in got[0]["evidence_path"],
               got[0]["evidence_path"])
         check("not overspend" in got[0]["suggested_fix"], "fix text must say quota, not spend")
+
+
+def test_6b_reset_severity():
+    import importlib.machinery
+    from datetime import datetime
+    loader = importlib.machinery.SourceFileLoader("aq_payload_audit_t", str(AUDIT))
+    spec = importlib.util.spec_from_loader(loader.name, loader)
+    mod = importlib.util.module_from_spec(spec)
+    loader.exec_module(mod)
+    now = datetime(2026, 11, 12, 12, 0)
+
+    def sev(line: str, age_days: float = 0.1) -> str:
+        with tempfile.TemporaryDirectory() as d:
+            repo = Path(d)
+            outputs = repo / ".agents" / "delegation" / "outputs"
+            outputs.mkdir(parents=True)
+            p = outputs / "codex-x.log"
+            p.write_text("x\n" + line + "\n")
+            t = now.timestamp() - age_days * 86400
+            os.utime(p, (t, t))
+            got = mod.check_codex_dispatch_history(repo, 7, now=now)
+            return got[0].severity
+
+    base = "ERROR: You've hit your usage limit. try again at "
+    check(sev(base + "Nov 12th, 2026 1:05 AM.") == "low", "past dated reset -> low")
+    check(sev(base + "Nov 12th, 2026 3:05 PM.") == "high", "future dated reset -> high")
+    check(sev(base + "4:29 AM.", age_days=0.4) == "low", "time-only reset after log time, already passed -> low")
+    check(sev(base + "11:59 PM.") == "high", "time-only reset still ahead -> high")
+    check(sev(base + "soon.") == "high", "unparseable -> high")
+    check(sev("ERROR: usage limit reached") == "high", "no reset time -> high")
 
 
 def test_home_side_duplicate_and_imports():
@@ -175,7 +206,7 @@ def test_home_side_duplicate_and_imports():
 
 def main() -> int:
     failed = 0
-    for fn in (test_tier0_wrapper, test_monitor_signal_and_alert, test_6b_measurement, test_home_side_duplicate_and_imports):
+    for fn in (test_tier0_wrapper, test_monitor_signal_and_alert, test_6b_measurement, test_6b_reset_severity, test_home_side_duplicate_and_imports):
         try:
             fn()
             print(f"PASS {fn.__name__}")
