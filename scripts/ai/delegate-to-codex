@@ -574,7 +574,8 @@ cmd_delegate() {
     info "Output file:     $output_file"
 
     local profile; profile="$(resolve_context_profile "$CONTEXT_PROFILE" "$ROLE" "$prompt")"
-    local full_prompt; full_prompt="$(build_codex_prompt "$profile" "$prompt")"
+    # Sentinel keeps the prompt's trailing newlines: $(...) alone would strip them.
+    local full_prompt; full_prompt="$(build_codex_prompt "$profile" "$prompt"; printf x)"; full_prompt="${full_prompt%x}"
     info "Context profile: ${profile} (wrapper-injected $(( ${#full_prompt} - ${#prompt} )) bytes, ~$(( (${#full_prompt} - ${#prompt}) / 4 )) tokens)"
 
     # CS-1: isolate this dispatch in its own git worktree by default so codex
@@ -763,7 +764,7 @@ case "${SUBCMD:-}" in
         case "$CONTEXT_PROFILE" in auto|full|lean) ;; *) die "Invalid --context-profile '$CONTEXT_PROFILE'. Valid: auto | full | lean" ;; esac
         if [[ "$PRINT_PROMPT" == "true" ]]; then
             _pp="$(resolve_context_profile "$CONTEXT_PROFILE" "$ROLE" "$PROMPT")"
-            _fp="$(build_codex_prompt "$_pp" "$PROMPT")"
+            _fp="$(build_codex_prompt "$_pp" "$PROMPT"; printf x)"; _fp="${_fp%x}"
             printf '%s\n' "$_fp"
             printf 'profile=%s injected_bytes=%d est_tokens=%d\n' "$_pp" "$(( ${#_fp} - ${#PROMPT} ))" "$(( (${#_fp} - ${#PROMPT}) / 4 ))" >&2
             exit 0
