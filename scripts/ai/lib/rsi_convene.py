@@ -17,6 +17,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import shlex
 import signal
 import subprocess
 import sys
@@ -33,6 +34,9 @@ LEDGER = "rsi-convene.json"
 REPEAT_COUNT, REPEAT_DAYS = 3, 7
 MAX_OPEN, MAX_PER_DAY = 1, 2
 MIN_DELIVERED = 2
+# Queue bound: at MAX_PER_DAY a full queue drains in QUEUE_MAX/MAX_PER_DAY days, so entries older than
+# QUEUE_TTL_DAYS are stale evidence and expire; beyond QUEUE_MAX the oldest are dropped. Both are counted in state["dropped"].
+QUEUE_MAX, QUEUE_TTL_DAYS = 10, 3
 GEMINI_MODEL = "gemini-3.8-flash-high"
 MIN_REPLY_CHARS = 200
 # One measured Codex review costs about 60000 tokens; the shared headless budget also serves reviews.
@@ -47,6 +51,25 @@ DESIGN_RE = re.compile(r"(design|architect|contract|invariant|race|authority|bou
 
 def enabled() -> bool:
     return os.environ.get("RSI_CONVENE", "0").strip().lower() not in ("0", "false", "off", "no")
+
+
+def unit_setting(unit: str = "ai-prsi-rsi-dispatch.service") -> bool | None:
+    """RSI_CONVENE as the dispatch unit sees it (read-only `systemctl show`, no root); None = could not tell.
+    The caller's shell env is deliberately ignored: it is not what the unit runs with."""
+    try:
+        p = subprocess.run(["systemctl", "show", "-p", "Environment", "-p", "LoadState", unit],
+                           capture_output=True, text=True, timeout=5)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    props = dict(l.split("=", 1) for l in p.stdout.splitlines() if "=" in l)
+    if p.returncode or props.get("LoadState") != "loaded" or "Environment" not in props:
+        return None
+    try:
+        words = shlex.split(props["Environment"])
+    except ValueError:
+        return None
+    vals = [w.split("=", 1)[1] for w in words if w.startswith("RSI_CONVENE=")]
+    return False if not vals else vals[-1].strip().lower() not in ("0", "false", "off", "no")  # absent = code default off
 
 
 def _now() -> datetime:
@@ -268,6 +291,7 @@ def tick(incidents: dict, path: Path | None = None) -> dict:
             state["queue"].append({"incident_id": inc.get("id"), "trigger": trig, "queued": now.isoformat()})
             seen.add(inc.get("id"))
     by_id = {i.get("id"): i for i in (incidents or {}).values() if isinstance(i, dict)}
+    _prune_queue(state, by_id, now)
     opened = None
     open_n, today = _budget(state, now)
     if state["queue"] and open_n < MAX_OPEN and today < MAX_PER_DAY:
@@ -280,6 +304,33 @@ def tick(incidents: dict, path: Path | None = None) -> dict:
             "round_status": (opened or {}).get("status")}
 
 
+def _prune_queue(state: dict, by_id: dict, now: datetime) -> None:
+    """Dedupe by incident (first entry wins), expire old entries, drop entries whose incident is gone or no longer
+    triggers (only when the incident ledger was readable), then cap at QUEUE_MAX keeping the newest."""
+    dropped = state.setdefault("dropped", {})
+
+    def drop(reason: str) -> None:
+        dropped[reason] = dropped.get(reason, 0) + 1
+
+    kept, ids = [], set()
+    for q in state["queue"]:
+        iid, queued = q.get("incident_id"), _parse(q.get("queued"))
+        if iid in ids:
+            drop("duplicate")
+        elif queued is None or now - queued > timedelta(days=QUEUE_TTL_DAYS):
+            drop("expired")
+        elif by_id and (iid not in by_id or trigger_for(by_id[iid], now) is None):
+            drop("resolved")
+        else:
+            kept.append(q)
+            ids.add(iid)
+    if len(kept) > QUEUE_MAX:
+        for _ in kept[:-QUEUE_MAX]:
+            drop("over-cap")
+        kept = kept[-QUEUE_MAX:]
+    state["queue"] = kept
+
+
 def summary(path: Path | None = None) -> dict:
     """Operator view for `aq-rsi status`."""
     state, now = load_state(path), _now()
@@ -287,10 +338,11 @@ def summary(path: Path | None = None) -> dict:
     rounds = state["rounds"].values()
     real = sorted(state["rounds"].values(), key=lambda r: r.get("opened", ""))
     last = real[-1] if real else None
-    return {"enabled": enabled(), "last": None if not last else {
+    return {"enabled": unit_setting(), "last": None if not last else {
                 "trigger": last.get("trigger"), "status": last.get("status"), "probe": bool(last.get("probe")),
                 "seats": {k: v.get("state") + (f" ({v['reason'][:60]})" if v.get("reason") else "")
                           for k, v in last.get("seats", {}).items()}},
             "open": open_n, "opened_24h": today, "queued": len(state["queue"]),
+            "dropped": dict(state.get("dropped", {})),
             "complete": sum(r.get("status") == "complete" for r in rounds),
             "incomplete": sum(r.get("status") == "incomplete" for r in rounds)}
