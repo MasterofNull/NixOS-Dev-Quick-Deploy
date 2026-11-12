@@ -216,6 +216,98 @@ class Seats(Base):
         self.assertTrue(rc.summary(self.state)["last"]["probe"])
 
 
+class QueueBound(Base):
+    def seed(self, entries):
+        t = rc.load_state(self.state)
+        t["queue"] = entries
+        rc.save_state(t, self.state)
+
+    def q(self, iid, days_old=0):
+        return {"incident_id": iid, "trigger": "repeat", "queued": iso(days_old)}
+
+    def block_rounds(self):  # keep ticks from opening a round so only pruning is measured
+        t = rc.load_state(self.state)
+        t["rounds"]["open"] = {"incident_id": "z", "status": "open", "opened": iso(0)}
+        rc.save_state(t, self.state)
+
+    def test_queue_never_exceeds_cap_and_keeps_newest(self):
+        self.block_rounds()
+        ids = [f"i{n}" for n in range(40)]
+        self.seed([self.q(i, days_old=2 - n / 100) for n, i in enumerate(ids)])
+        out = self.tick([inc(i, count=3) for i in ids])
+        qs = [q["incident_id"] for q in self.st()["queue"]]
+        self.assertEqual(len(qs), rc.QUEUE_MAX)
+        self.assertEqual(qs, ids[-rc.QUEUE_MAX:])
+        self.assertEqual(self.st()["dropped"]["over-cap"], 30)
+        self.assertEqual(out["queued"], rc.QUEUE_MAX)
+
+    def test_old_entries_expire(self):
+        self.block_rounds()
+        self.seed([self.q("old", rc.QUEUE_TTL_DAYS + 1), self.q("fresh", 0)])
+        self.tick([inc("old", count=3), inc("fresh", count=3)])
+        self.assertEqual([q["incident_id"] for q in self.st()["queue"]], ["fresh"])
+        self.assertEqual(self.st()["dropped"]["expired"], 1)
+
+    def test_duplicate_incident_entries_collapse(self):
+        self.block_rounds()
+        self.seed([self.q("a"), self.q("a"), self.q("a")])
+        self.tick([inc("a", count=3)])
+        self.assertEqual([q["incident_id"] for q in self.st()["queue"]], ["a"])
+        self.assertEqual(self.st()["dropped"]["duplicate"], 2)
+
+    def test_resolved_incident_leaves_queue_but_unreadable_ledger_does_not_wipe_it(self):
+        self.block_rounds()
+        self.seed([self.q("gone"), self.q("closed"), self.q("live")])
+        self.tick([inc("closed", count=3, status="closed"), inc("live", count=3)])
+        self.assertEqual([q["incident_id"] for q in self.st()["queue"]], ["live"])
+        self.seed([self.q("keep")])
+        self.tick([])  # empty ledger = nothing known, never a reason to drop
+        self.assertEqual([q["incident_id"] for q in self.st()["queue"]], ["keep"])
+
+    def test_summary_reports_drops(self):
+        self.block_rounds()
+        self.seed([self.q("old", rc.QUEUE_TTL_DAYS + 1)])
+        self.tick([inc("old", count=3)])
+        self.assertEqual(rc.summary(self.state)["dropped"], {"expired": 1})
+
+
+class UnitSetting(unittest.TestCase):
+    def systemctl(self, body):
+        d = tempfile.TemporaryDirectory()
+        self.addCleanup(d.cleanup)
+        f = Path(d.name) / "systemctl"
+        f.write_text("#!/bin/sh\n" + body + "\n")
+        f.chmod(0o755)
+        old = os.environ.get("PATH")
+        os.environ["PATH"] = f"{d.name}:{old}"
+        self.addCleanup(os.environ.__setitem__, "PATH", old)
+
+    def test_reads_the_units_environment_not_the_callers(self):
+        old = os.environ.pop("RSI_CONVENE", None)  # caller env has no RSI_CONVENE: the old code said False
+        self.addCleanup(lambda: old is None or os.environ.__setitem__("RSI_CONVENE", old))
+        self.systemctl('echo "Environment=FOO=1 RSI_CONVENE=1 AQ_DELEGATION_DIR=/x y"; echo LoadState=loaded')
+        self.assertIs(rc.unit_setting(), True)
+        self.assertIs(rc.summary(Path("/nonexistent/x.json"))["enabled"], True)
+
+    def test_unit_without_the_variable_is_off_and_zero_is_off(self):
+        self.systemctl('echo "Environment=FOO=1"; echo LoadState=loaded')
+        self.assertIs(rc.unit_setting(), False)
+        self.systemctl('echo "Environment=RSI_CONVENE=0"; echo LoadState=loaded')
+        self.assertIs(rc.unit_setting(), False)
+
+    def test_unreadable_unit_is_unknown(self):
+        self.systemctl("exit 1")
+        self.assertIsNone(rc.unit_setting())
+        self.systemctl('echo "Environment="; echo LoadState=not-found')  # absent unit: rc 0 but not loaded
+        self.assertIsNone(rc.unit_setting())
+        old = os.environ["PATH"]
+        os.environ["PATH"] = "/nonexistent"
+        try:
+            self.assertIsNone(rc.unit_setting())
+        finally:
+            os.environ["PATH"] = old
+
+
 class Activation(unittest.TestCase):
     def test_code_default_is_off(self):
         old = os.environ.pop("RSI_CONVENE", None)
@@ -237,6 +329,8 @@ class Activation(unittest.TestCase):
         self.assertRegex(unit, r'users\.users\.\$\{cfg\.primaryUser\}\.home\}/\.gemini"')
         self.assertRegex(unit, r'users\.users\.\$\{cfg\.primaryUser\}\.home\}/\.codex"')
         self.assertIn("AQ_DELEGATION_DIR=", unit)
+        self.assertIn('"ANTIGRAVITY_DISABLE_EMBEDDED_RIPGREP=1"', unit)  # gemini seat: no writes under read-only ~/.local/bin
+        self.assertRegex(unit, r"path = \[[^\]]*pkgs\.ripgrep")
         mem = int(re.search(r'MemoryMax = "(\d+)G"', unit).group(1))
         self.assertGreaterEqual(mem, 2)
         # repair 2400s + local seat limit must fit the unit timeout

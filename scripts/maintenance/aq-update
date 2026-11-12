@@ -1,16 +1,21 @@
 #!/usr/bin/env python3
 """aq-update: bring the primary checkout (and, only when Nix config changed, the running system) to origin/main.
 
-  aq-update [--dry-run | --resume]
+  aq-update [--dry-run | --resume]     phase 1, prepare: unattended, needs NO sudo, safe to walk away from
+  aq-update --deploy [--dry-run]       phase 2, deploy: short, owner-attended, asks for sudo once
 
-No Nix-affecting change since the deployed revision: fast-forward the checkout, no rebuild.
-Otherwise: refresh every flake input in a worktree, verify with CI's commands, land the lock
-through scripts/ai/aq-land, sync, run aq-deploy-current (sudo prompt for nixos-rebuild), refresh the MCP
-integrity baseline (a second sudo: the baseline is root-owned; usually still cached), validate the
-running revision, append to the ledger. If the baseline cannot be refreshed the run stops with the
-exact command to run, records the failure in the ledger, and `--resume` retries it.
---dry-run changes nothing (not the checkout, refs, lock, ledger or state). --resume continues
-an interrupted run from the ledger and git state. On demand only; run it as the owner.
+No Nix-affecting change since the deployed revision: fast-forward the checkout, no rebuild, done.
+Otherwise phase 1 refreshes every flake input in a worktree, verifies with CI's commands, lands the lock
+through scripts/ai/aq-land (can take 30-60 minutes), syncs the checkout, records a verified revision in the
+ledger and ends by printing exactly one READY line carrying the command for phase 2. It never calls sudo.
+Phase 2 (--deploy) runs only the short privileged steps: `sudo -v` once at its start (later steps reuse the
+cached credential; nothing is kept alive across the wait and no credential is stored), aq-deploy-current,
+the MCP integrity baseline refresh (root-owned, so sudo) and validation of the running revision.
+--deploy refuses unless the ledger shows a prepared, verified revision whose tree matches the checkout HEAD.
+If you deployed that revision yourself (e.g. a manual rebuild), --deploy detects the running revision already
+equals it, skips the rebuild, and runs only the baseline refresh and validation. Re-running --deploy after a
+failure skips stages already done. --resume continues an interrupted phase 1 (never starts phase 2).
+--dry-run changes nothing (not the checkout, refs, lock, ledger or state). On demand only; run it as the owner.
 
 Env (test seams): AQ_UPDATE_REPO, AQ_UPDATE_STATE_DIR, AQ_UPDATE_LAND, AQ_UPDATE_DEPLOY, AQ_UPDATE_BASELINE.
 Ledger: $AQ_UPDATE_STATE_DIR (default ${XDG_STATE_HOME:-~/.local/state}/nixos-ai-stack/aq-update)/ledger.jsonl
@@ -28,6 +33,7 @@ import time
 from pathlib import Path
 
 TAG = "aq-update"
+DEPLOY_CMD = "aq-update --deploy"
 TRAIL = [".agent/memory/issues-backlog.md", ".agent/collaboration/AGENT-CATCHUP-QUEUE.md"]
 STATE = [".agent/collaboration/rsi-incidents.json",
          ".agents/plans/frontier-evidence-intake/BACKLOG.jsonl",
@@ -291,7 +297,7 @@ Every rebuild includes all current inputs, refreshed immediately before it; the 
             raise Fail("land", f"aq-land not found or not executable at {self.land_bin}")
 
     def deploy_stage(self, target):
-        self.guard_main("deploy", target)
+        # No origin/main guard: phase 2 deploys exactly the revision phase 1 verified and landed, even if main moved since.
         if self.out("rev-parse", "HEAD") != target:
             raise Fail("deploy", f"checkout HEAD is not the verified revision {target[:8]}")
         if run([self.deploy, "--rev", target], cwd=self.repo, check=False, capture=False).returncode:
@@ -303,7 +309,7 @@ Every rebuild includes all current inputs, refreshed immediately before it; the 
         if self.git("status", "--porcelain", "--", "ai-stack/mcp-servers").stdout.strip():
             raise Fail("baseline", "ai-stack/mcp-servers is not clean; refusing to baseline unverified code")
         cmd = f"sudo {self.baseline}"  # /var/lib/nixos-ai-stack and the baseline are root-owned
-        hint = f"MCP baseline NOT refreshed; run `{cmd}` then `aq-update --resume`"
+        hint = f"MCP baseline NOT refreshed; run `{cmd}` then `{DEPLOY_CMD}`"
         try:
             rc = run(["sudo", self.baseline], cwd=self.repo, check=False, capture=False, stage="baseline").returncode
         except Fail as e:
@@ -328,12 +334,13 @@ def main(argv):
         print(__doc__)
         return 0
     flags = set(argv)
-    if flags - {"--dry-run", "--resume"} or {"--dry-run", "--resume"} <= flags:
-        print(f"{TAG}: usage: aq-update [--dry-run | --resume]", file=sys.stderr)
+    modes = {"--resume", "--deploy"} & flags
+    if flags - {"--dry-run", "--resume", "--deploy"} or len(argv) != len(flags) or len(modes) > 1 or {"--dry-run", "--resume"} <= flags:
+        print(f"{TAG}: usage: aq-update [--dry-run | --resume] | aq-update --deploy [--dry-run]", file=sys.stderr)
         return 2
     c = Ctx("--dry-run" in flags)
     try:
-        return go(c, "--resume" in flags)
+        return deploy_phase(c) if "--deploy" in flags else go(c, "--resume" in flags)
     except Fail as e:
         c.log(e.stage, "fail", reason=e.reason)
         print(f"{TAG}: FAIL {e.stage}: {e.reason}", file=sys.stderr)
@@ -341,6 +348,23 @@ def main(argv):
     finally:
         if c.scratch:
             shutil.rmtree(c.scratch, ignore_errors=True)
+
+
+def make_stage(c, done):
+    def stage(name, fn, reality=None, trust_state=False):
+        """Run fn unless done: ledger says so and (when given) state agrees; or, with trust_state, state alone does
+        (a kill between the effect and its ledger line must not repeat a rebuild)."""
+        if reality and trust_state and reality() and name not in done:
+            c.log(name, "done", reconciled=True)
+            done[name] = {"stage": name}
+        if name in done and (reality is None or reality()):
+            return done[name]
+        c.log(name, "start")
+        data = fn() or {}
+        c.log(name, "done", **data)
+        done[name] = {"stage": name, **data}
+        return done[name]
+    return stage
 
 
 def go(c, resume):
@@ -389,19 +413,7 @@ def go(c, resume):
     wt = c.repo / ".agents/delegation/worktrees" / f"aq-update-{c.run_id}"
     branch = f"chore/aq-update-{c.run_id}"
 
-    def stage(name, fn, reality=None, trust_state=False):
-        """Run fn unless done: ledger says so and (when given) state agrees; or, with trust_state, state alone does
-        (a kill between the effect and its ledger line must not repeat a rebuild)."""
-        if reality and trust_state and reality() and name not in done:
-            c.log(name, "done", reconciled=True)
-            done[name] = {"stage": name}
-        if name in done and (reality is None or reality()):
-            return done[name]
-        c.log(name, "start")
-        data = fn() or {}
-        c.log(name, "done", **data)
-        done[name] = {"stage": name, **data}
-        return done[name]
+    stage = make_stage(c, done)
 
     if not delta:
         stage("sync", lambda: (c.guard_main("sync", t0), c.sync(t0)) and None,
@@ -416,12 +428,57 @@ def go(c, resume):
     target = stage("land", lambda: {"rev": c.land(wt, branch, tree, t0)})["rev"]
     stage("sync", lambda: (c.guard_main("sync", target), c.sync(target)) and None,
           lambda: c.out("rev-parse", "HEAD") == target)
-    stage("deploy", lambda: c.deploy_stage(target), lambda: c.deployed_or_none() == target,
-          trust_state=True)
+    stage("ready", lambda: {"rev": target, "cmd": DEPLOY_CMD})
+    print(f"{TAG}: READY {d[:8]} -> {target[:8]} verified, landed and synced (no sudo used); "
+          f"when you can answer one sudo prompt run: {DEPLOY_CMD}")
+    return 0
+
+
+def deploy_phase(c):
+    """Phase 2: only the short privileged steps, against the revision phase 1 recorded as ready."""
+    if not c.dry:
+        c.lock()
+    c.preflight()
+    runs = {}
+    for e in c.events():
+        runs.setdefault(e["run"], []).append(e)
+    open_ready = [r for r, ev in runs.items()
+                  if not any(x["event"] in ("finished", "superseded") for x in ev)
+                  and any(x["stage"] == "ready" and x["event"] == "done" for x in ev)]
+    if not open_ready:
+        raise Fail("deploy", f"no prepared revision in the ledger (a finished, superseded or absent run); run `aq-update` first. "
+                             "Nothing was deployed")
+    c.run_id = open_ready[-1]
+    done = {e["stage"]: e for e in runs[c.run_id] if e["event"] == "done"}
+    target = done["ready"]["rev"]
+    if "verify" not in done or "land" not in done or "sync" not in done:
+        raise Fail("deploy", f"run {c.run_id} is not fully verified, landed and synced; run `aq-update --resume`")
+    head = c.out("rev-parse", "HEAD")
+    if head != target:
+        raise Fail("deploy", f"checkout HEAD {head[:8]} is not the prepared revision {target[:8]}; run `aq-update` again")
+    if c.out("rev-parse", f"{target}^{{tree}}") != done["verify"].get("tree"):
+        raise Fail("deploy", f"prepared revision {target[:8]} no longer has the verified tree; run `aq-update` again")
+    already = c.deployed() == target
+    if c.dry:
+        steps = ("only the MCP baseline refresh and validation (revision already running)" if already
+                 else "aq-deploy-current, the MCP baseline refresh and validation")
+        print(f"{TAG}: dry-run: prepared revision {target[:8]} matches the checkout; would run sudo -v, then {steps}. "
+              "Nothing was changed.")
+        return 0
+    c.log("deploy-phase", "phase", rev=target)
+    if run(["sudo", "-v"], check=False, capture=False, stage="deploy").returncode:
+        raise Fail("deploy", f"sudo -v failed (no credential); nothing was deployed; re-run `{DEPLOY_CMD}` when you can answer the prompt")
+    stage = make_stage(c, done)
+    if already and "deploy" not in done:
+        print(f"{TAG}: revision {target[:8]} is already running (deployed outside aq-update); skipping the rebuild, "
+              "running only the MCP baseline refresh and validation")
+        c.log("deploy", "done", reconciled=True, already_deployed=True)
+        done["deploy"] = {"stage": "deploy"}
+    stage("deploy", lambda: c.deploy_stage(target), lambda: c.deployed_or_none() == target, trust_state=True)
     stage("baseline", lambda: c.baseline_stage(target))
     c.validate(target)
     c.log("finish", "finished", rebuild=True, rev=target)
-    print(f"{TAG}: OK deployed {d[:8]} -> {target[:8]} and validated; ledger {c.ledger}")
+    print(f"{TAG}: OK deployed {target[:8]} and validated; ledger {c.ledger}")
     return 0
 
 
@@ -431,8 +488,8 @@ def plan(c, b):
         print(f"{TAG}: dry-run: no Nix-affecting changes {d}..{t}; would sync the checkout only. No rebuild.")
         return
     print(f"{TAG}: dry-run: Nix-affecting changes {d}..{t}: {', '.join(delta[:5])}{' ...' if len(delta) > 5 else ''}")
-    print(f"{TAG}: dry-run: would: refresh inputs in a worktree, verify, land lock via aq-land, sync, aq-deploy-current, "
-          "baseline, validate. Nothing was changed.")
+    print(f"{TAG}: dry-run: would: refresh inputs in a worktree, verify, land lock via aq-land, sync, "
+          "record the verified revision (phase 1; no sudo), then `aq-update --deploy` runs aq-deploy-current, baseline, validate. Nothing was changed.")
 
 
 if __name__ == "__main__":

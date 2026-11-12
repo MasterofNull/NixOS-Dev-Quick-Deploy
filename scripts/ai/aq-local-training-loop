@@ -429,7 +429,8 @@ def _persist_result(result: Dict[str, Any]) -> None:
 # direct dispatch queue and time out, scoring a false 0/N that alarmed as a model
 # regression (the real 2026-07-09 0/12 incident). Defer instead. 0 disables.
 SLOT_CONTENTION_QUEUE_MAX = int(os.getenv("AQ_LOOP_SLOT_QUEUE_MAX", "0"))  # >this queued = contended
-_SCHEDULER_STATE = _REPO_ROOT / ".agents" / "delegation" / "scheduler-state.json"
+import scheduler_paths  # noqa: E402  (scripts/ai/lib is on sys.path above)
+_SCHEDULER_STATE = scheduler_paths.state_file(_REPO_ROOT)  # writers migrate the pre-2026-11 file
 
 
 def _slot_contended() -> "tuple[bool, str]":
