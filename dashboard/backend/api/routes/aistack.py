@@ -6028,6 +6028,9 @@ _VALID_CONTROL_ACTIONS = frozenset(
 )
 
 
+_EVENT_SCAN_MARGIN = 1000
+
+
 def _iter_jsonl_reverse(path: Path, chunk_size: int = 1 << 20):
     """Yield non-empty lines of a file newest-first without reading it whole.
 
@@ -6076,6 +6079,10 @@ def _load_agent_run_events(
         if not event_path.exists():
             continue
         try:
+            # Scan is in append order, but producers may write out of timestamp
+            # order; read a margin beyond `limit` so the final timestamp sort
+            # still selects the newest `limit` unless reordering exceeds it.
+            scan_cap = limit + max(limit, _EVENT_SCAN_MARGIN)
             matched = 0
             for line in _iter_jsonl_reverse(event_path):
                 try:
@@ -6096,7 +6103,7 @@ def _load_agent_run_events(
                         continue
                 events.append(record)
                 matched += 1
-                if matched >= limit:
+                if matched >= scan_cap:
                     break
             if events:
                 if source_label == "no_data":
