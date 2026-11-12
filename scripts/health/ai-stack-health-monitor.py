@@ -34,6 +34,8 @@ _SOURCE = "ai-stack-health-monitor"
 # never counted toward the outage severity. Match by id only; a message match would hide real bugs
 # (e.g. 0.10.54 reports "bump-expired" when its fixture is wrong).
 _FRESHNESS_CHECK_IDS = frozenset({"0.10.5"})
+_PAYLOAD_AUDIT = _SCRIPT_DIR / "ai" / "aq-payload-audit"
+_PAYLOAD_AUDIT_TIMEOUT_S = 60
 _ALERT_TTL_S = 3600  # > 3x the 15-min timer so one failing issue stays ONE alert (updated in place)
 _HARNESS_TIMEOUT_S = int(os.environ.get("HARNESS_TIMEOUT_S", "430"))  # ~2.5x measured phase-0 wall (147-171s)
 
@@ -86,6 +88,49 @@ def run_aq_qa(phase: str) -> dict:
         return data
     except (subprocess.TimeoutExpired, FileNotFoundError) as e:
         return {"error": str(e), "phase": phase, "checks": [], "summary": {"failed": 1}}
+
+
+def run_payload_audit() -> dict:
+    """Run aq-payload-audit --json (~0.2s); returns {"state": ok|findings|unknown, ...} for the status file."""
+    try:
+        result = subprocess.run(
+            [sys.executable, str(_PAYLOAD_AUDIT), "--json", "--days", "2", "--repo", str(_REPO_ROOT)],
+            capture_output=True, text=True, timeout=_PAYLOAD_AUDIT_TIMEOUT_S,
+        )
+        data = json.loads(result.stdout)
+        findings = data["findings"]
+        summary = data["summary"]
+    except (subprocess.TimeoutExpired, OSError, json.JSONDecodeError, KeyError) as exc:
+        return {"state": "unknown", "error": f"{type(exc).__name__}: {exc}"}
+    return {
+        "state": "findings" if findings else "ok",
+        "high": summary.get("high", 0),
+        "medium": summary.get("medium", 0),
+        "findings": [{k: f.get(k) for k in ("lane", "check_id", "severity", "measured", "threshold", "evidence_path")}
+                     for f in findings],
+    }
+
+
+def alert_payload_audit(audit: dict) -> None:
+    """HIGH payload findings (quota exhaustion, thinking enabled, ...) are attention-worthy but never an outage."""
+    high = [f for f in audit.get("findings", []) if f.get("severity") == "high"]
+    if not high:
+        return
+    push_alert(
+        source=_SOURCE,
+        severity="medium",
+        autonomy_boundary="human_gate",
+        title=f"Payload audit: {len(high)} high finding(s) ({', '.join(str(f['lane']) + ' ' + str(f['check_id']) for f in high[:3])})",
+        detail="aq-payload-audit reported high-severity agent payload findings:\n"
+        + "\n".join(f"  [{f['lane']} {f['check_id']}] {f['measured']} (threshold {f['threshold']}): {f['evidence_path']}"
+                    for f in high),
+        proposed_action="Read `aq-payload-audit --days 2` and fix or route around each high finding.",
+        dedup_key="payload-audit-high",
+        ttl_s=_ALERT_TTL_S,
+        why="Payload/quota findings degrade agent lanes but are maintenance signals, not a stack outage.",
+        next_step="Run the audit and act on the high rows.",
+        command="aq-payload-audit --days 2",
+    )
 
 
 def failed_checks(data: dict) -> list[dict]:
@@ -213,8 +258,11 @@ def main() -> int:
         )
         total_failures += len(failures)
 
+    audit = run_payload_audit()
+    alert_payload_audit(audit)
     write_status({
         "source": _SOURCE,
+        "payload_audit": audit,
         "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "tmpdir": str(_TMPDIR),
         "total_failures": total_failures,

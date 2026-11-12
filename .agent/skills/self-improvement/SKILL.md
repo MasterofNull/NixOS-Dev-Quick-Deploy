@@ -6,7 +6,6 @@ id: self-improvement
 title: Self-Improvement Slice Workflow
 status: active
 tags: [self-improvement, harness-evolution, PRD, issues-backlog, aq-report, slice, improvement, roadmap]
-description: "How to identify and execute the next highest-priority self-improvement dev slice for the harness autonomously."
 
 ---
 

@@ -143,7 +143,7 @@ def check_claude_payload_bytes(repo: Path, home: Path) -> list[Finding]:
                         total_bytes += len(content)
                         files_counted.add(imp_real)
     
-    # Count home CLAUDE.md
+    # Count home CLAUDE.md and its @-imports
     if home_claude.exists():
         resolved = resolve_symlinks(home_claude)
         real_path = str(resolved)
@@ -152,6 +152,13 @@ def check_claude_payload_bytes(repo: Path, home: Path) -> list[Finding]:
             if content:
                 total_bytes += len(content)
                 files_counted.add(real_path)
+            for imp_path in get_imported_files(resolved):
+                imp_real = str(resolve_symlinks(imp_path))
+                if imp_real not in files_counted:
+                    content = read_file_bytes(imp_path)
+                    if content:
+                        total_bytes += len(content)
+                        files_counted.add(imp_real)
     
     # Count project rules
     if project_rules.exists():
@@ -196,11 +203,12 @@ def check_claude_payload_bytes(repo: Path, home: Path) -> list[Finding]:
             findings.append(Finding(
                 lane="claude",
                 check_id="1-dup",
-                severity="medium",
-                measured=f"identical {name}",
+                severity="low",
+                measured=f"home-side duplicate: ~/.claude/rules/{name} is identical to the repo's .claude/rules/{name}",
                 threshold="zero duplicates",
-                evidence_path=f".claude/rules/{name} and ~/.claude/rules/{name}",
-                fix="remove duplicate in one location"
+                evidence_path=f"~/.claude/rules/{name}",
+                # The repo copy is how a fresh clone gets the rules, so it stays; the home copy is the owner's.
+                fix=f"owner action: remove ~/.claude/rules/{name}, or the `@rules/{name}` import in ~/.claude/CLAUDE.md"
             ))
     
     # Check thresholds
@@ -446,6 +454,14 @@ def check_codex_payload_bytes(repo: Path) -> list[Finding]:
     return findings
 
 
+_USAGE_LIMIT_RE = re.compile(r'^ERROR:.*(?:usage limit|quota).*$', re.IGNORECASE | re.MULTILINE)
+
+
+def _reset_hint(error_line: str) -> str:
+    m = re.search(r'try again at (.+?)\.?$', error_line.strip(), re.IGNORECASE)
+    return f"resets {m.group(1)}" if m else "usage limit"
+
+
 def check_codex_dispatch_history(repo: Path, days: int = 2) -> list[Finding]:
     """Check 6: Codex dispatch history analysis."""
     findings = []
@@ -480,9 +496,11 @@ def check_codex_dispatch_history(repo: Path, days: int = 2) -> list[Finding]:
         if tokens_used and exec_count < 15 and tokens_used > 50000:
             high_rehydration_tasks.append((log_file.name, tokens_used, exec_count))
         
-        # Check for usage limit errors
-        if "usage limit" in content.lower() or "quota" in content.lower():
-            usage_limit_hits.append(log_file.name)
+        # Only the CLI's own ERROR lines count. A bare substring match also fired on logs that merely echo
+        # source/prompt text mentioning "quota" (5 of 7 hits in 30 days were such echoes).
+        limit_line = _USAGE_LIMIT_RE.search(content)
+        if limit_line:
+            usage_limit_hits.append((log_file.name, limit_line.group(0)))
     
     if high_rehydration_tasks:
         for task_name, tokens, execs in high_rehydration_tasks[:3]:  # top 3
@@ -497,14 +515,15 @@ def check_codex_dispatch_history(repo: Path, days: int = 2) -> list[Finding]:
             ))
     
     if usage_limit_hits:
+        newest_name, newest_line = sorted(usage_limit_hits)[-1]
         findings.append(Finding(
             lane="codex",
             check_id="6b",
             severity="high",
-            measured=f"{len(usage_limit_hits)} hits in {days} days",
+            measured=f"{len(usage_limit_hits)} plan-quota exhaustion(s) in {days} days",
             threshold="zero",
-            evidence_path=".agents/delegation/outputs/",
-            fix="monitor token spend; review task budgets"
+            evidence_path=f".agents/delegation/outputs/{newest_name} ({_reset_hint(newest_line)})",
+            fix="Codex plan quota was exhausted (lane unavailable, not overspend); route work to the next eligible lane until reset (Rule 18)"
         ))
     
     return findings
@@ -591,7 +610,7 @@ def check_rounds_shared_flag(repo: Path) -> list[Finding]:
     return findings
 
 
-def run_all_checks(repo: Path, home: Path) -> list[Finding]:
+def run_all_checks(repo: Path, home: Path, days: int = 2) -> list[Finding]:
     """Run all checks."""
     all_findings = []
     
@@ -600,7 +619,7 @@ def run_all_checks(repo: Path, home: Path) -> list[Finding]:
     all_findings.extend(check_claude_hooks_context_bytes(home, repo))
     all_findings.extend(check_claude_enabled_plugins(home, repo))
     all_findings.extend(check_codex_payload_bytes(repo))
-    all_findings.extend(check_codex_dispatch_history(repo))
+    all_findings.extend(check_codex_dispatch_history(repo, days))
     all_findings.extend(check_local_thinking_enabled(repo))
     all_findings.extend(check_rounds_shared_flag(repo))
     
@@ -649,7 +668,7 @@ def main() -> int:
     
     args = parser.parse_args()
     
-    findings = run_all_checks(args.repo, args.home)
+    findings = run_all_checks(args.repo, args.home, args.days)
     
     if args.json:
         output = {
@@ -659,6 +678,7 @@ def main() -> int:
                 "total": len(findings),
                 "high": len([f for f in findings if f.severity == "high"]),
                 "medium": len([f for f in findings if f.severity == "medium"]),
+                "low": len([f for f in findings if f.severity == "low"]),
                 "info": len([f for f in findings if f.severity == "info"]),
             }
         }

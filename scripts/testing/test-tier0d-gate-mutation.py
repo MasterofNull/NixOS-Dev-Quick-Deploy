@@ -39,6 +39,7 @@ COVERED_ELSEWHERE = {
     "check-gitleaks-ci-parity.sh": "scripts/testing/test-gitleaks-ci-parity.py",
     "check-grype-ignore-expiry.sh": "scripts/testing/test-ffmpeg-cve-mitigations.py",
     "check-lane-hook-parity.sh": "scripts/testing/test-lane-hook-parity.py",
+    "check-payload-audit.sh": "scripts/testing/test-payload-audit-routine.py",
 }
 
 

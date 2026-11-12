@@ -6,7 +6,6 @@ id: aq-workflow
 title: AQ Workflow Skill
 status: active
 tags: [aq-resume, aq-qa, aq-health, HITL, drop-zone, delegation, session, commit-gate, validation, aq-hints]
-description: "AQ Workflow Skill"
 
 ---
 
