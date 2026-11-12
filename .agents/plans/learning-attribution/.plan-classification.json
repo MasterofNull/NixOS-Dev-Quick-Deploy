@@ -1,0 +1,5 @@
+{
+  "classification": "durable_plan",
+  "tracking_route": "tracker.json",
+  "evidence": "tracker.json declares plan.id=learning-attribution: learning-label attribution boundary for the hybrid coordinator interaction tracker"
+}
