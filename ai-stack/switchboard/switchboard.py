@@ -3688,7 +3688,11 @@ async def proxy(path: str, request: Request):
     if target_type == "remote" and REMOTE_DAILY_TOKEN_CAP > 0:
         latest_budget = _budget_state_current()
         used = int(latest_budget.get("remote_tokens_used", 0) or 0) + max(0, int(remote_token_delta))
-        _budget_state_save(used)
+        try:
+            _budget_state_save(used)
+        except OSError as exc:
+            # Budget persistence is bookkeeping; it must not fail a completed upstream call.
+            print(f"[switchboard] remote_budget_state_not_persisted path={REMOTE_BUDGET_STATE_PATH} error={exc}", file=sys.stderr)
         response.headers["X-AI-Remote-Tokens-Used"] = str(used)
         response.headers["X-AI-Remote-Tokens-Remaining"] = str(max(0, REMOTE_DAILY_TOKEN_CAP - used))
     return response

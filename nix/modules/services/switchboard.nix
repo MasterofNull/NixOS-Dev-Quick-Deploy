@@ -575,7 +575,9 @@ in {
         ProtectSystem = "strict";
         ProtectHome = "read-only";
         ReadOnlyPaths = [repoPath];
-        ReadWritePaths = [localAgentStateDir "${repoPath}/.agents/telemetry"];
+        # mutableOptimizerDir holds SWB_REMOTE_BUDGET_STATE_PATH; without it the budget write fails
+        # (EROFS under ProtectSystem=strict) as soon as SWB_REMOTE_DAILY_TOKEN_CAP is set.
+        ReadWritePaths = [localAgentStateDir "${repoPath}/.agents/telemetry" mutableOptimizerDir];
         PrivateTmp = true;
         CapabilityBoundingSet = "";
         RestrictSUIDSGID = true;

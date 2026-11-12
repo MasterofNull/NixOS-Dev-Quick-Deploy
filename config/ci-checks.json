@@ -553,6 +553,26 @@
       "ci_workflow": ".github/workflows/test.yml#syntax"
     },
     {
+      "id": "sweep-findings-batch1-test",
+      "cmd": "scripts/testing/test-sweep-findings-batch1.py",
+      "paths": [
+        "scripts/testing/test-sweep-findings-batch1.py",
+        "scripts/governance/sweep-enabled-units.py",
+        "config/sweep-output-contracts.json",
+        "scripts/ai/aq-gap-auto-remediate",
+        "nix/modules/services/lease-signing-authority.nix",
+        "nix/modules/services/switchboard.nix",
+        "nix/modules/roles/ai-stack.nix",
+        "config/ci-checks.json"
+      ],
+      "needs": [
+        "python3",
+        "bash",
+        "jq"
+      ],
+      "ci_workflow": ".github/workflows/test.yml#syntax"
+    },
+    {
       "id": "dashboard-routing-ratio-test",
       "cmd": "scripts/testing/test-dashboard-routing-ratio.sh",
       "paths": [
@@ -1038,6 +1058,7 @@
         "scripts/testing/run-test-group.py",
         "scripts/testing/test-delegate-attention-queue-wiring.py",
         "scripts/testing/test-delegate-claude-model-routing.py",
+        "scripts/testing/test-delegate-codex-context-profile.py",
         "scripts/testing/test-delegate-codex-quota-precheck.sh",
         "scripts/testing/test-delegate-codex-shared-writable.py",
         "scripts/testing/test-delegate-dir-env-override.py",
@@ -1057,6 +1078,7 @@
       "tests": [
         "scripts/testing/test-delegate-attention-queue-wiring.py",
         "scripts/testing/test-delegate-claude-model-routing.py",
+        "scripts/testing/test-delegate-codex-context-profile.py",
         "scripts/testing/test-delegate-codex-quota-precheck.sh",
         "scripts/testing/test-delegate-codex-shared-writable.py",
         "scripts/testing/test-delegate-dir-env-override.py",

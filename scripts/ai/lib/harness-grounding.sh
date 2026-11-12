@@ -16,12 +16,16 @@
 # Resolve repo root from this file's location (…/scripts/ai/lib/harness-grounding.sh).
 _HG_REPO_ROOT="${_HG_REPO_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." 2>/dev/null && pwd)}"
 
-# harness_grounding <agent-name>
+# harness_grounding <agent-name> [full|lean]
+# lean = delegate-mode prefix + only the sections every slice needs (scope/stop discipline,
+# commit format, ports, NixOS constraints) and a pointer to the full file; the dropped sections
+# ([local-inference] payload notes, AppArmor, AIDB collections, async/monitor patterns, loop signal,
+# workflow phases) are reference material the agent can read on demand.
 # Emits the canonical grounding wrapped in explicit markers with a per-agent header.
 # Fails soft: prints nothing (rc 0) if the grounding file is missing — a missing
 # supplement must never break a delegation.
 harness_grounding() {
-    local agent="${1:-agent}"
+    local agent="${1:-agent}" profile="${2:-full}"
     local gf="${_HG_REPO_ROOT}/config/local-agent-grounding.md"
     [[ -f "$gf" ]] || return 0
 
@@ -40,6 +44,13 @@ harness_grounding() {
     fi
 
     printf '=== HARNESS GROUNDING (canonical SSOT — applies to %s) ===\n' "$agent"
+
+    if [[ "$profile" == "lean" ]]; then
+        awk '/^## /{keep = ($0 ~ /^## (Scope & Stop|Commit Format|Ports and Service|NixOS Constraints)/)} keep' "$gf"
+        printf '\nLean profile: full grounding (AppArmor, AIDB collections, async/monitor patterns) is in config/local-agent-grounding.md; read it only if the task touches those areas.\n'
+        printf '\n=== END HARNESS GROUNDING ===\n'
+        return 0
+    fi
 
     # For headless agents, filter out interactive workflow phases and provide headless-specific ones
     if [[ "$is_headless" == "true" ]]; then

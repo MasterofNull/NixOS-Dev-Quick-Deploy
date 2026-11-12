@@ -154,6 +154,34 @@ def collect_scope(scope, nix_names):
     return {"unit_files": files, "units": {p["Id"]: p for p in props}}
 
 
+CONTRACTS_REL = "config/sweep-output-contracts.json"
+
+
+def load_contracts(repo):
+    """Per-unit output contracts for units whose proof of work is not a file mtime under a declared path."""
+    try:
+        raw = json.loads((Path(repo) / CONTRACTS_REL).read_text())
+    except (OSError, ValueError):
+        return {}
+    return {k: v for k, v in raw.items() if isinstance(v, dict) and not k.startswith("_")}
+
+
+def journal_marker_epoch(unit, scope, marker):
+    """Epoch of the newest journal line of `unit` matching regex `marker`, or None."""
+    flag = ["--user"] if scope == "user" else []
+    rc, out = run(["journalctl", *flag, "-u", unit, "-g", marker, "-n", "1", "-o", "short-unix", "--no-pager", "-q"])
+    first = out.strip().split(None, 1)[0] if out.strip() else ""
+    try:
+        return int(float(first))
+    except ValueError:
+        return None
+
+
+def contract_env_nonzero(props, name):
+    m = re.search(r"(?:^|\s)\"?" + re.escape(name) + r"=(\S*?)\"?(?:\s|$)", props.get("Environment") or "")
+    return bool(m) and m.group(1).strip() not in ("", "0", "false", "no")
+
+
 def exec_paths(execstart):
     """Executable paths and absolute argv words from systemctl's ExecStart= property text."""
     exes, args = [], []
@@ -219,6 +247,13 @@ def collect(repo):
             paths.update(x for x in exes + args if not x.startswith("/nix/store"))
             paths.update(declared_outputs(p, scope))
     data["fs"] = fs_facts(sorted(paths))
+    data["contracts"] = load_contracts(repo)
+    data["journal_markers"] = {}
+    for scope in ("system", "user"):
+        for uid in data["scopes"][scope]["units"]:
+            c = data["contracts"].get(uid)
+            if c and c.get("journal_marker"):
+                data["journal_markers"][f"{scope}:{uid}"] = journal_marker_epoch(uid, scope, c["journal_marker"])
     return data
 
 
@@ -391,6 +426,23 @@ def analyse(data):
             # NO_OUTPUT (service that succeeded)
             if name.endswith(".service") and result == "success" and (last_start or active == "active") and not cond_skipped:
                 outs = declared_outputs(p, scope)
+                contract = (data.get("contracts") or {}).get(name) or {}
+                for cp, env in (contract.get("conditional_paths") or {}).items():
+                    if cp in outs and not contract_env_nonzero(p, env):
+                        outs.remove(cp)  # only written when `env` is enabled; not enabled here
+                if contract.get("journal_marker"):
+                    tm0 = next((t for t in sc["units"].values()
+                                if t.get("Id", "").endswith(".timer") and (t.get("Unit") or t["Id"][:-6] + ".service") == name), None)
+                    iv0 = timer_interval(tm0) if tm0 else None
+                    lim0 = (iv0 * STALE_FACTOR + GRACE_S) if iv0 else None
+                    seen = (data.get("journal_markers") or {}).get(f"{scope}:{name}", "absent")
+                    if seen == "absent" or lim0 is None:
+                        unk(name, scope, "journal output contract present but marker evidence or run interval unavailable")
+                    elif seen is None or now - seen > lim0:
+                        add("NO_OUTPUT", name, scope,
+                            f"journal marker /{contract['journal_marker']}/ not seen in the last {fmt_age(lim0)}"
+                            + (f" (last {fmt_age(now - seen)} ago)" if seen else " (never)"), "medium")
+                    continue
                 if not outs:
                     unk(name, scope, "no declared state/log path (StateDirectory, LogsDirectory, *_DIR env) to check output against")
                 else:
@@ -482,8 +534,9 @@ def render_report(res, day, argv, notes):
 
 
 def sweep_notes(data):
-    notes = ["`journalctl` was not used for the verdicts; output checks use declared paths only. A service with no declared "
-             "path is `unknown`, not a pass.",
+    notes = ["Output checks use declared paths, except units listed in `config/sweep-output-contracts.json`, whose proof of work is a "
+             "journal marker (non-file output) or a path that is only written when a setting is on. A service with no declared "
+             "path and no contract is `unknown`, not a pass.",
              "NO_OUTPUT staleness uses the newest mtime under the declared path; a unit that writes only when something changes can look stale.",
              "DECLARED_MISSING does not evaluate the module option gating (mkIf/enable); a unit declared behind a disabled option is still reported (medium when it declares wantedBy, else low).",
              "Units whose state can only be read as root (for example journal of other users, protected state dirs) show as unknown."]

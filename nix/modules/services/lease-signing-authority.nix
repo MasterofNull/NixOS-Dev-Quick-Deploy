@@ -102,7 +102,8 @@ in {
         User = "aq-lease-signing-authority";
         Group = "aq-lease-signing-authority";
         RuntimeDirectory = "aq-lease-signing-authority";
-        StateDirectory = "aq-lease-signing-authority";
+        # No StateDirectory: the authority is stateless (key from /run/secrets, socket in the
+        # RuntimeDirectory); a never-written /var/lib dir only made liveness checks read "no output".
         Environment = [
           "AQ_LEASE_SIGNING_SOCKET_PATH=${cfg.socketPath}"
           "AQ_LEASE_SIGNING_CLIENT_GROUP=aq-lease-signing-clients"
