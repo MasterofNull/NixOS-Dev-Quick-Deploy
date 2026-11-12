@@ -5,8 +5,25 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[2]
-METRICS = ROOT / "ai-stack" / "mcp-servers" / "hybrid-coordinator" / "metrics.py"
-HTTP_SERVER = ROOT / "ai-stack" / "mcp-servers" / "hybrid-coordinator" / "http_server.py"
+METRICS = ROOT / "ai-stack" / "mcp-servers" / "hybrid-coordinator" / "core" / "metrics.py"
+HTTP_SERVER = ROOT / "ai-stack" / "mcp-servers" / "hybrid-coordinator" / "http_server_impl.py"
+
+
+# Explicit live owners of the asserted behavior; coordinator_source() fails if http_server_impl.py
+# (first entry) does not reference an owner module, so dormant files cannot satisfy assertions.
+COORDINATOR_OWNERS = (
+    "http_server_impl.py",
+    "extensions/ai_coordinator_handlers.py",
+)
+
+
+def coordinator_source() -> str:
+    root = Path(__file__).resolve().parents[2] / "ai-stack" / "mcp-servers" / "hybrid-coordinator"
+    http_text = (root / COORDINATOR_OWNERS[0]).read_text(encoding="utf-8")
+    for owner in COORDINATOR_OWNERS[1:]:
+        if Path(owner).stem not in http_text:
+            raise AssertionError(f"{owner} is not referenced by {COORDINATOR_OWNERS[0]}; owner is not wired")
+    return "\n".join((root / owner).read_text(encoding="utf-8") for owner in COORDINATOR_OWNERS)
 
 
 def assert_true(condition: bool, message: str) -> None:
@@ -16,7 +33,7 @@ def assert_true(condition: bool, message: str) -> None:
 
 def main() -> int:
     metrics_text = METRICS.read_text(encoding="utf-8")
-    server_text = HTTP_SERVER.read_text(encoding="utf-8")
+    server_text = coordinator_source()
 
     for symbol in [
         "DELEGATED_PROMPT_TOKENS_BEFORE",
@@ -30,7 +47,7 @@ def main() -> int:
         "META_LEARNING_ADAPTATIONS",
     ]:
         assert_true(symbol in metrics_text, f"metrics.py should define {symbol}")
-        assert_true(symbol in server_text, f"http_server.py should instrument {symbol}")
+        assert_true(symbol in server_text, f"coordinator owners should instrument {symbol}")
 
     assert_true(
         'DELEGATED_PROMPT_TOKEN_SAVINGS.labels(profile=effective_profile).inc(prompt_tokens_before - prompt_tokens_after)' in server_text,

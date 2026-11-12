@@ -5,7 +5,25 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[2]
-HTTP_SERVER = ROOT / "ai-stack" / "mcp-servers" / "hybrid-coordinator" / "http_server.py"
+HTTP_SERVER = ROOT / "ai-stack" / "mcp-servers" / "hybrid-coordinator" / "http_server_impl.py"
+
+
+# Explicit live owners of the asserted behavior; coordinator_source() fails if http_server_impl.py
+# (first entry) does not reference an owner module, so dormant files cannot satisfy assertions.
+COORDINATOR_OWNERS = (
+    "http_server_impl.py",
+    "extensions/ai_coordinator_handlers.py",
+    "workflow/delegation_handlers.py",
+)
+
+
+def coordinator_source() -> str:
+    root = Path(__file__).resolve().parents[2] / "ai-stack" / "mcp-servers" / "hybrid-coordinator"
+    http_text = (root / COORDINATOR_OWNERS[0]).read_text(encoding="utf-8")
+    for owner in COORDINATOR_OWNERS[1:]:
+        if Path(owner).stem not in http_text:
+            raise AssertionError(f"{owner} is not referenced by {COORDINATOR_OWNERS[0]}; owner is not wired")
+    return "\n".join((root / owner).read_text(encoding="utf-8") for owner in COORDINATOR_OWNERS)
 
 
 def assert_true(condition: bool, message: str) -> None:
@@ -14,7 +32,7 @@ def assert_true(condition: bool, message: str) -> None:
 
 
 def main() -> int:
-    text = HTTP_SERVER.read_text(encoding="utf-8")
+    text = coordinator_source()
 
     assert_true(
         "from multi_tier_loading import (" in text,

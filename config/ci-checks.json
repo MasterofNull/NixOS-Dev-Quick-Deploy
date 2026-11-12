@@ -1200,16 +1200,20 @@
         "scripts/testing/test-activation-auto-revert-guard.py",
         "scripts/testing/test-adk-integration.py",
         "scripts/testing/test-adk-protocol-compliance.py",
+        "scripts/testing/test-advanced-features-control-plane.py",
         "scripts/testing/test-advanced-features-implementation.py",
         "scripts/testing/test-affective-reciprocity-wiring.py",
+        "scripts/testing/test-agent-evaluation-bias.py",
         "scripts/testing/test-agent-lesson-registry.py",
         "scripts/testing/test-agent-lesson-schema.py",
+        "scripts/testing/test-agent-pool-integration.py",
         "scripts/testing/test-agentic-toolchain-baseline.py",
         "scripts/testing/test-agentic-workflow-parity.py",
         "scripts/testing/test-ai-capability-implementation-backlog.py",
         "scripts/testing/test-ai-fit.py",
         "scripts/testing/test-ai-insights-ai-metrics.py",
         "scripts/testing/test-ai-insights-ranking-algorithms.py",
+        "scripts/testing/test-ai-metrics-instrumentation.py",
         "scripts/testing/test-ai-service-health-switchboard-details.py",
         "scripts/testing/test-ai-stack-acceleration-policy.py",
         "scripts/testing/test-aidb-last-accessed-sql.py",
@@ -1269,6 +1273,7 @@
         "scripts/testing/test-config-loader.py",
         "scripts/testing/test-consensus-persistence.py",
         "scripts/testing/test-container-recovery.sh",
+        "scripts/testing/test-continue-coordinator-ingress.py",
         "scripts/testing/test-continue-editor-failure-categories.py",
         "scripts/testing/test-continue-editor-history.py",
         "scripts/testing/test-continuous-learning-checkpoint-resume.py",
@@ -1277,6 +1282,7 @@
         "scripts/testing/test-continuous-learning-qdrant-upsert.py",
         "scripts/testing/test-control-channel.py",
         "scripts/testing/test-coordinator-prsi-canonical-queue.py",
+        "scripts/testing/test-coordinator-strangler-route-ownership.py",
         "scripts/testing/test-cross-agent-contradiction-detection.py",
         "scripts/testing/test-curated-web-research.py"
       ],
@@ -1371,7 +1377,13 @@
         "scripts/testing/test-control-channel.py",
         "scripts/testing/test-coordinator-prsi-canonical-queue.py",
         "scripts/testing/test-cross-agent-contradiction-detection.py",
-        "scripts/testing/test-curated-web-research.py"
+        "scripts/testing/test-curated-web-research.py",
+        "scripts/testing/test-advanced-features-control-plane.py",
+        "scripts/testing/test-agent-evaluation-bias.py",
+        "scripts/testing/test-agent-pool-integration.py",
+        "scripts/testing/test-ai-metrics-instrumentation.py",
+        "scripts/testing/test-continue-coordinator-ingress.py",
+        "scripts/testing/test-coordinator-strangler-route-ownership.py"
       ]
     },
     {
@@ -1381,8 +1393,11 @@
         "scripts/testing/run-test-group.py",
         "scripts/testing/test-decompose-loop.py",
         "scripts/testing/test-delegate-real-stop.py",
+        "scripts/testing/test-delegated-prompt-efficiency-integration.py",
         "scripts/testing/test-delegated-prompt-failure-history.py",
         "scripts/testing/test-delegated-prompt-failure-trend.py",
+        "scripts/testing/test-delegated-quality-integration.py",
+        "scripts/testing/test-delegation-failover.py",
         "scripts/testing/test-delegation-feedback-contract.py",
         "scripts/testing/test-dependency-hygiene-ladder.py",
         "scripts/testing/test-deploy-source-guard.py",
@@ -1390,6 +1405,7 @@
         "scripts/testing/test-deployment-graph-queries.py",
         "scripts/testing/test-deployment-monitoring-alerting-e2e.py",
         "scripts/testing/test-deployment-operations-rollback.py",
+        "scripts/testing/test-desktop-cosmic-greeter-config.py",
         "scripts/testing/test-destructive-deletion-guard.py",
         "scripts/testing/test-discovery-agent-opportunities.py",
         "scripts/testing/test-discovery-system.py",
@@ -1455,6 +1471,7 @@
         "scripts/testing/test-hints-route-selection.py",
         "scripts/testing/test-hints-runtime-batch.py",
         "scripts/testing/test-host-observer-contract.py",
+        "scripts/testing/test-http-query-audit-metadata.py",
         "scripts/testing/test-human-intervention.py",
         "scripts/testing/test-hw-probe.py",
         "scripts/testing/test-hybrid-auth-profile-policy.py",
@@ -1469,8 +1486,11 @@
       "tests": [
         "scripts/testing/test-decompose-loop.py",
         "scripts/testing/test-delegate-real-stop.py",
+        "scripts/testing/test-delegated-prompt-efficiency-integration.py",
         "scripts/testing/test-delegated-prompt-failure-history.py",
         "scripts/testing/test-delegated-prompt-failure-trend.py",
+        "scripts/testing/test-delegated-quality-integration.py",
+        "scripts/testing/test-delegation-failover.py",
         "scripts/testing/test-delegation-feedback-contract.py",
         "scripts/testing/test-dependency-hygiene-ladder.py",
         "scripts/testing/test-deploy-source-guard.py",
@@ -1478,6 +1498,7 @@
         "scripts/testing/test-deployment-graph-queries.py",
         "scripts/testing/test-deployment-monitoring-alerting-e2e.py",
         "scripts/testing/test-deployment-operations-rollback.py",
+        "scripts/testing/test-desktop-cosmic-greeter-config.py",
         "scripts/testing/test-destructive-deletion-guard.py",
         "scripts/testing/test-discovery-agent-opportunities.py",
         "scripts/testing/test-discovery-system.py",
@@ -1543,6 +1564,7 @@
         "scripts/testing/test-hints-route-selection.py",
         "scripts/testing/test-hints-runtime-batch.py",
         "scripts/testing/test-host-observer-contract.py",
+        "scripts/testing/test-http-query-audit-metadata.py",
         "scripts/testing/test-human-intervention.py",
         "scripts/testing/test-hw-probe.py",
         "scripts/testing/test-hybrid-auth-profile-policy.py",
@@ -1592,6 +1614,7 @@
         "scripts/testing/test-mcp-tool-attention-queue.py",
         "scripts/testing/test-mcp-workflow-parity.py",
         "scripts/testing/test-memory-recall-broker-contract.py",
+        "scripts/testing/test-meta-learning-integration.py",
         "scripts/testing/test-meta-optimization-routing-source.py",
         "scripts/testing/test-metrics-cache-effectiveness.py",
         "scripts/testing/test-microarchitectural-isolation.py",
@@ -1650,6 +1673,7 @@
         "scripts/testing/test-mcp-tool-attention-queue.py",
         "scripts/testing/test-mcp-workflow-parity.py",
         "scripts/testing/test-memory-recall-broker-contract.py",
+        "scripts/testing/test-meta-learning-integration.py",
         "scripts/testing/test-meta-optimization-routing-source.py",
         "scripts/testing/test-metrics-cache-effectiveness.py",
         "scripts/testing/test-microarchitectural-isolation.py",
@@ -1676,6 +1700,7 @@
         "scripts/testing/test-network-dns-policy.py",
         "scripts/testing/test-nixos-docs-diskcache-no-pickle.py",
         "scripts/testing/test-nixos-writable-state-policy.py",
+        "scripts/testing/test-no-host-repo-paths-in-tests.py",
         "scripts/testing/test-noaction-intervention.py",
         "scripts/testing/test-offloading-context-remediation-implementation.py",
         "scripts/testing/test-oncalld-nix-module.py",
@@ -1683,10 +1708,12 @@
         "scripts/testing/test-operational-perspective.py",
         "scripts/testing/test-operator-context-projection.py",
         "scripts/testing/test-operator-retrieval-guidance.py",
+        "scripts/testing/test-ops-handler-extraction.py",
         "scripts/testing/test-optimizer-override-reload.py",
         "scripts/testing/test-orchestration-comprehensive.py",
         "scripts/testing/test-orchestration-framework.py",
         "scripts/testing/test-orchestration-primitives.py",
+        "scripts/testing/test-orchestration-runtime-integration.py",
         "scripts/testing/test-osint-active-recon-gate.py",
         "scripts/testing/test-osint-research-ingest.py",
         "scripts/testing/test-osint-tools-mcp-contract.py",
@@ -1695,15 +1722,19 @@
         "scripts/testing/test-phase0-worktree-state.py",
         "scripts/testing/test-phase59-expert-mode-wiring.py",
         "scripts/testing/test-pi-agent-streaming-ui.py",
+        "scripts/testing/test-plans-index.py",
         "scripts/testing/test-pm-tracker-acceptance-authority.py",
         "scripts/testing/test-postflight-health-policy.py",
         "scripts/testing/test-pr-body-format-check.py",
         "scripts/testing/test-pre-archive-no-materialization.py",
+        "scripts/testing/test-pre-commit-whitespace-check.py",
         "scripts/testing/test-pre-push-nix-eval.py",
         "scripts/testing/test-precommit-main-checkout-guard.py",
         "scripts/testing/test-prm-eval-harness.py",
         "scripts/testing/test-prm-steering.py",
+        "scripts/testing/test-progressive-context-integration.py",
         "scripts/testing/test-progressive-disclosure-implementation.py",
+        "scripts/testing/test-project-payload-manifest.py",
         "scripts/testing/test-prompt-eval-transport-guard.py",
         "scripts/testing/test-provider-projection.py",
         "scripts/testing/test-prsi-budget-reservation.py",
@@ -1732,6 +1763,7 @@
         "scripts/testing/test-ralph-prsi-repo-root.py",
         "scripts/testing/test-ralph-task-systemd-wiring.sh",
         "scripts/testing/test-read-file-gate.py",
+        "scripts/testing/test-real-time-learning-integration.py",
         "scripts/testing/test-refactor-status.py",
         "scripts/testing/test-remote-lane-egress.py",
         "scripts/testing/test-remote-profile-utilization.py",
@@ -1785,6 +1817,7 @@
         "scripts/testing/test-network-dns-policy.py",
         "scripts/testing/test-nixos-docs-diskcache-no-pickle.py",
         "scripts/testing/test-nixos-writable-state-policy.py",
+        "scripts/testing/test-no-host-repo-paths-in-tests.py",
         "scripts/testing/test-noaction-intervention.py",
         "scripts/testing/test-offloading-context-remediation-implementation.py",
         "scripts/testing/test-oncalld-nix-module.py",
@@ -1792,10 +1825,12 @@
         "scripts/testing/test-operational-perspective.py",
         "scripts/testing/test-operator-context-projection.py",
         "scripts/testing/test-operator-retrieval-guidance.py",
+        "scripts/testing/test-ops-handler-extraction.py",
         "scripts/testing/test-optimizer-override-reload.py",
         "scripts/testing/test-orchestration-comprehensive.py",
         "scripts/testing/test-orchestration-framework.py",
         "scripts/testing/test-orchestration-primitives.py",
+        "scripts/testing/test-orchestration-runtime-integration.py",
         "scripts/testing/test-osint-active-recon-gate.py",
         "scripts/testing/test-osint-research-ingest.py",
         "scripts/testing/test-osint-tools-mcp-contract.py",
@@ -1804,15 +1839,19 @@
         "scripts/testing/test-phase0-worktree-state.py",
         "scripts/testing/test-phase59-expert-mode-wiring.py",
         "scripts/testing/test-pi-agent-streaming-ui.py",
+        "scripts/testing/test-plans-index.py",
         "scripts/testing/test-pm-tracker-acceptance-authority.py",
         "scripts/testing/test-postflight-health-policy.py",
         "scripts/testing/test-pr-body-format-check.py",
         "scripts/testing/test-pre-archive-no-materialization.py",
+        "scripts/testing/test-pre-commit-whitespace-check.py",
         "scripts/testing/test-pre-push-nix-eval.py",
         "scripts/testing/test-precommit-main-checkout-guard.py",
         "scripts/testing/test-prm-eval-harness.py",
         "scripts/testing/test-prm-steering.py",
+        "scripts/testing/test-progressive-context-integration.py",
         "scripts/testing/test-progressive-disclosure-implementation.py",
+        "scripts/testing/test-project-payload-manifest.py",
         "scripts/testing/test-prompt-eval-transport-guard.py",
         "scripts/testing/test-provider-projection.py",
         "scripts/testing/test-prsi-budget-reservation.py",
@@ -1841,6 +1880,7 @@
         "scripts/testing/test-ralph-prsi-repo-root.py",
         "scripts/testing/test-ralph-task-systemd-wiring.sh",
         "scripts/testing/test-read-file-gate.py",
+        "scripts/testing/test-real-time-learning-integration.py",
         "scripts/testing/test-refactor-status.py",
         "scripts/testing/test-remote-lane-egress.py",
         "scripts/testing/test-remote-profile-utilization.py",
@@ -1983,7 +2023,13 @@
         "scripts/testing/test-search-router-collection-timeouts.py",
         "scripts/testing/test-security-workflow-integration.py",
         "scripts/testing/test-task-classifier-local-continuation.py",
-        "scripts/testing/test-workflow-automation.py"
+        "scripts/testing/test-workflow-automation.py",
+        "scripts/testing/test-workflow-orchestration-defaults.py",
+        "scripts/testing/test-workflow-pattern-adoption.py",
+        "scripts/testing/test-workflow-run-policy-overrides.py",
+        "scripts/testing/test-vscodium-gpu-mitigation.py",
+        "scripts/testing/test-vscodium-extension-runtime-guards.py",
+        "scripts/testing/test-worktree-isolation.py"
       ],
       "needs": [
         "python3",
@@ -1992,10 +2038,12 @@
       "ci_workflow": ".github/workflows/test.yml#syntax",
       "tests": [
         "scripts/testing/test-safety-gate.py",
+        "scripts/testing/test-safety-layer.py",
         "scripts/testing/test-scheduler-context-issuer.py",
         "scripts/testing/test-scheduler-context-ledger.py",
         "scripts/testing/test-scheduler-lease-gate.py",
         "scripts/testing/test-scheduler.py",
+        "scripts/testing/test-search-router-collection-timeouts.py",
         "scripts/testing/test-secrets-rotation-plan.py",
         "scripts/testing/test-security-audit-compliance-flow.py",
         "scripts/testing/test-security-audit-gate.sh",
@@ -2004,6 +2052,7 @@
         "scripts/testing/test-security-center-ui.py",
         "scripts/testing/test-security-settings-publisher.py",
         "scripts/testing/test-security-settings-route.py",
+        "scripts/testing/test-security-workflow-integration.py",
         "scripts/testing/test-semantic-compression.py",
         "scripts/testing/test-shared-skill-sync.py",
         "scripts/testing/test-skill-auto.py",
@@ -2017,8 +2066,8 @@
         "scripts/testing/test-stateful-downgrade-policy.py",
         "scripts/testing/test-suggested-ai-repo-candidates.py",
         "scripts/testing/test-suspend-resume-contract.py",
-        "scripts/testing/test-sweep-tests.py",
         "scripts/testing/test-sweep-gates.py",
+        "scripts/testing/test-sweep-tests.py",
         "scripts/testing/test-sweeper-taxonomy.py",
         "scripts/testing/test-switchboard-adaptive-local-budget.py",
         "scripts/testing/test-switchboard-context-output-gc.py",
@@ -2034,6 +2083,7 @@
         "scripts/testing/test-sync-knowledge-sources-retry.py",
         "scripts/testing/test-synthesis-guard.py",
         "scripts/testing/test-system-capability-catalog.py",
+        "scripts/testing/test-task-classifier-local-continuation.py",
         "scripts/testing/test-task-registry-heartbeat-ts.py",
         "scripts/testing/test-task-registry-transactional.py",
         "scripts/testing/test-telemetry-root-boundary.py",
@@ -2064,22 +2114,24 @@
         "scripts/testing/test-understand-anything-batch-validation.py",
         "scripts/testing/test-useful-token-metrics.py",
         "scripts/testing/test-vectorization-visualization.py",
+        "scripts/testing/test-vscodium-extension-runtime-guards.py",
+        "scripts/testing/test-vscodium-gpu-mitigation.py",
+        "scripts/testing/test-workflow-automation.py",
         "scripts/testing/test-workflow-blueprints.py",
         "scripts/testing/test-workflow-deviation-c1a.py",
         "scripts/testing/test-workflow-deviation-contract.py",
+        "scripts/testing/test-workflow-orchestration-defaults.py",
         "scripts/testing/test-workflow-orchestration-policy.py",
+        "scripts/testing/test-workflow-pattern-adoption.py",
         "scripts/testing/test-workflow-review-gate.py",
+        "scripts/testing/test-workflow-run-policy-overrides.py",
         "scripts/testing/test-workflow-runtime-integration.py",
         "scripts/testing/test-workflow-shadow-contract.py",
         "scripts/testing/test-workflow-shadow-migration.py",
         "scripts/testing/test-working-memory-state-permissions.py",
+        "scripts/testing/test-worktree-isolation.py",
         "scripts/testing/test-worktree-write-guard.py",
-        "scripts/testing/test-write-region.py",
-        "scripts/testing/test-safety-layer.py",
-        "scripts/testing/test-search-router-collection-timeouts.py",
-        "scripts/testing/test-security-workflow-integration.py",
-        "scripts/testing/test-task-classifier-local-continuation.py",
-        "scripts/testing/test-workflow-automation.py"
+        "scripts/testing/test-write-region.py"
       ]
     },
     {
@@ -2387,11 +2439,6 @@
   ],
   "test_exempt": [
     {
-      "script": "scripts/testing/test-advanced-features-control-plane.py",
-      "class": "known-failing",
-      "reason": "fails on main: references missing file ai-stack/mcp-servers/hybrid-coordinator/http_server.py, tracked in backlog"
-    },
-    {
       "script": "scripts/testing/test-advanced-reasoning-patterns.py",
       "class": "known-failing",
       "reason": "tests ai-stack/agentic-patterns/self_consistency.py, archived to archive/ai-stack-deprecated-2026-05/ by 49720f3be (zero imports); decision needed: archive this test with the module (Rule 12) or restore the module"
@@ -2402,19 +2449,9 @@
       "reason": "host-only: needs a live local service (switchboard/dashboard/coordinator/AIDB); last output: FAILED (failures=2)"
     },
     {
-      "script": "scripts/testing/test-agent-evaluation-bias.py",
-      "class": "known-failing",
-      "reason": "fails on main: references missing file ai-stack/mcp-servers/hybrid-coordinator/http_server.py, tracked in backlog"
-    },
-    {
       "script": "scripts/testing/test-agent-monitoring-audit.py",
       "class": "known-failing",
       "reason": "fails on main (rc=1): FAILED (failures=1), tracked in backlog"
-    },
-    {
-      "script": "scripts/testing/test-agent-pool-integration.py",
-      "class": "known-failing",
-      "reason": "fails on main: references missing file ai-stack/mcp-servers/hybrid-coordinator/http_server.py, tracked in backlog"
     },
     {
       "script": "scripts/testing/test-agent-status-integration.py",
@@ -2435,11 +2472,6 @@
       "script": "scripts/testing/test-ai-insights-roadmap-surfaces.py",
       "class": "known-failing",
       "reason": "fails on main (rc=1): AssertionError: roadmap readiness should expose agentic pattern library readiness for phas, tracked in backlog"
-    },
-    {
-      "script": "scripts/testing/test-ai-metrics-instrumentation.py",
-      "class": "known-failing",
-      "reason": "fails on main: references missing file ai-stack/mcp-servers/hybrid-coordinator/http_server.py, tracked in backlog"
     },
     {
       "script": "scripts/testing/test-ai-service-health-monitoring.py",
@@ -2537,19 +2569,9 @@
       "reason": "reads .codex/config.toml and .codex/agents/, which are gitignored (.gitignore:322) local operator config and absent on a CI checkout; passes only where the operator has them"
     },
     {
-      "script": "scripts/testing/test-continue-coordinator-ingress.py",
-      "class": "known-failing",
-      "reason": "fails on main: references missing file ai-stack/mcp-servers/hybrid-coordinator/http_server.py, tracked in backlog"
-    },
-    {
       "script": "scripts/testing/test-continuous-learning-watchfiles-throttle.py",
       "class": "known-failing",
       "reason": "fails on main (rc=1): AssertionError, tracked in backlog"
-    },
-    {
-      "script": "scripts/testing/test-coordinator-strangler-route-ownership.py",
-      "class": "known-failing",
-      "reason": "fails on main: references missing file ai-stack/mcp-servers/hybrid-coordinator/http_server.py, tracked in backlog"
     },
     {
       "script": "scripts/testing/test-dashboard-a2a-insights-ui.py",
@@ -2677,21 +2699,6 @@
       "reason": "host-only: needs a live local service (switchboard/dashboard/coordinator/AIDB); POSTs to the coordinator at 127.0.0.1:8003 with the host secret /run/secrets/hybrid_coordinator_api_key"
     },
     {
-      "script": "scripts/testing/test-delegated-prompt-efficiency-integration.py",
-      "class": "known-failing",
-      "reason": "fails on main: references missing file ai-stack/mcp-servers/hybrid-coordinator/http_server.py, tracked in backlog"
-    },
-    {
-      "script": "scripts/testing/test-delegated-quality-integration.py",
-      "class": "known-failing",
-      "reason": "fails on main: references missing file ai-stack/mcp-servers/hybrid-coordinator/http_server.py, tracked in backlog"
-    },
-    {
-      "script": "scripts/testing/test-delegation-failover.py",
-      "class": "known-failing",
-      "reason": "fails on main: references missing file ai-stack/mcp-servers/hybrid-coordinator/http_server.py, tracked in backlog"
-    },
-    {
       "script": "scripts/testing/test-delegation-feedback.py",
       "class": "known-failing",
       "reason": "fails on main (rc=1): subprocess.TimeoutExpired: Command '['/home/hyperd/.nix-profile/bin/python3', '/home/hyper, tracked in backlog"
@@ -2705,11 +2712,6 @@
       "script": "scripts/testing/test-deployment-dashboard.py",
       "class": "live-service",
       "reason": "host-only: needs a live local service (switchboard/dashboard/coordinator/AIDB); last output: aiohttp.client_exceptions.ClientConnectorError: Cannot connect to host 127.0.0.1:8889 ssl:"
-    },
-    {
-      "script": "scripts/testing/test-desktop-cosmic-greeter-config.py",
-      "class": "known-failing",
-      "reason": "fails on main (rc=1): AssertionError: COSMIC greeter config seed should run before greeter startup, tracked in backlog"
     },
     {
       "script": "scripts/testing/test-execution-cell-adapter.py",
@@ -2752,11 +2754,6 @@
       "reason": "unstable: a single-run 100 ms wall-clock bound flaked under load (138 ms vs ~80 ms idle); now best-of-7 against the same 100 ms bound (2026-11-07); drop this exemption after the group has run green in CI a few times"
     },
     {
-      "script": "scripts/testing/test-http-query-audit-metadata.py",
-      "class": "known-failing",
-      "reason": "fails on main: references missing file ai-stack/mcp-servers/hybrid-coordinator/http_server.py, tracked in backlog"
-    },
-    {
       "script": "scripts/testing/test-integration-completeness.py",
       "class": "known-failing",
       "reason": "fails on main (rc=1): Report saved: /home/hyperd/Documents/NixOS-Dev-Quick-Deploy/.agents/delegation/worktrees/r, tracked in backlog"
@@ -2792,11 +2789,6 @@
       "reason": "host-only: needs a live local service (switchboard/dashboard/coordinator/AIDB); last output: Exception: [Errno 111] Connection refused"
     },
     {
-      "script": "scripts/testing/test-meta-learning-integration.py",
-      "class": "known-failing",
-      "reason": "fails on main: references missing file ai-stack/mcp-servers/hybrid-coordinator/http_server.py, tracked in backlog"
-    },
-    {
       "script": "scripts/testing/test-model-catalog-freshness.py",
       "class": "sandbox-env",
       "reason": "host-only: asserts the active llama.cpp model file (profile model_path under /var/lib) exists; a CI runner has no local model weights"
@@ -2817,24 +2809,9 @@
       "reason": "fails on main (rc=2): usage: scripts/testing/test-network-policy-packaging.sh AQ_NETWORK_POLICY NMCLI RESOLVECTL, tracked in backlog"
     },
     {
-      "script": "scripts/testing/test-no-host-repo-paths-in-tests.py",
-      "class": "known-failing",
-      "reason": "fails on main (rc=1): scripts/testing/test-nixos-writable-state-policy.py:90, tracked in backlog"
-    },
-    {
-      "script": "scripts/testing/test-ops-handler-extraction.py",
-      "class": "known-failing",
-      "reason": "fails on main: references missing file ai-stack/mcp-servers/hybrid-coordinator/http_server.py, tracked in backlog"
-    },
-    {
       "script": "scripts/testing/test-optional-performance-completion.py",
       "class": "known-failing",
       "reason": "fails on main: the dashboard 'deployment-ops' card and its lazy-load registration were removed by the dashboard consolidation (1acd19966); the cache-prewarm, roadmap path and shell-escape assertions are fixed and pass. Decision needed: restore the card/lazy loading or drop the three dashboard assertions"
-    },
-    {
-      "script": "scripts/testing/test-orchestration-runtime-integration.py",
-      "class": "known-failing",
-      "reason": "fails on main: references missing file ai-stack/mcp-servers/hybrid-coordinator/http_server.py, tracked in backlog"
     },
     {
       "script": "scripts/testing/test-orchestration-visibility.py",
@@ -2845,26 +2822,6 @@
       "script": "scripts/testing/test-pipeline-orchestration.py",
       "class": "known-failing",
       "reason": "tests ai-stack/agentic-patterns/pipeline_orchestration.py, archived to archive/ai-stack-deprecated-2026-05/ by 49720f3be (zero imports); decision needed: archive this test with the module (Rule 12) or restore the module"
-    },
-    {
-      "script": "scripts/testing/test-plans-index.py",
-      "class": "known-failing",
-      "reason": "fails on main (rc=1): FAILED (failures=1), tracked in backlog"
-    },
-    {
-      "script": "scripts/testing/test-pre-commit-whitespace-check.py",
-      "class": "known-failing",
-      "reason": "fails on main (rc=1): AssertionError: Function should be called before exit, tracked in backlog"
-    },
-    {
-      "script": "scripts/testing/test-progressive-context-integration.py",
-      "class": "known-failing",
-      "reason": "fails on main: references missing file ai-stack/mcp-servers/hybrid-coordinator/http_server.py, tracked in backlog"
-    },
-    {
-      "script": "scripts/testing/test-project-payload-manifest.py",
-      "class": "known-failing",
-      "reason": "fails on main (rc=1): AssertionError: {'.github/CODEOWNERS'}, tracked in backlog"
     },
     {
       "script": "scripts/testing/test-prompt-effectiveness.py",
@@ -2885,11 +2842,6 @@
       "script": "scripts/testing/test-quality-system-health.py",
       "class": "live-service",
       "reason": "host-only: needs a live local service (switchboard/dashboard/coordinator/AIDB); last output: ============================================================"
-    },
-    {
-      "script": "scripts/testing/test-real-time-learning-integration.py",
-      "class": "known-failing",
-      "reason": "fails on main: references missing file ai-stack/mcp-servers/hybrid-coordinator/http_server.py, tracked in backlog"
     },
     {
       "script": "scripts/testing/test-real-world-workflows.sh",
@@ -2942,16 +2894,6 @@
       "reason": "unstable: passed in the sandboxed run but failed/timed out in a later run (plain=(124, 867), serial=(0, 57)); host-dependent or load-sensitive, tracked in backlog"
     },
     {
-      "script": "scripts/testing/test-vscodium-extension-runtime-guards.py",
-      "class": "known-failing",
-      "reason": "fails on main (rc=1): AssertionError: repair path should prune oversized Gemini and Qwen startup state, tracked in backlog"
-    },
-    {
-      "script": "scripts/testing/test-vscodium-gpu-mitigation.py",
-      "class": "known-failing",
-      "reason": "fails on main (rc=1): - vscodiumArgvJSON = pkgs.writeText 'vscodium-argv-baseline.json', tracked in backlog"
-    },
-    {
       "script": "scripts/testing/test-web-research-lane.py",
       "class": "unstable",
       "reason": "flaky under the parallel group runner: 'same-host pacing delay should be applied once' (passes standalone)"
@@ -2960,26 +2902,6 @@
       "script": "scripts/testing/test-workflow-deviation-broker.py",
       "class": "slow",
       "reason": "slow: exceeds the 120s timeout"
-    },
-    {
-      "script": "scripts/testing/test-workflow-orchestration-defaults.py",
-      "class": "known-failing",
-      "reason": "fails on main: references missing file ai-stack/mcp-servers/hybrid-coordinator/http_server.py, tracked in backlog"
-    },
-    {
-      "script": "scripts/testing/test-workflow-pattern-adoption.py",
-      "class": "known-failing",
-      "reason": "fails on main: references missing file ai-stack/mcp-servers/hybrid-coordinator/http_server.py, tracked in backlog"
-    },
-    {
-      "script": "scripts/testing/test-workflow-run-policy-overrides.py",
-      "class": "known-failing",
-      "reason": "fails on main: references missing file ai-stack/mcp-servers/hybrid-coordinator/http_server.py, tracked in backlog"
-    },
-    {
-      "script": "scripts/testing/test-worktree-isolation.py",
-      "class": "known-failing",
-      "reason": "fails on main (rc=1): AssertionError, tracked in backlog"
     }
   ]
 }

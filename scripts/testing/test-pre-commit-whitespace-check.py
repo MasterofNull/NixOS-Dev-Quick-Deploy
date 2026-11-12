@@ -7,6 +7,7 @@ Verifies that the pre-commit hook correctly catches:
 2. Conflict markers
 """
 
+import re
 import subprocess
 import sys
 import tempfile
@@ -33,8 +34,10 @@ def test_hook_function_exists():
         "Should use 'git diff --cached --check' to validate whitespace"
 
     # Check that the function is called in the main flow
-    assert 'run_whitespace_and_conflict_check' in content.split('exit 0')[0], \
-        "Function should be called before exit"
+    # Match the invocation line itself: the hook has an early `exit 0` guard and
+    # function definitions, so substring checks would count unreachable text.
+    assert re.search(r'^run_whitespace_and_conflict_check$', content.rsplit('exit 0', 1)[0], re.M), \
+        "Function should be invoked before the final exit"
 
 def test_hook_checks_trailing_whitespace():
     """Verify that hook content mentions trailing whitespace."""
@@ -101,7 +104,7 @@ def test_hook_execution_order():
     content = hook_file.read_text()
 
     # Find the position of whitespace check in the execution order
-    exec_section = content.split('exit 0')[0]
+    exec_section = content.rsplit('exit 0', 1)[0]
 
     checks = [
         'run_secret_scan',
@@ -113,17 +116,12 @@ def test_hook_execution_order():
 
     positions = {}
     for check in checks:
-        pos = exec_section.find(check)
-        if pos >= 0:
-            positions[check] = pos
+        match = re.search(rf'^{check}$', exec_section, re.M)
+        assert match, f"{check} must be invoked (not just defined) before the final exit"
+        positions[check] = match.start()
 
-    # Verify all checks are present and in expected order
-    assert len(positions) >= 4, "Should have multiple checks defined"
-
-    # Verify whitespace check runs after syntax check
-    if 'run_syntax_check' in positions and 'run_whitespace_and_conflict_check' in positions:
-        assert positions['run_syntax_check'] < positions['run_whitespace_and_conflict_check'], \
-            "Syntax check should run before whitespace check"
+    ordered = sorted(checks, key=positions.get)
+    assert ordered == checks, f"pre-commit checks must run in order {checks}, got {ordered}"
 
 if __name__ == "__main__":
     print("Testing hook function exists...")

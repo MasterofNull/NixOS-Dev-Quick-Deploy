@@ -2,6 +2,7 @@
 """Static regression check for the VSCodium GPU mitigation."""
 
 from pathlib import Path
+import re
 import sys
 
 
@@ -10,7 +11,6 @@ BASE_NIX = REPO_ROOT / "nix" / "home" / "base.nix"
 
 
 REQUIRED_SNIPPETS = [
-    'vscodiumArgvJSON = pkgs.writeText "vscodium-argv-baseline.json"',
     '"disable-hardware-acceleration" = true;',
     '"ozone-platform" = "x11";',
     '--add-flags --ozone-platform=x11',
@@ -21,6 +21,9 @@ REQUIRED_SNIPPETS = [
 def main() -> int:
     text = BASE_NIX.read_text(encoding="utf-8")
     missing = [snippet for snippet in REQUIRED_SNIPPETS if snippet not in text]
+    # alejandra puts the writeText call on the line after `vscodiumArgvJSON =`.
+    if not re.search(r'vscodiumArgvJSON\s*=\s*pkgs\.writeText\s+"vscodium-argv-baseline\.json"', text):
+        missing.append('vscodiumArgvJSON = pkgs.writeText "vscodium-argv-baseline.json"')
     if missing:
         print("Missing VSCodium GPU mitigation snippets:", file=sys.stderr)
         for snippet in missing:

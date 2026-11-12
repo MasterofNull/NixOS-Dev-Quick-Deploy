@@ -1,0 +1,5 @@
+{
+  "classification": "durable_plan",
+  "tracking_route": "tracker.json",
+  "evidence": "tracker.json declares plan.id=sota-dashboard-cockpit-revamp, an owner, a goal, prd_ref=.agents/plans/sota-dashboard-cockpit-revamp/PRD.md (exists) and 3 items; durable goals, slices and tasks are authored there."
+}

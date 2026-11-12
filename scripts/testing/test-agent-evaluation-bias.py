@@ -3,9 +3,10 @@
 
 from pathlib import Path
 
+from _coordinator_src import read
+
 
 ROOT = Path(__file__).resolve().parents[2]
-HTTP_SERVER = ROOT / "ai-stack" / "mcp-servers" / "hybrid-coordinator" / "http_server.py"
 
 
 def assert_true(condition: bool, message: str) -> None:
@@ -14,7 +15,18 @@ def assert_true(condition: bool, message: str) -> None:
 
 
 def main() -> int:
-    text = HTTP_SERVER.read_text(encoding="utf-8")
+    # Owners after the coordinator split: scoring in workflow/orchestration_utils.py, role
+    # registry in workflow/agent_registry.py, team/session inspection in workflow/
+    # workflow_session_handlers.py, policy in workflow/runtime_manager.py, trends in
+    # extensions/ai_coordinator_handlers.py.
+    text = read(
+        "workflow/orchestration_utils.py",
+        "workflow/agent_registry.py",
+        "workflow/workflow_session_handlers.py",
+        "workflow/runtime_manager.py",
+        "extensions/ai_coordinator_handlers.py",
+    )
+    registry_text = read("workflow/agent_registry.py")
 
     assert_true(
         "def _recent_agent_event_bias()" in text,
@@ -25,7 +37,7 @@ def main() -> int:
         "evaluation bias should normalize agent roles for cross-lane aggregation",
     )
     assert_true(
-        "import re" in text,
+        "import re" in registry_text,
         "role normalization should import re for regex-based cleanup",
     )
     assert_true(

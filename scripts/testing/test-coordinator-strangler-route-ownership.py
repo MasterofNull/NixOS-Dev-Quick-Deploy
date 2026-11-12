@@ -4,7 +4,7 @@
 This deliberately avoids importing router.py: the extracted services still depend on
 runtime-only PYTHONPATH wiring while the refactor is in progress. The contract we
 need before deployment is narrower and stricter: moved routes must have exactly one
-active owner, and http_server.py must configure closure-backed services before
+active owner, and http_server_impl.py must configure closure-backed services before
 calling router.create_app().
 """
 
@@ -17,7 +17,7 @@ from typing import Iterable
 ROOT = Path(__file__).resolve().parents[2]
 HC = ROOT / "ai-stack" / "mcp-servers" / "hybrid-coordinator"
 
-HTTP_SERVER = HC / "http_server.py"
+HTTP_SERVER = HC / "http_server_impl.py"
 ROUTER = HC / "router.py"
 STATUS_SERVICE = HC / "core" / "status_service.py"
 MEMORY_SERVICE = HC / "memory" / "memory_service.py"

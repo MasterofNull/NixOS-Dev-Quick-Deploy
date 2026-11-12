@@ -5,7 +5,25 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[2]
-HTTP_SERVER = ROOT / "ai-stack" / "mcp-servers" / "hybrid-coordinator" / "http_server.py"
+HTTP_SERVER = ROOT / "ai-stack" / "mcp-servers" / "hybrid-coordinator" / "http_server_impl.py"
+
+
+# Explicit live owners of the asserted behavior; coordinator_source() fails if http_server_impl.py
+# (first entry) does not reference an owner module, so dormant files cannot satisfy assertions.
+COORDINATOR_OWNERS = (
+    "http_server_impl.py",
+    "extensions/ai_coordinator_handlers.py",
+    "workflow/delegation_handlers.py",
+)
+
+
+def coordinator_source() -> str:
+    root = Path(__file__).resolve().parents[2] / "ai-stack" / "mcp-servers" / "hybrid-coordinator"
+    http_text = (root / COORDINATOR_OWNERS[0]).read_text(encoding="utf-8")
+    for owner in COORDINATOR_OWNERS[1:]:
+        if Path(owner).stem not in http_text:
+            raise AssertionError(f"{owner} is not referenced by {COORDINATOR_OWNERS[0]}; owner is not wired")
+    return "\n".join((root / owner).read_text(encoding="utf-8") for owner in COORDINATOR_OWNERS)
 
 
 def assert_true(condition: bool, message: str) -> None:
@@ -14,14 +32,14 @@ def assert_true(condition: bool, message: str) -> None:
 
 
 def main() -> int:
-    text = HTTP_SERVER.read_text(encoding="utf-8")
+    text = coordinator_source()
 
     assert_true(
         "from quality_assurance import QualityChecker, QualityThreshold, ResultCache, ResultRefiner, QualityTrendTracker" in text,
         "hybrid coordinator should import delegated quality assurance primitives",
     )
     assert_true(
-        "_DELEGATED_QUALITY_CHECKER = QualityChecker(threshold=QualityThreshold.ACCEPTABLE)" in text,
+        "_DELEGATED_QUALITY_CHECKER = QualityChecker(threshold=QualityThreshold.PERMISSIVE)" in text,
         "hybrid coordinator should initialize a delegated quality checker",
     )
     assert_true(
@@ -53,8 +71,11 @@ def main() -> int:
         "delegate handler should decide when failed remote calls need bounded local fallback",
     )
     assert_true(
-        'local_profile = "local-tool-calling" if isinstance(payload.get("tools"), list) and payload.get("tools") else "default"' in text,
-        "delegate handler should select an appropriate local fallback profile",
+        "local_profile = _ai_coordinator_local_fallback_profile(" in text
+        and 'tools_present=isinstance(payload.get("tools"), list) and len(payload.get("tools") or []) > 0' in text
+        and 'if tools_present or normalized == "local-tool-calling":\n        return "local-tool-calling"'
+        in (ROOT / "ai-stack" / "mcp-servers" / "hybrid-coordinator" / "extensions" / "ai_coordinator.py").read_text(encoding="utf-8"),
+        "delegate handler should select an appropriate local fallback profile (call site in handler, tool-calling rule in ai_coordinator.py)",
     )
     assert_true(
         'stage="local_fallback"' in text,

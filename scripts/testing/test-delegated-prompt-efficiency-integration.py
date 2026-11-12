@@ -5,7 +5,26 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[2]
-HTTP_SERVER = ROOT / "ai-stack" / "mcp-servers" / "hybrid-coordinator" / "http_server.py"
+HC = ROOT / "ai-stack" / "mcp-servers" / "hybrid-coordinator"
+HTTP_SERVER = ROOT / "ai-stack" / "mcp-servers" / "hybrid-coordinator" / "http_server_impl.py"
+
+
+# Explicit live owners of the asserted behavior; coordinator_source() fails if http_server_impl.py
+# (first entry) does not reference an owner module, so dormant files cannot satisfy assertions.
+COORDINATOR_OWNERS = (
+    "http_server_impl.py",
+    "extensions/ai_coordinator_handlers.py",
+    "workflow/delegation_handlers.py",
+)
+
+
+def coordinator_source() -> str:
+    root = Path(__file__).resolve().parents[2] / "ai-stack" / "mcp-servers" / "hybrid-coordinator"
+    http_text = (root / COORDINATOR_OWNERS[0]).read_text(encoding="utf-8")
+    for owner in COORDINATOR_OWNERS[1:]:
+        if Path(owner).stem not in http_text:
+            raise AssertionError(f"{owner} is not referenced by {COORDINATOR_OWNERS[0]}; owner is not wired")
+    return "\n".join((root / owner).read_text(encoding="utf-8") for owner in COORDINATOR_OWNERS)
 
 
 def assert_true(condition: bool, message: str) -> None:
@@ -14,18 +33,28 @@ def assert_true(condition: bool, message: str) -> None:
 
 
 def main() -> int:
-    text = HTTP_SERVER.read_text(encoding="utf-8")
+    text = coordinator_source()
 
+    owner = (HC / "workflow" / "delegation_handlers.py").read_text(encoding="utf-8")
+    http_text = (HC / "http_server_impl.py").read_text(encoding="utf-8")
     assert_true(
-        "from prompt_compression import CompressionStrategy, PromptCompressor" in text,
+        "from prompt_compression import CompressionStrategy" in owner
+        and "from prompt_compression import PromptCompressor" in http_text,
         "hybrid coordinator should import delegated prompt compression primitives",
     )
     assert_true(
-        "from context_management import ContextChunk, ContextPruner" in text,
+        "from context_management import ContextChunk" in owner
+        and "from context_management import ContextPruner" in http_text,
         "hybrid coordinator should import delegated context pruning primitives",
     )
     assert_true(
-        "def _optimize_delegated_messages(" in text,
+        "import delegation_handlers" in http_text
+        and "delegation_handlers.init(" in http_text
+        and "_optimize_delegated_messages" in http_text,
+        "http server should wire the delegation handler owner that provides message optimization",
+    )
+    assert_true(
+        "def _optimize_delegated_messages(" in owner,
         "hybrid coordinator should define delegated message optimization helper",
     )
     assert_true(

@@ -5,7 +5,9 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[2]
-HTTP_SERVER = ROOT / "ai-stack" / "mcp-servers" / "hybrid-coordinator" / "http_server.py"
+WORKFLOW_PLANNING = ROOT / "ai-stack" / "mcp-servers" / "hybrid-coordinator" / "workflow" / "workflow_planning.py"
+WORKFLOW_SESSIONS = ROOT / "ai-stack" / "mcp-servers" / "hybrid-coordinator" / "workflow" / "workflow_session_handlers.py"
+SESSION_BUILDERS = ROOT / "ai-stack" / "mcp-servers" / "hybrid-coordinator" / "core" / "session_builders.py"
 
 
 def assert_true(condition: bool, message: str) -> None:
@@ -14,14 +16,17 @@ def assert_true(condition: bool, message: str) -> None:
 
 
 def main() -> int:
-    text = HTTP_SERVER.read_text(encoding="utf-8")
+    planning_text = WORKFLOW_PLANNING.read_text(encoding="utf-8")
+    session_text = WORKFLOW_SESSIONS.read_text(encoding="utf-8")
+    builder_text = SESSION_BUILDERS.read_text(encoding="utf-8")
+    text = "\n".join((planning_text, session_text, builder_text))
 
     assert_true(
         "def _select_reasoning_pattern(" in text,
         "workflow planning should define a reasoning-pattern selector",
     )
     assert_true(
-        'reasoning_pattern = _select_reasoning_pattern(query, prompt_coaching, continuation_query)' in text,
+        'reasoning_pattern = _select_reasoning_pattern(query, prompt_coaching, memory_recall_priority)' in planning_text,
         "workflow plan should select a reasoning pattern from live prompt context",
     )
     assert_true(

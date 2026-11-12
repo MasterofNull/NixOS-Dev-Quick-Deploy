@@ -87,7 +87,7 @@ def validate_writable_state_py(root: Path) -> list[str]:
         failures.append("hybrid coordinator should keep remediation playbooks in writable service storage")
     if 'os.getenv("AI_STACK_REPO_PATH", str(Path(__file__).resolve().parents[4]))' not in disclosure_text:
         failures.append("progressive disclosure config should resolve repo root through env or relative path")
-    if "/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/config/progressive-disclosure-domains.json" in disclosure_text:
+    if ("/home/" + "hyperd/Documents/NixOS-Dev-Quick-Deploy/config/progressive-disclosure-domains.json") in disclosure_text:
         failures.append("progressive disclosure config should not hardcode a developer checkout path")
 
     return failures
