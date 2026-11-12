@@ -1,0 +1,16 @@
+{
+  "schema": 2,
+  "pr": 749,
+  "reviewed_head_sha": "c764c63b39a4742f31bb81c43d042b6963693ca5",
+  "run_id": "gemini-20261112-013111-uejqtv",
+  "reviewer_lane": "gemini",
+  "author_lane": "claude",
+  "verdict": "PASS",
+  "output_file": ".agents/delegation/outputs/gemini-20261112-013111-uejqtv.log",
+  "output_sha256": "835ec4dbecd001afb3af5af307ef9f7b6b55d215727f974e1643819565dcc601",
+  "created_at": "2026-11-12T09:36:02Z",
+  "repo": "MasterofNull/NixOS-Dev-Quick-Deploy",
+  "policy_version": "review-receipts/1",
+  "tree": "e80374805a7631edcc0a18d510177ae4c9e02627",
+  "base_commit": "11e6e7aec087e869d8095c95a0de77064acca399"
+}
