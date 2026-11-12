@@ -62,8 +62,10 @@ if mode == "hang":
         time.sleep(0.3)
 out = f"{S}/{rid}.log"
 shown = head if mode != "wronghead" else "f" * 40
-verdict = "REQUEST_CHANGES" if mode == "negative" else "PASS"
-text = f"looks fine\nReviewed-head-sha: {shown}\nReview-Disposition: {verdict}\n"
+verdict = "REQUEST_CHANGES" if mode in ("negative", "cantrun", "finding") else "PASS"
+body = {"cantrun": "I am unable to proceed: every command timed out. Please check the status of the environment.\n",
+        "finding": "scripts/ai/aq_land.py:12 breaks the lock; the sandbox also timed out once.\n"}.get(mode, "looks fine\n")
+text = f"{body}Reviewed-head-sha: {shown}\nReview-Disposition: {verdict}\n"
 open(out, "w").write(text)
 print(f"Output file: {out}")
 print(text)
@@ -570,6 +572,25 @@ class Lanes(Base):
         r = self.land(expect=1)
         self.assertIn("returned REQUEST_CHANGES", self.stop_line(r))
         self.assertEqual(self.calls("codex") + self.calls("local"), [])
+
+    def test_could_not_run_request_changes_is_unavailable_and_falls_through(self):
+        self.cfg({"gemini": {"mode": "cantrun"}, "local": {"mode": "ok"}})
+        self.land("--lanes", "gemini,local", expect=0)
+        body = self.pr_body()
+        self.assertIn("gemini: reviewer could not run", body)
+        self.assertIn("Reviewed-by: local-direct", body)
+
+    def test_request_changes_with_a_file_line_finding_stops_even_if_it_mentions_a_timeout(self):
+        self.cfg({"gemini": {"mode": "finding"}, "local": {"mode": "ok"}})
+        r = self.land("--lanes", "gemini,local", expect=1)
+        self.assertIn("returned REQUEST_CHANGES", self.stop_line(r))
+        self.assertEqual(self.calls("local"), [])
+
+    def test_could_not_run_on_the_only_lane_is_no_eligible_lane_left(self):
+        self.cfg({"gemini": {"mode": "cantrun"}})
+        r = self.land("--lanes", "gemini", expect=1)
+        self.assertIn("STOP review: no eligible independent lane left", self.stop_line(r))
+        self.assertIn("could not run", self.stop_line(r))
 
     def test_trust_critical_change_never_goes_to_local_alone(self):
         self.change("scripts/governance/new-gate.sh", "#!/bin/sh\n")

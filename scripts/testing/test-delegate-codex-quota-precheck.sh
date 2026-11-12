@@ -23,11 +23,18 @@ set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
-DELEGATE="$REPO_ROOT/scripts/ai/delegate-to-codex"
+REAL_DELEGATE="$REPO_ROOT/scripts/ai/delegate-to-codex"
 
-[[ -x "$DELEGATE" ]] || { echo "FAIL: delegate-to-codex not found/executable at $DELEGATE"; exit 1; }
+[[ -x "$REAL_DELEGATE" ]] || { echo "FAIL: delegate-to-codex not found/executable at $REAL_DELEGATE"; exit 1; }
+
+# Without --shared the wrapper runs `git worktree add` against the real repo (REPO_ROOT), leaking
+# delegate/codex-* branches and worktrees into it. Nothing here needs isolation, so always pass --shared.
+REAL_WORKTREES_BEFORE="$(git -C "$REPO_ROOT" worktree list --porcelain 2>/dev/null)"
 
 WORKDIR="$(mktemp -d)"
+DELEGATE="$WORKDIR/delegate-shared"
+printf '#!/usr/bin/env bash\nexec "%s" "$@" --shared\n' "$REAL_DELEGATE" > "$DELEGATE"
+chmod +x "$DELEGATE"
 # delegate-to-codex resolves a SHARED delegation dir (main worktree) since 36c97f94/7c747581;
 # isolate to a private dir so live cooldown/budget/registry state never leaks in or out.
 DELEGATION_DIR="$WORKDIR/delegation"; mkdir -p "$DELEGATION_DIR/outputs"
@@ -321,6 +328,12 @@ if [[ ! -f "$COOLDOWN_FILE" ]]; then
     pass "(e-bg) healthy background success writes no cooldown"
 else
     fail "(e-bg) healthy background success unexpectedly wrote a cooldown"
+fi
+
+if [[ "$(git -C "$REPO_ROOT" worktree list --porcelain 2>/dev/null)" == "$REAL_WORKTREES_BEFORE" ]]; then
+    pass "(h) real repo worktree list unchanged"
+else
+    fail "(h) test leaked a git worktree into the real repo"
 fi
 
 echo "=== $PASS passed, $FAIL failed ==="
