@@ -1,4 +1,4 @@
-# A reviewer that could not run no longer blocks a landing; a test stops leaking worktrees
+# A reviewer reply that says it could not run now gets a re-run hint; a test stops leaking worktrees
 
 Date: 2026-11-12
 
@@ -6,8 +6,12 @@ Date: 2026-11-12
 
 Two delivery-tooling defects found today. (1) On PR #755 a Gemini review whose sandbox timed out on every command replied
 "unable to proceed ... check the status of the environment" with `Review-Disposition: REQUEST_CHANGES` and no finding;
-aq-land treated that as a real rejection and stopped. (2) A test registered git worktrees and `delegate/codex-*` branches in
-the real repository (24 leaked entries under /tmp).
+aq-land stopped with the generic "fix the findings" message, which hid that nothing was reviewed. Design (after two Codex P1
+reviews showed text heuristics cannot safely bypass a rejection): a REQUEST_CHANGES/FAIL ALWAYS stops aq-land and never falls
+through to another lane. A conservative detector (`reviewer_could_not_run`) only improves the STOP text: it names the
+suspicion, prints the exact `--lanes` list of the remaining eligible lanes to re-run with (or says none is left), and records
+`review_suspect` in the checkpoint. It never creates a receipt or PASS. The "no verdict" fall-through is unchanged.
+(2) A test registered git worktrees and `delegate/codex-*` branches in the real repository (24 leaked entries under /tmp).
 
 ## Workflow/Session IDs
 
@@ -26,17 +30,13 @@ reviewed the classification rule (never a PASS; any concrete finding still stops
 
 ## Validation Evidence
 
-- test-aq-land: 52 tests OK, including: could-not-run REQUEST_CHANGES falls through to the next lane; REQUEST_CHANGES with a
-  `file:line` finding that also mentions a timeout still stops and the next lane is never called; could-not-run on the only
-  lane stops with "no eligible independent lane left".
+- test-aq-land: 53 tests OK. New: the real Gemini outage reply stops with "re-run with --lanes codex,local" and never calls
+  codex or local, no PR is created and the checkpoint records `review_suspect`; the same reply on the only lane stops with
+  "no other eligible lane is left"; Codex's mixed example ("lock is released twice ... unable to proceed ... timed out"), a
+  `file:line` finding, a prose finding and a bulleted finding all stop with the plain "fix the findings" text and no hint.
+  Existing no-verdict, quota and timeout fall-through tests pass unchanged.
 - test-delegate-codex-quota-precheck: before the fix 15 passed but the run added worktrees and 12 `delegate/codex-*`
   branches to the real repo; after, 16 passed including `(h) real repo worktree list unchanged` (231 before and after).
-
-- Review follow-up (Codex P1 on 8b607dd29): the first rule let a real rejection without an extension-bearing `file:line`
-  (e.g. `scripts/ai/aq-land:365 ... timed out`) or a prose finding count as unavailable. Now unavailable requires, after
-  wrapper/record lines are stripped: an explicit could-not-proceed phrase, no path or `x:N` location token, no finding
-  marker (bullets, P0-P3, severity labels, "finding"), and at most 800 characters. The real Gemini outage reply is 513.
-  test-aq-land 54 OK, with Codex's example, a prose finding and a bulleted finding all stopping.
 
 ## Rollback Plan
 
@@ -44,8 +44,9 @@ Revert the PR. Leaked-entry cleanup is separate and recorded in PULSE.
 
 ## Residual Risk
 
-- Could-not-run detection is phrase-based; an unusual wording is still treated as a rejection (fails toward blocking, never
-  toward accepting).
+- A genuine outage reply still costs one manual re-run with `--lanes <others>`; this is deliberate, since an automatic bypass
+  of REQUEST_CHANGES could let a later lane's PASS land a real finding. The hint detector is phrase-based and only affects
+  message text; a misjudgement in either direction cannot change the verdict.
 - Other tests that call `delegate-to-codex` were read, not run, for leaks.
 
 ## Hint Feedback
