@@ -26,8 +26,8 @@ def assert_true(condition: bool, message: str) -> None:
 def main() -> int:
     facts_text = HYPERD_FACTS.read_text(encoding="utf-8")
     assert_true(
-        'llamaCpp.activeModel = "qwen3.6-35b-mtp-q5";' in facts_text,
-        "hyperd should pin the local llama.cpp lane to qwen3.6-35b-mtp-q5 for harness testing",
+        'llamaCpp.activeModel = "qwen3.6-35b-mtp";' in facts_text,
+        "hyperd should pin the local llama.cpp lane to qwen3.6-35b-mtp (Q4_K_XL, owner decision 2026-11-12)",
     )
     assert_true(
         '"--n-gpu-layers" "12"' in facts_text,
@@ -71,7 +71,8 @@ def main() -> int:
     )
     llm_config_text = (ROOT / "ai-stack" / "mcp-servers" / "shared" / "llm_config.py").read_text(encoding="utf-8")
     assert_true(
-        '"chat_template_kwargs": {"enable_thinking": _enable_thinking}' in llm_config_text,
+        '_ctk: dict[str, Any] = {"enable_thinking": _enable_thinking}' in llm_config_text
+        and '"chat_template_kwargs": _ctk,' in llm_config_text,
         "shared llama payload builder should route thinking through the profile-driven chat_template_kwargs field",
     )
     assert_true(
@@ -132,7 +133,7 @@ def main() -> int:
         "knowledge.llm_router should keep advisor support enabled when imported standalone",
     )
 
-    print("PASS: local agent configuration keeps qwen3.6-35b-mtp-q5 for harness testing and advisor imports work")
+    print("PASS: local agent configuration keeps qwen3.6-35b-mtp for harness testing and advisor imports work")
     return 0
 
 
