@@ -24,7 +24,7 @@ Contract:
 Band selection (callers export DISPATCH_BAND):
   interactive -> P1, consensus -> P2 (default), background -> P3.
 
-State file is the observability surface: .agents/delegation/scheduler-state.json
+State file is the observability surface: .agents/delegation/scheduler/scheduler-state.json
 (queue depth, bands, waits are directly readable by dashboard/health-spider).
 """
 
@@ -37,6 +37,7 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
+import scheduler_paths
 from backpressure import Signal, assess
 from model_tier import route
 from scheduler import Band, Job, SchedulerState, age, next_job
@@ -111,7 +112,7 @@ def _lease_gate_enabled() -> bool:
 
 
 def _state_path(repo_root: Path) -> Path:
-    p = repo_root / ".agents" / "delegation" / _STATE_FILENAME
+    p = scheduler_paths.state_file(repo_root)
     p.parent.mkdir(parents=True, exist_ok=True)
     return p
 
@@ -137,6 +138,7 @@ class _LockedState:
     """flock-guarded load/save of SchedulerState with dead-pid GC."""
 
     def __init__(self, repo_root: Path):
+        self._repo_root = repo_root
         self._path = _state_path(repo_root)
         self._lock_path = self._path.with_suffix(".lock")
         self._fh = None
@@ -144,6 +146,7 @@ class _LockedState:
     def __enter__(self) -> SchedulerState:
         self._fh = open(self._lock_path, "a+")
         fcntl.flock(self._fh, fcntl.LOCK_EX)
+        scheduler_paths.migrate_legacy(self._repo_root)
         state = self._load()
         return self._gc(state)
 
@@ -308,7 +311,7 @@ def _reservation_digest(context: dict) -> str:
 
 
 def _reservation_dir(repo_root: Path) -> Path:
-    path = repo_root / ".agents" / "delegation" / _LEASE_RESERVATION_DIRNAME
+    path = scheduler_paths.scheduler_dir(repo_root) / _LEASE_RESERVATION_DIRNAME
     path.mkdir(mode=0o700, parents=True, exist_ok=True)
     return path
 

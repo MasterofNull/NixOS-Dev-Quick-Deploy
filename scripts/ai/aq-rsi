@@ -146,8 +146,10 @@ def cmd_status(args) -> int:
         for alert in out["alerts"]:
             print(f"ALERT: {alert}")
         c = out["convene"]
-        print(f"convene rounds: enabled={c['enabled']} open={c['open']} opened_24h={c['opened_24h']} "
-              f"queued={c['queued']} complete={c['complete']} incomplete={c['incomplete']}")
+        en = "unknown (cannot read the unit's environment)" if c["enabled"] is None else c["enabled"]
+        print(f"convene rounds: enabled={en} (dispatch unit setting) open={c['open']} opened_24h={c['opened_24h']} "
+              f"queued={c['queued']} complete={c['complete']} incomplete={c['incomplete']} "
+              f"dropped={c.get('dropped') or {}}")
         if c.get("last"):
             print(f"convene last: trigger={c['last']['trigger']} status={c['last']['status']} seats={c['last']['seats']}")
         for line in auto_update_status.format_lines(au):

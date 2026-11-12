@@ -2012,6 +2012,8 @@ in {
         "d ${cfg.mcpServers.repoPath}/.agents/reports/capability-audit 0755 ${cfg.primaryUser} users -"
         "d ${cfg.mcpServers.repoPath}/.agents/archive/capability-audit 0755 ${cfg.primaryUser} users -"
         # Runtime state written by services as primaryUser; kept out of the checkout (P1.10).
+        # ReadWritePaths of ai-prsi-rsi-dispatch (slot queue state/lock); must exist before its mount namespace is built.
+        "d ${cfg.mcpServers.repoPath}/.agents/delegation/scheduler 0755 ${cfg.primaryUser} users -"
         "d ${mutableRsiDir} 0755 ${cfg.primaryUser} users -"
         "d ${mutableFrontierDir} 0755 ${cfg.primaryUser} users -"
         # File-level ReadWritePaths of ai-rsi-sweep must exist before its mount namespace is built (gitignored logs).
@@ -2512,7 +2514,7 @@ in {
         # (core/base.nix, let-scoped) provides — bare pkgs.python3 failed with
         # "No module named 'httpx'", so resolve python3 from the system profile.
         # pkgs.nodejs: ~/.npm-global/bin/codex is `#!/usr/bin/env node`; the RSI convene seats run it.
-        path = [pkgs.git pkgs.bash pkgs.util-linux pkgs.curl pkgs.nodejs "/run/current-system/sw"];
+        path = [pkgs.git pkgs.bash pkgs.util-linux pkgs.curl pkgs.nodejs pkgs.ripgrep "/run/current-system/sw"];
         serviceConfig = {
           Type = "oneshot";
           User = cfg.primaryUser;
@@ -2544,6 +2546,8 @@ in {
             "${cfg.mcpServers.repoPath}/.agent/collaboration"
             "${cfg.mcpServers.repoPath}/.agent/memory/issues-backlog.md"
             "${cfg.mcpServers.repoPath}/.agent/WORKAROUND-REGISTER.md"
+            # The local seat's slot queue (state, flock, lease markers): one shared dir for unit and shell jobs.
+            "${cfg.mcpServers.repoPath}/.agents/delegation/scheduler"
             # codex exec keeps sessions/logs under CODEX_HOME (default ~/.codex).
             "${config.users.users.${cfg.primaryUser}.home}/.codex"
             # gemini keeps session/tmp state under ~/.gemini (the convene Gemini seat).
@@ -2553,6 +2557,9 @@ in {
             # Activates RSI convene rounds (code default is off); RSI_CONVENE=0 is the kill switch.
             "RSI_CONVENE=1"
             "AQ_DELEGATION_DIR=${mutableOptimizerDir}/prsi/delegation"
+            # The gemini CLI (~/.local/bin/agy) otherwise extracts/links its embedded ripgrep under the read-only
+            # home (~/.cache, ~/.local/bin/vendor/ripgrep) and fails; with this set it uses the `rg` on PATH.
+            "ANTIGRAVITY_DISABLE_EMBEDDED_RIPGREP=1"
             "PRSI_ACTION_QUEUE_PATH=${mutableOptimizerDir}/prsi/action-queue.json"
             "PRSI_ACTIONS_LOG_PATH=${mutableLogDir}/prsi-actions.jsonl"
             "PRSI_POLICY_FILE=${cfg.mcpServers.repoPath}/config/runtime-prsi-policy.json"

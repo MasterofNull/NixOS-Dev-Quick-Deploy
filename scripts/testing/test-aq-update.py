@@ -51,6 +51,7 @@ exec python3 "$STUB_DIR/land_wrapper.py" "$@"
 """,
     "sudo": """#!/bin/sh
 echo "sudo $*" >> "$STUB_DIR/sudo.log"
+if [ "$1" = "-v" ]; then [ -n "$SUDO_V_FAIL" ] && exit 1; exit 0; fi
 [ -n "$SUDO_FAIL" ] && exit 1
 exec "$@"
 """,
@@ -187,7 +188,7 @@ class Fx:
                     "AQ_UPDATE_LAND": str(self.stub / "aq-land"), "AQ_UPDATE_DEPLOY": str(self.stub / "aq-deploy-current"),
                     "AQ_UPDATE_BASELINE": str(self.stub / "baseline"), "AQ_LAND_REAL": REAL_LAND, "GIT_CONFIG_GLOBAL": "/dev/null",
                     "GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@t", "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@t"}
-        for k in ("NIX_FAIL_INPUTS", "NIX_UNLOCK_NODE", "NIX_KILL", "XDG_STATE_HOME"):
+        for k in ("NIX_FAIL_INPUTS", "NIX_UNLOCK_NODE", "NIX_KILL", "XDG_STATE_HOME", "SUDO_FAIL", "SUDO_V_FAIL"):
             self.env.pop(k, None)
 
     def advance(self, path="docs/a.md", text="more\n"):
@@ -201,6 +202,15 @@ class Fx:
         git(o, "commit", "-q", "-m", f"touch {path}")
         git(o, "push", "-q", "origin", "HEAD:main")
         return git(o, "rev-parse", "HEAD")
+
+    def prepare(self):
+        p = self.run()
+        check(p.returncode == 0, p.stderr + p.stdout)
+        return p
+
+    def sudo_log(self):
+        f = self.stub / "sudo.log"
+        return f.read_text().splitlines() if f.exists() else []
 
     def run(self, *args, **env):
         e = {**self.env, **env}
@@ -269,8 +279,9 @@ def t_no_delta_syncs_without_flake_update_or_deploy(fx):
 @with_fx
 def t_delta_runs_stages_in_order(fx):
     new = fx.advance("nix/mod.nix", "2\n")
-    p = fx.run()
-    check(p.returncode == 0, p.stderr + p.stdout)
+    p = fx.prepare()
+    check(not any(c in fx.calls() for c in ("deploy", "baseline")) and fx.sudo_log() == [], "prepare must not deploy or call sudo")
+    check(fx.run("--deploy").returncode == 0, "deploy phase failed")
     seq = [c for c in fx.calls() if c in ("flake update", "flake check", "land", "deploy", "baseline", "version")]
     firsts = [seq.index(x) for x in ("flake update", "flake check", "land", "deploy", "baseline")]
     check(firsts == sorted(firsts) and seq.index("version", seq.index("baseline")) > seq.index("baseline"), seq)
@@ -281,6 +292,90 @@ def t_delta_runs_stages_in_order(fx):
     check((fx.stub / "deploy-args.log").read_text().strip() == f"--rev {head}", "aq-update must pass the verified revision as --rev")
     check(json.loads(git(fx.repo, "show", "HEAD:flake.lock"))["nodes"]["foo"]["locked"]["rev"] == "bx", "lock not refreshed")
     check(fx.ledger()[-1]["event"] == "finished" and fx.ledger()[-1]["rebuild"] is True, fx.ledger())
+
+
+@with_fx
+def t_prepare_prints_one_ready_line_and_records_it(fx):
+    fx.advance("nix/mod.nix", "2\n")
+    p = fx.prepare()
+    lines = p.stdout.strip().splitlines()
+    check(len(lines) == 1 and lines[0].startswith("aq-update: READY") and lines[0].endswith("aq-update --deploy"), p.stdout)
+    rd = [e for e in fx.ledger() if e["stage"] == "ready" and e["event"] == "done"]
+    check(len(rd) == 1 and rd[0]["cmd"] == "aq-update --deploy" and rd[0]["rev"] == git(fx.repo, "rev-parse", "HEAD"), fx.ledger())
+    check(not any(e["event"] == "finished" for e in fx.ledger()), "prepare must leave the run open for phase 2")
+
+
+@with_fx
+def t_deploy_refuses_without_prepared_revision(fx):
+    one_line_fail(fx.run("--deploy"), "deploy", "no prepared revision")
+    check(fx.sudo_log() == [] and "deploy" not in fx.calls(), "refusal must not ask for sudo or deploy")
+    fx.advance("nix/mod.nix", "2\n")
+    fx.prepare()
+    check(fx.run("--deploy").returncode == 0, "deploy failed")
+    one_line_fail(fx.run("--deploy"), "deploy", "no prepared revision")  # a finished run cannot be deployed again
+
+
+@with_fx
+def t_deploy_refuses_when_checkout_moved_from_prepared_revision(fx):
+    fx.advance("nix/mod.nix", "2\n")
+    fx.prepare()
+    git(fx.repo, "reset", "-q", "--hard", fx.c1)
+    one_line_fail(fx.run("--deploy"), "deploy", "not the prepared revision")
+    check(fx.sudo_log() == [] and "deploy" not in fx.calls(), "must refuse before sudo")
+
+
+@with_fx
+def t_deploy_asks_sudo_once_up_front(fx):
+    fx.advance("nix/mod.nix", "2\n")
+    fx.prepare()
+    check(fx.run("--deploy").returncode == 0, "deploy failed")
+    check(fx.sudo_log() == ["sudo -v", f"sudo {fx.stub / 'baseline'}"], fx.sudo_log())
+
+
+@with_fx
+def t_deploy_sudo_credential_failure_deploys_nothing(fx):
+    fx.advance("nix/mod.nix", "2\n")
+    fx.prepare()
+    one_line_fail(fx.run("--deploy", SUDO_V_FAIL="1"), "deploy", "sudo -v failed", "aq-update --deploy")
+    check("deploy" not in fx.calls(), fx.calls())
+    check(fx.run("--deploy").returncode == 0, "re-running --deploy after a sudo failure must work")
+
+
+@with_fx
+def t_deploy_after_manual_deploy_runs_only_baseline_and_validate(fx):
+    fx.advance("nix/mod.nix", "2\n")
+    fx.prepare()
+    (fx.stub / "running_rev").write_text(git(fx.repo, "rev-parse", "HEAD"))  # owner rebuilt by hand
+    p = fx.run("--deploy")
+    check(p.returncode == 0, p.stderr)
+    check("already running" in p.stdout and "deploy" not in fx.calls() and fx.calls().count("baseline") == 1, (p.stdout, fx.calls()))
+    check(fx.ledger()[-1]["event"] == "finished", fx.ledger()[-1])
+
+
+@with_fx
+def t_deploy_dry_run_changes_nothing(fx):
+    fx.advance("nix/mod.nix", "2\n")
+    fx.prepare()
+    before = fx.snapshot()
+    ledger = fx.ledger()
+    p = fx.run("--deploy", "--dry-run")
+    check(p.returncode == 0 and "dry-run" in p.stdout, p.stderr + p.stdout)
+    check(fx.ledger() == ledger and fx.sudo_log() == [] and "deploy" not in fx.calls(), "dry-run deploy acted")
+    check(fx.snapshot()[:5] == before[:5], "dry-run deploy changed the checkout")
+
+
+@with_fx
+def t_resume_after_prepare_never_deploys(fx):
+    fx.advance("nix/mod.nix", "2\n")
+    fx.prepare()
+    p = fx.run("--resume")
+    check(p.returncode == 0 and "READY" in p.stdout and fx.sudo_log() == [] and "deploy" not in fx.calls(), (p.stdout, fx.calls()))
+
+
+@with_fx
+def t_bad_flag_combinations_rejected(fx):
+    for a in (["--deploy", "--resume"], ["--bogus"], ["--resume", "--dry-run"]):
+        check(fx.run(*a).returncode == 2, a)
 
 
 @with_fx
@@ -322,11 +417,13 @@ def t_main_moves_during_landing(fx):
 
 
 @with_fx
-def t_main_moves_between_sync_and_deploy(fx):
+def t_main_moving_after_prepare_still_deploys_the_verified_revision(fx):
     fx.advance("nix/mod.nix", "2\n")
-    p = fx.run(SYNC_MOVE_MAIN="1")
-    one_line_fail(p, "deploy", "moved")
-    check("deploy" not in fx.calls() and not (fx.stub / "heads.log").exists(), fx.calls())
+    fx.prepare()
+    head = git(fx.repo, "rev-parse", "HEAD")
+    fx.advance("docs/a.md", "later\n")
+    check(fx.run("--deploy").returncode == 0, "deploy of the verified revision failed")
+    check((fx.stub / "heads.log").read_text().strip() == f"deploy-head {head}", "deployed something other than the verified revision")
 
 
 @with_fx
@@ -349,31 +446,41 @@ def t_dry_run_still_fails_on_missing_aq_land(fx):
     one_line_fail(fx.run("--dry-run", AQ_UPDATE_LAND=str(fx.t / "nope")), "land")
 
 
-KILLS = {  # name -> (env, stage call counts after kill + resume)
-    "update": ({"NIX_KILL": "flake update"}, {"flake update": 2, "land": 1, "deploy": 1, "baseline": 1}),
-    "check": ({"NIX_KILL": "flake check"}, {"flake update": 1, "land": 1, "deploy": 1, "baseline": 1}),
-    "land": ({"LAND_KILL": "1"}, {"flake update": 1, "land": 1, "deploy": 1, "baseline": 1}),
-    "sync": ({"SYNC_KILL": "1"}, {"flake update": 1, "land": 1, "deploy": 1, "baseline": 1}),
-    "deploy_before": ({"DEPLOY_KILL": "before"}, {"flake update": 1, "land": 1, "deploy": 2, "baseline": 1}),
-    "deploy_after": ({"DEPLOY_KILL": "after"}, {"flake update": 1, "land": 1, "deploy": 1, "baseline": 1}),
-    "baseline": ({"BASELINE_KILL": "1"}, {"flake update": 1, "land": 1, "deploy": 1, "baseline": 2}),
-    "validate": ({"VERSION_KILL": "1"}, {"flake update": 1, "land": 1, "deploy": 1, "baseline": 1}),
+KILLS = {  # name -> (phase of the killed run, env, stage call counts after kill + recovery)
+    "update": ("prepare", {"NIX_KILL": "flake update"}, {"flake update": 2, "land": 1, "deploy": 1, "baseline": 1}),
+    "check": ("prepare", {"NIX_KILL": "flake check"}, {"flake update": 1, "land": 1, "deploy": 1, "baseline": 1}),
+    "land": ("prepare", {"LAND_KILL": "1"}, {"flake update": 1, "land": 1, "deploy": 1, "baseline": 1}),
+    "sync": ("prepare", {"SYNC_KILL": "1"}, {"flake update": 1, "land": 1, "deploy": 1, "baseline": 1}),
+    "deploy_before": ("deploy", {"DEPLOY_KILL": "before"}, {"flake update": 1, "land": 1, "deploy": 2, "baseline": 1}),
+    "deploy_after": ("deploy", {"DEPLOY_KILL": "after"}, {"flake update": 1, "land": 1, "deploy": 1, "baseline": 1}),
+    "baseline": ("deploy", {"BASELINE_KILL": "1"}, {"flake update": 1, "land": 1, "deploy": 1, "baseline": 2}),
+    "validate": ("deploy", {"VERSION_KILL": "1"}, {"flake update": 1, "land": 1, "deploy": 1, "baseline": 1}),
 }
 
 
 def kill_case(name):
-    env, want = KILLS[name]
+    phase, env, want = KILLS[name]
 
     @with_fx
     def t(fx):
         fx.advance("nix/mod.nix", "2\n")
         (fx.repo / TRAIL).write_text("base\nlocal-append\n")
         (fx.repo / STATE).write_text('{"n":99}\n')
-        p = fx.run(**env)
-        check(p.returncode != 0, f"{name}: expected a killed run, got rc=0")
-        check(not any(e["event"] == "finished" for e in fx.ledger()), "killed run recorded as finished")
-        r = fx.run("--resume")
-        check(r.returncode == 0, f"{name}: resume failed: {r.stderr}")
+        if phase == "prepare":
+            p = fx.run(**env)
+            check(p.returncode != 0, f"{name}: expected a killed run, got rc=0")
+            r = fx.run("--resume")
+            check(r.returncode == 0 and "READY" in r.stdout, f"{name}: resume failed: {r.stderr}")
+            check(fx.sudo_log() == [], "prepare/resume used sudo")
+            check(not any(e["event"] == "finished" for e in fx.ledger()), "prepare recorded the run as finished")
+            r = fx.run("--deploy")
+        else:
+            fx.prepare()
+            p = fx.run("--deploy", **env)
+            check(p.returncode != 0, f"{name}: expected a killed run, got rc=0")
+            check(not any(e["event"] == "finished" for e in fx.ledger()), "killed run recorded as finished")
+            r = fx.run("--deploy")
+        check(r.returncode == 0, f"{name}: recovery failed: {r.stderr}")
         calls = fx.calls()
         for stage, n in want.items():
             check(calls.count(stage) == n, f"{name}: {stage} ran {calls.count(stage)}x, want {n}: {calls}")
@@ -434,19 +541,21 @@ def t_aq_land_call_matches_real_cli(fx):
 @with_fx
 def t_baseline_runs_through_sudo(fx):
     fx.advance("nix/mod.nix", "2\n")
-    check(fx.run().returncode == 0, "run failed")
-    check((fx.stub / "sudo.log").read_text().strip() == f"sudo {fx.stub / 'baseline'}", (fx.stub / "sudo.log").read_text())
+    fx.prepare()
+    check(fx.run("--deploy").returncode == 0, "run failed")
+    check(f"sudo {fx.stub / 'baseline'}" in fx.sudo_log(), fx.sudo_log())
 
 
 @with_fx
 def t_baseline_refresh_failure_is_reported_recorded_and_resumable(fx):
     fx.advance("nix/mod.nix", "2\n")
-    p = fx.run(SUDO_FAIL="1")
-    one_line_fail(p, "baseline", f"sudo {fx.stub / 'baseline'}", "aq-update --resume")
+    fx.prepare()
+    p = fx.run("--deploy", SUDO_FAIL="1")
+    one_line_fail(p, "baseline", f"sudo {fx.stub / 'baseline'}", "aq-update --deploy")
     last = fx.ledger()[-1]
     check(last["event"] == "fail" and last["stage"] == "baseline" and "NOT refreshed" in last["reason"], last)
     check(not any(e["event"] == "finished" for e in fx.ledger()), "failed baseline recorded as finished")
-    r = fx.run("--resume")
+    r = fx.run("--deploy")
     check(r.returncode == 0, r.stderr)
     check(fx.calls().count("deploy") == 1 and fx.calls().count("baseline") == 1, fx.calls())
     check(fx.ledger()[-1]["event"] == "finished", fx.ledger()[-1])
