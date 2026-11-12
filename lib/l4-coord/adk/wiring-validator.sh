@@ -19,9 +19,9 @@ set -euo pipefail
 
 # Declarative paths
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
 NIX_DIR="${REPO_ROOT}/nix"
-REPORTS_DIR="${REPO_ROOT}/.agent/adk/reports"
+REPORTS_DIR="${ADK_DATA_DIR:-${REPO_ROOT}/.agent/adk}/reports"
 
 # Configuration
 VERBOSE="${VERBOSE:-0}"

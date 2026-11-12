@@ -21,9 +21,9 @@ set -euo pipefail
 
 # Declarative paths
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
 LIB_ADK_DIR="${REPO_ROOT}/lib/l4-coord/adk"
-DATA_DIR="${REPO_ROOT}/.agent/adk"
+DATA_DIR="${ADK_DATA_DIR:-${REPO_ROOT}/.agent/adk}"
 DISCOVERIES_DIR="${DATA_DIR}/discoveries"
 CHANGELOG_DIR="${DATA_DIR}/changelogs"
 REPORTS_DIR="${DATA_DIR}/reports"
