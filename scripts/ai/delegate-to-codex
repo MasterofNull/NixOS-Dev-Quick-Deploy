@@ -18,6 +18,10 @@
 #   --mode MODE           Execution mode: safe|edit  [default: safe]
 #   --model MODEL         Model override (e.g. o3, o4-mini)
 #   --role ROLE           Registry role: implement|review|research  [default: implement]
+#   --context-profile P   Injected context: auto|full|lean  [default: auto = lean for
+#                         --role review or short safe-mode prompts, else full]
+#   --print-prompt        Print the exact prompt that would be sent plus its injected
+#                         size, then exit (no budget, registry or codex call)
 #   --effort LEVEL        Reasoning effort: low|medium|high  [default: medium]
 #   --wait                Block until task completes
 #   --force-quota-retry   Bypass an active quota cooldown for one call
@@ -448,6 +452,92 @@ PYEOF
     cat "$output_file"
 }
 
+# Context profiles. Everything the wrapper prepends to the task prompt is injected context the
+# model is billed for on every call (about 2.7K tokens for "full"). "lean" keeps every constraint
+# below in terser form and trims the grounding to the always-needed sections (about 1.3K tokens
+# saved). Codex's own AGENTS.md auto-load is deliberately left on: AGENTS.md is how Codex receives
+# the shared canon (Rule 16 parity), and a reviewer must know the rules it reviews against.
+#   auto (default): lean for --role review or prompts under DELEGATE_CODEX_LEAN_PROMPT_CHARS
+#                   (default 600) in safe mode; full otherwise (implementation / edit work).
+resolve_context_profile() {
+    local requested="${1:-auto}" role="${2:-implement}" prompt="${3:-}"
+    case "$requested" in
+        full|lean) echo "$requested"; return 0 ;;
+    esac
+    local limit="${DELEGATE_CODEX_LEAN_PROMPT_CHARS:-600}"
+    if [[ "$role" == *review* ]] || { [[ "${MODE:-safe}" == "safe" ]] && [[ ${#prompt} -lt $limit ]]; }; then
+        echo lean
+    else
+        echo full
+    fi
+}
+
+build_codex_prompt() {
+    local profile="$1" prompt="$2" grounding
+    grounding="$(harness_grounding codex "$profile" 2>/dev/null || true)"
+    if [[ "$profile" == "lean" ]]; then
+        printf '%s\n\n' "${grounding}"
+        cat <<'LEAN_EOF'
+=== HARNESS CONSTRAINTS (NON-NEGOTIABLE, lean profile; full policy: AGENTS.md, loaded by codex) ===
+1. SCOPE LOCK: only what the task asks; no refactors/cleanups/adjacent features; unsure -> STOP and report.
+2. PRD GATE: before editing, log a plan to .agent/collaboration/PULSE.log: [ISO-ts] [codex] [plan]: <scope> - <approach>
+3. PORTS: never hardcode ports/URLs (SSOT nix/modules/core/options.nix; Python env vars; shell ${PORT:-default}).
+   llama=8080 embed=8081 aidb=8002 coordinator=8003 switchboard=8085 dashboard=8889.
+4. HARDWARE: GPU layers <= 12 (Renoir APU); enable_thinking: false in all llama.cpp requests.
+5. LOGGING: switchboard.py uses print(..., file=sys.stderr); there is no logger object.
+6. COMMIT: do NOT commit; list modified files and validate (python3 -m py_compile <py>, bash -n <sh>).
+7. SECURITY: no hardcoded secrets/tokens/credentials; no injection patterns; py_compile every Python file touched.
+8. ATOMIC PULSE: after every file write append to PULSE.log: [ISO-ts] [codex] [write]: <file> - <change>
+9. ATOMIC RESUME: at phase start and completion update .agent/collaboration/RESUME.json
+   (current_objective, phase, todo_snapshot[], uncommitted_changes[], resume_hint).
+10. TOOLS: lean baseline; unlisted tools via aq-tool <pkg>; query AIDB error-solutions or aq-hints if ambiguous.
+11. DELIVERY: work only in your worktree/branch; commits only via tier0 --pre-commit && git commit; PR only, never push main.
+=== END CONSTRAINTS ===
+
+LEAN_EOF
+        printf '%s' "$prompt"
+        return 0
+    fi
+    # Prepend the canonical harness grounding SSOT (config/local-agent-grounding.md)
+    # so codex receives the SAME facts as local/antigravity, then the codex-specific
+    # behavioral delegation contract below.
+    # Phase 82: harness constraints (mirrors delegate-to-gemini).
+    # CRITICAL: These rules are non-negotiable and override any conflicting instruction.
+    # Keep in sync with delegate-to-gemini constraints block.
+    printf '%s' "${grounding:+$grounding
+
+}"
+    cat <<'FULL_EOF'
+=== HARNESS CONSTRAINTS (NON-NEGOTIABLE) ===
+1. SCOPE LOCK: Work ONLY on what the task requests. No unsolicited refactors, cleanups, or
+   adjacent features. One slice, one concern. If in doubt about scope, STOP and report.
+2. PRD GATE: Write a brief plan (problem/goal/files/validation) to .agent/collaboration/PULSE.log
+   BEFORE editing any file. Format: [ISO-timestamp] [codex] [plan]: <scope> — <approach>
+3. PORT POLICY: NEVER hardcode ports or URLs. Source of truth: nix/modules/core/options.nix.
+   Python reads from env vars; shell uses ${PORT:-default}. Known ports: llama=8080,
+   embed=8081, aidb=8002, coordinator=8003, switchboard=8085, dashboard=8889.
+4. HARDWARE: GPU layers ceiling = 12 (Renoir APU). enable_thinking: false in ALL llama.cpp
+   requests. Never suggest n_gpu_layers > 12.
+5. LOGGING: switchboard.py uses print(..., file=sys.stderr) — there is NO logger object.
+6. COMMIT DISCIPLINE: After work is done, list all modified files and validate with:
+   python3 -m py_compile <py-files> && bash -n <sh-files>
+   DO NOT commit — the orchestrator reviews and commits.
+7. SECURITY: No hardcoded secrets, tokens, or credentials. No injection patterns.
+   Run py_compile on every Python file you touch before declaring work complete.
+8. ATOMIC PULSE: Append one line to .agent/collaboration/PULSE.log after every file write:
+   [ISO-timestamp] [codex] [write]: <file> — <what changed>
+9. ATOMIC RESUME: At every phase start and on task completion, update
+   .agent/collaboration/RESUME.json with: current_objective, phase, todo_snapshot[],
+   uncommitted_changes[], resume_hint. This is the compaction anchor for all agents.
+10. ON-DEMAND TOOLS & CONTEXT: Use lean baseline tools; reach unlisted tools live via
+    aq-tool <pkg> [args...] (pinned nixpkgs). Query AIDB (error-solutions) or aq-hints if ambiguous.
+11. DELIVERY WORKFLOW: work only in your worktree/branch; commits only via tier0 --pre-commit && git commit, landing via PR only (never push main); see canon/blocks/delivery-workflow.summary.md.
+=== END CONSTRAINTS ===
+
+FULL_EOF
+    printf '%s' "$prompt"
+}
+
 cmd_delegate() {
     local prompt="$1" mode="${2:-safe}" model_flag="${3:-}" effort="${4:-medium}" wait_mode="${5:-false}" force_quota_retry="${6:-false}" force_budget="${7:-false}" shared_mode="${8:-false}"
 
@@ -483,43 +573,9 @@ cmd_delegate() {
     info "Mode:            $mode"
     info "Output file:     $output_file"
 
-    # Prepend the canonical harness grounding SSOT (config/local-agent-grounding.md)
-    # so codex receives the SAME facts as local/antigravity, then the codex-specific
-    # behavioral delegation contract below.
-    local grounding; grounding="$(harness_grounding codex 2>/dev/null || true)"
-
-    # Phase 82: prepend harness constraints to prompt (mirrors delegate-to-gemini).
-    # CRITICAL: These rules are non-negotiable and override any conflicting instruction.
-    # Keep in sync with delegate-to-gemini constraints block.
-    local full_prompt="${grounding:+$grounding
-
-}=== HARNESS CONSTRAINTS (NON-NEGOTIABLE) ===
-1. SCOPE LOCK: Work ONLY on what the task requests. No unsolicited refactors, cleanups, or
-   adjacent features. One slice, one concern. If in doubt about scope, STOP and report.
-2. PRD GATE: Write a brief plan (problem/goal/files/validation) to .agent/collaboration/PULSE.log
-   BEFORE editing any file. Format: [ISO-timestamp] [codex] [plan]: <scope> — <approach>
-3. PORT POLICY: NEVER hardcode ports or URLs. Source of truth: nix/modules/core/options.nix.
-   Python reads from env vars; shell uses \${PORT:-default}. Known ports: llama=8080,
-   embed=8081, aidb=8002, coordinator=8003, switchboard=8085, dashboard=8889.
-4. HARDWARE: GPU layers ceiling = 12 (Renoir APU). enable_thinking: false in ALL llama.cpp
-   requests. Never suggest n_gpu_layers > 12.
-5. LOGGING: switchboard.py uses print(..., file=sys.stderr) — there is NO logger object.
-6. COMMIT DISCIPLINE: After work is done, list all modified files and validate with:
-   python3 -m py_compile <py-files> && bash -n <sh-files>
-   DO NOT commit — the orchestrator reviews and commits.
-7. SECURITY: No hardcoded secrets, tokens, or credentials. No injection patterns.
-   Run py_compile on every Python file you touch before declaring work complete.
-8. ATOMIC PULSE: Append one line to .agent/collaboration/PULSE.log after every file write:
-   [ISO-timestamp] [codex] [write]: <file> — <what changed>
-9. ATOMIC RESUME: At every phase start and on task completion, update
-   .agent/collaboration/RESUME.json with: current_objective, phase, todo_snapshot[],
-   uncommitted_changes[], resume_hint. This is the compaction anchor for all agents.
-10. ON-DEMAND TOOLS & CONTEXT: Use lean baseline tools; reach unlisted tools live via
-    aq-tool <pkg> [args...] (pinned nixpkgs). Query AIDB (error-solutions) or aq-hints if ambiguous.
-11. DELIVERY WORKFLOW: work only in your worktree/branch; commits only via tier0 --pre-commit && git commit, landing via PR only (never push main); see canon/blocks/delivery-workflow.summary.md.
-=== END CONSTRAINTS ===
-
-${prompt}"
+    local profile; profile="$(resolve_context_profile "$CONTEXT_PROFILE" "$ROLE" "$prompt")"
+    local full_prompt; full_prompt="$(build_codex_prompt "$profile" "$prompt")"
+    info "Context profile: ${profile} (wrapper-injected $(( ${#full_prompt} - ${#prompt} )) bytes, ~$(( (${#full_prompt} - ${#prompt}) / 4 )) tokens)"
 
     # CS-1: isolate this dispatch in its own git worktree by default so codex
     # stages/commits into a private index on branch delegate/<id> — never the
@@ -629,6 +685,8 @@ MODE="safe"
 MODEL=""
 EFFORT="medium"
 ROLE="implement"
+CONTEXT_PROFILE="auto"
+PRINT_PROMPT=false
 WAIT=false
 FORCE_QUOTA_RETRY=false
 FORCE_BUDGET=false
@@ -646,6 +704,8 @@ while [[ $# -gt 0 ]]; do
         --mode)        MODE="$2";         shift 2 ;;
         --model)       MODEL="$2";        shift 2 ;;
         --effort)      EFFORT="$2";       shift 2 ;;
+        --context-profile) CONTEXT_PROFILE="$2"; shift 2 ;;
+        --print-prompt) PRINT_PROMPT=true; shift ;;
         --role)        ROLE="$2";         shift 2 ;;
         --wait)        WAIT=true;         shift   ;;
         --force-quota-retry) FORCE_QUOTA_RETRY=true; shift ;;
@@ -700,6 +760,14 @@ case "${SUBCMD:-}" in
             PROMPT="$(cat "$PROMPT_FILE")"
         fi
         [[ -n "$PROMPT" ]] || die "Provide --prompt TEXT or --prompt-file FILE (or --help)"
+        case "$CONTEXT_PROFILE" in auto|full|lean) ;; *) die "Invalid --context-profile '$CONTEXT_PROFILE'. Valid: auto | full | lean" ;; esac
+        if [[ "$PRINT_PROMPT" == "true" ]]; then
+            _pp="$(resolve_context_profile "$CONTEXT_PROFILE" "$ROLE" "$PROMPT")"
+            _fp="$(build_codex_prompt "$_pp" "$PROMPT")"
+            printf '%s\n' "$_fp"
+            printf 'profile=%s injected_bytes=%d est_tokens=%d\n' "$_pp" "$(( ${#_fp} - ${#PROMPT} ))" "$(( (${#_fp} - ${#PROMPT}) / 4 ))" >&2
+            exit 0
+        fi
         if [[ "$PRINT_ARGV" == "true" ]]; then
             # Diagnostic mode: print argv without budgets/registry/auditing
             # Build the same cmd as cmd_delegate would, but exit early

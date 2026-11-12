@@ -2382,7 +2382,10 @@ in {
           Type = "oneshot";
           User = cfg.primaryUser;
           WorkingDirectory = cfg.mcpServers.repoPath;
-          ExecStart = "${pkgs.bash}/bin/bash ${cfg.mcpServers.repoPath}/scripts/ai/aq-ralph-task \"Run knowledge gap auto-remediation: ${cfg.mcpServers.repoPath}/scripts/ai/aq-gap-auto-remediate --limit 5 --verify\" aider";
+          # Run the deterministic script directly: the previous aq-ralph-task hop only
+          # queued an aider task (which failed under CPU load or never ran the script)
+          # while this unit exited 0, so nothing was written to GAP_REMEDIATION_LOG_DIR.
+          ExecStart = "${pkgs.bash}/bin/bash ${cfg.mcpServers.repoPath}/scripts/ai/aq-gap-auto-remediate --limit 5 --verify";
           StandardOutput = "journal";
           StandardError = "journal";
           NoNewPrivileges = true;
