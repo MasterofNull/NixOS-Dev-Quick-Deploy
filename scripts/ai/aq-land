@@ -57,10 +57,22 @@ VERDICTS = ("PASS_WITH_FOLLOWUPS", "PASS", "REQUEST_CHANGES", "FAIL")
 TRANSIENT = re.compile(r"error connecting|could not resolve host|no such host|temporary failure|connection (?:reset|refused|timed out)|"
                        r"timed? ?out|\bEOF\b|TLS handshake|network is unreachable|HTTP 5\d\d|\b50[234]\b|bad gateway|service unavailable|"
                        r"i/o timeout", re.I)
-# A negative verdict with no file:line finding that says the reviewer could not work is an unavailable lane, not a rejection.
-COULD_NOT_RUN = re.compile(r"unable to (?:proceed|access|run|review)|cannot (?:proceed|access|run)|can't (?:proceed|access)|unresponsive|"
-                           r"timed? ?out|no tool access|check the status of the environment", re.I)
-FINDING = re.compile(r"[\w./-]+\.\w+:\d+")
+# A negative verdict is read as "the reviewer could not run" only when ALL hold; anything else stays a real rejection (fail closed):
+# an explicit could-not-review phrase, no path or location token, no finding marker, and a short body. The real Gemini sandbox-timeout
+# reply is ~460 chars including both copies of its text, so 800 leaves headroom while a genuine written finding exceeds it.
+COULD_NOT_RUN = re.compile(r"(?:unable to|cannot|can't|could not|couldn't) proceed|no tool access", re.I)  # whole-review failure, not "could not open one file"
+LOCATION = re.compile(r"\S+/\S+|\S+:\d+")
+FINDING_MARK = re.compile(r"^\s*[-*\u2022]\s|\[P[0-3]\]|\bP[0-3]\b\s*[\u2014:-]|\b(?:High|Medium|Low|Critical)\s*:|finding", re.I | re.M)
+COULD_NOT_RUN_MAX = 800
+WRAPPER_LINE = re.compile(r"^(?:\[delegate-to-[^\]]*\]|Output file:|(?:Author-lane|Review-Disposition|Reviewed-subject-sha256|Reviewed-head-sha|Reviewed-by|Review-Receipt):).*$", re.M)
+
+
+def reviewer_could_not_run(text):
+    body = WRAPPER_LINE.sub("", text).strip()
+    return (len(body) <= COULD_NOT_RUN_MAX and bool(COULD_NOT_RUN.search(body))
+            and not LOCATION.search(body) and not FINDING_MARK.search(body))
+
+
 FAILLINE = re.compile(r"FAIL|ERROR|error:|not ok|Traceback|\bfatal\b", re.I)
 RECORD_KEYS = ("Author-lane", "Review-Disposition", "Reviewed-subject-sha256", "Reviewed-head-sha", "Reviewed-by",
                "Review-Receipt", "Review history")
@@ -361,8 +373,7 @@ class Land:
             kind = "quota error" if QUOTA.search(text) else f"no verdict (exit {proc.returncode})"
             return "unavailable", kind, "", ""
         if not verdicts[-1].startswith("PASS"):
-            body = re.sub(r"^Review-Disposition:.*$", "", text, flags=re.M)
-            if COULD_NOT_RUN.search(body) and not FINDING.search(body):
+            if reviewer_could_not_run(text):
                 return "unavailable", f"reviewer could not run ({verdicts[-1]} with no finding)", "", ""
         if not heads or heads[-1] != head:
             return "unavailable", f"review covers head {(heads or ['none'])[-1][:12]}, not {head[:12]}", "", ""

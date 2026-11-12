@@ -62,9 +62,12 @@ if mode == "hang":
         time.sleep(0.3)
 out = f"{S}/{rid}.log"
 shown = head if mode != "wronghead" else "f" * 40
-verdict = "REQUEST_CHANGES" if mode in ("negative", "cantrun", "finding") else "PASS"
+verdict = "REQUEST_CHANGES" if mode in ("negative", "cantrun", "finding", "prose", "bullet", "real") else "PASS"
 body = {"cantrun": "I am unable to proceed: every command timed out. Please check the status of the environment.\n",
-        "finding": "scripts/ai/aq_land.py:12 breaks the lock; the sandbox also timed out once.\n"}.get(mode, "looks fine\n")
+        "real": "The sandbox environment appears to be unresponsive, causing all command attempts to time out. As I cannot access the worktree files or the provided diff to perform the required review, I am unable to proceed with the task.\n\nPlease check the status of the environment.\n",
+        "finding": "scripts/ai/aq-land:365 drops valid rejections when a command timed out.\n",
+        "prose": "The lock is released twice, which corrupts state. I was also unable to access one file.\n",
+        "bullet": "- The retry loop never stops after the command timed out.\n"}.get(mode, "looks fine\n")
 text = f"{body}Reviewed-head-sha: {shown}\nReview-Disposition: {verdict}\n"
 open(out, "w").write(text)
 print(f"Output file: {out}")
@@ -585,6 +588,19 @@ class Lanes(Base):
         r = self.land("--lanes", "gemini,local", expect=1)
         self.assertIn("returned REQUEST_CHANGES", self.stop_line(r))
         self.assertEqual(self.calls("local"), [])
+
+    def test_the_real_gemini_sandbox_timeout_reply_is_unavailable(self):
+        self.cfg({"gemini": {"mode": "real"}, "local": {"mode": "ok"}})
+        self.land("--lanes", "gemini,local", expect=0)
+        self.assertIn("gemini: reviewer could not run", self.pr_body())
+
+    def test_prose_and_bulleted_findings_stop_even_with_a_could_not_access_phrase(self):
+        for mode in ("prose", "bullet"):
+            self.tearDown_state(); self.gh_state({})
+            self.cfg({"gemini": {"mode": mode}, "local": {"mode": "ok"}})
+            r = self.land("--lanes", "gemini,local", expect=1)
+            self.assertIn("returned REQUEST_CHANGES", self.stop_line(r), mode)
+            self.assertEqual(self.calls("local"), [], mode)
 
     def test_could_not_run_on_the_only_lane_is_no_eligible_lane_left(self):
         self.cfg({"gemini": {"mode": "cantrun"}})

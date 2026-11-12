@@ -32,6 +32,12 @@ reviewed the classification rule (never a PASS; any concrete finding still stops
 - test-delegate-codex-quota-precheck: before the fix 15 passed but the run added worktrees and 12 `delegate/codex-*`
   branches to the real repo; after, 16 passed including `(h) real repo worktree list unchanged` (231 before and after).
 
+- Review follow-up (Codex P1 on 8b607dd29): the first rule let a real rejection without an extension-bearing `file:line`
+  (e.g. `scripts/ai/aq-land:365 ... timed out`) or a prose finding count as unavailable. Now unavailable requires, after
+  wrapper/record lines are stripped: an explicit could-not-proceed phrase, no path or `x:N` location token, no finding
+  marker (bullets, P0-P3, severity labels, "finding"), and at most 800 characters. The real Gemini outage reply is 513.
+  test-aq-land 54 OK, with Codex's example, a prose finding and a bulleted finding all stopping.
+
 ## Rollback Plan
 
 Revert the PR. Leaked-entry cleanup is separate and recorded in PULSE.
