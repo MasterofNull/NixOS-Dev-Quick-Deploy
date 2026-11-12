@@ -258,6 +258,7 @@ QUOTA_LINE="ERROR: You've hit your usage limit for the day, try again at Jul 25t
 QF="$WORKDIR/quota-line-test.log"
 quota_case() {  # <label> <expect: armed|clear> <output file content>; no pipe, so pass/fail counters survive
     rm -f "$COOLDOWN_FILE"; printf '%s\n' "$3" > "$QF"
+    # shellcheck source=/dev/null  # sources the real function extracted from delegate-to-codex at run time
     ( source <(sed -n '/^quota_capture_from_output()/,/^}/p' "$REAL_DELEGATE"); COOLDOWN_FILE="$COOLDOWN_FILE"; DELEGATION_DIR="$DELEGATION_DIR"; quota_capture_from_output "$QF" ) >/dev/null 2>&1
     if [[ "$2" == armed && -f "$COOLDOWN_FILE" ]] && grep -q "^${EXPECTED_RESET_DATE}T" "$COOLDOWN_FILE"; then pass "(i) $1"
     elif [[ "$2" == clear && ! -f "$COOLDOWN_FILE" ]]; then pass "(i) $1"
