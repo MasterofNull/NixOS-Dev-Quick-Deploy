@@ -1240,6 +1240,13 @@ variables:
     consumers: [auto-remediate.sh]
     description: "Path to the health-spider executable used by autonomous remediation"
 
+  - canonical: RSI_AUTO_RESOLVE
+    aliases: []
+    default: "1"
+    layer: shell
+    consumers: [aq-health-spider, rsi_lifecycle]
+    description: "Kill switch (0 = off): health-spider closes its RSI incidents with evidence when the same check later passes"
+
   - canonical: HS_LOOP_STALE_HOURS
     aliases: []
     default: "48"

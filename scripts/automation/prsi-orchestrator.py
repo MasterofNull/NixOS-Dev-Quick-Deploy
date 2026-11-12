@@ -679,6 +679,7 @@ def _sync_locked(args, policy, discovered, report, incidents_only: bool) -> int:
             added += 1
 
     queue["actions"] = sorted(existing.values(), key=lambda x: (x.get("status") != "pending_approval", x.get("created_at", "")))
+    _reconcile_rsi_queue(queue)  # rows whose incident resolved (e.g. health symptom cleared) leave the inbox
     if not incidents_only:
         queue["meta"] = {
             "since": args.since,

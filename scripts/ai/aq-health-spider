@@ -55,9 +55,10 @@ except ImportError:
     def resolve(*args, **kwargs): return False
 
 try:
-    from rsi_lifecycle import failure as rsi_failure
+    from rsi_lifecycle import failure as rsi_failure, resolve_cleared as rsi_resolve_cleared
 except ImportError:
     def rsi_failure(*args, **kwargs): return ""
+    def rsi_resolve_cleared(*args, **kwargs): return []
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("health-spider")
@@ -408,6 +409,15 @@ def _resolve_recovered_dashboard_probe_alerts(probe: str) -> int:
     except Exception as e:
         logger.debug(f"dashboard probe alert recovery failed for {probe}: {e}")
     return resolved
+
+
+def _now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+
+
+def _systemd_incident_units(incident: Dict[str, Any]) -> set:
+    path = str(incident.get("path", ""))
+    return {u.strip() for u in path.removeprefix("systemd:").split(",") if u.strip()}
 
 
 def _seed_rag(error_type: str, error_msg: str, context: str, solution: str, tags: List[str]) -> bool:
@@ -1017,6 +1027,21 @@ class HealthSpider:
         self.interval = interval
         self._apparmor_last: Dict[str, float] = {}
         self._known_issues: set = set()   # Dedup RAG seeding
+        self._rsi_auto_resolved = 0
+
+    async def _auto_resolve(self, producer: str, matches, check_id: str, observed_at: str) -> None:
+        """Close RSI incidents this check's passing run proves cleared (kill switch RSI_AUTO_RESOLVE=0)."""
+        try:
+            ids = await asyncio.to_thread(
+                rsi_resolve_cleared, producer, matches, check_id, observed_at, "health-spider")
+        except Exception as e:
+            logger.debug(f"rsi auto-resolve error for {check_id}: {e}")
+            return
+        if ids:
+            self._rsi_auto_resolved += len(ids)
+            logger.info(f"[rsi] auto-resolved {len(ids)} incident(s): {check_id} passed")
+            _emit_event("health_spider_rsi_auto_resolved",
+                        {"check": check_id, "producer": producer, "incident_ids": ids})
 
     async def sample_zone(self, zone: str) -> List[Dict[str, Any]]:
         """Real health checks for one zone. Returns list of anomaly dicts."""
@@ -1024,9 +1049,14 @@ class HealthSpider:
         anomalies: List[Dict[str, Any]] = []
 
         # 1. HTTP health check (fast, async)
+        observed = _now_iso()
         ok, ms = await asyncio.to_thread(_http_check, cfg["url"])
         if ok:
             logger.info(f"[{zone}] HTTP OK {ms}ms")
+            svc_path = f"service:{cfg.get('service', zone)}"
+            for prod in ("health-spider:http-failure", "health-spider:service-down"):
+                await self._auto_resolve(prod, lambda i, p=svc_path: i.get("path") == p,
+                                         f"http:{zone}", observed)
         else:
             logger.warning(f"[{zone}] HTTP FAILED {cfg['url']}")
             # 2. Service check only on HTTP failure (saves bandwidth)
@@ -1047,6 +1077,7 @@ class HealthSpider:
 
         # 1b. Semantic probes catch degraded dashboard cards that /api/health masks.
         for probe in cfg.get("probes", []):
+            observed = _now_iso()
             probe_ok, probe_ms, reason = await asyncio.to_thread(
                 _json_probe,
                 probe["url"],
@@ -1061,6 +1092,8 @@ class HealthSpider:
                 )
                 if recovered:
                     logger.info(f"[{zone}] resolved {recovered} recovered alert(s) for probe {probe['name']}")
+                prod = "health-spider:osi-layered" if probe["name"] == "osi-layered" else f"health-spider:dashboard-{probe['name']}"
+                await self._auto_resolve(prod, lambda i: True, f"probe:{probe['name']}", observed)
                 continue
             logger.warning(f"[{zone}] probe {probe['name']} DEGRADED {probe['url']} ({reason})")
             anomalies.append({
@@ -1515,7 +1548,16 @@ class HealthSpider:
     async def run_once(self) -> int:
         """Single cycle — returns anomaly count."""
         total = 0
+        self._rsi_auto_resolved = 0
+        observed = _now_iso()
         failed_units = await asyncio.to_thread(_failed_systemd_units)
+        # "systemctl" is the pseudo-unit for a check that could not run: never counts as a clear.
+        if not any(u.get("unit") == "systemctl" for u in failed_units):
+            still_failed = {u.get("unit") for u in failed_units}
+            await self._auto_resolve(
+                "health-spider:systemd-failed-units",
+                lambda i: bool(_systemd_incident_units(i)) and not (_systemd_incident_units(i) & still_failed),
+                "systemd:failed-units", observed)
         if failed_units:
             logger.warning(f"[systemd] {len(failed_units)} failed unit(s): {', '.join(u['unit'] for u in failed_units[:8])}")
             anomaly = {
@@ -1583,6 +1625,9 @@ class HealthSpider:
                     total += 1
         except Exception as e:
             logger.error(f"[deployed-revision] error: {e}")
+        if self._rsi_auto_resolved:
+            await self._queue_prsi({})  # prsi sync reconciles queue rows of the now-resolved incidents
+        logger.info(f"[rsi] auto-resolved {self._rsi_auto_resolved} cleared health incident(s) this cycle")
         return total
 
     async def run(self):
@@ -1594,6 +1639,7 @@ class HealthSpider:
             elapsed = round(time.time() - t0, 1)
             _emit_event("health_spider_cycle", {
                 "zones_checked": len(ZONES), "anomalies": n, "cycle_seconds": elapsed,
+                "rsi_auto_resolved": self._rsi_auto_resolved,
             })
             logger.info(f"Cycle complete: {n} anomaly(ies) in {elapsed}s — sleeping {self.interval}s")
             await asyncio.sleep(self.interval)

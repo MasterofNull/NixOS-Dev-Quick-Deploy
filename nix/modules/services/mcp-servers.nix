@@ -1668,10 +1668,17 @@ in {
         after = ["ai-aidb.service" "network-online.target"];
         requires = ["ai-aidb.service"];
         wants = ["network-online.target"];
+        # Transient DNS/network failure: bounded retry (initial run + 2 retries, 10 min apart), then stay failed.
+        unitConfig = {
+          StartLimitIntervalSec = "1h";
+          StartLimitBurst = 3;
+        };
         serviceConfig =
           oneshotServiceConfig
           // {
             Type = "oneshot";
+            Restart = "on-failure";
+            RestartSec = "10min";
             ExecStart = lib.escapeShellArgs [
               "${pkgs.bash}/bin/bash"
               "${toString repoSource}/scripts/data/sync-knowledge-sources"

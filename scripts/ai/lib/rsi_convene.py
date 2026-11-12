@@ -215,9 +215,13 @@ def _seat(name: str, cmd: list[str], pre: list[str] | None, outdir: Path, limit:
     if rc is None:
         return {"state": "down", "reason": f"hard time limit {limit}s, killed"}
     reply = _reply(out)
-    if rc != 0 or len(reply) < MIN_REPLY_CHARS:
+    if rc != 0 or not reply:
         return {"state": "down", "reason": f"rc={rc}, reply {len(reply)} chars"}
     (outdir / f"{name}.md").write_text(reply + "\n")
+    if len(reply) < MIN_REPLY_CHARS:
+        # The seat answered, so it is not down; but too short to count toward consensus.
+        return {"state": "short", "file": f"{name}.md",
+                "reason": f"replied {len(reply)} chars (< {MIN_REPLY_CHARS} minimum); not counted"}
     return {"state": "delivered", "file": f"{name}.md"}
 
 
