@@ -1,0 +1,16 @@
+{
+  "schema": 2,
+  "pr": 755,
+  "reviewed_head_sha": "72747e59081df222fd1782ca0fd39b08e6bcdc92",
+  "run_id": "local-20261112-112928-o8ijyi",
+  "reviewer_lane": "local-direct",
+  "author_lane": "claude",
+  "verdict": "PASS",
+  "output_file": ".agents/delegation/outputs/local-20261112-112928-o8ijyi.log",
+  "output_sha256": "b69583e0f4a72bcc545b05917c2745c9d23c525b11c755c7a4884e1853b75f30",
+  "created_at": "2026-11-12T19:46:20Z",
+  "repo": "MasterofNull/NixOS-Dev-Quick-Deploy",
+  "policy_version": "review-receipts/1",
+  "tree": "0ef70f1f7393a78c4bcece2dd9aef60558f44a92",
+  "base_commit": "60687d873fa7a1a9cf69cccce644906a70f4466c"
+}
