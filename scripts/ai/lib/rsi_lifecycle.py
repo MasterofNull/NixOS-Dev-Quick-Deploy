@@ -159,7 +159,10 @@ def failure(agent: str, subject: str, producer: str, path: str, authority: str,
     return slug
 
 
-def resolve(incident_id: str, root_cause: str, regression: str, validation: str) -> None:
+def resolve(incident_id: str, root_cause: str, regression: str, validation: str,
+            *, only_if_last_seen_before: str = "") -> bool:
+    """Resolve one incident. With only_if_last_seen_before, resolve only a still-open incident
+    not seen since that timestamp (checked under the ledger lock) and return False otherwise."""
     if not all(value.strip() for value in (root_cause, regression, validation)):
         raise ValueError("resolution requires root cause, regression and validation evidence")
     ledger = _RUNTIME / "rsi-incidents.json"
@@ -167,11 +170,57 @@ def resolve(incident_id: str, root_cause: str, regression: str, validation: str)
         fcntl.flock(lock, fcntl.LOCK_EX)
         state = json.loads(rsi_paths.read_ledger_text(ledger, _REPO_ROOT))
         incident = state["incidents"][incident_id]
+        if only_if_last_seen_before and (
+                incident.get("status") != "open"
+                or str(incident.get("last_seen", "")) >= only_if_last_seen_before):
+            return False
         incident.update(status="resolved", resolved_at=_now(),
                         resolution=dict(zip(("root_cause", "regression", "validation"),
                                             map(_clean, (root_cause, regression, validation)))))
         _save(ledger, state)
         _close_backlog_line(incident_id, validation)
+    return True
+
+
+AUTO_RESOLVE_PRODUCER_PREFIX = "health-spider:"
+
+
+def auto_resolve_enabled() -> bool:
+    return os.environ.get("RSI_AUTO_RESOLVE", "1").strip().lower() not in {"0", "false", "no", "off"}
+
+
+def resolve_cleared(producer: str, matches, check_id: str, observed_at: str, by: str) -> list[str]:
+    """Close open incidents of a health-check producer whose symptom the same check now reports clear.
+
+    Callers must invoke this only after the check ran and passed; `observed_at` is when that run
+    started, so an incident seen at or after it (still failing, or re-raised) stays open.
+    `matches(incident) -> bool` narrows which of the producer's incidents this check covers.
+    Kill switch: RSI_AUTO_RESOLVE=0. Scoped to health-spider producers (transient probe symptoms).
+    """
+    if not producer.startswith(AUTO_RESOLVE_PRODUCER_PREFIX):
+        raise ValueError(f"auto-resolve is limited to {AUTO_RESOLVE_PRODUCER_PREFIX}* producers")
+    if not auto_resolve_enabled():
+        return []
+    try:
+        state = json.loads(rsi_paths.read_ledger_text(_RUNTIME / "rsi-incidents.json", _REPO_ROOT))
+        candidates = [dict(i) for i in state["incidents"].values()
+                      if isinstance(i, dict) and i.get("status") == "open" and i.get("producer") == producer]
+    except (OSError, ValueError, KeyError):
+        return []
+    done: list[str] = []
+    for incident in candidates:
+        try:
+            if not matches(incident):
+                continue
+            if resolve(incident["id"],
+                       f"transient symptom no longer present ({producer})",
+                       "recurrence of the symptom re-opens this incident via failure()",
+                       f"symptom cleared: {check_id} passed at {observed_at}; auto-resolved by {by}",
+                       only_if_last_seen_before=observed_at):
+                done.append(incident["id"])
+        except (OSError, ValueError, KeyError):
+            continue
+    return done
 
 
 def _close_backlog_line(incident_id: str, evidence: str = "") -> None:
