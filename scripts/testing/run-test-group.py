@@ -61,8 +61,10 @@ def run_one(test: str):
                                capture_output=True, text=True, timeout=TIMEOUT)
         except subprocess.TimeoutExpired:
             return test, 124, f"timeout after {TIMEOUT}s"
-    tail = "\n".join((r.stdout + r.stderr).strip().splitlines()[-8:])
-    return test, r.returncode, tail
+    # A test that reports per-case results prints its FAIL line wherever the case ran, often above the tail.
+    lines = (r.stdout + r.stderr).strip().splitlines()
+    fails = [ln for ln in lines[:-8] if ln.lstrip().startswith(("FAIL", "Traceback", "AssertionError"))][:20]
+    return test, r.returncode, "\n".join(fails + lines[-8:])
 
 
 def main(argv) -> int:

@@ -34,6 +34,22 @@ _meta:
 
 chat_models:
 
+  qwen3.5-9b:
+    name: "Qwen3.5 9B Instruct (Q6_K)"
+    file: "Qwen3.5-9B-Q6_K.gguf"
+    type: chat
+    params: "9B"
+    context: 131072
+    ram_q4: "~7.0 GB"
+    model_family: qwen3
+    think_mode: true
+    no_think_prefix: "/no_think"
+    tool_calling: true
+    stop_sequences: ["<|im_end|>", "<|endoftext|>"]
+    chat_template: jinja
+    recommended_gpu_layers: 12
+    notes: "Standby dense 9B model on disk."
+
   qwen3.6-35b:
     name: "Qwen3.6 35B A3B Instruct (MoE)"
     file: "Qwen3.6-35B-A3B-UD-Q4_K_M.gguf"
@@ -220,6 +236,22 @@ chat_models:
     notes: "Ultra-fast. Smoke tests only. Not suitable for complex tasks."
 
 embedding_models:
+
+  qwen3-embedding-4b:
+    name: "Qwen3 Embedding 4B (Q4_K_M)"
+    file: "Qwen3-Embedding-4B-q4_k_m.gguf"
+    type: embedding
+    params: "4B"
+    context: 32768
+    ram_q4: "~2.4 GB"
+    model_family: qwen3
+    think_mode: false
+    no_think_prefix: ""
+    tool_calling: false
+    stop_sequences: []
+    chat_template: auto
+    recommended_gpu_layers: 12
+    notes: "High-capacity 4B embedding model on disk."
 
   bge-m3:
     name: "BGE-M3 Embedding"

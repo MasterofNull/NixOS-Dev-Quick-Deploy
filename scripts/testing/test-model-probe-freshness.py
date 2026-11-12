@@ -7,6 +7,8 @@ import asyncio
 import importlib.util
 import datetime
 import json
+import os
+import subprocess
 import sys
 import tempfile
 from pathlib import Path
@@ -184,13 +186,73 @@ def check_registry_reconciliation() -> None:
             assert models[state] == {"file": current.name, "state": state}
 
 
+def check_llm_domain_status(module) -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        path = Path(tmp) / "profile.json"
+        path.write_text(json.dumps(cached_payload(module)))
+        models = Path(tmp) / "models"
+        models.mkdir()
+        model = models / "Qwen3.5-9B-Q6_K.gguf"
+        model.touch()
+        (models / "active.gguf").symlink_to(model)
+        (models / "download.gguf.part").touch()
+        result = subprocess.run(
+            [sys.executable, str(ROOT / "scripts/ai/aq-model-eval"),
+             "--status", "--json", "--profile-path", str(path)],
+            capture_output=True, text=True, timeout=30,
+            env={**os.environ, "LLAMA_MODELS_DIR": str(models), "LLAMA_CPP_URL": "http://llama.invalid"},
+        )
+        assert result.returncode == 0, result.stderr
+        status = json.loads(result.stdout)
+        assert status["domain"] == "llm"
+        assert status["profile_fresh"] is True
+        assert status["active_profile"] == json.loads(path.read_text())
+        assert "qwen3.5-9b" in status["catalog_chat_models"]
+        assert "qwen3-embedding-4b" in status["catalog_embedding_models"]
+        assert status["coordinator_tiers"]
+        inventory = status["models_dir"]
+        assert inventory["active_gguf_target"] == str(model)
+        assert model.name in inventory["declared_files_present"]
+        assert inventory["untracked_or_temp_files"] == ["download.gguf.part"]
+
+
+def check_llm_domain_status_edges(module) -> None:
+    def run_status(models: Path, profile: Path) -> dict:
+        result = subprocess.run(
+            [sys.executable, str(ROOT / "scripts/ai/aq-model-eval"),
+             "--status", "--json", "--profile-path", str(profile)],
+            capture_output=True, text=True, timeout=30,
+            env={**os.environ, "LLAMA_MODELS_DIR": str(models), "LLAMA_CPP_URL": "http://llama.invalid"},
+        )
+        assert result.returncode == 0, result.stderr
+        return json.loads(result.stdout)
+
+    with tempfile.TemporaryDirectory() as tmp:
+        profile = Path(tmp) / "profile.json"
+        profile.write_text(json.dumps(cached_payload(module)))
+        missing = run_status(Path(tmp) / "absent", profile)["models_dir"]
+        assert missing["declared_files_present"] == []
+        assert missing["untracked_or_temp_files"] == []
+        assert missing["active_gguf_target"] is None
+
+        models = Path(tmp) / "models"
+        models.mkdir()
+        (models / "active.gguf").symlink_to(models / "gone.gguf")
+        dangling = run_status(models, Path(tmp) / "no-profile.json")
+        assert dangling["active_profile"] is None
+        assert dangling["models_dir"]["active_gguf_target"] == str(models / "gone.gguf")
+        assert dangling["models_dir"]["declared_files_present"] == []
+
+
 def main() -> int:
     module = load_module()
     asyncio.run(check_failed_measurement_does_not_refresh(module))
     asyncio.run(check_successful_measurement_is_source_labelled(module))
     asyncio.run(check_cache_freshness_and_force(module))
     check_registry_reconciliation()
-    print("PASS: model probe receipts, cache freshness, force preservation, and registry reconciliation")
+    check_llm_domain_status(module)
+    check_llm_domain_status_edges(module)
+    print("PASS: model probe receipts, cache freshness, force preservation, registry reconciliation, and LLM domain status")
     return 0
 
 

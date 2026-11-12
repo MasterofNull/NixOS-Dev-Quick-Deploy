@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """aq-update: bring the primary checkout (and, only when Nix config changed, the running system) to origin/main.
 
-  aq-update [--dry-run | --resume]     phase 1, prepare: unattended, needs NO sudo, safe to walk away from
+  aq-update [--daily | --refresh-inputs] [--dry-run | --resume]
+                                       phase 1, prepare: unattended, needs NO sudo, safe to walk away from
   aq-update --deploy [--dry-run]       phase 2, deploy: short, owner-attended, asks for sudo once
 
 No Nix-affecting change since the deployed revision: fast-forward the checkout, no rebuild, done.
@@ -15,6 +16,10 @@ the MCP integrity baseline refresh (root-owned, so sudo) and validation of the r
 If you deployed that revision yourself (e.g. a manual rebuild), --deploy detects the running revision already
 equals it, skips the rebuild, and runs only the baseline refresh and validation. Re-running --deploy after a
 failure skips stages already done. --resume continues an interrupted phase 1 (never starts phase 2).
+--daily (alias --refresh-inputs) is a phase 1 mode: refresh flake inputs even when no Nix-affecting file changed.
+If the refreshed flake.lock equals origin/main's it prints "nothing to deploy" and only syncs the checkout;
+otherwise it lands the lock and ends with the READY line like any other prepare. The mode is recorded in the
+ledger, so --resume keeps it. It is not valid with --deploy. The LLM domain (models, profile) is not touched.
 --dry-run changes nothing (not the checkout, refs, lock, ledger or state). On demand only; run it as the owner.
 
 Env (test seams): AQ_UPDATE_REPO, AQ_UPDATE_STATE_DIR, AQ_UPDATE_LAND, AQ_UPDATE_DEPLOY, AQ_UPDATE_BASELINE.
@@ -66,8 +71,9 @@ def run(cmd, cwd=None, check=True, stage="run", **kw):
 
 
 class Ctx:
-    def __init__(self, dry):
+    def __init__(self, dry, refresh_inputs=False):
         self.dry = dry
+        self.refresh_inputs = refresh_inputs
         self.repo = Path(os.environ.get("AQ_UPDATE_REPO") or self._primary()).resolve()
         base = os.environ.get("XDG_STATE_HOME") or str(Path.home() / ".local" / "state")
         self.state = Path(os.environ.get("AQ_UPDATE_STATE_DIR") or Path(base) / "nixos-ai-stack" / "aq-update")
@@ -335,10 +341,13 @@ def main(argv):
         return 0
     flags = set(argv)
     modes = {"--resume", "--deploy"} & flags
-    if flags - {"--dry-run", "--resume", "--deploy"} or len(argv) != len(flags) or len(modes) > 1 or {"--dry-run", "--resume"} <= flags:
-        print(f"{TAG}: usage: aq-update [--dry-run | --resume] | aq-update --deploy [--dry-run]", file=sys.stderr)
+    refresh = {"--refresh-inputs", "--daily"} & flags
+    if (flags - {"--dry-run", "--resume", "--deploy", "--refresh-inputs", "--daily"} or len(argv) != len(flags)
+            or len(modes) > 1 or {"--dry-run", "--resume"} <= flags or ("--deploy" in flags and refresh)):
+        print(f"{TAG}: usage: aq-update [--daily | --refresh-inputs] [--dry-run | --resume] | aq-update --deploy [--dry-run]",
+              file=sys.stderr)
         return 2
-    c = Ctx("--dry-run" in flags)
+    c = Ctx("--dry-run" in flags, refresh_inputs=bool(refresh))
     try:
         return deploy_phase(c) if "--deploy" in flags else go(c, "--resume" in flags)
     except Fail as e:
@@ -403,19 +412,22 @@ def go(c, resume):
         run(["git", *view, "cat-file", "-e", f"{deployed}^{{commit}}"], stage="detect")
         delta = c.nix_delta(view, deployed, target0)
         begin = {"deployed": deployed, "target0": target0, "delta": delta}
-        if delta:
+        if c.refresh_inputs:
+            begin["refresh_inputs"] = True
+        if delta or c.refresh_inputs:
             c.need_land()
         if c.dry:
             plan(c, begin)
             return 0
         c.log("begin", "begin", **begin)
+    c.refresh_inputs = bool(begin.get("refresh_inputs"))  # a resumed run keeps the mode it began with
     d, t0, delta = begin["deployed"], begin["target0"], begin["delta"]
     wt = c.repo / ".agents/delegation/worktrees" / f"aq-update-{c.run_id}"
     branch = f"chore/aq-update-{c.run_id}"
 
     stage = make_stage(c, done)
 
-    if not delta:
+    if not delta and not c.refresh_inputs:
         stage("sync", lambda: (c.guard_main("sync", t0), c.sync(t0)) and None,
               lambda: c.out("rev-parse", "HEAD") == t0)
         c.log("finish", "finished", rebuild=False)
@@ -425,6 +437,13 @@ def go(c, resume):
 
     stage("refresh", lambda: c.refresh(wt, branch, t0), lambda: wt.exists())
     tree = stage("verify", lambda: {"tree": c.verify(wt, t0)}, lambda: wt.exists())["tree"]
+    if not delta and tree == c.out("rev-parse", f"{t0}^{{tree}}"):  # --daily and nothing moved: nothing to land or deploy
+        stage("sync", lambda: (c.guard_main("sync", t0), c.sync(t0)) and None,
+              lambda: c.out("rev-parse", "HEAD") == t0)
+        c.log("finish", "finished", rebuild=False)
+        print(f"{TAG}: nothing to deploy: flake inputs already current and no Nix-affecting changes between "
+              f"deployed {d[:8]} and origin/main {t0[:8]}; checkout synced, no rebuild needed.")
+        return 0
     target = stage("land", lambda: {"rev": c.land(wt, branch, tree, t0)})["rev"]
     stage("sync", lambda: (c.guard_main("sync", target), c.sync(target)) and None,
           lambda: c.out("rev-parse", "HEAD") == target)
@@ -484,6 +503,12 @@ def deploy_phase(c):
 
 def plan(c, b):
     d, t, delta = b["deployed"][:8], b["target0"][:8], b["delta"]
+    if not delta and c.refresh_inputs:
+        print(f"{TAG}: dry-run: no Nix-affecting changes {d}..{t}, but --daily/--refresh-inputs is set; would: refresh inputs "
+              "in a worktree and verify; if flake.lock is unchanged sync the checkout only (nothing to deploy), otherwise land "
+              "the lock via aq-land, sync and record the verified revision (phase 1; no sudo), then `aq-update --deploy` "
+              "runs aq-deploy-current, baseline, validate. Nothing was changed.")
+        return
     if not delta:
         print(f"{TAG}: dry-run: no Nix-affecting changes {d}..{t}; would sync the checkout only. No rebuild.")
         return
