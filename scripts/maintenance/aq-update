@@ -396,7 +396,12 @@ def go(c, resume):
             elif e["event"] == "done":
                 done[e["stage"]] = e
     else:
-        c.run_id = time.strftime("%Y%m%d-%H%M%S")
+        # Second resolution: a run begun in the same second as a finished one must not inherit its events.
+        base_id, used = time.strftime("%Y%m%d-%H%M%S"), {e["run"] for e in c.events()}
+        c.run_id, n = base_id, 1
+        while c.run_id in used:
+            n += 1
+            c.run_id = f"{base_id}-{n}"
         if not c.dry:
             open_prev = {}
             for e in c.events():
