@@ -23,11 +23,18 @@ set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
-DELEGATE="$REPO_ROOT/scripts/ai/delegate-to-codex"
+REAL_DELEGATE="$REPO_ROOT/scripts/ai/delegate-to-codex"
 
-[[ -x "$DELEGATE" ]] || { echo "FAIL: delegate-to-codex not found/executable at $DELEGATE"; exit 1; }
+[[ -x "$REAL_DELEGATE" ]] || { echo "FAIL: delegate-to-codex not found/executable at $REAL_DELEGATE"; exit 1; }
+
+# Without --shared the wrapper runs `git worktree add` against the real repo (REPO_ROOT), leaking
+# delegate/codex-* branches and worktrees into it. Nothing here needs isolation, so always pass --shared.
+REAL_WORKTREES_BEFORE="$(git -C "$REPO_ROOT" worktree list --porcelain 2>/dev/null)"
 
 WORKDIR="$(mktemp -d)"
+DELEGATE="$WORKDIR/delegate-shared"
+printf '#!/usr/bin/env bash\nexec "%s" "$@" --shared\n' "$REAL_DELEGATE" > "$DELEGATE"
+chmod +x "$DELEGATE"
 # delegate-to-codex resolves a SHARED delegation dir (main worktree) since 36c97f94/7c747581;
 # isolate to a private dir so live cooldown/budget/registry state never leaks in or out.
 DELEGATION_DIR="$WORKDIR/delegation"; mkdir -p "$DELEGATION_DIR/outputs"
@@ -246,6 +253,26 @@ else
     fail "(f) unparseable reset line wrote no cooldown at all"
 fi
 
+# (i) only the CLI's own column-0 ERROR line arms a cooldown; the same text quoted in a diff/echo/indented must not.
+QUOTA_LINE="ERROR: You've hit your usage limit for the day, try again at Jul 25th."
+QF="$WORKDIR/quota-line-test.log"
+quota_case() {  # <label> <expect: armed|clear> <output file content>; no pipe, so pass/fail counters survive
+    rm -f "$COOLDOWN_FILE"; printf '%s\n' "$3" > "$QF"
+    # shellcheck source=/dev/null  # sources the real function extracted from delegate-to-codex at run time
+    ( source <(sed -n '/^quota_capture_from_output()/,/^}/p' "$REAL_DELEGATE"); COOLDOWN_FILE="$COOLDOWN_FILE"; DELEGATION_DIR="$DELEGATION_DIR"; quota_capture_from_output "$QF" ) >/dev/null 2>&1
+    if [[ "$2" == armed && -f "$COOLDOWN_FILE" ]] && grep -q "^${EXPECTED_RESET_DATE}T" "$COOLDOWN_FILE"; then pass "(i) $1"
+    elif [[ "$2" == clear && ! -f "$COOLDOWN_FILE" ]]; then pass "(i) $1"
+    else fail "(i) $1 — cooldown: $(cat "$COOLDOWN_FILE" 2>/dev/null || echo none)"; fi
+    rm -f "$COOLDOWN_FILE"
+}
+quota_case "column-0 ERROR line arms the cooldown with its reset" armed "working
+$QUOTA_LINE"
+quota_case "indented quota text arms nothing" clear "  $QUOTA_LINE"
+quota_case "diff-added quota text arms nothing" clear "+$QUOTA_LINE"
+quota_case "diff-removed quota text arms nothing" clear "-$QUOTA_LINE"
+quota_case "line-number-prefixed quota text arms nothing" clear "584:$QUOTA_LINE"
+quota_case "quota text inside an echo in a diff arms nothing" clear "+echo \"$QUOTA_LINE\""
+
 # (g) wait-mode non-zero codex exit is reported as failed, not success.
 # Regression coverage for the acceptance-verdict criterion-4 defect: a bare
 # `| tee "$output_file" || true` runs `true` as its own one-element pipeline,
@@ -321,6 +348,12 @@ if [[ ! -f "$COOLDOWN_FILE" ]]; then
     pass "(e-bg) healthy background success writes no cooldown"
 else
     fail "(e-bg) healthy background success unexpectedly wrote a cooldown"
+fi
+
+if [[ "$(git -C "$REPO_ROOT" worktree list --porcelain 2>/dev/null)" == "$REAL_WORKTREES_BEFORE" ]]; then
+    pass "(h) real repo worktree list unchanged"
+else
+    fail "(h) test leaked a git worktree into the real repo"
 fi
 
 echo "=== $PASS passed, $FAIL failed ==="

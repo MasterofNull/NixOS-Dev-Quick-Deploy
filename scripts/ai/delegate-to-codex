@@ -343,14 +343,17 @@ try:
 except Exception:
     sys.exit(0)
 
-# Codex prints a typographic apostrophe ("You’ve"); match apostrophe-agnostically.
-if "hit your usage limit" not in text.lower():
+# Only the CLI's own error line counts (column 0, same rule as aq-payload-audit): a review's output embeds the diff it
+# reviewed, and fixture lines quoted there ("+", indented, echo) must never arm a cooldown. "hit your usage limit" is
+# apostrophe-agnostic because codex prints a typographic apostrophe.
+err = re.search(r"^ERROR:[^\n\r]*hit your usage limit[^\n\r]*$", text, re.I | re.M)
+if not err:
     sys.exit(0)
 
 now = datetime.now(timezone.utc)
 fallback = (now + timedelta(hours=1)).strftime("%Y-%m-%dT%H:%M:%SZ")
 
-m = re.search(r"try again at\s+([^\n\r.]+)", text)
+m = re.search(r"try again at\s+([^\n\r.]+)", err.group(0))
 if not m:
     print(fallback)
     sys.exit(0)

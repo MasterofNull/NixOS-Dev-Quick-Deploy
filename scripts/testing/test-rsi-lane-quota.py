@@ -286,9 +286,10 @@ class DelegateToCodexQuotaCapture(unittest.TestCase):
         # and apostrophe-agnostically
         self.assertIn("hit your usage limit", content.lower())
 
-        # Verify Python code in the heredoc uses case-insensitive, apostrophe-agnostic check
-        # The PYEOF block contains: if "hit your usage limit" not in text.lower():
-        self.assertIn('"hit your usage limit" not in text.lower()', content)
+        # Only the CLI's own column-0 ERROR line may arm a cooldown (case-insensitive); a whole-output
+        # substring check also matches reviewed diffs that quote the error, which wrote false cooldowns.
+        self.assertIn(r'^ERROR:[^\n\r]*hit your usage limit[^\n\r]*$", text, re.I | re.M)', content)
+        self.assertNotIn('"hit your usage limit" not in text.lower()', content)
 
     def test_quota_capture_writes_iso_timestamp(self):
         """_is_lane_unavailable triggers quota capture by detecting the pattern."""

@@ -62,8 +62,14 @@ if mode == "hang":
         time.sleep(0.3)
 out = f"{S}/{rid}.log"
 shown = head if mode != "wronghead" else "f" * 40
-verdict = "REQUEST_CHANGES" if mode == "negative" else "PASS"
-text = f"looks fine\nReviewed-head-sha: {shown}\nReview-Disposition: {verdict}\n"
+verdict = "REQUEST_CHANGES" if mode in ("negative", "cantrun", "finding", "prose", "bullet", "real", "mixed") else "PASS"
+body = {"cantrun": "I am unable to proceed: every command timed out. Please check the status of the environment.\n",
+        "real": "The sandbox environment appears to be unresponsive, causing all command attempts to time out. As I cannot access the worktree files or the provided diff to perform the required review, I am unable to proceed with the task.\n\nPlease check the status of the environment.\n",
+        "finding": "scripts/ai/aq-land:365 drops valid rejections when a command timed out.\n",
+        "prose": "The lock is released twice, which corrupts state. I was also unable to access one file.\n",
+        "mixed": "The lock is released twice, which corrupts state. I am unable to proceed because subsequent commands timed out.\n",
+        "bullet": "- The retry loop never stops after the command timed out.\n"}.get(mode, "looks fine\n")
+text = f"{body}Reviewed-head-sha: {shown}\nReview-Disposition: {verdict}\n"
 open(out, "w").write(text)
 print(f"Output file: {out}")
 print(text)
@@ -570,6 +576,37 @@ class Lanes(Base):
         r = self.land(expect=1)
         self.assertIn("returned REQUEST_CHANGES", self.stop_line(r))
         self.assertEqual(self.calls("codex") + self.calls("local"), [])
+
+    def test_could_not_run_request_changes_stops_with_a_rerun_hint_never_falls_through(self):
+        self.cfg({"gemini": {"mode": "real"}, "codex": {"mode": "ok"}, "local": {"mode": "ok"}})
+        r = self.land("--lanes", "gemini,codex,local", expect=1)
+        line = self.stop_line(r)
+        self.assertIn("returned REQUEST_CHANGES but its reply says it could not run", line)
+        self.assertIn("re-run with --lanes codex,local", line)
+        self.assertEqual(self.calls("codex") + self.calls("local"), [])
+        self.assertEqual(self.ghs()["prs"], [])
+        self.assertIn("could not run", json.loads((next((self.S / "state").glob("*/checkpoint.json"))).read_text())["review_suspect"])
+
+    def test_could_not_run_on_the_only_lane_says_no_other_lane_is_left(self):
+        self.cfg({"gemini": {"mode": "real"}})
+        r = self.land("--lanes", "gemini", expect=1)
+        self.assertIn("no other eligible lane is left", self.stop_line(r))
+
+    def test_mixed_finding_and_could_not_run_reply_stops_plain(self):
+        self.cfg({"gemini": {"mode": "mixed"}, "local": {"mode": "ok"}})
+        r = self.land("--lanes", "gemini,local", expect=1)
+        line = self.stop_line(r)
+        self.assertIn("returned REQUEST_CHANGES; fix the findings", line)
+        self.assertNotIn("re-run with", line)
+        self.assertEqual(self.calls("local"), [])
+
+    def test_request_changes_with_findings_stop_plain(self):
+        for mode in ("finding", "prose", "bullet"):
+            self.tearDown_state(); self.gh_state({})
+            self.cfg({"gemini": {"mode": mode}, "local": {"mode": "ok"}})
+            r = self.land("--lanes", "gemini,local", expect=1)
+            self.assertIn("returned REQUEST_CHANGES; fix the findings", self.stop_line(r), mode)
+            self.assertEqual(self.calls("local"), [], mode)
 
     def test_trust_critical_change_never_goes_to_local_alone(self):
         self.change("scripts/governance/new-gate.sh", "#!/bin/sh\n")
