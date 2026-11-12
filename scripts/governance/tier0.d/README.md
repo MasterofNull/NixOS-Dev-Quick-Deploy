@@ -32,6 +32,7 @@ exit 1
 ## Current extension checks
 
 - `check-color-echo.sh` — blocks raw ANSI color escape sequences in changed shell scripts.
+- `check-payload-audit.sh` — report-only (`--maintenance` only, always exit 0): prints `aq-payload-audit` findings as WARN lines. The scheduled signal and HIGH-finding attention alert come from `scripts/health/ai-stack-health-monitor.py`.
 - `check-sops-sync.sh` — verifies every `sops.secrets` key declared in `secrets.nix` exists in the SOPS-encrypted file. Prevents the class of boot failure where `/run/secrets/` is never created because `sops-install-secrets` fails manifest validation.
 - `check-suspend-resume-contract.sh` — validates the staged managed-workload
   resilience registry and rejects new service/timer declarations that omit a
