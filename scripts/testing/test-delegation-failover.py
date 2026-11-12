@@ -18,6 +18,8 @@ import sys
 from pathlib import Path
 from datetime import datetime, timedelta
 
+from _coordinator_src import read
+
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 
 def test_task_type_detection():
@@ -25,8 +27,8 @@ def test_task_type_detection():
     print("Test 1: Task type detection...")
     
     # Import the function
-    http_server_path = REPO_ROOT / "ai-stack/mcp-servers/hybrid-coordinator/http_server.py"
-    content = http_server_path.read_text()
+    # http_server.py was deleted (e67f4289d); delegation logic moved to workflow/ and extensions/.
+    content = read("workflow/delegation_handlers.py")
     
     # Verify function exists
     if "_detect_task_type" not in content:
@@ -74,8 +76,8 @@ def test_fallback_chain_building():
     """Test 2: Fallback chain building logic."""
     print("\nTest 2: Fallback chain building...")
     
-    http_server_path = REPO_ROOT / "ai-stack/mcp-servers/hybrid-coordinator/http_server.py"
-    content = http_server_path.read_text()
+    # http_server.py was deleted (e67f4289d); delegation logic moved to workflow/ and extensions/.
+    content = read("workflow/delegation_handlers.py")
     
     if "_build_delegation_fallback_chain" not in content:
         print("  ✗ _build_delegation_fallback_chain function not found")
@@ -90,21 +92,22 @@ def test_fallback_chain_building():
     
     print("  ✓ priority_profiles defined in capabilities")
     
-    # Verify each task type has a priority chain
-    coding_chain = '"remote-coding", "remote-free", "local-tool-calling", "default"'
+    # Verify each task type has a priority chain. Chains are local-first since 65ecbb271
+    # (Phase 14.6 embedded-assist) and d9a602930; remote lanes follow as failover targets.
+    coding_chain = '"priority_profiles": ["local-tool-calling", "embedded-assist", "remote-coding", "remote-gemini", "remote-free"]'
     if coding_chain not in content:
         print("  ✗ Coding fallback chain not correct")
         return False
-    
-    print("  ✓ Coding fallback chain: remote-coding → remote-free → local-tool-calling → default")
-    
-    reasoning_chain = '"remote-reasoning", "remote-free", "default"'
+
+    print("  ✓ Coding fallback chain: local-tool-calling → embedded-assist → remote-coding → remote-gemini → remote-free")
+
+    reasoning_chain = '"priority_profiles": ["local-tool-calling", "embedded-assist", "remote-reasoning", "remote-gemini", "remote-free"]'
     if reasoning_chain not in content:
         print("  ✗ Reasoning fallback chain not correct")
         return False
-    
-    print("  ✓ Reasoning fallback chain: remote-reasoning → remote-free → default")
-    
+
+    print("  ✓ Reasoning fallback chain: local-tool-calling → embedded-assist → remote-reasoning → remote-gemini → remote-free")
+
     return True
 
 
@@ -112,8 +115,8 @@ def test_availability_checking():
     """Test 3: Agent availability checking."""
     print("\nTest 3: Agent availability checking...")
     
-    http_server_path = REPO_ROOT / "ai-stack/mcp-servers/hybrid-coordinator/http_server.py"
-    content = http_server_path.read_text()
+    # http_server.py was deleted (e67f4289d); delegation logic moved to workflow/ and extensions/.
+    content = read("workflow/delegation_handlers.py")
     
     if "_check_runtime_available" not in content:
         print("  ✗ _check_runtime_available function not found")
@@ -149,12 +152,27 @@ def test_agent_pool_manager_integration():
     spec = importlib.util.spec_from_file_location("agent_pool_manager", pool_manager_path)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
-    
-    # Create manager and test rate limiting
-    manager = module.AgentPoolManager()
-    
+
+    # The pool no longer hardcodes model ids (9e3e76dfc); it registers slots from
+    # SWITCHBOARD_REMOTE_ALIAS_* env vars, so give it a free and a paid slot.
+    import os
+    alias_env = {
+        "SWITCHBOARD_REMOTE_ALIAS_FREE": "test/free-model:free",
+        "SWITCHBOARD_REMOTE_ALIAS_CODING": "test/coding-model",
+    }
+    saved = {k: os.environ.get(k) for k in alias_env}
+    os.environ.update(alias_env)
+    try:
+        manager = module.AgentPoolManager()
+    finally:
+        for k, v in saved.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
+
     # Test marking agent as rate-limited
-    test_agent_id = "free_qwen_32b"
+    test_agent_id = "remote_free"
     manager.mark_rate_limited(test_agent_id)
     
     agent = manager.agents[test_agent_id]
@@ -201,8 +219,8 @@ def test_failover_chain_structure():
     """Test 5: Verify failover chain structure in code."""
     print("\nTest 5: Failover chain structure in delegation handler...")
     
-    http_server_path = REPO_ROOT / "ai-stack/mcp-servers/hybrid-coordinator/http_server.py"
-    content = http_server_path.read_text()
+    # http_server.py was deleted (e67f4289d); delegation logic moved to workflow/ and extensions/.
+    content = read("extensions/ai_coordinator_handlers.py")
     
     # Check for failover chain usage in delegation
     checks = [
@@ -227,8 +245,8 @@ def test_runtime_unavailable_failover():
     """Test 6: Runtime unavailable triggers failover."""
     print("\nTest 6: Runtime unavailable failover logic...")
     
-    http_server_path = REPO_ROOT / "ai-stack/mcp-servers/hybrid-coordinator/http_server.py"
-    content = http_server_path.read_text()
+    # http_server.py was deleted (e67f4289d); delegation logic moved to workflow/ and extensions/.
+    content = read("extensions/ai_coordinator_handlers.py")
     
     # Check for runtime unavailable handling
     if "runtime_unavailable" not in content:
@@ -263,8 +281,8 @@ def test_http_429_failover():
     """Test 7: HTTP 429 triggers failover chain."""
     print("\nTest 7: HTTP 429 failover chain...")
     
-    http_server_path = REPO_ROOT / "ai-stack/mcp-servers/hybrid-coordinator/http_server.py"
-    content = http_server_path.read_text()
+    # http_server.py was deleted (e67f4289d); delegation logic moved to workflow/ and extensions/.
+    content = read("extensions/ai_coordinator_handlers.py")
     
     # Check for 429 handling with failover chain
     if "response.status_code in {402, 429}" not in content:

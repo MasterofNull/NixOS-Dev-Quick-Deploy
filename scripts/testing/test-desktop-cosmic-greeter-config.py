@@ -25,7 +25,7 @@ def main() -> int:
         "desktop role should seed minimal COSMIC greeter config before greetd",
     )
     assert_true(
-        'before = [ "greetd.service" "cosmic-greeter-daemon.service" ];' in text,
+        'before = ["greetd.service" "cosmic-greeter-daemon.service"];' in text,
         "COSMIC greeter config seed should run before greeter startup",
     )
     assert_true(

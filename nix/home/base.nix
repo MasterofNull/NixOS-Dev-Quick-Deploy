@@ -1434,10 +1434,10 @@ if changed:
               sqlite3 "$gdb" "delete from ItemTable where key like '%continue%' or key like 'Continue.%';" 2>/dev/null || true
             fi
 
-            # 7. Prune oversized Gemini/Qwen extension state that blocks the
+            # 7. Prune oversized Qwen extension state that blocks the
             # extension host during startup.
             if [ -f "$gdb" ] && command -v python3 >/dev/null 2>&1; then
-              echo "[vscodium-repair] Pruning heavy Gemini/Qwen global state..."
+              echo "[vscodium-repair] Pruning heavy Qwen global state..."
               python3 - "$gdb" <<'PYEOF'
       import json, pathlib, sqlite3, sys
 

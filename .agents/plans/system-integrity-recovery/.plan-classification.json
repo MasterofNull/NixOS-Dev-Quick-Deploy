@@ -1,0 +1,5 @@
+{
+  "classification": "durable_plan",
+  "tracking_route": "tracker.json",
+  "evidence": "tracker.json declares plan.id=system-integrity-recovery, an owner, a goal, prd_ref=.agents/plans/system-integrity-recovery/DESIGN.md (exists) and 32 items; durable goals, slices and tasks are authored there."
+}

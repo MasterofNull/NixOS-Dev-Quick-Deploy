@@ -6,8 +6,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 SERVER = ROOT / "ai-stack" / "mcp-servers" / "hybrid-coordinator" / "server.py"
-HTTP_SERVER = ROOT / "ai-stack" / "mcp-servers" / "hybrid-coordinator" / "http_server.py"
-MCP_HANDLERS = ROOT / "ai-stack" / "mcp-servers" / "hybrid-coordinator" / "mcp_handlers.py"
+ROUTE_OWNER = ROOT / "ai-stack" / "mcp-servers" / "hybrid-coordinator" / "extensions" / "model_opt_handlers.py"
+MCP_HANDLERS = ROOT / "ai-stack" / "mcp-servers" / "hybrid-coordinator" / "extensions" / "mcp_handlers.py"
 
 
 def assert_true(condition: bool, message: str) -> None:
@@ -17,7 +17,7 @@ def assert_true(condition: bool, message: str) -> None:
 
 def main() -> int:
     server_text = SERVER.read_text(encoding="utf-8")
-    http_text = HTTP_SERVER.read_text(encoding="utf-8")
+    http_text = ROUTE_OWNER.read_text(encoding="utf-8")
     mcp_text = MCP_HANDLERS.read_text(encoding="utf-8")
 
     assert_true("import advanced_features" in server_text, "server should import advanced_features")
@@ -60,7 +60,7 @@ def main() -> int:
         "/control/ai-coordinator/advanced-features/learning/recommendations",
         "/control/ai-coordinator/advanced-features/learning/stats",
     ]:
-        assert_true(route in http_text, f"http server should register {route}")
+        assert_true(route in http_text, f"model_opt_handlers should register {route}")
 
     print("PASS: advanced features control plane wiring present")
     return 0
