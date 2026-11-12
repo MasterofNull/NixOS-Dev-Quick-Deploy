@@ -1,0 +1,64 @@
+{
+  "plan": {
+    "id": "learning-attribution",
+    "title": "Learning attribution boundary",
+    "goal": "Ensure non-agent and unknown task outcomes remain raw observations without reward, penalty, or learning-side state changes."
+  },
+  "items": [
+    {
+      "id": "LA-1",
+      "name": "Freeze attribution contract",
+      "goal": "Obtain independent review of outcome compatibility, eligibility, and trust-boundary decisions before code changes.",
+      "validation_goal": "Reviewer freeze records an approved eligibility table or explicit amendment.",
+      "deps": [],
+      "detection": {
+        "freeze_record": ".agent/PROJECT-LEARNING-ATTRIBUTION-PRD.md"
+      }
+    },
+    {
+      "id": "LA-2",
+      "name": "Wire explicit attribution",
+      "goal": "Carry optional attribution through existing interaction tracking and outcome-update ingress, retaining raw observations.",
+      "validation_goal": "Focused ingress tests prove absent failure attribution is unknown and all defined classes reach the tracker.",
+      "deps": [
+        "LA-1"
+      ],
+      "detection": {
+        "commit_match": [
+          "learning attribution",
+          "outcome attribution"
+        ]
+      }
+    },
+    {
+      "id": "LA-3",
+      "name": "Gate learning sinks",
+      "goal": "Block non-agent and unknown observations from scoring, context, patterns, procedural memory, and training contribution.",
+      "validation_goal": "Regression tests assert every sink is suppressed for infrastructure_error, infeasible, cancelled, and unknown while eligible legacy success/partial behavior remains compatible.",
+      "deps": [
+        "LA-2"
+      ],
+      "detection": {
+        "test_match": [
+          "learning attribution",
+          "interaction tracker"
+        ]
+      }
+    },
+    {
+      "id": "LA-4",
+      "name": "Validate bounded slice",
+      "goal": "Run focused regressions and syntax validation with evidence before handoff.",
+      "validation_goal": "Focused pytest and py_compile commands pass against edited tracker and handler modules.",
+      "deps": [
+        "LA-3"
+      ],
+      "detection": {
+        "validation_commands": [
+          "pytest focused interaction tracker tests",
+          "python -m py_compile edited modules"
+        ]
+      }
+    }
+  ]
+}

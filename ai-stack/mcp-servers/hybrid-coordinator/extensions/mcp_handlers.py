@@ -452,6 +452,16 @@ TOOL_DEFINITIONS: List[Tool] = [
                 "context_ids": {"type": "array", "items": {"type": "string"}},
                 "tokens_used": {"type": "integer"},
                 "latency_ms": {"type": "integer"},
+                "attribution": {
+                    "type": "string",
+                    "enum": [
+                        "agent_error",
+                        "infrastructure_error",
+                        "infeasible",
+                        "cancelled",
+                        "unknown",
+                    ],
+                },
             },
             "required": ["query", "response", "agent_type", "model_used"],
         },
@@ -468,6 +478,16 @@ TOOL_DEFINITIONS: List[Tool] = [
                     "enum": ["success", "partial", "failure"],
                 },
                 "user_feedback": {"type": "integer", "minimum": -1, "maximum": 1},
+                "attribution": {
+                    "type": "string",
+                    "enum": [
+                        "agent_error",
+                        "infrastructure_error",
+                        "infeasible",
+                        "cancelled",
+                        "unknown",
+                    ],
+                },
             },
             "required": ["interaction_id", "outcome"],
         },
@@ -1615,6 +1635,7 @@ async def dispatch_tool(name: str, arguments: Any) -> List[TextContent]:
                 context_ids=arguments.get("context_ids", []),
                 tokens_used=arguments.get("tokens_used", 0),
                 latency_ms=arguments.get("latency_ms", 0),
+                attribution=arguments.get("attribution"),
             )
             _write_audit(name, 'success', None, (_time.perf_counter() - _start) * 1000, arguments)
             return [TextContent(type="text", text=json.dumps({"interaction_id": interaction_id}))]
@@ -1624,6 +1645,7 @@ async def dispatch_tool(name: str, arguments: Any) -> List[TextContent]:
                 interaction_id=arguments.get("interaction_id", ""),
                 outcome=arguments.get("outcome", "unknown"),
                 user_feedback=arguments.get("user_feedback", 0),
+                attribution=arguments.get("attribution"),
             )
             _write_audit(name, 'success', None, (_time.perf_counter() - _start) * 1000, arguments)
             return [TextContent(type="text", text=json.dumps({"status": "updated"}))]

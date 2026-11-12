@@ -20,7 +20,6 @@ Usage:
 """
 
 import json
-import inspect
 import logging
 import os
 from datetime import datetime
@@ -28,7 +27,7 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 from uuid import uuid4
 
-from config import Config, performance_window as _default_perf_window
+from config import Config
 from qdrant_client.models import FieldCondition, Filter, MatchValue, PointStruct, Range
 from shared.llm_config import build_llama_payload
 
@@ -76,22 +75,49 @@ def init(
 
 def compute_value_score(interaction: Dict[str, Any]) -> float:
     """Score interaction value (0-1) based on multiple factors."""
+    if not _learning_sink_policy(interaction)["positive"]:
+        return 0.0
     score = 0.0
     if interaction.get("outcome") == "success":
         score += 0.4
     elif interaction.get("outcome") == "partial":
         score += 0.2
-    user_feedback = interaction.get("user_feedback", 0)
-    if user_feedback == 1:
-        score += 0.2
-    elif user_feedback == 0:
-        score += 0.1
     reusability = estimate_reusability(interaction.get("query", ""))
     score += 0.2 * reusability
     complexity = estimate_complexity(interaction.get("response", ""))
     score += 0.1 * complexity
     score += 0.1 * 0.5  # novelty — simplified
     return min(score, 1.0)
+
+
+_ATTRIBUTION_VALUES = frozenset({
+    "agent_error", "infrastructure_error", "infeasible", "cancelled", "unknown",
+})
+
+
+def _normalize_attribution(attribution: Any) -> str:
+    return attribution if attribution in _ATTRIBUTION_VALUES else "unknown"
+
+
+def _learning_sink_policy(interaction: Dict[str, Any]) -> Dict[str, bool]:
+    """Return the sole eligibility decision used by learning-side sinks."""
+    attribution_supplied = interaction.get("attribution_supplied") is True
+    attribution = _normalize_attribution(interaction.get("attribution"))
+    outcome = interaction.get("outcome")
+    positive_outcome = outcome in {"success", "partial"}
+    feedback = interaction.get("user_feedback", 0)
+    try:
+        negative_feedback = int(feedback) < 0
+    except (TypeError, ValueError):
+        negative_feedback = False
+    positive = not attribution_supplied and positive_outcome
+    negative = (
+        attribution_supplied
+        and attribution == "agent_error"
+        and not positive_outcome
+        and (outcome == "failure" or negative_feedback)
+    )
+    return {"positive": positive, "negative": negative, "learning_eligible": positive or negative}
 
 
 def estimate_reusability(query: str) -> float:
@@ -119,7 +145,7 @@ async def record_simple_feedback(
     note: str = "",
     query: str = "",
 ) -> str:
-    """Record a simple +1/-1 rating for an interaction to learning_feedback + PerformanceWindow."""
+    """Persist a raw simple rating without inferring a performance signal."""
     feedback_id = str(uuid4())
     if _postgres is not None:
         try:
@@ -139,10 +165,6 @@ async def record_simple_feedback(
             )
         except Exception as exc:
             logger.warning("feedback_postgres_failed error=%s", exc)
-    pw = _perf_window or _default_perf_window
-    record_result = pw.record("general", success=(rating > 0))
-    if inspect.isawaitable(record_result):
-        await record_result
     logger.info("simple_feedback_recorded interaction_id=%s rating=%d", interaction_id, rating)
     return feedback_id
 
@@ -315,6 +337,7 @@ async def track_interaction(
     user_feedback: int = 0,
     tokens_used: int = 0,
     latency_ms: int = 0,
+    attribution: Optional[str] = None,
 ) -> str:
     """Store interaction in Qdrant for learning."""
     interaction_id = str(uuid4())
@@ -327,11 +350,15 @@ async def track_interaction(
         "context_provided": context_ids,
         "outcome": outcome,
         "user_feedback": user_feedback,
+        "attribution_raw": attribution,
+        "attribution": _normalize_attribution(attribution),
+        "attribution_supplied": attribution is not None,
         "tokens_used": tokens_used,
         "latency_ms": latency_ms,
         "timestamp": timestamp,
         "value_score": 0.0,
     }
+    interaction["learning_eligible"] = _learning_sink_policy(interaction)["learning_eligible"]
     query_embedding = await _embed(query)
     try:
         _qdrant.upsert(
@@ -370,7 +397,7 @@ async def track_interaction(
 
 
 async def update_interaction_outcome(
-    interaction_id: str, outcome: str, user_feedback: int = 0
+    interaction_id: str, outcome: str, user_feedback: int = 0, attribution: Optional[str] = None
 ) -> None:
     """Update interaction with outcome and compute value score."""
     try:
@@ -381,6 +408,12 @@ async def update_interaction_outcome(
         interaction = result[0].payload
         interaction["outcome"] = outcome
         interaction["user_feedback"] = user_feedback
+        if attribution is not None:
+            interaction["attribution_raw"] = attribution
+            interaction["attribution"] = _normalize_attribution(attribution)
+            interaction["attribution_supplied"] = True
+        policy = _learning_sink_policy(interaction)
+        interaction["learning_eligible"] = policy["learning_eligible"]
         value_score = compute_value_score(interaction)
         interaction["value_score"] = value_score
         _qdrant.set_payload(
@@ -398,7 +431,7 @@ async def update_interaction_outcome(
             agent_type = str(interaction.get("agent_type", "") or "general")
             latency_ms = float(interaction.get("latency_ms", 0) or 0.0)
 
-            if outcome in {"success", "partial"} and query_text and response_text:
+            if policy["positive"] and query_text and response_text:
                 await _model_optimization.capture_training_example(
                     query=query_text,
                     response=response_text,
@@ -413,7 +446,7 @@ async def update_interaction_outcome(
                     },
                 )
 
-            if model_used:
+            if model_used and policy["learning_eligible"]:
                 accuracy = 1.0 if outcome == "success" else 0.5 if outcome == "partial" else 0.0
                 await _model_optimization.record_model_performance(
                     model_id=model_used,
@@ -424,7 +457,7 @@ async def update_interaction_outcome(
                 )
         except Exception as exc:
             logger.warning("model_optimization_outcome_integration_failed interaction_id=%s error=%s", interaction_id, exc)
-        if value_score >= Config.HIGH_VALUE_THRESHOLD and Config.PATTERN_EXTRACTION_ENABLED:
+        if policy["positive"] and value_score >= Config.HIGH_VALUE_THRESHOLD and Config.PATTERN_EXTRACTION_ENABLED:
             await extract_patterns(interaction)
             if Config.AI_MEMORY_ENABLED and outcome == "success" and _store_memory is not None:
                 await _store_memory(
@@ -438,7 +471,7 @@ async def update_interaction_outcome(
                         "value_score": value_score,
                     },
                 )
-        if interaction.get("context_provided"):
+        if policy["positive"] and interaction.get("context_provided"):
             await update_context_metrics(interaction["context_provided"], outcome == "success")
     except Exception as exc:
         logger.error("Error updating interaction outcome: %s", exc)
@@ -573,6 +606,7 @@ async def generate_fine_tuning_dataset() -> str:
                 must=[
                     FieldCondition(key="value_score", range=Range(gte=Config.HIGH_VALUE_THRESHOLD)),
                     FieldCondition(key="outcome", match=MatchValue(value="success")),
+                    FieldCondition(key="learning_eligible", match=MatchValue(value=True)),
                 ]
             ),
             limit=1000,
@@ -580,6 +614,8 @@ async def generate_fine_tuning_dataset() -> str:
         training_data = []
         for point in high_value_interactions:
             payload = point.payload
+            if payload.get("learning_eligible") is not True:
+                continue
             training_data.append({
                 "messages": [
                     {"role": "system", "content": "You are a helpful NixOS and coding assistant specialized in system configuration and development."},
@@ -633,7 +669,17 @@ async def record_learning_feedback(
             collection_name="learning-feedback",
             points=[PointStruct(id=feedback_id, vector=embedding, payload=payload)],
         )
-        if Config.AI_MEMORY_ENABLED and _store_memory:
+        feedback_policy = {"negative": False}
+        if interaction_id and rating is not None and rating < 0:
+            try:
+                linked = _qdrant.retrieve(collection_name="interaction-history", ids=[interaction_id])
+                if linked:
+                    linked_interaction = dict(linked[0].payload)
+                    linked_interaction["user_feedback"] = rating
+                    feedback_policy = _learning_sink_policy(linked_interaction)
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("learning_feedback_interaction_lookup_failed interaction_id=%s error=%s", interaction_id, exc)
+        if feedback_policy["negative"] and Config.AI_MEMORY_ENABLED and _store_memory:
             await _store_memory(
                 "error_solutions",
                 summary=f"User correction for query: {query[:120]}",

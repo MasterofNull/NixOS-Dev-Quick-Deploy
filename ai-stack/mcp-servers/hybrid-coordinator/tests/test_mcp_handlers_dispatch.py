@@ -324,3 +324,50 @@ class TestQaPhaseAliases:
             asyncio.run(
                 mcp_handlers.run_qa_check_as_dict({"phase": "10", "format": "json"})
             )
+
+
+class TestLearningAttributionIngress:
+    @pytest.mark.asyncio
+    async def test_track_forwards_optional_attribution(self, monkeypatch):
+        received = {}
+
+        async def track(**kwargs):
+            received.update(kwargs)
+            return "interaction-1"
+
+        from extensions import mcp_handlers as ext
+
+        monkeypatch.setattr(ext, "_track_interaction", track)
+        await mcp_handlers.dispatch_tool(
+            "track_interaction",
+            {
+                "query": "q",
+                "response": "r",
+                "agent_type": "agent",
+                "model_used": "model",
+                "attribution": "infrastructure_error",
+            },
+        )
+
+        assert received["attribution"] == "infrastructure_error"
+
+    @pytest.mark.asyncio
+    async def test_update_forwards_optional_attribution(self, monkeypatch):
+        received = {}
+
+        async def update(**kwargs):
+            received.update(kwargs)
+
+        from extensions import mcp_handlers as ext
+
+        monkeypatch.setattr(ext, "_update_outcome", update)
+        await mcp_handlers.dispatch_tool(
+            "update_outcome",
+            {
+                "interaction_id": "interaction-1",
+                "outcome": "failure",
+                "attribution": "agent_error",
+            },
+        )
+
+        assert received["attribution"] == "agent_error"
