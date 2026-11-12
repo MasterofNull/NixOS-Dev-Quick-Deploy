@@ -6028,6 +6028,33 @@ _VALID_CONTROL_ACTIONS = frozenset(
 )
 
 
+_EVENT_SCAN_MARGIN = 1000
+
+
+def _iter_jsonl_reverse(path: Path, chunk_size: int = 1 << 20):
+    """Yield non-empty lines of a file newest-first without reading it whole.
+
+    The agent-run event log grows unbounded (150 MB+); callers only need the
+    newest `limit` matches, so scanning from the tail keeps request cost
+    proportional to the result rather than to the file.
+    """
+    with path.open("rb") as fh:
+        fh.seek(0, os.SEEK_END)
+        pos = fh.tell()
+        carry = b""
+        while pos > 0:
+            read = min(chunk_size, pos)
+            pos -= read
+            fh.seek(pos)
+            parts = (fh.read(read) + carry).split(b"\n")
+            carry = parts[0]
+            for raw in reversed(parts[1:]):
+                if raw.strip():
+                    yield raw.decode("utf-8", errors="replace")
+        if carry.strip():
+            yield carry.decode("utf-8", errors="replace")
+
+
 def _load_agent_run_events(
     *,
     run_id: Optional[str] = None,
@@ -6052,27 +6079,32 @@ def _load_agent_run_events(
         if not event_path.exists():
             continue
         try:
-            with event_path.open("r", encoding="utf-8") as fh:
-                for line in fh:
-                    if not line.strip():
+            # Scan is in append order, but producers may write out of timestamp
+            # order; read a margin beyond `limit` so the final timestamp sort
+            # still selects the newest `limit` unless reordering exceeds it.
+            scan_cap = limit + max(limit, _EVENT_SCAN_MARGIN)
+            matched = 0
+            for line in _iter_jsonl_reverse(event_path):
+                try:
+                    record = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if run_id and record.get("run_id") != run_id:
+                    continue
+                if experiment_id and record.get("experiment_id") != experiment_id:
+                    continue
+                if agent_id and record.get("agent_id") != agent_id:
+                    continue
+                if event_type and record.get("event_type") != event_type:
+                    continue
+                if spec_variant:
+                    spec = record.get("spec") or {}
+                    if spec.get("variant") != spec_variant:
                         continue
-                    try:
-                        record = json.loads(line)
-                    except json.JSONDecodeError:
-                        continue
-                    if run_id and record.get("run_id") != run_id:
-                        continue
-                    if experiment_id and record.get("experiment_id") != experiment_id:
-                        continue
-                    if agent_id and record.get("agent_id") != agent_id:
-                        continue
-                    if event_type and record.get("event_type") != event_type:
-                        continue
-                    if spec_variant:
-                        spec = record.get("spec") or {}
-                        if spec.get("variant") != spec_variant:
-                            continue
-                    events.append(record)
+                events.append(record)
+                matched += 1
+                if matched >= scan_cap:
+                    break
             if events:
                 if source_label == "no_data":
                     source_label = event_label
@@ -6208,7 +6240,8 @@ async def list_agent_runs(
     Each entry is a compact run summary: agent_id, lane_id, spec_variant,
     start/end timestamps, final_status, accepted, useful_ratio, token totals.
     """
-    events, source = _load_agent_run_events(
+    events, source = await asyncio.to_thread(
+        _load_agent_run_events,
         agent_id=agent_id,
         experiment_id=experiment_id,
         spec_variant=spec_variant,
