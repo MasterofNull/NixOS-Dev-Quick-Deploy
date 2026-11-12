@@ -3237,10 +3237,14 @@ async def get_trace(trace_id: str) -> Dict[str, Any]:
 async def get_scheduler_queue() -> Dict[str, Any]:
     """Banded local-slot queue (F2.5 slot_queue) — bands, waits, depth.
 
-    Pure read of .agents/delegation/scheduler-state.json (the queue's
+    Pure read of .agents/delegation/scheduler/scheduler-state.json (the queue's
     observability surface); available even when the queue is empty.
     """
-    state_p = _repo_root() / ".agents" / "delegation" / "scheduler-state.json"
+    lib_dir = str(Path(__file__).resolve().parents[4] / "scripts" / "ai" / "lib")  # code location, not the (patchable) data root
+    if lib_dir not in sys.path:
+        sys.path.insert(0, lib_dir)
+    import scheduler_paths  # dependency-free; the one path rule shared with slot_queue
+    state_p = scheduler_paths.read_path(_repo_root())
     now = time.time()
     try:
         raw = json.loads(state_p.read_text(encoding="utf-8"))

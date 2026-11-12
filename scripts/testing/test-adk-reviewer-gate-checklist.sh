@@ -3,10 +3,12 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-source "${ROOT}/lib/adk/implementation-discovery.sh"
-
 tmpdir="$(mktemp -d)"
 trap 'rm -rf "${tmpdir}"' EXIT
+
+# Sourcing creates its data dirs; keep them out of the checkout.
+export ADK_DATA_DIR="${tmpdir}/adk"
+source "${ROOT}/lib/l4-coord/adk/implementation-discovery.sh"
 
 gaps_file="${tmpdir}/capability-gaps.json"
 parity_file="${tmpdir}/parity-scorecard.json"

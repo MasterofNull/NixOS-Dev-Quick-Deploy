@@ -166,6 +166,25 @@ verify_remediation() {
     fi
 }
 
+# Same guard and threshold source as ralph-wiggum's ResourceLimitHook (hooks.py): 1-minute load
+# average / cores * 100 against RALPH_MAX_CPU_PERCENT (default 85.0). The unit used to reach this
+# work through the ralph queue, which applied that guard; running the script directly must not
+# bypass it. A deferral is logged (state dir + stderr) with its reason, never counted as success.
+load_guard() {
+    local max="${RALPH_MAX_CPU_PERCENT:-85.0}" load1 cores pct
+    load1=$(cut -d' ' -f1 "${GAP_LOADAVG_FILE:-/proc/loadavg}" 2>/dev/null) || return 0
+    cores=$(nproc 2>/dev/null || echo 1)
+    pct=$(awk -v l="$load1" -v c="$cores" 'BEGIN{printf "%.1f", l/c*100}')
+    if awk -v p="$pct" -v m="$max" 'BEGIN{exit !(p+0 > m+0)}'; then
+        local reason="CPU load too high (${pct}% > ${max}%)"
+        echo "DEFERRED: ${reason}; no gaps remediated this run, next scheduled run retries" >&2
+        log_event "$(jq -nc --arg ts "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --arg reason "$reason" \
+            '{timestamp: $ts, type: "deferred", reason: $reason, total: 0, success: 0, skipped: 0, failed: 0}')"
+        return 1
+    fi
+    return 0
+}
+
 main() {
     # Parse arguments
     while [[ $# -gt 0 ]]; do
@@ -179,6 +198,8 @@ main() {
             *) echo "Unknown option: $1"; usage; exit 1 ;;
         esac
     done
+
+    $DRY_RUN || load_guard || exit 0
 
     echo "=== Automated Gap Remediation ==="
     echo "Looking back: ${DAYS} days | Limit: ${LIMIT} | Min occurrences: ${MIN_OCCURRENCES}"
@@ -208,6 +229,10 @@ SQL
 
     if [[ -z "$gaps" ]]; then
         echo "No actionable gaps found."
+        # A run that finds nothing must still leave evidence, or a healthy
+        # daily run is indistinguishable from a dead one.
+        $DRY_RUN || log_event "$(jq -nc --arg ts "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            '{timestamp: $ts, type: "summary", total: 0, success: 0, skipped: 0, failed: 0}')"
         exit 0
     fi
 

@@ -607,6 +607,7 @@ jobs:
             --only sweep-dashboard-test \
             --only sweep-dashboard-report \
             --only sweep-enabled-units-test \
+            --only sweep-findings-batch1-test \
             --only dashboard-routing-ratio-test \
             --only tests-agent \
             --only tests-aq \

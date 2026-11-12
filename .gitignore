@@ -203,6 +203,7 @@ nix/hosts/*/.sops.yaml
 .agents/delegation/.codex-quota-cooldown
 .agents/delegation/scheduler-state.json
 .agents/delegation/scheduler-state.lock
+.agents/delegation/scheduler/
 .agents/delegation/streams/
 .agents/delegation/training-loop-checkpoint.json
 .agents/delegation/training-loop-results.jsonl

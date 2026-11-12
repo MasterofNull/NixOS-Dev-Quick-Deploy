@@ -1,0 +1,17 @@
+{
+  "_doc": "Read by scripts/governance/sweep-enabled-units.py. For units whose real output is not a file mtime under a declared path. journal_marker: regex that the unit's journal must match within 3x its timer interval (proof the run did work, not just exited 0). conditional_paths: {path: ENV_NAME}; the path is only written when ENV_NAME is non-zero in the unit environment.",
+  "ai-mcp-process-watch.service": {
+    "journal_marker": "Checked [1-9][0-9]* services",
+    "why": "Writes alert JSONL only when an unexpected executable is found; each run logs 'Checked N services, N PIDs, N alerts' to the journal. An untouched log dir means no alerts, not a dead job."
+  },
+  "ai-autonomous-improvement.service": {
+    "journal_marker": "Metrics inserted: [0-9]+",
+    "why": "Inserts metrics into Postgres and logs the count to the journal; it writes no files under DATA_DIR on a healthy cycle. AQ_WORKFLOW_DEVIATION_LOG_PATH is an input written by the deviation broker, not by this unit."
+  },
+  "ai-switchboard.service": {
+    "conditional_paths": {
+      "/var/lib/nixos-ai-stack/optimizer/switchboard-remote-budget.json": "SWB_REMOTE_DAILY_TOKEN_CAP"
+    },
+    "why": "Budget state is only persisted when SWB_REMOTE_DAILY_TOKEN_CAP > 0 (switchboard.py near line 3688); with no cap there is nothing to persist."
+  }
+}
