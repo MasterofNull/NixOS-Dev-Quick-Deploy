@@ -34,6 +34,42 @@ _COORD = Path(__file__).resolve().parent.parent.parent / "ai-stack" / "mcp-serve
 sys.path.insert(0, str(_COORD))
 
 import model_probe
+from extensions.model_probe import _is_cache_fresh
+
+
+def _status(profile_path: Path) -> dict:
+    import yaml
+
+    root = Path(__file__).resolve().parents[2]
+    catalog = yaml.safe_load((root / "config/model-catalog.yaml").read_text())
+    coordinator = json.loads((root / "config/model-coordinator.json").read_text())
+    models_dir = Path(os.environ.get("LLAMA_MODELS_DIR", "/var/lib/llama-cpp/models"))
+    declared = {entry["file"] for group in ("chat_models", "embedding_models")
+                for entry in catalog.get(group, {}).values()}
+    active_names = {"active.gguf", "active-embed.gguf"}
+
+    def target(name):
+        link = models_dir / name
+        return str(link.resolve()) if link.is_symlink() else None
+
+    return {
+        "domain": "llm",
+        "active_profile": json.loads(profile_path.read_text()) if profile_path.exists() else None,
+        "profile_fresh": bool(_is_cache_fresh(profile_path)),
+        "catalog_chat_models": sorted(catalog.get("chat_models", {})),
+        "catalog_embedding_models": sorted(catalog.get("embedding_models", {})),
+        "coordinator_tiers": coordinator.get("tiers", {}),
+        "models_dir": {
+            "path": str(models_dir),
+            "active_gguf_target": target("active.gguf"),
+            "active_embed_gguf_target": target("active-embed.gguf"),
+            "declared_files_present": sorted(name for name in declared if (models_dir / name).is_file()),
+            "untracked_or_temp_files": sorted(
+                entry.name for entry in models_dir.iterdir()
+                if entry.name not in declared | active_names and (entry.is_file() or entry.is_symlink())
+            ) if models_dir.is_dir() else [],
+        },
+    }
 
 
 async def _run(args: argparse.Namespace) -> None:
@@ -43,6 +79,19 @@ async def _run(args: argparse.Namespace) -> None:
         if args.profile_path
         else model_probe._default_profile_path()
     )
+
+    if args.status:
+        status = await asyncio.to_thread(_status, profile_path)
+        if args.json_only:
+            print(json.dumps(status, indent=2))
+        else:
+            print("LLM domain status")
+            print(f"  Profile: {profile_path} (fresh: {status['profile_fresh']})")
+            print(f"  Chat models: {', '.join(status['catalog_chat_models'])}")
+            print(f"  Embedding models: {', '.join(status['catalog_embedding_models'])}")
+            print(f"  Coordinator tiers: {json.dumps(status['coordinator_tiers'])}")
+            print(f"  Models: {json.dumps(status['models_dir'])}")
+        return
 
     if not args.json_only:
         print(f"Probing {llama_url} ...", file=sys.stderr)
@@ -92,6 +141,7 @@ def main() -> None:
     p.add_argument("--force", action="store_true", help="Re-probe even if a cached profile exists")
     p.add_argument("--profile-path", metavar="PATH", help="Output path for model-profile.json")
     p.add_argument("--json", dest="json_only", action="store_true", help="Print raw JSON only")
+    p.add_argument("--status", action="store_true", help="Report LLM domain status (active GGUF links, catalog/profile freshness, coordinator tiers, and on-disk GGUF inventory) without probing :8080")
     args = p.parse_args()
     asyncio.run(_run(args))
 

@@ -277,6 +277,62 @@ def t_no_delta_syncs_without_flake_update_or_deploy(fx):
 
 
 @with_fx
+def t_daily_no_change_refresh_prepares_nothing(fx):
+    fx.advance("docs/a.md")
+    p = fx.run("--daily", NIX_NOCHANGE="1")
+    check(p.returncode == 0, p.stderr + p.stdout)
+    check("nothing to deploy" in p.stdout and "READY" not in p.stdout, p.stdout)
+    check("flake update" in fx.calls() and "flake check" in fx.calls(), fx.calls())
+    check(not any(c in fx.calls() for c in ("land", "deploy", "baseline")) and fx.sudo_log() == [], (fx.calls(), fx.sudo_log()))
+    check(fx.ledger()[-1]["event"] == "finished" and fx.ledger()[-1]["rebuild"] is False, fx.ledger())
+    check(not any(e["stage"] == "ready" for e in fx.ledger()), "nothing was prepared, so --deploy must have nothing to run")
+    one_line_fail(fx.run("--deploy"), "deploy", "no prepared revision")
+
+
+@with_fx
+def t_daily_refreshed_lock_without_repo_delta_ends_ready(fx):
+    for docs_only in (False, True):
+        if docs_only:
+            fx.advance("docs/a.md")
+        old_lock = git(fx.repo, "show", "HEAD:flake.lock")
+        before, sudo_before = len(fx.calls()), len(fx.sudo_log())
+        p = fx.run("--daily")
+        check(p.returncode == 0, p.stderr + p.stdout)
+        lines = p.stdout.strip().splitlines()
+        check(len(lines) == 1 and lines[0].startswith("aq-update: READY") and lines[0].endswith("aq-update --deploy"), p.stdout)
+        calls = fx.calls()[before:]
+        check(all(c in calls for c in ("flake update", "flake check", "land")), calls)
+        check(not any(c in calls for c in ("deploy", "baseline")) and len(fx.sudo_log()) == sudo_before, "prepare must not deploy or call sudo")
+        check(git(fx.repo, "show", "HEAD:flake.lock") != old_lock and git(fx.repo, "rev-parse", "HEAD") == fx.origin_head(), "lock not landed and synced")
+        check(any(e.get("refresh_inputs") is True for e in fx.ledger()), fx.ledger())
+        d = fx.run("--deploy")
+        check(d.returncode == 0 and "baseline" in fx.calls() and fx.ledger()[-1]["rebuild"] is True, d.stderr + d.stdout)
+
+
+@with_fx
+def t_daily_survives_interrupt_and_resume(fx):
+    fx.advance("docs/a.md")
+    p = fx.run("--daily", NIX_KILL="flake check")
+    check(p.returncode != 0 and "land" not in fx.calls(), (p.returncode, fx.calls()))
+    check(any(e.get("refresh_inputs") is True for e in fx.ledger()), fx.ledger())
+    r = fx.run("--resume")  # no --daily here: the ledger carries the mode
+    check(r.returncode == 0 and "READY" in r.stdout, r.stderr + r.stdout)
+    check("land" in fx.calls() and not any(c in fx.calls() for c in ("deploy", "baseline")) and fx.sudo_log() == [], fx.calls())
+
+
+@with_fx
+def t_daily_alias_pair_dry_run_and_bad_combinations(fx):
+    p = fx.run("--daily", "--refresh-inputs", NIX_NOCHANGE="1")
+    check(p.returncode == 0 and "nothing to deploy" in p.stdout, p.stderr + p.stdout)
+    check(sum(e.get("refresh_inputs") is True for e in fx.ledger()) == 1, fx.ledger())
+    before = fx.snapshot()
+    d = fx.run("--daily", "--dry-run")
+    check(d.returncode == 0 and "--daily/--refresh-inputs" in d.stdout and fx.snapshot() == before, d.stderr + d.stdout)
+    for a in (["--daily", "--daily"], ["--daily", "--deploy"], ["--refresh-inputs", "--deploy"], ["--daily", "--bogus"]):
+        check(fx.run(*a).returncode == 2, a)
+
+
+@with_fx
 def t_delta_runs_stages_in_order(fx):
     new = fx.advance("nix/mod.nix", "2\n")
     p = fx.prepare()
