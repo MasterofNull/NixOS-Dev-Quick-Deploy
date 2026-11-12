@@ -253,6 +253,25 @@ else
     fail "(f) unparseable reset line wrote no cooldown at all"
 fi
 
+# (i) only the CLI's own column-0 ERROR line arms a cooldown; the same text quoted in a diff/echo/indented must not.
+QUOTA_LINE="ERROR: You've hit your usage limit for the day, try again at Jul 25th."
+QF="$WORKDIR/quota-line-test.log"
+quota_case() {  # <label> <expect: armed|clear> <output file content>; no pipe, so pass/fail counters survive
+    rm -f "$COOLDOWN_FILE"; printf '%s\n' "$3" > "$QF"
+    ( source <(sed -n '/^quota_capture_from_output()/,/^}/p' "$REAL_DELEGATE"); COOLDOWN_FILE="$COOLDOWN_FILE"; DELEGATION_DIR="$DELEGATION_DIR"; quota_capture_from_output "$QF" ) >/dev/null 2>&1
+    if [[ "$2" == armed && -f "$COOLDOWN_FILE" ]] && grep -q "^${EXPECTED_RESET_DATE}T" "$COOLDOWN_FILE"; then pass "(i) $1"
+    elif [[ "$2" == clear && ! -f "$COOLDOWN_FILE" ]]; then pass "(i) $1"
+    else fail "(i) $1 — cooldown: $(cat "$COOLDOWN_FILE" 2>/dev/null || echo none)"; fi
+    rm -f "$COOLDOWN_FILE"
+}
+quota_case "column-0 ERROR line arms the cooldown with its reset" armed "working
+$QUOTA_LINE"
+quota_case "indented quota text arms nothing" clear "  $QUOTA_LINE"
+quota_case "diff-added quota text arms nothing" clear "+$QUOTA_LINE"
+quota_case "diff-removed quota text arms nothing" clear "-$QUOTA_LINE"
+quota_case "line-number-prefixed quota text arms nothing" clear "584:$QUOTA_LINE"
+quota_case "quota text inside an echo in a diff arms nothing" clear "+echo \"$QUOTA_LINE\""
+
 # (g) wait-mode non-zero codex exit is reported as failed, not success.
 # Regression coverage for the acceptance-verdict criterion-4 defect: a bare
 # `| tee "$output_file" || true` runs `true` as its own one-element pipeline,

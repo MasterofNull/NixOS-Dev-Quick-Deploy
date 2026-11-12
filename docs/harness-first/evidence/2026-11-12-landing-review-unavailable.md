@@ -11,7 +11,8 @@ reviews showed text heuristics cannot safely bypass a rejection): a REQUEST_CHAN
 through to another lane. A conservative detector (`reviewer_could_not_run`) only improves the STOP text: it names the
 suspicion, prints the exact `--lanes` list of the remaining eligible lanes to re-run with (or says none is left), and records
 `review_suspect` in the checkpoint. It never creates a receipt or PASS. The "no verdict" fall-through is unchanged.
-(2) A test registered git worktrees and `delegate/codex-*` branches in the real repository (24 leaked entries under /tmp).
+(2) `delegate-to-codex` armed a 1-hour quota cooldown from fixture text quoted in the diff a review was reading; now only the CLI's own column-0 `ERROR:` line containing "hit your usage limit" counts (same rule as aq-payload-audit), and the reset is read from that line only.
+(3) A test registered git worktrees and `delegate/codex-*` branches in the real repository (24 leaked entries under /tmp).
 
 ## Workflow/Session IDs
 
@@ -35,6 +36,7 @@ reviewed the classification rule (never a PASS; any concrete finding still stops
   "no other eligible lane is left"; Codex's mixed example ("lock is released twice ... unable to proceed ... timed out"), a
   `file:line` finding, a prose finding and a bulleted finding all stop with the plain "fix the findings" text and no hint.
   Existing no-verdict, quota and timeout fall-through tests pass unchanged.
+- test-delegate-codex-quota-precheck (quota line): a column-0 ERROR line arms the cooldown with its reset; the same text indented, "+"/"-" prefixed, line-number prefixed, or inside an echo in a diff arms nothing. 22 passed.
 - test-delegate-codex-quota-precheck: before the fix 15 passed but the run added worktrees and 12 `delegate/codex-*`
   branches to the real repo; after, 16 passed including `(h) real repo worktree list unchanged` (231 before and after).
 
