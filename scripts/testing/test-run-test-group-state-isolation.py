@@ -37,4 +37,9 @@ assert ".agent-state.txt" in bad.stderr, bad.stderr
 
 good = run_group({"t_clean.py": CLEAN})
 assert good.returncode == 0, good.stderr
+
+# A per-case FAIL line printed above the last 8 lines must still reach the CI log.
+EARLY_FAIL = "print('FAIL t_early: boom')\nfor i in range(12): print(f'PASS t_{i}')\nraise SystemExit(1)\n"
+early = run_group({"t_early.py": EARLY_FAIL})
+assert early.returncode == 1 and "FAIL t_early: boom" in early.stderr and "PASS t_11" in early.stderr, early.stderr
 print("PASS test-run-test-group-state-isolation")
