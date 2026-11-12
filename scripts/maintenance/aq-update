@@ -166,7 +166,7 @@ class Ctx:
     def deployed(self):
         p = run(["nixos-version", "--configuration-revision"], check=False, stage="detect")
         rev = p.stdout.strip()
-        if p.returncode or not re.fullmatch(r"[0-9a-f]{40}", rev):
+        if p.returncode or not re.fullmatch(r"[0-9a-f]{40}(-dirty)?", rev):
             raise Fail("detect", f"deployed revision unknown (nixos-version gave '{rev or p.stderr.strip()}'); "
                                  "run scripts/maintenance/aq-deploy-current directly")
         return rev
@@ -332,7 +332,8 @@ Every rebuild includes all current inputs, refreshed immediately before it; the 
     def validate(self, target):
         got = self.deployed()
         if got != target:
-            raise Fail("validate", f"running revision {got[:8]} != verified {target[:8]}")
+            shown = got[:8] + ("-dirty" if got.endswith("-dirty") else "")
+            raise Fail("validate", f"running revision {shown} != verified {target[:8]}")
 
 
 def main(argv):
@@ -409,8 +410,14 @@ def go(c, resume):
     if begin is None:
         view, target0 = c.origin_main()
         deployed = c.deployed()
-        run(["git", *view, "cat-file", "-e", f"{deployed}^{{commit}}"], stage="detect")
-        delta = c.nix_delta(view, deployed, target0)
+        if deployed.endswith("-dirty"):  # left by a manual rebuild from a modified checkout: exact source unknown
+            delta = [f"({deployed[:8]}-dirty: running system built from a modified checkout)"]
+            if not c.dry:
+                print(f"{TAG}: the running system was built from a modified checkout ({deployed[:8]}-dirty), "
+                      "so its exact source is unknown; preparing a full deploy of the verified target.")
+        else:
+            run(["git", *view, "cat-file", "-e", f"{deployed}^{{commit}}"], stage="detect")
+            delta = c.nix_delta(view, deployed, target0)
         begin = {"deployed": deployed, "target0": target0, "delta": delta}
         if c.refresh_inputs:
             begin["refresh_inputs"] = True

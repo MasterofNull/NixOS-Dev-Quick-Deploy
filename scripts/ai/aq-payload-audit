@@ -462,8 +462,33 @@ def _reset_hint(error_line: str) -> str:
     return f"resets {m.group(1)}" if m else "usage limit"
 
 
-def check_codex_dispatch_history(repo: Path, days: int = 2) -> list[Finding]:
+def _reset_has_passed(error_line: str, logged_at: datetime, now: datetime) -> Optional[bool]:
+    """True/False when the CLI's reset time is parseable, None otherwise.
+
+    Assumption: the CLI prints reset times in the host's local time, so everything here is naive local
+    time (logged_at is the log's local mtime). Two formats exist: "Nov 12th, 2026 1:05 AM" and a bare
+    "4:29 PM", which means the next such time after the log was written.
+    """
+    m = re.search(r'try again at (.+?)\.?$', error_line.strip(), re.IGNORECASE)
+    if not m:
+        return None
+    text = re.sub(r'(\d)(?:st|nd|rd|th)\b', r'\1', m.group(1).strip())
+    try:
+        reset = datetime.strptime(text, "%b %d, %Y %I:%M %p")
+    except ValueError:
+        try:
+            t = datetime.strptime(text, "%I:%M %p")
+        except ValueError:
+            return None
+        reset = logged_at.replace(hour=t.hour, minute=t.minute, second=0, microsecond=0)
+        if reset < logged_at:
+            reset += timedelta(days=1)
+    return reset <= now
+
+
+def check_codex_dispatch_history(repo: Path, days: int = 2, now: Optional[datetime] = None) -> list[Finding]:
     """Check 6: Codex dispatch history analysis."""
+    now = now or datetime.now()
     findings = []
     
     outputs_dir = repo / ".agents" / "delegation" / "outputs"
@@ -500,7 +525,11 @@ def check_codex_dispatch_history(repo: Path, days: int = 2) -> list[Finding]:
         # source/prompt text mentioning "quota" (5 of 7 hits in 30 days were such echoes).
         limit_line = _USAGE_LIMIT_RE.search(content)
         if limit_line:
-            usage_limit_hits.append((log_file.name, limit_line.group(0)))
+            try:
+                logged_at = datetime.fromtimestamp(log_file.stat().st_mtime)
+            except OSError:
+                logged_at = now
+            usage_limit_hits.append((log_file.name, limit_line.group(0), logged_at))
     
     if high_rehydration_tasks:
         for task_name, tokens, execs in high_rehydration_tasks[:3]:  # top 3
@@ -515,16 +544,29 @@ def check_codex_dispatch_history(repo: Path, days: int = 2) -> list[Finding]:
             ))
     
     if usage_limit_hits:
-        newest_name, newest_line = sorted(usage_limit_hits)[-1]
-        findings.append(Finding(
-            lane="codex",
-            check_id="6b",
-            severity="high",
-            measured=f"{len(usage_limit_hits)} plan-quota exhaustion(s) in {days} days",
-            threshold="zero",
-            evidence_path=f".agents/delegation/outputs/{newest_name} ({_reset_hint(newest_line)})",
-            fix="Codex plan quota was exhausted (lane unavailable, not overspend); route work to the next eligible lane until reset (Rule 18)"
-        ))
+        newest_name, newest_line, newest_at = sorted(usage_limit_hits)[-1]
+        passed = _reset_has_passed(newest_line, newest_at, now)
+        # Unparseable or future reset stays HIGH: fail toward reporting.
+        if passed:
+            findings.append(Finding(
+                lane="codex",
+                check_id="6b",
+                severity="low",
+                measured=f"{len(usage_limit_hits)} plan-quota exhaustion(s) in {days} days; newest was exhausted and has since reset",
+                threshold="zero",
+                evidence_path=f".agents/delegation/outputs/{newest_name} ({_reset_hint(newest_line)})",
+                fix="Codex plan quota (not overspend) has reset; no action unless exhaustion recurs (Rule 18 routing applies while exhausted)"
+            ))
+        else:
+            findings.append(Finding(
+                lane="codex",
+                check_id="6b",
+                severity="high",
+                measured=f"{len(usage_limit_hits)} plan-quota exhaustion(s) in {days} days",
+                threshold="zero",
+                evidence_path=f".agents/delegation/outputs/{newest_name} ({_reset_hint(newest_line)})",
+                fix="Codex plan quota was exhausted (lane unavailable, not overspend); route work to the next eligible lane until reset (Rule 18)"
+            ))
     
     return findings
 

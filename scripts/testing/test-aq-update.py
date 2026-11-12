@@ -624,6 +624,26 @@ def t_unknown_deployed_revision_fails(fx):
     one_line_fail(fx.run(), "detect", "deployed revision unknown")
 
 
+@with_fx
+def t_dirty_deployed_revision_prepares_full_deploy(fx):
+    fx.advance("docs/a.md")  # no Nix delta: only the -dirty marker forces the rebuild
+    rev = (fx.stub / "running_rev").read_text().strip()
+    (fx.stub / "running_rev").write_text(rev + "-dirty\n")
+    p = fx.prepare()
+    check(p.returncode == 0 and "modified checkout" in p.stdout and "READY" in p.stdout, p.stderr + p.stdout)
+    check(fx.sudo_log() == [] and "deploy" not in fx.calls(), "prepare must not deploy or call sudo")
+    check(any(e["event"] == "ready" or (e["stage"] == "ready" and e["event"] == "done") for e in fx.ledger()), fx.ledger())
+    check(fx.run("--deploy").returncode == 0, "deploy phase failed")
+    check(fx.ledger()[-1]["event"] == "finished" and fx.ledger()[-1]["rebuild"] is True, fx.ledger())
+
+
+@with_fx
+def t_garbage_deployed_revision_still_fails(fx):
+    fx.advance("docs/a.md")
+    (fx.stub / "running_rev").write_text("not-a-rev-dirty\n")
+    one_line_fail(fx.run(), "detect", "deployed revision unknown")
+
+
 TESTS = [v for k, v in sorted(globals().items()) if k.startswith("t_")]
 
 if __name__ == "__main__":

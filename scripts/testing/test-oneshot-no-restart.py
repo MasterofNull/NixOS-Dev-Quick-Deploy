@@ -81,6 +81,15 @@ def check_hardened_base_no_restart(service_block: str, nix_file: Path) -> bool:
     return False
 
 
+# Timer oneshots that retry transient network failure; the start limit is what prevents a restart storm.
+BOUNDED_RETRY = {"ai-sync-knowledge-sources"}
+
+
+def has_bounded_retry(service_block: str) -> bool:
+    return all(re.search(p, service_block) for p in (
+        r'Restart\s*=\s*"on-failure"', r'RestartSec\s*=', r'StartLimitBurst\s*=', r'StartLimitIntervalSec\s*='))
+
+
 def test_oneshot_services():
     """Test that all oneshot units have Restart = "no"."""
     services_to_check = [
@@ -109,6 +118,16 @@ def test_oneshot_services():
 
         if not is_oneshot(service_block):
             print(f"SKIP: {service_name} is not a oneshot service")
+            continue
+
+        if service_name in BOUNDED_RETRY:
+            if has_bounded_retry(service_block):
+                print(f"PASS: {service_name} retries on-failure with a start limit")
+                passed += 1
+            else:
+                print(f"FAIL: {service_name} must set Restart=on-failure, RestartSec and StartLimitBurst/IntervalSec")
+                failed += 1
+                unclassified.append((service_name, nix_file))
             continue
 
         # Check if Restart = "no" is set
