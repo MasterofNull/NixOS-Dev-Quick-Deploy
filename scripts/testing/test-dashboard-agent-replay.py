@@ -224,6 +224,35 @@ def main() -> int:
                 print(f"  FAIL  {name}: {exc}")
                 failed += 1
 
+        # ── probe bound: list route cost must not scale with log size ─────
+        name = "agent-runs list: bounded tail scan over a large event log"
+        try:
+            import time
+            n_total = 60000
+            with events_file.open("w", encoding="utf-8") as fh:
+                for i in range(n_total):
+                    fh.write(_make_run_event(f"bulk-{i // 5}", event_type=f"e{i}") + "\n")
+            t0 = time.monotonic()
+            resp = client.get("/api/aistack/agent-runs?limit=1")
+            elapsed = time.monotonic() - t0
+            assert_true(resp.status_code == 200, f"status={resp.status_code}")
+            body = resp.json()
+            assert_true(body.get("count") == 1, f"count={body.get('count')}")
+            assert_true(body["runs"][0]["event_count"] <= 5000, "events bounded by scan limit")
+            assert_true(body["runs"][0]["run_id"].startswith("bulk-"), "run from log")
+            events, _ = aistack_module._load_agent_run_events(limit=5000)
+            assert_true(len(events) == 5000, f"loaded {len(events)} events, expected 5000")
+            assert_true(events[-1]["event_type"] == f"e{n_total - 1}", "newest event retained")
+            assert_true(elapsed < 2.0, f"route took {elapsed:.2f}s")
+            # a short tail line without trailing newline and filters still work
+            ev, _ = aistack_module._load_agent_run_events(run_id="bulk-0", limit=500)
+            assert_true(len(ev) == 5, f"old run reachable, got {len(ev)}")
+            print(f"  PASS  {name} ({elapsed:.2f}s)")
+            passed += 1
+        except Exception as exc:
+            print(f"  FAIL  {name}: {exc}")
+            failed += 1
+
     total = passed + failed
     if failed:
         print(f"\n{failed}/{total} tests FAILED")
