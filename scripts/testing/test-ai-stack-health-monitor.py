@@ -93,6 +93,36 @@ def main() -> int:
         monitor._PHASES = original_phases
         monitor.write_status = original_write_status
 
+    # Freshness-class failures (0.10.5) are maintenance: separate medium alert, never counted toward the
+    # outage severity; a real failure with "expired" in its message must still be an outage.
+    pushed = []
+    monitor.push = lambda **spec: (AlertSpec(**spec).validate(), pushed.append(spec))
+    monitor.write_status = lambda status: None
+    monitor._PHASES = ["0"]
+    def qa(tests):
+        monitor.run_aq_qa = lambda phase: {"tests": tests}
+        pushed.clear()
+        with contextlib.redirect_stderr(io.StringIO()):
+            monitor.main()
+        return {item["dedup_key"]: item for item in pushed}
+    try:
+        stale = {"id": "0.10.5", "status": "FAIL", "description": "model catalog/profile freshness", "message": "model profile review is stale"}
+        real = lambda n, msg="boom": {"id": f"0.9.{n}", "status": "FAIL", "description": f"real {n}", "message": msg}
+        got = qa([stale, real(1), real(2)])
+        assert_true(got["qa-phase-0"]["severity"] == "high", "freshness must not push 2 real failures to critical")
+        assert_true(got["qa-phase-0-freshness"]["severity"] == "medium", "freshness alert must be medium maintenance")
+        assert_true("0.10.5" not in got["qa-phase-0"]["detail"], "freshness failure must leave the outage alert")
+        got = qa([stale])
+        assert_true(list(got) == ["qa-phase-0-freshness"], "freshness-only run must raise only the maintenance alert")
+        got = qa([real(1, "bump-expired"), real(2), real(3)])
+        assert_true(got["qa-phase-0"]["severity"] == "critical" and "qa-phase-0-freshness" not in got,
+                    "a real failure mentioning 'expired' must stay an outage")
+    finally:
+        monitor.push = original_push
+        monitor.run_aq_qa = original_run_qa
+        monitor._PHASES = original_phases
+        monitor.write_status = original_write_status
+
     captured = {}
 
     def fake_run(cmd, *, env=None, capture_output=False, text=False, timeout=None):
@@ -144,9 +174,12 @@ def main() -> int:
                 f"default _HARNESS_TIMEOUT_S ({monitor._HARNESS_TIMEOUT_S}s) must be >= 430s (measured 2.5x phase 0 time)")
     assert_true("HARNESS_TIMEOUT_S=430" in unit or "HARNESS_TIMEOUT_S" in unit,
                 "health monitor unit serviceConfig must set HARNESS_TIMEOUT_S env var")
-    assert_true("TimeoutStartSec" in unit and "490" in unit,
+    import re
+    timeout_s = re.search(r'TimeoutStartSec\s*=\s*"(\d+)"', unit)
+    assert_true(timeout_s and int(timeout_s.group(1)) >= 490,
                 "health monitor unit must set TimeoutStartSec >= 490s (harness timeout + margin)")
-    assert_true("MemoryMax" in unit and "768M" in unit,
+    mem = re.search(r'MemoryMax\s*=\s*"(\d+)M"', unit)
+    assert_true(mem and int(mem.group(1)) >= 768,
                 "health monitor unit must set MemoryMax >= 768M (1.5x measured 504M peak RSS)")
 
     print("PASS: ai-stack-health-monitor handles aq-qa JSON schema, TMPDIR, status writes, evidence-lock path, and configurable timeout")
