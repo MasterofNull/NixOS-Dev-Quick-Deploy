@@ -253,5 +253,103 @@ class TestRsiOsiTrigger(unittest.TestCase):
         self.assertIn("osi_layered_failed=2", inc["error"])
 
 
+class TestHealthIncidentAutoResolve(TestRsiOsiTrigger):
+    """Health-spider incidents close with evidence when the same check later passes."""
+
+    def _ledger(self):
+        return json.loads((self.runtime_dir / "rsi-incidents.json").read_text())["incidents"]
+
+    def _open_osi(self):
+        spider = aq_health_spider.HealthSpider()
+        spider._queue_prsi = AsyncMock()
+        asyncio.run(spider.handle_anomaly({
+            "type": "dashboard_degraded", "zone": "dashboard", "probe": "osi-layered",
+            "url": "http://x/y", "reason": "timed out", "timestamp": 1.0}))
+        return spider
+
+    def _sample(self, spider, probe_result, http=(True, 1.0)):
+        zones = {"dashboard": {"url": "http://x/h", "service": "svc.service", "probes": [
+            {"name": "osi-layered", "url": "http://x/y"}]}}
+        with patch.dict(aq_health_spider.ZONES, zones, clear=True), \
+             patch.object(aq_health_spider, "_http_check", return_value=http), \
+             patch.object(aq_health_spider, "_json_probe", return_value=probe_result), \
+             patch.object(aq_health_spider, "_resolve_recovered_dashboard_probe_alerts", return_value=0):
+            return asyncio.run(spider.sample_zone("dashboard"))
+
+    def test_clear_resolves_with_evidence_and_queue_row(self):
+        spider = self._open_osi()
+        inc = next(iter(self._ledger().values()))
+        self.assertEqual(inc["status"], "open")
+        queue = {"actions": [{"id": "a1", "status": "rsi_pending", "risk": "high", "raw_action": {
+            "source": "rsi-incidents.json", "reason": "rsi-incident-open", "incident_id": inc["id"]}}]}
+        self._sample(spider, (True, 2.0, ""))
+        inc = self._ledger()[inc["id"]]
+        self.assertEqual(inc["status"], "resolved")
+        self.assertIn("symptom cleared: probe:osi-layered passed at", inc["resolution"]["validation"])
+        self.assertIn("auto-resolved by health-spider", inc["resolution"]["validation"])
+        self.assertEqual(spider._rsi_auto_resolved, 1)
+        with patch.object(prsi_orchestrator, "_RSI_INCIDENTS", self.runtime_dir / "rsi-incidents.json"):
+            self.assertEqual(prsi_orchestrator._reconcile_rsi_queue(queue), 1)
+        self.assertEqual(queue["actions"][0]["status"], "rsi_resolved")
+
+    def test_still_failing_or_unrun_check_stays_open(self):
+        spider = self._open_osi()
+        self._sample(spider, (False, None, "timed out"))  # probe failed again
+        self.assertEqual(next(iter(self._ledger().values()))["status"], "open")
+        self.assertEqual(spider._rsi_auto_resolved, 0)
+        # A different probe passing must not close the osi incident.
+        zones = {"dashboard": {"url": "http://x/h", "probes": [{"name": "aggregate", "url": "http://x/a"}]}}
+        with patch.dict(aq_health_spider.ZONES, zones, clear=True), \
+             patch.object(aq_health_spider, "_http_check", return_value=(True, 1.0)), \
+             patch.object(aq_health_spider, "_json_probe", return_value=(True, 1.0, "")), \
+             patch.object(aq_health_spider, "_resolve_recovered_dashboard_probe_alerts", return_value=0):
+            asyncio.run(spider.sample_zone("dashboard"))
+        self.assertEqual(next(iter(self._ledger().values()))["status"], "open")
+
+    def test_systemd_pseudo_unit_is_not_a_clear(self):
+        rsi_lifecycle.failure("health-spider", "systemd:failed-units", "health-spider:systemd-failed-units",
+                              "systemd:a.service", "systemd", "Systemd failed units detected: a.service")
+        spider = aq_health_spider.HealthSpider()
+        spider._queue_prsi = AsyncMock()
+
+        def run(units):
+            with patch.object(aq_health_spider, "_failed_systemd_units", return_value=units), \
+                 patch.object(aq_health_spider, "ZONES", {}), \
+                 patch.object(aq_health_spider, "_closed_loop_check", return_value=[]), \
+                 patch.object(aq_health_spider, "_llm_speed_check", return_value=[]), \
+                 patch.object(aq_health_spider, "_llama_slot_wedged_check", return_value=[]), \
+                 patch.object(aq_health_spider, "_capability_enforcement_check", return_value=[]), \
+                 patch.object(aq_health_spider, "_confine_alerts_check", return_value=[]), \
+                 patch.object(aq_health_spider, "_owner_acceptance_check", return_value=[]), \
+                 patch.object(aq_health_spider, "_deployed_revision_check", return_value=[]), \
+                 patch.object(spider, "handle_anomaly", AsyncMock(return_value=True)):
+                asyncio.run(spider.run_once())
+        run([{"unit": "systemctl", "active": "error"}])
+        self.assertEqual(next(iter(self._ledger().values()))["status"], "open")
+        run([{"unit": "a.service"}])  # still failing
+        self.assertEqual(next(iter(self._ledger().values()))["status"], "open")
+        run([])
+        self.assertEqual(next(iter(self._ledger().values()))["status"], "resolved")
+        spider._queue_prsi.assert_awaited()  # queue reconcile triggered
+
+    def test_non_health_spider_producer_never_auto_resolved(self):
+        rsi_lifecycle.failure("x", "s", "capability-audit", "p", "a", "boom")
+        with self.assertRaises(ValueError):
+            rsi_lifecycle.resolve_cleared("capability-audit", lambda i: True, "c", rsi_lifecycle._now(), "t")
+        self.assertEqual(next(iter(self._ledger().values()))["status"], "open")
+
+    def test_seen_after_observation_stays_open(self):
+        rsi_lifecycle.failure("h", "s", "health-spider:osi-layered", "osi:osi-layered", "a", "boom")
+        self.assertEqual(rsi_lifecycle.resolve_cleared(
+            "health-spider:osi-layered", lambda i: True, "c", "2000-01-01T00:00:00Z", "t"), [])
+
+    def test_kill_switch_off_resolves_nothing(self):
+        spider = self._open_osi()
+        with patch.dict(os.environ, {"RSI_AUTO_RESOLVE": "0"}):
+            self._sample(spider, (True, 2.0, ""))
+        self.assertEqual(next(iter(self._ledger().values()))["status"], "open")
+        self.assertEqual(spider._rsi_auto_resolved, 0)
+
+
 if __name__ == "__main__":
     unittest.main()
