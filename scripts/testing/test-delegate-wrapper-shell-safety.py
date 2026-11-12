@@ -82,7 +82,7 @@ def _fixture_env(root: Path, **extra: str) -> dict:
     return {**os.environ, "AQ_DELEGATION_DIR": str(root / ".agents" / "delegation"), **extra}
 
 
-def run_wrapper(provider: str, root: Path, fail: bool) -> tuple[subprocess.CompletedProcess, Path]:
+def run_wrapper(provider: str, root: Path, fail: bool, extra: tuple = ()) -> tuple[subprocess.CompletedProcess, Path]:
     env = _fixture_env(root)
     argv_out = root / "argv.json"
     env.update(
@@ -99,7 +99,7 @@ def run_wrapper(provider: str, root: Path, fail: bool) -> tuple[subprocess.Compl
     stub = str(root / "stub-provider")
     if provider == "codex":
         env["CODEX_BIN"] = stub
-        args = ["--prompt", NASTY_PROMPT, "--shared", "--mode", "safe"]
+        args = ["--prompt", NASTY_PROMPT, "--shared", "--mode", "safe", *extra]
     else:
         env["GEMINI_BIN"] = stub
         args = ["--prompt", NASTY_PROMPT]
@@ -300,6 +300,25 @@ def check_registry_transactional() -> None:
         shutil.rmtree(root, ignore_errors=True)
 
 
+def check_codex_context_profiles() -> None:
+    """Every codex context profile (explicit full, explicit lean, auto on a short prompt) delivers the prompt intact."""
+    for label, extra in (("full", ("--context-profile", "full")), ("lean", ("--context-profile", "lean")), ("auto", ())):
+        root = make_sandbox()
+        try:
+            proc, argv_out = run_wrapper("codex", root, fail=False, extra=extra)
+            assert proc.returncode == 0, f"codex/{label}: rc={proc.returncode} {proc.stderr}"
+            row = wait_terminal(root)
+            assert row["status"] == "done", f"codex/{label}: {row}"
+            delivered = json.loads(argv_out.read_text())[-1]
+            assert delivered.endswith(NASTY_PROMPT), f"codex/{label}: prompt mangled: {delivered[-200:]!r}"
+            assert delivered.count(NASTY_PROMPT) == 1, f"codex/{label}: prompt duplicated"
+            assert not list(root.rglob("PWNED*")), f"codex/{label}: prompt text was executed"
+            assert not list(Path.cwd().glob("PWNED*"))
+            print(f"PASS codex/{label}: prompt byte-identical (trailing newline kept), nothing executed")
+        finally:
+            shutil.rmtree(root, ignore_errors=True)
+
+
 def check_wrappers_use_transactional_path() -> None:
     for w in sorted((REPO_ROOT / "scripts" / "ai" / "lib").glob("*-background-worker.sh")):
         subprocess.run(["bash", "-n", str(w)], check=True)
@@ -316,6 +335,7 @@ def main() -> int:
     check_wrappers_use_transactional_path()
     check_worker_launch_error_logged()
     check_provider("codex")
+    check_codex_context_profiles()
     check_provider("gemini")
     check_gemini_mode_mapping()
     check_gemini_noise_only_output()
