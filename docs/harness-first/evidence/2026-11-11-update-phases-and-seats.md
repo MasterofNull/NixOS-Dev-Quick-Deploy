@@ -62,3 +62,33 @@ test-aq-deploy-current-rev, test-sync-knowledge-sources-retry pass; `check-ci-te
 
 Activation: aq-update change is live on the next owner run. Nix unit change (env var, ripgrep on PATH) needs a rebuild; the
 convene seat fixes are unverified in the unit until then. Not run: tier0, full CI, real deploy, sudo.
+
+## Objective
+Fix three failures from the first real aq-update and the first live RSI convene rounds: the sudo prompt arriving after a long unattended wait, the local and Gemini seats failing inside the ai-prsi-rsi-dispatch sandbox, and an unbounded convene queue. Details per item follow above.
+
+## Workflow/Session IDs
+Branch fix/aq-update-phases-and-seats. Backlog entries AQ-UPDATE-SUDO, RSI-SEATS, KNOWLEDGE-SYNC. Live evidence: aq-update ledger run 20261107-193043 (deploy stage failed on sudo timeout); rsi-rounds rsi-20261108-130238 (local seat OSError read-only) and rsi-20261112-040603 (Gemini seat read-only symlink).
+
+## Delegation Decision
+Implementer: Claude Sonnet (Rule 17), dispatched by the orchestrator (claude-opus). The orchestrator rejected a first slot-queue design that split state between unit and shell processes, because it broke cross-process exclusion; the shared-directory design replaced it. Review through aq-land.
+
+## Commands Executed
+- python3 scripts/testing/test-aq-update.py
+- python3 scripts/testing/test-slot-queue-wiring.py
+- python3 scripts/testing/test-scheduler-lease-gate.py
+- python3 scripts/testing/test-local-delegation-artifact.py
+- python3 scripts/testing/test-rsi-convene-rounds.py
+- python3 scripts/testing/test-aq-rsi.py
+- bash scripts/governance/tier0.d/check-ci-test-coverage.sh
+
+## Validation Evidence
+aq-update 33/33; slot queue wiring ALL PASS including unit-style and shell-style processes contending for one slot, migration that never overwrites, and the unit's ReadWritePaths being exactly the scheduler directory; scheduler lease 7; local delegation 23; convene 33; aq-rsi 9; coverage PASS. New tests fail on the previous code.
+
+## Rollback Plan
+Revert the commit and rebuild. The old scheduler-state.json is left in place by the migration, so a revert finds it. aq-update without --deploy is safe to rerun; its ledger records each stage.
+
+## Residual Risk
+Nothing was run inside the real unit, so the ReadWritePaths, tmpfiles and Gemini env changes are proven only after the rebuild, by aq-rsi convene probe. The exact Gemini write that failed was not reproduced. aq-update --deploy has not run for real. The knowledge sync retry from #739 totals about 7 s of backoff, so a longer DNS outage still fails the weekly run.
+
+## Hint Feedback
+No hints were consulted. Live ledger entries, round outputs and the unit definition defined the work.
