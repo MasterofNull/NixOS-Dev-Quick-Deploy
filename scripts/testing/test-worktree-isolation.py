@@ -228,12 +228,14 @@ def caller_fixture(wrapper: Path, *, local: bool, background: bool) -> None:
             assert result.returncode, result.stdout + result.stderr
 
         registry = repo / ".agents/delegation/registry.jsonl"
-        for _ in range(100):
+        # Background lanes finish asynchronously; a fixed 5s budget starved under phase-0 load (load avg 8-10).
+        import time
+        deadline = time.monotonic() + 60
+        while time.monotonic() < deadline:
             if (registry.exists() and '"terminal_reason": "worktree_handback_failed"' in registry.read_text()
                     and capture.exists() and "worktree_handback_failed" in capture.read_text()
                     and "error_resolution" in capture.read_text()):
                 break
-            import time
             time.sleep(0.05)
         records = registry.read_text()
         assert '"status": "failed"' in records
