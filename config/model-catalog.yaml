@@ -66,7 +66,7 @@ chat_models:
       - "<|endoftext|>"
     chat_template: jinja
     recommended_gpu_layers: 12
-    notes: "Current default. Best quality; ~90-120s/response on CPU-only inference."
+    notes: "Former default; superseded by qwen3.6-35b-mtp (Q4_K_XL MTP). Best quality; ~90-120s/response on CPU-only inference."
 
 
   qwen3.6-35b-mtp:
@@ -86,7 +86,7 @@ chat_models:
     chat_template: jinja
     recommended_gpu_layers: 12
     mtp_args: "--spec-type draft-mtp --spec-draft-n-max 2"
-    notes: "Q4_K_XL with MTP speculative decoding; ~2.5 GiB smaller than Q5_K_S so it can stay resident on the 27GB host with the desktop open. Same family and args as the Q5 entry."
+    notes: "Current default (owner decision 2026-11-12). Q4_K_XL with MTP speculative decoding; ~2.5 GiB smaller than Q5_K_S so it can stay resident on the 27GB host with the desktop open. Same family and args as the Q5 entry."
 
   qwen3.6-35b-mtp-q5:
     name: "Qwen3.6 35B A3B MTP (Q5_K_S)"

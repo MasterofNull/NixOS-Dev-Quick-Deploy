@@ -1144,6 +1144,7 @@
       "paths": [
         "scripts/testing/run-test-group.py",
         "scripts/testing/test-local-agent-capability-reachability.py",
+        "scripts/testing/test-local-agent-config.py",
         "scripts/testing/test-local-agent-first-token-timeout.py",
         "scripts/testing/test-local-agent-monitor-visibility.py",
         "scripts/testing/test-local-agent-progress-guarded-tools.py",
@@ -1172,6 +1173,7 @@
       "ci_workflow": ".github/workflows/test.yml#syntax",
       "tests": [
         "scripts/testing/test-local-agent-capability-reachability.py",
+        "scripts/testing/test-local-agent-config.py",
         "scripts/testing/test-local-agent-first-token-timeout.py",
         "scripts/testing/test-local-agent-monitor-visibility.py",
         "scripts/testing/test-local-agent-progress-guarded-tools.py",
@@ -2766,11 +2768,6 @@
       "script": "scripts/testing/test-llm-router-integration.py",
       "class": "known-failing",
       "reason": "known-failing (2026-11-07): imports and config now load (path + AI_STRICT_ENV fixed), but the script only prints PASS/FAIL and exits 0, so it cannot gate; its Test 2 expects a 'free' tier for 'implement a new REST API endpoint' while the router now returns local (visible '✗ FAIL'). Needs a routing-policy decision, then conversion to real asserts"
-    },
-    {
-      "script": "scripts/testing/test-local-agent-config.py",
-      "class": "known-failing",
-      "reason": "fails on main (rc=1): AssertionError: hyperd should pin the local llama.cpp lane to qwen3.6-35b-mtp-q5 for harne, tracked in backlog"
     },
     {
       "script": "scripts/testing/test-local-agent-offline-resilience.py",

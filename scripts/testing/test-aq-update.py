@@ -13,6 +13,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -318,6 +319,22 @@ def t_daily_survives_interrupt_and_resume(fx):
     r = fx.run("--resume")  # no --daily here: the ledger carries the mode
     check(r.returncode == 0 and "READY" in r.stdout, r.stderr + r.stdout)
     check("land" in fx.calls() and not any(c in fx.calls() for c in ("deploy", "baseline")) and fx.sudo_log() == [], fx.calls())
+
+
+@with_fx
+def t_same_second_run_does_not_inherit_a_finished_run(fx):
+    # Run ids have second resolution; seed finished runs for this second and the next two so the new run collides.
+    now = time.time()
+    fx.state.mkdir(parents=True, exist_ok=True)
+    with open(fx.state / "ledger.jsonl", "a") as fh:
+        for dt in (0, 1, 2):
+            rid = time.strftime("%Y%m%d-%H%M%S", time.localtime(now + dt))
+            fh.write(json.dumps({"ts": "x", "run": rid, "stage": "validate", "event": "finished"}) + "\n")
+    fx.advance("nix/mod.nix", "2\n")
+    p = fx.run()
+    check(p.returncode == 0 and p.stdout.strip().startswith("aq-update: READY"), p.stderr + p.stdout)
+    d = fx.run("--deploy")
+    check(d.returncode == 0, d.stderr + d.stdout)
 
 
 @with_fx
