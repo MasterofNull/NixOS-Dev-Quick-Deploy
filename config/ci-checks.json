@@ -553,6 +553,26 @@
       "ci_workflow": ".github/workflows/test.yml#syntax"
     },
     {
+      "id": "sweep-findings-batch1-test",
+      "cmd": "scripts/testing/test-sweep-findings-batch1.py",
+      "paths": [
+        "scripts/testing/test-sweep-findings-batch1.py",
+        "scripts/governance/sweep-enabled-units.py",
+        "config/sweep-output-contracts.json",
+        "scripts/ai/aq-gap-auto-remediate",
+        "nix/modules/services/lease-signing-authority.nix",
+        "nix/modules/services/switchboard.nix",
+        "nix/modules/roles/ai-stack.nix",
+        "config/ci-checks.json"
+      ],
+      "needs": [
+        "python3",
+        "bash",
+        "jq"
+      ],
+      "ci_workflow": ".github/workflows/test.yml#syntax"
+    },
+    {
       "id": "dashboard-routing-ratio-test",
       "cmd": "scripts/testing/test-dashboard-routing-ratio.sh",
       "paths": [
@@ -1038,6 +1058,7 @@
         "scripts/testing/run-test-group.py",
         "scripts/testing/test-delegate-attention-queue-wiring.py",
         "scripts/testing/test-delegate-claude-model-routing.py",
+        "scripts/testing/test-delegate-codex-context-profile.py",
         "scripts/testing/test-delegate-codex-quota-precheck.sh",
         "scripts/testing/test-delegate-codex-shared-writable.py",
         "scripts/testing/test-delegate-dir-env-override.py",
@@ -1057,6 +1078,7 @@
       "tests": [
         "scripts/testing/test-delegate-attention-queue-wiring.py",
         "scripts/testing/test-delegate-claude-model-routing.py",
+        "scripts/testing/test-delegate-codex-context-profile.py",
         "scripts/testing/test-delegate-codex-quota-precheck.sh",
         "scripts/testing/test-delegate-codex-shared-writable.py",
         "scripts/testing/test-delegate-dir-env-override.py",
@@ -1066,6 +1088,7 @@
         "scripts/testing/test-delegate-to-local-argparse.sh",
         "scripts/testing/test-delegate-to-local-launch-verification.py",
         "scripts/testing/test-delegate-to-local-status-json.py",
+        "scripts/testing/test-delegate-wrapper-shell-safety.py",
         "scripts/testing/test-no-antigravity-ide-trigger.py"
       ]
     },
@@ -1272,22 +1295,20 @@
         "scripts/testing/test-a2a-compat.py",
         "scripts/testing/test-a2a-guard.py",
         "scripts/testing/test-activation-auto-revert-guard.py",
+        "scripts/testing/test-adk-declarative-wiring.sh",
         "scripts/testing/test-adk-integration.py",
         "scripts/testing/test-adk-protocol-compliance.py",
-        "scripts/testing/test-advanced-features-control-plane.py",
+        "scripts/testing/test-adk-reviewer-gate-checklist.sh",
         "scripts/testing/test-advanced-features-implementation.py",
         "scripts/testing/test-affective-reciprocity-wiring.py",
-        "scripts/testing/test-agent-evaluation-bias.py",
         "scripts/testing/test-agent-lesson-registry.py",
         "scripts/testing/test-agent-lesson-schema.py",
-        "scripts/testing/test-agent-pool-integration.py",
         "scripts/testing/test-agentic-toolchain-baseline.py",
         "scripts/testing/test-agentic-workflow-parity.py",
         "scripts/testing/test-ai-capability-implementation-backlog.py",
         "scripts/testing/test-ai-fit.py",
         "scripts/testing/test-ai-insights-ai-metrics.py",
         "scripts/testing/test-ai-insights-ranking-algorithms.py",
-        "scripts/testing/test-ai-metrics-instrumentation.py",
         "scripts/testing/test-ai-service-health-switchboard-details.py",
         "scripts/testing/test-ai-stack-acceleration-policy.py",
         "scripts/testing/test-aidb-last-accessed-sql.py",
@@ -1347,7 +1368,6 @@
         "scripts/testing/test-config-loader.py",
         "scripts/testing/test-consensus-persistence.py",
         "scripts/testing/test-container-recovery.sh",
-        "scripts/testing/test-continue-coordinator-ingress.py",
         "scripts/testing/test-continue-editor-failure-categories.py",
         "scripts/testing/test-continue-editor-history.py",
         "scripts/testing/test-continuous-learning-checkpoint-resume.py",
@@ -1356,9 +1376,14 @@
         "scripts/testing/test-continuous-learning-qdrant-upsert.py",
         "scripts/testing/test-control-channel.py",
         "scripts/testing/test-coordinator-prsi-canonical-queue.py",
-        "scripts/testing/test-coordinator-strangler-route-ownership.py",
         "scripts/testing/test-cross-agent-contradiction-detection.py",
-        "scripts/testing/test-curated-web-research.py"
+        "scripts/testing/test-curated-web-research.py",
+        "scripts/testing/test-advanced-features-control-plane.py",
+        "scripts/testing/test-agent-evaluation-bias.py",
+        "scripts/testing/test-agent-pool-integration.py",
+        "scripts/testing/test-ai-metrics-instrumentation.py",
+        "scripts/testing/test-continue-coordinator-ingress.py",
+        "scripts/testing/test-coordinator-strangler-route-ownership.py"
       ]
     },
     {
@@ -2414,19 +2439,9 @@
   ],
   "test_exempt": [
     {
-      "script": "scripts/testing/test-adk-declarative-wiring.sh",
-      "class": "known-failing",
-      "reason": "fails on main: references missing file lib/adk/wiring-validator.sh, tracked in backlog"
-    },
-    {
-      "script": "scripts/testing/test-adk-reviewer-gate-checklist.sh",
-      "class": "known-failing",
-      "reason": "fails on main: references missing file lib/adk/implementation-discovery.sh, tracked in backlog"
-    },
-    {
       "script": "scripts/testing/test-advanced-reasoning-patterns.py",
       "class": "known-failing",
-      "reason": "fails on main: references missing file ai-stack/agentic-patterns/self_consistency.py, tracked in backlog"
+      "reason": "tests ai-stack/agentic-patterns/self_consistency.py, archived to archive/ai-stack-deprecated-2026-05/ by 49720f3be (zero imports); decision needed: archive this test with the module (Rule 12) or restore the module"
     },
     {
       "script": "scripts/testing/test-agent-auth-s7-s9.py",
@@ -2550,8 +2565,8 @@
     },
     {
       "script": "scripts/testing/test-codex-subagent-configuration.py",
-      "class": "known-failing",
-      "reason": "fails on main: references missing file .codex/config.toml, tracked in backlog"
+      "class": "sandbox-env",
+      "reason": "reads .codex/config.toml and .codex/agents/, which are gitignored (.gitignore:322) local operator config and absent on a CI checkout; passes only where the operator has them"
     },
     {
       "script": "scripts/testing/test-continuous-learning-watchfiles-throttle.py",
@@ -2679,11 +2694,6 @@
       "reason": "fails on main (rc=1): FAILED (failures=6, errors=1), tracked in backlog"
     },
     {
-      "script": "scripts/testing/test-delegate-wrapper-shell-safety.py",
-      "class": "known-failing",
-      "reason": "fails on main: references missing file /tmp/tmp.ayXCQN4za0/delegate-shell-safety-wqyw6_ho/.agents/delegation/registry.jsonl, tracked in backlog"
-    },
-    {
       "script": "scripts/testing/test-delegate.py",
       "class": "live-service",
       "reason": "host-only: needs a live local service (switchboard/dashboard/coordinator/AIDB); POSTs to the coordinator at 127.0.0.1:8003 with the host secret /run/secrets/hybrid_coordinator_api_key"
@@ -2801,7 +2811,7 @@
     {
       "script": "scripts/testing/test-optional-performance-completion.py",
       "class": "known-failing",
-      "reason": "fails on main: references missing file .agents/plans/PHASE-4-5-COMPLETION-ROADMAP-2026-03-30.md, tracked in backlog"
+      "reason": "fails on main: the dashboard 'deployment-ops' card and its lazy-load registration were removed by the dashboard consolidation (1acd19966); the cache-prewarm, roadmap path and shell-escape assertions are fixed and pass. Decision needed: restore the card/lazy loading or drop the three dashboard assertions"
     },
     {
       "script": "scripts/testing/test-orchestration-visibility.py",
@@ -2811,7 +2821,7 @@
     {
       "script": "scripts/testing/test-pipeline-orchestration.py",
       "class": "known-failing",
-      "reason": "fails on main: references missing file ai-stack/agentic-patterns/pipeline_orchestration.py, tracked in backlog"
+      "reason": "tests ai-stack/agentic-patterns/pipeline_orchestration.py, archived to archive/ai-stack-deprecated-2026-05/ by 49720f3be (zero imports); decision needed: archive this test with the module (Rule 12) or restore the module"
     },
     {
       "script": "scripts/testing/test-prompt-effectiveness.py",
@@ -2875,8 +2885,8 @@
     },
     {
       "script": "scripts/testing/test-tier0-staged-isolation.sh",
-      "class": "known-failing",
-      "reason": "fails on main: references missing file .agent/collaboration/RESUME.json, tracked in backlog"
+      "class": "slow",
+      "reason": "runs the full tier0 gate battery three times (~80-90 s each, over the 120 s per-test timeout) and copies the gitignored .agent/collaboration/PULSE.log into its clone, which a clean checkout lacks"
     },
     {
       "script": "scripts/testing/test-vector-similarity-search-perf.py",

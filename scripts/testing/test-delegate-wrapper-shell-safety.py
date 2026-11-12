@@ -77,8 +77,13 @@ def wait_terminal(root: Path, timeout: float = 30.0) -> dict:
     raise AssertionError(f"task never left running: {registry_rows(root)} logs={logs}")
 
 
+def _fixture_env(root: Path, **extra: str) -> dict:
+    """Ambient env with the wrappers' state dir pinned to the fixture (the group runner sets AQ_DELEGATION_DIR elsewhere)."""
+    return {**os.environ, "AQ_DELEGATION_DIR": str(root / ".agents" / "delegation"), **extra}
+
+
 def run_wrapper(provider: str, root: Path, fail: bool) -> tuple[subprocess.CompletedProcess, Path]:
-    env = dict(os.environ)
+    env = _fixture_env(root)
     argv_out = root / "argv.json"
     env.update(
         {
@@ -106,7 +111,7 @@ def run_wrapper(provider: str, root: Path, fail: bool) -> tuple[subprocess.Compl
 
 
 def run_gemini(root: Path, args: list[str]) -> subprocess.CompletedProcess:
-    env = dict(os.environ)
+    env = _fixture_env(root)
     env.update(
         {
             "STUB_ARGV_OUT": str(root / "argv.json"),
@@ -145,7 +150,7 @@ def check_gemini_noise_only_output() -> None:
         assert proc.returncode == 0, proc.stderr
         row = wait_terminal(root)
         (root / row["output_file"]).write_text("Warning: quota\nAttempt 1 failed. retrying with backoff\n")
-        env = dict(os.environ, GEMINI_BIN=str(root / "stub-provider"))
+        env = _fixture_env(root, GEMINI_BIN=str(root / "stub-provider"))
         chk = subprocess.run(
             [str(root / "scripts" / "ai" / "delegate-to-gemini"), "--check", row["id"]],
             cwd=root, env=env, capture_output=True, text=True, timeout=60,
@@ -162,7 +167,7 @@ def check_gemini_wait_nonzero_exit() -> None:
     """--wait with a failing provider must reach the failure handling, not die on set -e at the tee pipeline."""
     root = make_sandbox()
     try:
-        env = dict(os.environ)
+        env = _fixture_env(root)
         env.update(STUB_FAIL="1", STUB_ARGV_OUT=str(root / "argv.json"), GEMINI_BIN=str(root / "stub-provider"),
                    HYBRID_COORDINATOR_URL="http://127.0.0.1:9", A2A_BUDGET_BYPASS="1")
         proc = subprocess.run(

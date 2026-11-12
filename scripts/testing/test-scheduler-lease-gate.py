@@ -199,7 +199,7 @@ def test_flag_on_valid_context_acquires() -> None:
             result = _acquire(root, context, keys, "valid")
             assert result.queue_depth == 1
             slot_queue.release(root, "valid")
-            markers = list((root / ".agents" / "delegation" / "scheduler-lease-reservations").glob("*.json"))
+            markers = list((root / ".agents" / "delegation" / "scheduler" / "scheduler-lease-reservations").glob("*.json"))
             assert len(markers) == 1
             assert json.loads(markers[0].read_text(encoding="utf-8"))["reservation_state"] == "released"
     finally:
@@ -227,7 +227,7 @@ def test_forged_expired_wrong_audience_deny() -> None:
                         pass
                     else:
                         raise AssertionError(f"invalid candidate {index} acquired")
-                    assert not (Path(tmp) / ".agents" / "delegation" / "scheduler-state.json").exists()
+                    assert not (Path(tmp) / ".agents" / "delegation" / "scheduler" / "scheduler-state.json").exists()
     finally:
         revocation_epoch.resolve_current_epoch = original
 
@@ -270,7 +270,7 @@ def test_epoch_bump_drops_held_reservation() -> None:
                 raise AssertionError("epoch-bumped held reservation acquired")
             with slot_queue._LockedState(root) as state:
                 assert state.running is None and state.queue == []
-            marker = next((root / ".agents" / "delegation" / "scheduler-lease-reservations").glob("*.json"))
+            marker = next((root / ".agents" / "delegation" / "scheduler" / "scheduler-lease-reservations").glob("*.json"))
             assert json.loads(marker.read_text(encoding="utf-8"))["reservation_state"] == "revoked-before-execution"
     finally:
         revocation_epoch.resolve_current_epoch = original
@@ -306,7 +306,7 @@ def test_authority_unreachable_denies_never_zero() -> None:
             else:
                 raise AssertionError("unreachable authority fell back to epoch zero")
             assert CAPABILITY_GATE.resolve_current_epoch() is None
-            assert not (root / ".agents" / "delegation" / "scheduler-state.json").exists()
+            assert not (root / ".agents" / "delegation" / "scheduler" / "scheduler-state.json").exists()
     finally:
         revocation_epoch.resolve_current_epoch = original
 

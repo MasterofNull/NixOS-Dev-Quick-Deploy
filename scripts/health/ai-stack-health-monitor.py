@@ -30,6 +30,10 @@ _PYTHON_BIN = str(Path(sys.executable).resolve().parent)
 _SYSTEM_BIN = "/run/current-system/sw/bin"
 _PHASES = ["0"]  # phase 0 = pre-flight smoke; fast enough for a 15-min timer
 _SOURCE = "ai-stack-health-monitor"
+# Pure time/expiry checks (Rule 19 gate corollary): reported as a separate lower-severity maintenance alert,
+# never counted toward the outage severity. Match by id only; a message match would hide real bugs
+# (e.g. 0.10.54 reports "bump-expired" when its fixture is wrong).
+_FRESHNESS_CHECK_IDS = frozenset({"0.10.5"})
 _ALERT_TTL_S = 3600  # > 3x the 15-min timer so one failing issue stays ONE alert (updated in place)
 _HARNESS_TIMEOUT_S = int(os.environ.get("HARNESS_TIMEOUT_S", "430"))  # ~2.5x measured phase-0 wall (147-171s)
 
@@ -138,7 +142,27 @@ def main() -> int:
             total_failures += 1
             continue
 
-        failures = failed_checks(data)
+        all_failures = failed_checks(data)
+        failures = [c for c in all_failures if str(c.get("id", "")) not in _FRESHNESS_CHECK_IDS]
+        stale = [c for c in all_failures if str(c.get("id", "")) in _FRESHNESS_CHECK_IDS]
+        if stale:
+            push_alert(
+                source=_SOURCE,
+                severity="medium",
+                autonomy_boundary="human_gate",
+                title=f"Maintenance due: {len(stale)} freshness check(s) expired (QA phase {phase})",
+                detail=(
+                    "Time-based freshness signals expired; nothing is broken, a periodic review/probe is overdue:\n"
+                    + "\n".join(f"  [{c.get('id', '?')}] {c.get('name') or c.get('description') or '?'}: "
+                                f"{c.get('message') or c.get('detail') or ''}" for c in stale)
+                ),
+                proposed_action="Re-probe and re-review the model profile/catalog (owner maintenance task).",
+                ttl_s=_ALERT_TTL_S,
+                dedup_key=f"qa-phase-{phase}-freshness",
+                why="A stale review window is tracked maintenance (Rule 19 gate corollary), not an outage.",
+                next_step="Run the model profile refresh when convenient.",
+                command=f"aq-qa {phase} --machine",
+            )
         failure_summaries = [
             {
                 "id": c.get("id", "?"),
