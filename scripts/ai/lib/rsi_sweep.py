@@ -20,6 +20,7 @@ _REPO = Path(__file__).resolve().parents[3]
 AGENT = "rsi-steward"
 QA_PROGRESS = Path(os.getenv("AQ_QA_PROGRESS_JSONL") or _REPO / ".agent" / "qa" / "latest-progress.jsonl")
 QA_MAX_AGE_S = int(os.getenv("RSI_SWEEP_QA_MAX_AGE_S", str(6 * 3600)))
+CODE_SCANNING_REFRESH_S = int(os.getenv("RSI_SWEEP_CODE_SCANNING_REFRESH_S", "3600"))
 CODE_SCANNING_MAX_AGE_S = int(os.getenv("RSI_SWEEP_CODE_SCANNING_MAX_AGE_S", str(48 * 3600)))
 _TAIL_BYTES = 1 << 20
 
@@ -267,13 +268,39 @@ def _default_alerts_path() -> Path:
     return Path(base) / "github-code-scanning-alerts.json"
 
 
-def adapter_code_scanning(alerts_path=None, max_age_s=None, now=None):
+def _refresh_alerts_export(path, fetch=None):
+    """Rewrite the export from GitHub (all states) atomically; AlertSourceError propagates."""
+    intake = _load_intake()
+    alerts = (fetch or (lambda: intake._fetch_alerts_from_github(state="")))()
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(path.name + f".tmp{os.getpid()}")
+    tmp.write_text(json.dumps(alerts), encoding="utf-8")
+    os.replace(tmp, path)
+
+
+def adapter_code_scanning(alerts_path=None, max_age_s=None, now=None, fetch=None):
     """Delegate planning to the existing intake (--dry-run); alerts come from its exported file.
 
     The export is a snapshot: past max age it says nothing about current alerts, so it is unknown.
+    The default export is refreshed from GitHub when missing or older than the refresh interval;
+    an explicit alerts_path is never refreshed.
     """
+    refreshable = alerts_path is None
     alerts_path = alerts_path or _default_alerts_path()
     max_age = CODE_SCANNING_MAX_AGE_S if max_age_s is None else max_age_s
+    if refreshable:
+        try:
+            export_age = (now if now is not None else time.time()) - Path(alerts_path).stat().st_mtime
+        except OSError:
+            export_age = None
+        if export_age is None or export_age > CODE_SCANNING_REFRESH_S:
+            try:
+                _refresh_alerts_export(alerts_path, fetch)
+            except (_load_intake().AlertSourceError, OSError):
+                pass  # keep the stale/missing outcome below
+            else:
+                now = None  # the export is fresh now, whatever clock the caller passed
     try:
         age = (now if now is not None else time.time()) - Path(alerts_path).stat().st_mtime
     except OSError as exc:
@@ -296,7 +323,20 @@ def adapter_code_scanning(alerts_path=None, max_age_s=None, now=None):
     findings = [dict(subject=p["subject"], producer=f"github-code-scanning:{p['category']}",
                      path=p["manifest"], authority="trivy", os_error=p["os_error"],
                      severity=p["severity"], root_fix=p["root_fix"]) for p in planned]
-    return ("findings" if findings else "ok"), findings, f"{len(findings)} alert group(s)"
+    plan = {}
+
+    def cleared(inc):
+        if not plan:
+            intake = _load_intake()
+            try:
+                plan["by_id"] = dict(plan_reconcile(intake._load_alerts(str(alerts_path)), _open_incidents(), intake))
+            except intake.AlertSourceError:
+                plan["by_id"] = {}
+        ev = plan["by_id"].get(inc.get("id"))
+        if ev is None:
+            return None
+        return f"code-scanning alerts closed upstream ({ev['alerts']} alerts, states {ev['states']}, analysis {ev['analysis']})"
+    return ("findings" if findings else "ok"), _with_cleared(findings, cleared), f"{len(findings)} alert group(s)"
 
 
 def adapter_qa_phase0(progress=None, max_age_s=None, now=None, health_monitor_json=None):
@@ -657,13 +697,20 @@ def adapter_attention_queue(attention_file=None):
     return "ok", _with_cleared([], cleared), "no unresolved high/critical attention alerts"
 
 
+_INTAKE = None
+
+
 def _load_intake():
+    global _INTAKE  # one module instance, so AlertSourceError identity holds across callers
+    if _INTAKE is not None:
+        return _INTAKE
     import importlib.util
     from importlib.machinery import SourceFileLoader
     path = _REPO / "scripts" / "security" / "rsi-intake-code-scanning.py"
     loader = SourceFileLoader("rsi_intake_code_scanning", str(path))
     module = importlib.util.module_from_spec(importlib.util.spec_from_loader(loader.name, loader))
     loader.exec_module(module)
+    _INTAKE = module
     return module
 
 
