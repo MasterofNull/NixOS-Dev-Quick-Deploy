@@ -1,0 +1,34 @@
+# Commercial licensing
+
+NixOS-Dev-Quick-Deploy (AQ-OS) is released under the **GNU Affero General Public
+License v3.0 or later (AGPL-3.0-or-later)**. For most people that is all you need:
+
+- **Personal use, learning, research, internal experimentation** — free, under the AGPL.
+- **Open contribution back** — fork, improve, and publish your source under the AGPL,
+  or share findings in public repositories, papers, or write-ups. This is the
+  reciprocity the project is built on, and it costs nothing.
+
+## When you may want a commercial license
+
+The AGPL asks one substantial thing of anyone who builds on this software and
+offers it to others — including **over a network** (AGPL §13): you must make the
+complete corresponding source of your modified version available to those users,
+under the AGPL.
+
+If your organization wants to use this software in a **paid product or hosted
+service and cannot or does not wish to release its modifications under the
+AGPL**, that use requires a separate commercial license. A commercial license
+can grant:
+
+- the right to distribute or host modified versions without AGPL source-disclosure;
+- negotiated support, warranty, or indemnification terms.
+
+## How to obtain one
+
+A commercial license is granted by the copyright holder on terms agreed in
+writing. To start a conversation, open a GitHub issue titled
+`commercial-license request` (no confidential details in the issue), and the
+copyright holder will follow up through a private channel.
+
+Until a written commercial agreement is signed, all use remains governed by the
+AGPL-3.0-or-later in `LICENSE`. Nothing in this document grants rights by itself.
