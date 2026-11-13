@@ -76,7 +76,9 @@ def test_missing_tool_timeout_crash_policies():
     r.register(py("import time;time.sleep(5)", "slow-open", ["compact"], timeout_s=0.3, fail_policy="open"))
     r.register(py("import time;time.sleep(5)", "slow-closed", ["stop"], timeout_s=0.3, fail_policy="closed"))
     r.register(py("raise SystemExit(3)", "crash-open", ["post"], fail_policy="open"))
-    r.register(py("import os;os.abort()", "crash-closed2", ["failure"], fail_policy="closed"))
+    # SIGKILL, not os.abort(): abort triggers core-dump handling on CI runners that can outlast the timeout.
+    r.register(py("import os,signal;os.kill(os.getpid(),signal.SIGKILL)", "crash-closed2", ["failure"],
+                  fail_policy="closed"))
     for e in ("pre", "failure", "compact", "stop", "post"):
         r.emit(ev(e))
     res = {x["event"]: x for x in r.drain()}
