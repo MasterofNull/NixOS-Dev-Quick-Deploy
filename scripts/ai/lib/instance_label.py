@@ -18,10 +18,13 @@ def _clean(value: str, fallback: str) -> str:
     return _UNSAFE.sub("-", (value or "").strip()).strip("-") or fallback
 
 
-def build_label(lane: str, model: str = "", session: str = "") -> str:
+def build_label(lane: str, model: str = "", session: str = "", persona: bool | None = None) -> str:
+    """`persona=None` reads the PERSONA env; verifiers pass an explicit bool to stay display-independent."""
     lane_s = _clean(lane.lower(), "unknown")
     ident = f"{lane_s}/{_clean(model, 'unknown')}"
-    if os.environ.get("PERSONA", "1") == "0":
+    if persona is None:
+        persona = os.environ.get("PERSONA", "1") != "0"
+    if not persona:
         return ident
     sess = _clean(session, "")[:8]
     return f"{PERSONA_NAME}@{ident}" + (f"#{sess}" if sess else "")

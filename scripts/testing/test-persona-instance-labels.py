@@ -92,6 +92,12 @@ class Receipts(unittest.TestCase):
         self.assertEqual(self.mint(persona="0").returncode, 0)
         self.assertEqual(self.receipt()["reviewer_instance"], "codex/gpt-5")
 
+    def test_verify_independent_of_verifier_persona_env(self) -> None:
+        for mint_p, verify_p in (("0", "1"), ("1", "0")):
+            self.assertEqual(self.mint(persona=mint_p).returncode, 0)
+            r = self.run_tool("verify", str(self.d / "r.json"), persona=verify_p)
+            self.assertEqual(r.returncode, 0, f"mint={mint_p} verify={verify_p}: {r.stderr}")
+
     def test_old_receipt_without_labels_verifies(self) -> None:
         self.mint()
         rec = self.receipt()

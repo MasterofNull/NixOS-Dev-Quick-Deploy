@@ -96,11 +96,11 @@ def _run_checks(entry, root: Path):
     return errs, full, rel, full.read_text(encoding="utf-8", errors="replace")
 
 
-def reviewer_instance(entry: dict) -> str:
+def reviewer_instance(entry: dict, persona: bool | None = None) -> str:
     """Label from the review run's own registry provenance, never from the minting process."""
     model = next((str(entry[k]) for k in ("model_effective", "model_requested")
                   if entry.get(k) and entry[k] != "unknown"), "")
-    return build_label(str(entry.get("agent", "")), model, str(entry.get("id", "")))
+    return build_label(str(entry.get("agent", "")), model, str(entry.get("id", "")), persona)
 
 
 def parse_verdict(text: str) -> str:
@@ -181,7 +181,7 @@ def verify_receipt(path: Path, root: Path, registry: Path) -> list[str]:
     if norm(r.get("reviewer_lane")) == norm(r.get("author_lane")):
         errs.append("reviewer_lane == author_lane")
     ri = r.get("reviewer_instance")  # absent on old receipts
-    if ri and entry and ri != reviewer_instance(entry):
+    if ri and entry and ri not in (reviewer_instance(entry, True), reviewer_instance(entry, False)):
         errs.append("receipt reviewer_instance != label derived from the registry run")
     if rel is not None and rel != r.get("output_file"):
         errs.append("registry output_file != receipt output_file")
