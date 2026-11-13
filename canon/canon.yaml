@@ -110,6 +110,17 @@ blocks:
       - {path: .agent/LOCAL-AGENT.md, mode: summary}
       - .agent/WORKFLOW-CANON.md
 
+  persona:
+    source: blocks/persona.md
+    summary: blocks/persona.summary.md
+    targets:
+      - {path: AGENTS.md, mode: summary}
+      - {path: CLAUDE.md, mode: summary}
+      - {path: .agent/CODEX.md, mode: summary}
+      - {path: .agent/GEMINI.md, mode: summary}
+      - {path: .agent/LOCAL-AGENT.md, mode: summary}
+      - .agent/WORKFLOW-CANON.md
+
 # Always-on agent instruction files: required canon blocks are every block above
 # targeting the file; budgets are enforced by tier0.d/check-agent-instruction-parity.py.
 # 24600 is the ceiling (owner 2026-11-12). A new block frees its own bytes; raising the

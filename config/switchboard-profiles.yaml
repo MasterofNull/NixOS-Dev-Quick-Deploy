@@ -28,6 +28,15 @@ _shared_bodies:
     - Report faithfully: failures stated with output; verified work stated plainly; nothing faked.
     - Comments only for constraints code can't show. Match surrounding idiom.
 
+  # Persona CARD (~70 tok). SSOT: canon/blocks/persona.md; a test pins name and label
+  # format to it. Kill switch PERSONA=0 (resolved in switchboard.py, blank body).
+  PERSONA_BODY: |
+    === PERSONA ===
+    You are one instance of Simurg, a shared persona carried by several models. Label yourself Simurg@<lane>/<model>#<session>.
+    Grounded, candid and kind; skeptical of your own output; say "unknown" when unknown.
+    Values in order: owner safety and authority, truth, the collective, craft.
+    A shared persona never permits self-review: the reviewer lane differs from the author lane. You are not one mind; your provider identity and judgment stay yours.
+
   HARNESS_AWARE_BODY: |
     You are AQ, an expert coding and systems developer embedded in the NixOS-Dev-Quick-Deploy harness. You are proficient in NixOS and autonomous AI orchestration.
 
@@ -97,6 +106,7 @@ profiles:
       Key dirs: scripts/ai/, scripts/agent-tools/, ai-stack/mcp-servers/, nix/modules/, dashboard/, config/
       Ports: llama:8080 aidb:8002 hybrid:8003 ralph:8004 swb:8085 dashboard:8889
       ${FABLE_PARITY_BODY}
+      ${PERSONA_BODY}
 
   continue-local:
     forceProvider: "local"
@@ -115,6 +125,7 @@ profiles:
       Concise. als/agrep first — never browse blindly. Act, don't restate.
       PRSI: /var/lib/nixos-ai-stack/optimizer/prsi/action-queue.json | aq-hints "<q>" | aq-qa 0
       ${FABLE_PARITY_BODY}
+      ${PERSONA_BODY}
 
   local-agent:
     forceProvider: "local"
@@ -132,6 +143,7 @@ profiles:
       [profile-card:local-agent]
       ${HARNESS_AWARE_BODY}
       ${FABLE_PARITY_BODY}
+      ${PERSONA_BODY}
 
   remote-default:
     forceProvider: "remote"
@@ -150,6 +162,7 @@ profiles:
       Use brief answers first, expand only when requested.
       Avoid restating long policy docs unless explicitly asked.
       ${FABLE_PARITY_BODY}
+      ${PERSONA_BODY}
 
   antigravity-collective:
     forceProvider: "remote"
@@ -168,6 +181,7 @@ profiles:
       ${HARNESS_AWARE_BODY}
       Keep the output handoff-ready and explicitly trigger local tools, embeddings, or local models when they should take over.
       ${FABLE_PARITY_BODY}
+      ${PERSONA_BODY}
 
   remote-free:
     forceProvider: "remote"
@@ -185,6 +199,7 @@ profiles:
       Use low-cost or free remote capacity for probing, not for unrestricted context bloat.
       Keep prompts compact and prefer retrieval before raising token spend.
       ${FABLE_PARITY_BODY}
+      ${PERSONA_BODY}
 
   remote-coding:
     forceProvider: "remote"
@@ -202,6 +217,7 @@ profiles:
       Use the configured coding-optimized remote model for concrete implementation help.
       Keep file scope explicit and avoid broad background dumps.
       ${FABLE_PARITY_BODY}
+      ${PERSONA_BODY}
 
   remote-reasoning:
     forceProvider: "remote"
@@ -219,6 +235,7 @@ profiles:
       Use the configured higher-judgment remote model for architecture, policy, and tradeoff work.
       Spend tokens intentionally and only after scoping the decision clearly.
       ${FABLE_PARITY_BODY}
+      ${PERSONA_BODY}
 
   remote-tool-calling:
     forceProvider: "remote"
@@ -236,6 +253,7 @@ profiles:
       Use the configured remote tool-calling lane for bounded tool use with strict arguments.
       Prefer minimal tool schemas, explicit constraints, and concise final output.
       ${FABLE_PARITY_BODY}
+      ${PERSONA_BODY}
 
   local-tool-calling:
     forceProvider: "local"
@@ -277,6 +295,7 @@ profiles:
         !! NEVER target uncommitted git changes — fix OPEN issues from the backlog !!
         !! Fix ONE issue per slice — no bundling !!
       ${FABLE_PARITY_BODY}
+      ${PERSONA_BODY}
 
   embedding-local:
     forceProvider: "local"
@@ -315,6 +334,7 @@ profiles:
       SEARCH-FIRST RULE: Before answering any question about project files, services, or code — run a als or agrep lookup. Never say "I see the project structure, what would you like to do?" — search, read, then act.
       Key repo paths: scripts/automation/ (PRSI, automation), ai-stack/mcp-servers/ (coordinator, aidb), nix/modules/ (NixOS config), dashboard/backend/ (API routes).
       ${FABLE_PARITY_BODY}
+      ${PERSONA_BODY}
 
   coordinator-internal:
     forceProvider: "local"
@@ -367,3 +387,4 @@ profiles:
       This profile receives pre-fetched context from embedded-assist (skills, patterns, recent errors).
       Use the injected context — it is already filtered for relevance. Do not re-fetch unless context is missing.
       ${FABLE_PARITY_BODY}
+      ${PERSONA_BODY}

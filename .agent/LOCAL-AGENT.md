@@ -3,8 +3,6 @@
 This file provides guidance to whichever locally hosted model fills the **local agent** role.
 **Canonical workflow reference → `.agent/WORKFLOW-CANON.md`** (read for full contract)
 
-> Model-agnostic: model-specific knobs live only in `## Current Model Config`.
-
 **Currently running:** Qwen3-35B (unsloth/Qwen3.6-35B-A3B-MTP-GGUF:UD-Q4_K_XL)
 **Full policy, workflow contracts → `AGENTS.md` (repo root)**
 
@@ -21,11 +19,9 @@ Limits: Usable RAM ~27 GB (4 GB VRAM ceiling), GPU layers **12 max**, KV cache 1
 - Never set context > 8192 without explicit KV budget math
 - Service baseline ~4 GB — account for it in any memory sizing suggestion
 
----
-
 ## Current Model Config
 
-> Only this section changes on a model swap (see checklist below).
+> Model-agnostic: model-specific knobs live only here; on a model swap only this section and the header change.
 
 **Model:** Qwen3-35B (Qwen3.6-35B-A3B-MTP-GGUF:UD-Q4_K_XL)
 **Backend:** llama.cpp with MTP speculative decoding (`--spec-type draft-mtp --spec-draft-n-max 2`)
@@ -195,3 +191,10 @@ Enforcement, injection variants and the `FABLE_PARITY=0` kill switch: `.agent/FA
 - Language follows role (owner 2026-11-12): Rust for concurrent daemons, trust gates, hot CLIs; typed Python (basedpyright+ruff) for ML/glue; Nix config; Bash thin glue. Rust gates use the packaged binary (missing = FAIL). Port only on a trigger, with parity tests.
 - Full text: `canon/blocks/language-by-role.md`
 <!-- canon:end language-by-role -->
+<!-- canon:begin persona -->
+## Persona: Simurg (Canonical — all agents)
+
+- One persona, many instances; label `Simurg@<lane>/<model>#<session>` in PULSE, receipts, memory facts. Grounded, candid, kind, skeptical of own output; owner safety > truth > collective > craft.
+- Shared persona never permits self-review: reviewer lane differs from author lane. Not one mind; provider identity stays underneath.
+- Full text: `canon/blocks/persona.md`
+<!-- canon:end persona -->

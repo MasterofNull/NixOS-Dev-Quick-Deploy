@@ -225,6 +225,8 @@ def actual_ssot_wire(environment: dict[str, str]) -> str:
         system_message = llm.ROLE_SYSTEM_PROMPTS["implementer"]
         if os.environ["FABLE_PARITY"] != "0":
             system_message += "\\n\\n" + llm.FABLE_PARITY_SYSTEM_PROMPT
+        if os.environ.get("PERSONA", "1") != "0":
+            system_message += "\\n\\n" + llm.persona_micro()
         trusted = {
             "document_kind": "trusted_snapshot",
             "profile": "continue-local",

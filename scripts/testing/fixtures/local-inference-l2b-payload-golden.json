@@ -9,13 +9,13 @@
   },
   "live_source_manifest": {
     "scripts/ai/aq-chat": "b0181653b767757cc3b5954ccb1ee256b25af52a7c5f3abf7ed3960fdafe8fae",
-    "scripts/ai/lib/dispatch.py": "23aaed8b1e4423e1744b504936782c6a167ae533e28495c73165dfaace58383c",
-    "ai-stack/mcp-servers/shared/llm_config.py": "1901963582f45ec8be825713b881a93dcf1b6d4a8c6d6e2953a8d8ad1e82a5cd",
+    "scripts/ai/lib/dispatch.py": "0b990176a0ac7b3b5b4bb3a65d83c93c45fe28d2da16ee5bbdcde08e1f8b5c25",
+    "ai-stack/mcp-servers/shared/llm_config.py": "31143716252e778180d0cbc86bb895d8bebbac0ae438a0c8835671627962743e",
     "ai-stack/mcp-servers/hybrid-coordinator/core/route_handler.py": "a3cca7f05220c9db64158a660f7b80f384e133e7a6843e82dacc25c49106a444",
     "ai-stack/mcp-servers/hybrid-coordinator/core/llm_client.py": "e4b4d6999a1ec34f9589827fd9386147d140127c3688adcf8f79c4969afbac8e",
     "ai-stack/mcp-servers/hybrid-coordinator/extensions/ai_coordinator_handlers.py": "ea7f235f36e8464e7b30ad54dbee00a6b166b04f315ff4fd6ec175214c0ac5ee",
     "ai-stack/agents/runtimes/local_agent_runtime.py": "8bbcbe1b9aefeca3b7bc6bd6a46b8861fd31e60cd16807c020667b4b613359c3",
-    "ai-stack/switchboard/switchboard.py": "7276c46a19ba9d5ebb289e04a2d1395df91065a3d158e8d53968e9f8396a2b2f",
+    "ai-stack/switchboard/switchboard.py": "8f704765734950dfa4f94bb9dad1f5fc16b0c3328fd68ef24528c7e9db545516",
     "ai-stack/mcp-servers/ralph-wiggum/server.py": "60f5bff936ade5120c319310692222512ccc86679abc2d24943579d30d7a6a3a"
   },
   "source_shapes": [
@@ -152,11 +152,11 @@
         "FABLE_PARITY": "0",
         "LLAMA_MAX_TOKENS": "128"
       },
-      "expected_system_message_sha256": "6f1d503e5322704ab889b1be11379d2ea59530de4c42b8301a737e59c4562910",
+      "expected_system_message_sha256": "8f440d7a9d86fe8f2ee2244fb3c6f3283b9fedb219969ec5c307d95628556e10",
       "expected_chat_template_kwargs": {
         "enable_thinking": false
       },
-      "expected_canonical_wire_utf8": "{\"headers\":[{\"name\":\"accept\",\"value\":\"text/event-stream\"},{\"name\":\"content-type\",\"value\":\"application/json\"},{\"name\":\"x-agent-role\",\"value\":\"implementer\"},{\"name\":\"x-ai-profile\",\"value\":\"continue-local\"},{\"name\":\"x-profile-snapshot-revision\",\"value\":\"snapshot-v1\"}],\"payload\":{\"cache_prompt\":true,\"chat_template_kwargs\":{\"enable_thinking\":false},\"frequency_penalty\":0.0,\"max_tokens\":128,\"messages\":[{\"content\":\"[Role: implementer] Execute assigned slice only. Validate output. Propose commit. Do not re-scope goals.\",\"role\":\"system\"},{\"content\":\"hello\",\"role\":\"user\"}],\"model\":\"local-test\",\"repeat_last_n\":64,\"repeat_penalty\":1.08,\"stream\":true,\"stream_options\":{\"include_usage\":true},\"temperature\":0.0}}"
+      "expected_canonical_wire_utf8": "{\"headers\":[{\"name\":\"accept\",\"value\":\"text/event-stream\"},{\"name\":\"content-type\",\"value\":\"application/json\"},{\"name\":\"x-agent-role\",\"value\":\"implementer\"},{\"name\":\"x-ai-profile\",\"value\":\"continue-local\"},{\"name\":\"x-profile-snapshot-revision\",\"value\":\"snapshot-v1\"}],\"payload\":{\"cache_prompt\":true,\"chat_template_kwargs\":{\"enable_thinking\":false},\"frequency_penalty\":0.0,\"max_tokens\":128,\"messages\":[{\"content\":\"[Role: implementer] Execute assigned slice only. Validate output. Propose commit. Do not re-scope goals.\\n\\nIdentity: you are Simurg@local/local, one instance of the Simurg collective persona: grounded, candid and kind, skeptical of your own output; say unknown when unknown. Never review or accept your own work.\",\"role\":\"system\"},{\"content\":\"hello\",\"role\":\"user\"}],\"model\":\"local-test\",\"repeat_last_n\":64,\"repeat_penalty\":1.08,\"stream\":true,\"stream_options\":{\"include_usage\":true},\"temperature\":0.0}}"
     },
     {
       "id": "actual-builder-fable-enabled",
@@ -164,11 +164,11 @@
         "FABLE_PARITY": "1",
         "LLAMA_MAX_TOKENS": "128"
       },
-      "expected_system_message_sha256": "0b1e2fd0e7351527c7c18aaca1be3931671d4833cce490a0f6e732731c666c9b",
+      "expected_system_message_sha256": "bf745e80da5f50071071572318a90323f2ba1ac128aa4afbd9bea98971bda6cf",
       "expected_chat_template_kwargs": {
         "enable_thinking": false
       },
-      "expected_canonical_wire_utf8": "{\"headers\":[{\"name\":\"accept\",\"value\":\"text/event-stream\"},{\"name\":\"content-type\",\"value\":\"application/json\"},{\"name\":\"x-agent-role\",\"value\":\"implementer\"},{\"name\":\"x-ai-profile\",\"value\":\"continue-local\"},{\"name\":\"x-profile-snapshot-revision\",\"value\":\"snapshot-v1\"}],\"payload\":{\"cache_prompt\":true,\"chat_template_kwargs\":{\"enable_thinking\":false},\"frequency_penalty\":0.0,\"max_tokens\":128,\"messages\":[{\"content\":\"[Role: implementer] Execute assigned slice only. Validate output. Propose commit. Do not re-scope goals.\\n\\nBehavior: lead with the outcome; final answer self-contained. Act, don't ask, for reversible in-scope work. Never end on a plan \u2014 do it or name the blocker. Verify evidence before any state change. Report failures honestly with output; state verified work plainly.\",\"role\":\"system\"},{\"content\":\"hello\",\"role\":\"user\"}],\"model\":\"local-test\",\"repeat_last_n\":64,\"repeat_penalty\":1.08,\"stream\":true,\"stream_options\":{\"include_usage\":true},\"temperature\":0.0}}"
+      "expected_canonical_wire_utf8": "{\"headers\":[{\"name\":\"accept\",\"value\":\"text/event-stream\"},{\"name\":\"content-type\",\"value\":\"application/json\"},{\"name\":\"x-agent-role\",\"value\":\"implementer\"},{\"name\":\"x-ai-profile\",\"value\":\"continue-local\"},{\"name\":\"x-profile-snapshot-revision\",\"value\":\"snapshot-v1\"}],\"payload\":{\"cache_prompt\":true,\"chat_template_kwargs\":{\"enable_thinking\":false},\"frequency_penalty\":0.0,\"max_tokens\":128,\"messages\":[{\"content\":\"[Role: implementer] Execute assigned slice only. Validate output. Propose commit. Do not re-scope goals.\\n\\nBehavior: lead with the outcome; final answer self-contained. Act, don't ask, for reversible in-scope work. Never end on a plan — do it or name the blocker. Verify evidence before any state change. Report failures honestly with output; state verified work plainly.\\n\\nIdentity: you are Simurg@local/local, one instance of the Simurg collective persona: grounded, candid and kind, skeptical of your own output; say unknown when unknown. Never review or accept your own work.\",\"role\":\"system\"},{\"content\":\"hello\",\"role\":\"user\"}],\"model\":\"local-test\",\"repeat_last_n\":64,\"repeat_penalty\":1.08,\"stream\":true,\"stream_options\":{\"include_usage\":true},\"temperature\":0.0}}"
     }
   ],
   "vectors": [

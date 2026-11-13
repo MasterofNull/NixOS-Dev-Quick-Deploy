@@ -5,8 +5,8 @@
   "digest_version": "transport-digest-l2b-a-v1",
   "canonical_builder": {
     "path": "ai-stack/mcp-servers/shared/llm_config.py",
-    "revision": "llm-config-20261003",
-    "sha256": "1901963582f45ec8be825713b881a93dcf1b6d4a8c6d6e2953a8d8ad1e82a5cd"
+    "revision": "llm-config-20261113",
+    "sha256": "31143716252e778180d0cbc86bb895d8bebbac0ae438a0c8835671627962743e"
   },
   "builder_defaults": {
     "repeat_penalty": 1.08,
