@@ -115,9 +115,17 @@ def emit(
     payload: Optional[dict[str, Any]] = None,
     subject: Optional[str] = None,
     event_id: Optional[str] = None,
+    instance: Optional[str] = None,
 ) -> Envelope:
-    """Build and append an envelope in one call."""
-    kwargs: dict[str, Any] = {"agent": agent, "type": type, "payload": payload or {}}
+    """Build and append an envelope in one call.
+
+    `instance` is the persona instance label; stored additively as payload["instance"]
+    so old readers and old records are unaffected.
+    """
+    body = dict(payload or {})
+    if instance:
+        body["instance"] = instance
+    kwargs: dict[str, Any] = {"agent": agent, "type": type, "payload": body}
     if subject is not None:
         kwargs["subject"] = subject
     if event_id is not None:
