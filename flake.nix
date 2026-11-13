@@ -373,6 +373,8 @@
     homeConfigurations = mkHomeConfigs;
     packages = lib.genAttrs devSystems (system': {
       harness-contracts = (mkPkgs nixpkgs system').callPackage ./nix/pkgs/harness-contracts.nix {};
+      # Re-exported from the pinned nixpkgs so check-python-types.py can build its tools before a rebuild.
+      inherit (nixpkgs.legacyPackages.${system'}) basedpyright ruff;
     });
     # s1a disk/install MECHANICS proof (rootless, no sudo — see
     # .agents/plans/aqos-installer-experience/END-TO-END-BARE-METAL-PLAN.md

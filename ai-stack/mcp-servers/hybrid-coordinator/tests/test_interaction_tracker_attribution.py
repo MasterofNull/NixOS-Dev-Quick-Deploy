@@ -26,6 +26,7 @@ class _Qdrant:
         self.feedback = []
         self.scroll_records = []
         self.scroll_filter = None
+        self.retrieve_error: Exception | None = None
 
     def upsert(self, *, collection_name, points):
         for point in points:
@@ -37,7 +38,7 @@ class _Qdrant:
     def retrieve(self, *, collection_name, ids):
         if collection_name != "interaction-history":
             return []
-        if getattr(self, "retrieve_error", None):
+        if self.retrieve_error is not None:
             raise self.retrieve_error
         return [
             types.SimpleNamespace(id=item, payload=self.interactions[item])

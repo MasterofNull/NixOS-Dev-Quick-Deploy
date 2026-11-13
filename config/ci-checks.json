@@ -3,6 +3,21 @@
   "description": "SSOT for CI-hard checks that run in seconds without network/services. CI workflows call scripts/governance/run-ci-checks.sh --all --only <id>; .githooks/pre-push runs --changed. Edit here, never inline the command in a workflow. Slow checks carry paths so --changed skips them; --all (CI) always runs them.",
   "checks": [
     {
+      "id": "python-type-gate",
+      "cmd": "scripts/governance/check-python-types.py --all",
+      "paths": [
+        "**/*.py",
+        "pyrightconfig.json",
+        "ruff.toml",
+        "config/python-check-baseline.json"
+      ],
+      "needs": [
+        "python3",
+        "git"
+      ],
+      "ci_workflow": ".github/workflows/test.yml#manifest-tests"
+    },
+    {
       "id": "python-tooling-policy",
       "cmd": "scripts/governance/check-python-tooling-policy.sh",
       "paths": [
@@ -1290,7 +1305,9 @@
         "scripts/testing/test-coordinator-prsi-canonical-queue.py",
         "scripts/testing/test-coordinator-strangler-route-ownership.py",
         "scripts/testing/test-cross-agent-contradiction-detection.py",
-        "scripts/testing/test-curated-web-research.py"
+        "scripts/testing/test-curated-web-research.py",
+        "scripts/governance/check-python-types.py",
+        "scripts/testing/test-check-python-types.py"
       ],
       "needs": [
         "python3",
@@ -1389,7 +1406,8 @@
         "scripts/testing/test-agent-pool-integration.py",
         "scripts/testing/test-ai-metrics-instrumentation.py",
         "scripts/testing/test-continue-coordinator-ingress.py",
-        "scripts/testing/test-coordinator-strangler-route-ownership.py"
+        "scripts/testing/test-coordinator-strangler-route-ownership.py",
+        "scripts/testing/test-check-python-types.py"
       ]
     },
     {
