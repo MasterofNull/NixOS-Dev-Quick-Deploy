@@ -28,3 +28,11 @@ def build_label(lane: str, model: str = "", session: str = "", persona: bool | N
         return ident
     sess = _clean(session, "")[:8]
     return f"{PERSONA_NAME}@{ident}" + (f"#{sess}" if sess else "")
+
+
+def agent_slot(default: str, lane: str, model: str = "", session: str = "") -> str:
+    """PULSE `[agent]` slot for direct writers: label when the model is known, else `default` unchanged."""
+    model = model or os.environ.get("AQ_INSTANCE_MODEL", "")
+    if not model:
+        return default
+    return build_label(lane, model, session or os.environ.get("AQ_INSTANCE_SESSION", ""))

@@ -23,8 +23,14 @@ def main():
         if pulse_log.parent.is_dir():
             ts = datetime.datetime.now(datetime.timezone.utc).isoformat()
             try:
+                sys.path.insert(0, str(Path(__file__).resolve().parent / "lib"))
+                from instance_label import agent_slot
+                agent = agent_slot("claude-hook", "claude")
+            except Exception:
+                agent = "claude-hook"
+            try:
                 with open(pulse_log, "a", encoding="utf-8") as f:
-                    f.write(f"[{ts}] [claude-hook] [post-tool]: {tool_name} executed\n")
+                    f.write(f"[{ts}] [{agent}] [post-tool]: {tool_name} executed\n")
             except Exception:
                 pass
     return 0
