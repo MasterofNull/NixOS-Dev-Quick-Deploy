@@ -162,7 +162,7 @@ def test_budget_check_only_flag():
             print(f"FAIL: --budget-check-only over budget returned {rc}, expected 3")
             return False
 
-        if "daily headless budget exhausted" not in err:
+        if "local headless cap reached" not in err:
             print(f"FAIL: error message not in stderr")
             return False
 
@@ -220,7 +220,7 @@ def test_budget_window_and_review_reserve():
         (outputs_dir / "codex-more.log").write_text("tokens used\n70,000\n")
         for role in ("implement", "review"):
             rc, _, err = chk(role)
-            if rc != 3 or "daily headless budget exhausted" not in err:
+            if rc != 3 or "local headless cap reached" not in err:
                 print(f"FAIL: {role} should be refused at total rc={rc} err={err!r}")
                 return False
 

@@ -45,7 +45,7 @@
 #   --help                Show this help
 #
 # Token budget: rolling-window headless limit (env DELEGATE_CODEX_DAILY_TOKEN_BUDGET,
-# default 250000). Sums tokens from .agents/delegation/outputs/codex-*.log whose mtime is
+# default 1000000). Sums tokens from .agents/delegation/outputs/codex-*.log whose mtime is
 # within DELEGATE_CODEX_BUDGET_WINDOW_HOURS (default 24). DELEGATE_CODEX_REVIEW_RESERVE_PCT
 # (default 40) of the budget is reserved for --role review: other roles are refused at
 # budget*(100-reserve)/100, review may use the full budget. Refusals print when headroom frees.
@@ -237,14 +237,14 @@ record_worktree_handback_failure() {
 # ── headless token budget check (rolling window, review reserve) ────────────
 # Sums tokens from .agents/delegation/outputs/codex-*.log files whose mtime is within the
 # last DELEGATE_CODEX_BUDGET_WINDOW_HOURS (default 24; timezone-independent) and compares
-# against DELEGATE_CODEX_DAILY_TOKEN_BUDGET (default 250000). A share of the budget,
+# against DELEGATE_CODEX_DAILY_TOKEN_BUDGET (default 1000000). A share of the budget,
 # DELEGATE_CODEX_REVIEW_RESERVE_PCT (default 40), is reserved for --role *review* dispatches:
 # other roles are refused once usage >= budget*(100-reserve)/100; review may use the full budget.
 # Exits 3 with the time headroom frees when refused (unless --force-budget).
 
 daily_budget_check() {
     local force_budget="${1:-false}" role="${2:-implement}" print_summary="${3:-false}"
-    local budget="${DELEGATE_CODEX_DAILY_TOKEN_BUDGET:-250000}"
+    local budget="${DELEGATE_CODEX_DAILY_TOKEN_BUDGET:-1000000}"
     local window_h="${DELEGATE_CODEX_BUDGET_WINDOW_HOURS:-24}"
     local reserve_pct="${DELEGATE_CODEX_REVIEW_RESERVE_PCT:-40}"
     # Support env override for testing
@@ -281,7 +281,7 @@ daily_budget_check() {
 
     local refuse=""
     if [[ $total_tokens -ge $budget ]]; then
-        refuse="daily headless budget exhausted: ${total_tokens}/${budget} tokens in the last ${window_h}h; reserving quota for interactive sessions. Headroom frees at ${next_free}. Route to another lane or set --force-budget."
+        refuse="local headless cap reached (self-imposed, not provider quota; codex itself may still work): ${total_tokens}/${budget} tokens in the last ${window_h}h; reserving quota for interactive sessions. Headroom frees at ${next_free}. Route to another lane or set --force-budget."
     elif [[ "$role" != *review* && $total_tokens -ge $impl_limit ]]; then
         refuse="role '${role}' refused: ${total_tokens} tokens used >= implement limit ${impl_limit} (${reserve_pct}% of ${budget} reserved for review; review headroom ${review_room}). Implement headroom frees at ${next_free}. Route to another lane or set --force-budget."
     fi
