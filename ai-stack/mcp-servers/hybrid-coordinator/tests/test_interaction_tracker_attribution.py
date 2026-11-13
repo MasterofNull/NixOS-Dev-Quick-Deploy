@@ -37,7 +37,13 @@ class _Qdrant:
     def retrieve(self, *, collection_name, ids):
         if collection_name != "interaction-history":
             return []
-        return [types.SimpleNamespace(payload=self.interactions[item]) for item in ids if item in self.interactions]
+        if getattr(self, "retrieve_error", None):
+            raise self.retrieve_error
+        return [
+            types.SimpleNamespace(id=item, payload=self.interactions[item])
+            for item in ids
+            if item in self.interactions
+        ]
 
     def set_payload(self, *, collection_name, payload, points):
         if collection_name == "interaction-history":
@@ -52,6 +58,10 @@ class _Qdrant:
 class _Postgres:
     def __init__(self):
         self.executed = []
+        self.feedback_rows = []
+
+    async def fetch_all(self, sql, *args):
+        return [dict(r) for r in reversed(self.feedback_rows) if r["rating"] < 0 and r["query"] and r["interaction_id"]]
 
     async def execute(self, *args):
         self.executed.append(args)
@@ -221,3 +231,102 @@ def test_linked_negative_feedback_requires_stored_agent_error_attribution(tracke
 
     assert len(qdrant.feedback) == 5
     assert len(calls["memory"]) == 1
+
+
+def _gap_sync(module, tmp_path, **kwargs):
+    path = tmp_path / "gaps.jsonl"
+    count = asyncio.run(module.sync_feedback_corrections_to_gaps(str(path), **kwargs))
+    lines = path.read_text(encoding="utf-8").splitlines() if path.exists() else []
+    return count, [__import__("json").loads(line) for line in lines]
+
+
+def _seed_gap_rows(qdrant, postgres, specs):
+    for i, (iid, query, rating) in enumerate(specs):
+        postgres.feedback_rows.append(
+            {"feedback_id": f"f{i}", "interaction_id": iid, "query": query, "rating": rating}
+        )
+
+
+@pytest.mark.parametrize(
+    ("payload", "exported"),
+    [
+        ({"attribution": "agent_error", "attribution_supplied": True, "outcome": "failure"}, True),
+        ({"attribution": "infrastructure_error", "attribution_supplied": True, "outcome": "failure"}, False),
+        ({"attribution": "cancelled", "attribution_supplied": True, "outcome": "failure"}, False),
+        ({"attribution": "infeasible", "attribution_supplied": True, "outcome": "failure"}, False),
+        ({"attribution": "agent_error", "attribution_supplied": True, "outcome": "partial"}, False),
+        ({"attribution": "agent_error", "attribution_supplied": True, "outcome": "success"}, False),
+        ({"attribution": "unknown", "attribution_supplied": True, "outcome": "failure"}, False),
+        ({"outcome": "failure"}, False),
+    ],
+)
+def test_gap_sync_exports_only_eligible_linked_negatives(tracker, tmp_path, payload, exported):
+    module, qdrant, postgres, _calls = tracker
+    qdrant.interactions["00000000-0000-4000-8000-000000000001"] = payload
+    _seed_gap_rows(qdrant, postgres, [("00000000-0000-4000-8000-000000000001", "q", -1)])
+
+    count, records = _gap_sync(module, tmp_path, min_occurrences=1)
+
+    assert count == int(exported)
+    assert [r["query_text"] for r in records] == (["q"] if exported else [])
+    if exported:
+        assert records[0]["source"] == "feedback_negative"
+        assert records[0]["occurrences"] == 1
+        assert records[0]["avg_score"] == -1.0
+
+
+def test_gap_sync_excludes_unlinked_feedback(tracker, tmp_path):
+    module, qdrant, postgres, _calls = tracker
+    _seed_gap_rows(qdrant, postgres, [(None, "q", -1), ("00000000-0000-4000-8000-0000000000ff", "q", -1)])
+
+    count, records = _gap_sync(module, tmp_path, min_occurrences=1)
+
+    assert count == 0 and records == []
+
+
+def test_gap_sync_counts_only_eligible_rows_per_query(tracker, tmp_path):
+    module, qdrant, postgres, _calls = tracker
+    qdrant.interactions["00000000-0000-4000-8000-000000000002"] = {"attribution": "agent_error", "attribution_supplied": True, "outcome": "failure"}
+    qdrant.interactions["00000000-0000-4000-8000-000000000003"] = {
+        "attribution": "infrastructure_error", "attribution_supplied": True, "outcome": "failure",
+    }
+    _seed_gap_rows(qdrant, postgres, [("00000000-0000-4000-8000-000000000002", "q", -1), ("00000000-0000-4000-8000-000000000003", "q", -1)])
+
+    count, records = _gap_sync(module, tmp_path, min_occurrences=2)
+
+    assert count == 0 and records == []
+
+    _seed_gap_rows(qdrant, postgres, [("00000000-0000-4000-8000-000000000002", "q", -3)])
+    count, records = _gap_sync(module, tmp_path, min_occurrences=2)
+    assert count == 1
+    assert records[0]["occurrences"] == 2
+    assert records[0]["avg_score"] == -2.0
+
+
+def test_gap_sync_fails_closed_when_lookup_raises_and_keeps_raw_rows(tracker, tmp_path):
+    module, qdrant, postgres, _calls = tracker
+    qdrant.interactions["00000000-0000-4000-8000-000000000002"] = {"attribution": "agent_error", "attribution_supplied": True, "outcome": "failure"}
+    _seed_gap_rows(qdrant, postgres, [("00000000-0000-4000-8000-000000000002", "q", -1)])
+    before = [dict(r) for r in postgres.feedback_rows]
+    qdrant.retrieve_error = RuntimeError("qdrant down")
+
+    count, records = _gap_sync(module, tmp_path, min_occurrences=1)
+
+    assert count == 0 and records == []
+    assert postgres.feedback_rows == before
+    assert postgres.executed == []
+
+
+def test_gap_sync_skips_malformed_interaction_ids_without_blocking_others(tracker, tmp_path):
+    module, qdrant, postgres, _calls = tracker
+    ok = "00000000-0000-4000-8000-000000000002"
+    qdrant.interactions[ok] = {"attribution": "agent_error", "attribution_supplied": True, "outcome": "failure"}
+    _seed_gap_rows(
+        qdrant, postgres,
+        [("not-a-uuid", "q", -1), (ok.upper(), "q", -1), (ok, "q", -1)],
+    )
+
+    count, records = _gap_sync(module, tmp_path, min_occurrences=2)
+
+    assert count == 1
+    assert records[0]["occurrences"] == 2

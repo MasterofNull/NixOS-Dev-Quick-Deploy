@@ -1,0 +1,108 @@
+{
+  "plan": {
+    "id": "sota-factory-parity-20261112",
+    "title": "Software factory evidence and lifecycle parity",
+    "prd_ref": ".agents/plans/sota-factory-parity-20261112/DESIGN.md",
+    "goal": "Track the four frozen-scope delivery slices from DESIGN.md through independently evidenced review and activation."
+  },
+  "phases": [
+    {
+      "id": "p1",
+      "name": "P1 — outcome and evidence"
+    },
+    {
+      "id": "p2",
+      "name": "P2 — recovery and isolation"
+    },
+    {
+      "id": "p3",
+      "name": "P3 — learning provenance"
+    },
+    {
+      "id": "p4",
+      "name": "P4 — operational acceptance"
+    }
+  ],
+  "items": [
+    {
+      "id": "p1-outcome-evidence",
+      "name": "P1 — outcome and receipt compatibility",
+      "phase": "p1",
+      "goal": "Satisfy DESIGN.md requirements R01–R03 through the P1 outcome and evidence contract.",
+      "validation_goal": "Independent review and freeze bind the exact P1 implementation subject, evidence and authority receipts.",
+      "deps": [],
+      "detection": {
+        "freeze_record": ".agents/plans/sota-factory-parity-20261112/FREEZE.md",
+        "blocker_note": "Draft only: first code PR must repair L09 sync_feedback_corrections_to_gaps at interaction_tracker.py:272 after #750 d7aa36d2f; no docs-only delivery. Independent review/freeze, hook-composition prerequisite, exact implementation evidence and activation evidence are absent."
+      },
+      "acceptance": {
+        "status": "pending",
+        "by": null,
+        "date": null,
+        "note": "No acceptance claim in this editorial tracker."
+      }
+    },
+    {
+      "id": "p2-recovery-isolation",
+      "name": "P2 — recovery and isolation",
+      "phase": "p2",
+      "goal": "Satisfy DESIGN.md requirements R04–R06 through recovery, write-scope and containment behavior.",
+      "validation_goal": "Independent review and freeze bind the exact P2 implementation subject and recovery evidence.",
+      "deps": [
+        "p1-outcome-evidence"
+      ],
+      "detection": {
+        "freeze_record": ".agents/plans/sota-factory-parity-20261112/FREEZE.md",
+        "blocker_note": "Draft only: P1 dependency, independent review/freeze, exact implementation evidence and activation evidence are absent."
+      },
+      "acceptance": {
+        "status": "pending",
+        "by": null,
+        "date": null,
+        "note": "No acceptance claim in this editorial tracker."
+      }
+    },
+    {
+      "id": "p3-learning-provenance",
+      "name": "P3 — learning provenance",
+      "phase": "p3",
+      "goal": "Satisfy DESIGN.md requirements R07–R09 through provenance, receipt authentication and held-out promotion evidence.",
+      "validation_goal": "Independent review and freeze bind the exact P3 implementation subject and provenance evidence.",
+      "deps": [
+        "p1-outcome-evidence"
+      ],
+      "detection": {
+        "freeze_record": ".agents/plans/sota-factory-parity-20261112/FREEZE.md",
+        "blocker_note": "Draft only: P1 dependency, independent review/freeze, exact implementation evidence and activation evidence are absent; P2 recovery semantics apply where capture spans restart."
+      },
+      "acceptance": {
+        "status": "pending",
+        "by": null,
+        "date": null,
+        "note": "No acceptance claim in this editorial tracker."
+      }
+    },
+    {
+      "id": "p4-operational-acceptance",
+      "name": "P4 — operational acceptance",
+      "phase": "p4",
+      "goal": "Satisfy DESIGN.md requirements R10–R12 through live visibility, intervention, routing-cost and activation evidence.",
+      "validation_goal": "Independent review and freeze bind the exact P4 implementation subject and six-dimension activation evidence.",
+      "deps": [
+        "p1-outcome-evidence",
+        "p2-recovery-isolation",
+        "p3-learning-provenance"
+      ],
+      "detection": {
+        "freeze_record": ".agents/plans/sota-factory-parity-20261112/FREEZE.md",
+        "blocker_note": "Draft only: P1–P3 dependencies, independent review/freeze, exact implementation evidence and activation evidence are absent."
+      },
+      "acceptance": {
+        "status": "pending",
+        "by": null,
+        "date": null,
+        "note": "No acceptance claim in this editorial tracker."
+      }
+    }
+  ]
+}

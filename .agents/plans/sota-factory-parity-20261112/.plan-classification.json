@@ -1,0 +1,5 @@
+{
+  "classification": "durable_plan",
+  "tracking_route": "tracker.json",
+  "evidence": "tracker.json declares plan.id=sota-factory-parity-20261112: SOTA software-factory comparison and factory-parity P1-P4 (Codex-owned design; L09 is P1 slice 1)"
+}

@@ -25,7 +25,7 @@ import os
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from config import Config
 from qdrant_client.models import FieldCondition, Filter, MatchValue, PointStruct, Range
@@ -278,18 +278,58 @@ async def sync_feedback_corrections_to_gaps(
     if _postgres is None:
         return 0
     try:
-        rows = await _postgres.fetch_all(
+        feedback_rows = await _postgres.fetch_all(
             """
-            SELECT query, COUNT(*) AS occurrences, AVG(rating) AS avg_rating
+            SELECT feedback_id, interaction_id, query, rating
             FROM learning_feedback
-            WHERE rating < 0 AND query != ''
-            GROUP BY query
-            HAVING COUNT(*) >= %s
-            ORDER BY occurrences DESC, avg_rating ASC
+            WHERE rating < 0 AND query != '' AND interaction_id IS NOT NULL
+            ORDER BY created_at DESC
             LIMIT %s
             """,
-            min_occurrences, limit,
+            limit * 20,
         )
+        if not feedback_rows:
+            return 0
+        # Eligibility comes only from the linked interaction (#750 sink policy); fail closed on lookup errors.
+        # Qdrant ids must be UUIDs; one malformed id would fail the whole batch, so drop those rows.
+        valid_rows = []
+        for row in feedback_rows:
+            try:
+                row["interaction_id"] = str(UUID(str(row["interaction_id"])))
+            except ValueError:
+                continue
+            valid_rows.append(row)
+        feedback_rows = valid_rows
+        if not feedback_rows:
+            return 0
+        try:
+            ids = list({r["interaction_id"] for r in feedback_rows})
+            linked = _qdrant.retrieve(collection_name="interaction-history", ids=ids)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("sync_feedback_corrections_lookup_failed error=%s", exc)
+            return 0
+        stored = {}
+        for p in linked or []:
+            try:
+                stored[str(UUID(str(p.id)))] = p.payload
+            except ValueError:
+                continue
+        by_query: Dict[str, List[float]] = {}
+        for row in feedback_rows:
+            payload = stored.get(row["interaction_id"])
+            if payload is None:
+                continue
+            interaction = dict(payload)
+            interaction["user_feedback"] = row["rating"]
+            if _learning_sink_policy(interaction)["negative"]:
+                by_query.setdefault(row["query"], []).append(float(row["rating"]))
+        rows = [
+            {"query": q, "occurrences": len(r), "avg_rating": sum(r) / len(r)}
+            for q, r in by_query.items()
+            if len(r) >= min_occurrences
+        ]
+        rows.sort(key=lambda r: (-r["occurrences"], r["avg_rating"]))
+        rows = rows[:limit]
         if not rows:
             return 0
         path = Path(jsonl_path)
