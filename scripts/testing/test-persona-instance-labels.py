@@ -98,6 +98,14 @@ class Receipts(unittest.TestCase):
             r = self.run_tool("verify", str(self.d / "r.json"), persona=verify_p)
             self.assertEqual(r.returncode, 0, f"mint={mint_p} verify={verify_p}: {r.stderr}")
 
+    def test_blank_or_null_reviewer_instance_fails_verify(self) -> None:
+        self.mint()
+        for bad in ("", None):
+            rec = self.receipt()
+            rec["reviewer_instance"] = bad
+            (self.d / "r.json").write_text(json.dumps(rec))
+            self.assertNotEqual(self.run_tool("verify", str(self.d / "r.json")).returncode, 0, repr(bad))
+
     def test_old_receipt_without_labels_verifies(self) -> None:
         self.mint()
         rec = self.receipt()
