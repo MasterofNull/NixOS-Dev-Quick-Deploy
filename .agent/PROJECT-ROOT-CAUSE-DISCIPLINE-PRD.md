@@ -94,3 +94,11 @@ surfaces the choice, which is the discipline.
 - **Do now (bounded, non-canonical)**: create the Register (§4.2) and seed it with cases 2/3/5;
   the deploy-context preflight + cell-create detail logging (§4.4) as normal
   PRD→build→review slices; keep #12's diagnostic additions.
+
+## Rule 19 contract detail (moved from the canon block, 2026-11-12)
+
+- At a workaround point do exactly one of: (a) fix the producer, or (b) register it in `.agent/WORKAROUND-REGISTER.md` with {symptom, root cause, producer, fix-path, class, severity}. No ad-hoc band-aid is left in place.
+- Any ad-hoc change to a designed system carries a one-line root-cause note in its commit body.
+- Gaming a gate (faking the signal it checks, e.g. hand-editing a freshness timestamp or a mock pass) stays forbidden (anti-gaming); this rule extends "don't fake the signal" to "don't route around the cause."
+- Gate corollary: a gate fails on a regression the change introduces, never on an unrelated time/expiry signal. Those become tracked maintenance: tier0 `--pre-commit` WARNs freshness-class checks, HARD only in scheduled `--maintenance`; never a commit blocker.
+- Owner-ratified 2026-08-06.
