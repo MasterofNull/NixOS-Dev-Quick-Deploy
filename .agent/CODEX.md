@@ -178,3 +178,9 @@ Enforcement: local payloads auto-inject the MICRO variant (`shared/llm_config.py
 - **Trigger**: ONLY failing security gate, strictly scoped to implicated package; no broad churn.
 - **Ladder**: (1) Fixed release -> raise floor; (2) Active upstream, fix unreleased -> mitigate + time-boxed exception (<=90d); (3) Abandoned/stale (>18m no commits) -> migrate to maintained replacement/stdlib; (4) Upstream PRs are owner-authored (propose-not-push).
 <!-- canon:end dependency-hygiene -->
+<!-- canon:begin language-by-role -->
+## Language by Role (Canonical — all agents)
+
+- Language follows role (owner 2026-11-12): Rust for concurrent daemons, trust gates, hot CLIs; typed Python (basedpyright+ruff) for ML/glue; Nix config; Bash thin glue. Rust gates use the packaged binary (missing = FAIL). Port only on a trigger, with parity tests.
+- Full text: `canon/blocks/language-by-role.md`
+<!-- canon:end language-by-role -->

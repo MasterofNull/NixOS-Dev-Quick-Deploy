@@ -1,13 +1,18 @@
 #!/usr/bin/env python3
 """Integration tests for W4-S1: Rust-backed owned-path scope gate."""
 
-import os
+import shutil
 import subprocess
 import unittest
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 CRATE_DIR = REPO_ROOT / "crates" / "contract-validator"
+
+VALIDATOR = [shutil.which("harness-contracts") or str(
+    subprocess.run(["nix", "build", "--no-link", "--print-out-paths", f"{REPO_ROOT}#harness-contracts"],
+                   capture_output=True, text=True, check=True).stdout.split()[-1] + "/bin/harness-contracts")]
+
 
 class TestScopeGate(unittest.TestCase):
     def test_cargo_unit_tests_pass(self):
@@ -20,8 +25,7 @@ class TestScopeGate(unittest.TestCase):
 
     def test_in_scope_cli_passes(self):
         cmd = [
-            "cargo", "run", "--quiet", "--manifest-path", str(CRATE_DIR / "Cargo.toml"),
-            "--", "--root", str(REPO_ROOT), "scope-gate",
+            *VALIDATOR, "--root", str(REPO_ROOT), "scope-gate",
             "--owned", "crates/**,scripts/**",
             "--base", "HEAD",
             "--allow-uncommitted",
@@ -32,8 +36,7 @@ class TestScopeGate(unittest.TestCase):
 
     def test_out_of_scope_cli_blocks(self):
         cmd = [
-            "cargo", "run", "--quiet", "--manifest-path", str(CRATE_DIR / "Cargo.toml"),
-            "--", "--root", str(REPO_ROOT), "scope-gate",
+            *VALIDATOR, "--root", str(REPO_ROOT), "scope-gate",
             "--owned", "nonexistent-scope/**",
             "--base", "origin/main",
             "--allow-uncommitted",
@@ -44,8 +47,7 @@ class TestScopeGate(unittest.TestCase):
 
     def test_uncommitted_blocks_by_default(self):
         cmd = [
-            "cargo", "run", "--quiet", "--manifest-path", str(CRATE_DIR / "Cargo.toml"),
-            "--", "--root", str(REPO_ROOT), "scope-gate",
+            *VALIDATOR, "--root", str(REPO_ROOT), "scope-gate",
             "--owned", "crates/**,scripts/**",
             "--base", "HEAD",
         ]

@@ -84,7 +84,9 @@ pub fn check_slice_scope(
 
     // 3. Match changed files against owned_paths patterns
     for file in &changed_files {
-        let is_owned = owned_paths.iter().any(|pattern| path_matches(pattern, file));
+        let is_owned = owned_paths
+            .iter()
+            .any(|pattern| path_matches(pattern, file));
         if !is_owned {
             violations.push(ScopeViolation {
                 file: file.clone(),
@@ -108,15 +110,12 @@ fn path_matches(pattern: &str, path: &str) -> bool {
         return true;
     }
 
-    if norm_pattern.ends_with("/**") {
-        let prefix = &norm_pattern[..norm_pattern.len() - 3];
+    if let Some(prefix) = norm_pattern.strip_suffix("/**") {
         return norm_path.starts_with(prefix);
     }
 
-    if norm_pattern.ends_with("/*") {
-        let prefix = &norm_pattern[..norm_pattern.len() - 1]; // keep trailing slash
-        if norm_path.starts_with(prefix) {
-            let remainder = &norm_path[prefix.len()..];
+    if let Some(prefix) = norm_pattern.strip_suffix('*').filter(|p| p.ends_with('/')) {
+        if let Some(remainder) = norm_path.strip_prefix(prefix) {
             return !remainder.is_empty() && !remainder.contains('/');
         }
         return false;
@@ -155,12 +154,7 @@ mod tests {
         assert!(res.is_ok());
 
         // 2. Out-of-scope violation
-        let res_out = check_slice_scope(
-            root,
-            &["docs/**".to_string()],
-            Some("HEAD"),
-            false,
-        );
+        let res_out = check_slice_scope(root, &["docs/**".to_string()], Some("HEAD"), false);
         assert!(res_out.is_ok());
         let result = res_out.unwrap();
         if !result.changed_files.is_empty() {
@@ -169,12 +163,21 @@ mod tests {
     }
     #[test]
     fn test_path_matches_exact_and_patterns() {
-        assert!(path_matches("crates/foo/src/main.rs", "crates/foo/src/main.rs"));
+        assert!(path_matches(
+            "crates/foo/src/main.rs",
+            "crates/foo/src/main.rs"
+        ));
         assert!(path_matches("crates/foo/**", "crates/foo/src/main.rs"));
-        assert!(path_matches("crates/foo/**", "crates/foo/deep/nested/file.rs"));
+        assert!(path_matches(
+            "crates/foo/**",
+            "crates/foo/deep/nested/file.rs"
+        ));
         assert!(path_matches("crates/foo/*", "crates/foo/Cargo.toml"));
         assert!(!path_matches("crates/foo/*", "crates/foo/src/main.rs"));
-        assert!(path_matches("*.rs", "crates/contract-validator/src/main.rs"));
+        assert!(path_matches(
+            "*.rs",
+            "crates/contract-validator/src/main.rs"
+        ));
         assert!(!path_matches("crates/foo/**", "crates/bar/src/main.rs"));
     }
 }
