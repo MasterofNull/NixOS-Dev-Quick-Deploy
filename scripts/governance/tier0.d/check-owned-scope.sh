@@ -15,10 +15,16 @@ fi
 
 echo "[tier0/check-owned-scope] Enforcing slice path ownership: $OWNED_PATHS"
 
-CARGO_MANIFEST="$REPO_ROOT/crates/contract-validator/Cargo.toml"
-if ! command -v cargo >/dev/null 2>&1; then
-    echo "WARN: cargo not found; skipping binary scope gate"
-    exit 0
+# Fail closed: a trust gate that cannot run must not pass. The packaged binary is on PATH after the
+# next rebuild; until then the flake package is built (cached after the first build).
+VALIDATOR="$(command -v harness-contracts || true)"
+if [[ -z "$VALIDATOR" ]]; then
+    NIX_OUT="$(nix build --no-link --print-out-paths "$REPO_ROOT#harness-contracts" 2>/dev/null | tail -n1 || true)"
+    [[ -n "$NIX_OUT" && -x "$NIX_OUT/bin/harness-contracts" ]] && VALIDATOR="$NIX_OUT/bin/harness-contracts"
+fi
+if [[ -z "$VALIDATOR" ]]; then
+    echo "FAIL: harness-contracts binary unavailable (not on PATH; nix build .#harness-contracts failed)" >&2
+    exit 1
 fi
 
 BASE_ARG=("${SCOPE_BASE:-HEAD}")
@@ -27,4 +33,4 @@ if [[ "${ALLOW_UNCOMMITTED:-0}" == "1" ]]; then
     ALLOW_UNCOMMITTED_ARG=("--allow-uncommitted")
 fi
 
-cargo run --quiet --manifest-path "$CARGO_MANIFEST" -- --root "$REPO_ROOT" scope-gate --owned "$OWNED_PATHS" --base "${BASE_ARG[@]}" "${ALLOW_UNCOMMITTED_ARG[@]}"
+"$VALIDATOR" --root "$REPO_ROOT" scope-gate --owned "$OWNED_PATHS" --base "${BASE_ARG[@]}" "${ALLOW_UNCOMMITTED_ARG[@]}"

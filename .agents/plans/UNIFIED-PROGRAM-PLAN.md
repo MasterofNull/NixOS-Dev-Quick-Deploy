@@ -116,7 +116,7 @@ only) · **STANDING** (independent of this program).
 | `EFFECTIVENESS-CENTERED-SYSTEM-IMPROVEMENT-PRD.md`, OBSERVABILITY-PARITY-*, usability-parity, context-sandbox-parity, aq-eval/aq-inference-bench PRDs, capability-backlog, repo-discovery | STANDING satellite PRDs — re-based onto tracks when their next slice is picked (aq-eval/bench → E; observability/usability parity → F) |
 | `.agent/PROJECT-CHECK-KERNEL-PRD.md` (CK, 2026-07-13) + Antigravity ARE plan | GOVERNS check/lint consolidation under Track V + B1: one CheckSpec registry/runner absorbing tier0's 19 gates, 99 registry checks, 80-script governance corpus, Phase-0 dual registration, VF oracles; CK-1 = amended ARE plan; awaiting `check-kernel` round |
 | Domain PRDs (OSINT, trading, GIS, embedded, mobile, security-systems, scientific, T3MP3ST intake…) | STANDING — out of program scope, unaffected |
-| Rust refactor | DEFERRED INDEFINITELY (standing order; do not propose) |
+| Rust refactor | LIFTED 2026-11-12 (owner): language by role per `.agent/PROJECT-LANGUAGE-BY-ROLE-PRD.md` |
 
 ## 5. Loose-thread register (nothing silently dropped)
 

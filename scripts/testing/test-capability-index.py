@@ -72,10 +72,12 @@ def main():
     check(any(r["id"] == "check_capability_index_before_new_code" for r in STATIC_RULES), "hint rule missing")
     check("capability-index.json" in (ROOT / "scripts/ai/lib/capability_audit.py").read_text(), "audit discovery list lacks the index")
 
-    # instruction-file budgets untouched
+    # instruction-file budgets untouched (SSOT: canon/canon.yaml agent_files.budget_bytes)
+    import yaml
+    budget = yaml.safe_load((ROOT / "canon/canon.yaml").read_text())["agent_files"]["budget_bytes"]
     for f in ("CLAUDE.md", "AGENTS.md"):
         n = len((ROOT / f).read_bytes())
-        check(n <= 24000, f"{f} over 24000-byte budget: {n}")
+        check(n <= budget, f"{f} over {budget}-byte budget: {n}")
     print(f"PASS: capability index ({js['count']} entries, {len(md)} bytes)")
     return 0
 

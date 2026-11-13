@@ -116,7 +116,9 @@ fn run_cli(args: Vec<String>) -> Result<String, Vec<String>> {
             "--owned" => {
                 index += 1;
                 let Some(value) = args.get(index) else {
-                    return Err(vec!["--owned requires a comma-separated path list or path".to_string()]);
+                    return Err(vec![
+                        "--owned requires a comma-separated path list or path".to_string()
+                    ]);
                 };
                 for part in value.split(',') {
                     let trimmed = part.trim();
@@ -164,7 +166,9 @@ fn run_cli(args: Vec<String>) -> Result<String, Vec<String>> {
                     .to_string()
             }
             Check::MemorySurface => "PASS: agent memory surface registry is enforced".to_string(),
-            Check::ScopeGate { .. } => "PASS: slice changes are strictly within owned scope".to_string(),
+            Check::ScopeGate { .. } => {
+                "PASS: slice changes are strictly within owned scope".to_string()
+            }
         })
     } else {
         Err(failures)
@@ -185,7 +189,13 @@ fn run_check(check: &Check, root: &Path) -> Vec<String> {
             base_ref,
             check_uncommitted,
         } => {
-            validate_scope_gate(root, owned_paths, base_ref.as_deref(), *check_uncommitted, &mut failures);
+            validate_scope_gate(
+                root,
+                owned_paths,
+                base_ref.as_deref(),
+                *check_uncommitted,
+                &mut failures,
+            );
         }
     }
     failures
@@ -199,7 +209,9 @@ fn validate_scope_gate(
     failures: &mut Vec<String>,
 ) {
     if owned_paths.is_empty() {
-        failures.push("scope-gate requires at least one owned path specified via --owned <paths>".to_string());
+        failures.push(
+            "scope-gate requires at least one owned path specified via --owned <paths>".to_string(),
+        );
         return;
     }
 

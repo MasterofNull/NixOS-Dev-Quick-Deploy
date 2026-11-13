@@ -371,6 +371,9 @@
         };
       };
     homeConfigurations = mkHomeConfigs;
+    packages = lib.genAttrs devSystems (system': {
+      harness-contracts = (mkPkgs nixpkgs system').callPackage ./nix/pkgs/harness-contracts.nix {};
+    });
     # s1a disk/install MECHANICS proof (rootless, no sudo — see
     # .agents/plans/aqos-installer-experience/END-TO-END-BARE-METAL-PLAN.md
     # and scripts/testing/aqos-install-vm-dogfood.sh). Uses disko's OWN

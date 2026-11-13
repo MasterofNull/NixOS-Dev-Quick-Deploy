@@ -168,7 +168,7 @@ The request covered monitoring, viz, UI, storage, A2A, CLI, DB, security, RSI, r
 
 ## 7. Non-Goals & Constraints
 
-- **No Rust rewrite** (deferred indefinitely — explicit standing order). No language migration; structure over syntax.
+- ~~No Rust rewrite~~ — standing order LIFTED by the owner 2026-11-12: language and tools are chosen by role (canon block `language-by-role`, PRD `.agent/PROJECT-LANGUAGE-BY-ROLE-PRD.md`). Structure still comes before syntax: ports follow the strangler pattern with parity tests.
 - **No cloud dependency** for core function; remote lanes remain optional accelerators. NO API keys — OAuth/IDE lanes only (HARD).
 - **Hardware floor unchanged**: Renoir APU ceilings (GPU layers 12, 27GB RAM, thinking budgets) are physics; WS designs must fit them.
 - **Never-skip-local stands**: every round engages Qwen; its failures feed WS8.
