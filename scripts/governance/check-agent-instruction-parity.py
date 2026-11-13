@@ -7,7 +7,9 @@ Reads canon/canon.yaml. For every file listed under `agent_files.files`:
     that was never wired in or whose markers were deleted);
   * exactly one <!-- lane:begin --> ... <!-- lane:end --> region must exist and
     stay within `agent_files.lane_budget_bytes`;
-  * total size must stay within `agent_files.budget_bytes`.
+  * total size must stay within `agent_files.budget_bytes`;
+  * `budget_bytes` may not exceed BUDGET_CEILING unless canon.yaml also carries
+    `agent_files.budget_owner_decision: <date>` (owner 2026-11-12: last raise).
 Exit 1 on any violation. Budgets are bounded always-on prompt cost, not style.
 """
 from __future__ import annotations
@@ -18,6 +20,7 @@ from pathlib import Path
 import yaml
 
 REPO = Path(__file__).resolve().parent.parent.parent
+BUDGET_CEILING = 24600
 LANE_BEGIN, LANE_END = "<!-- lane:begin -->", "<!-- lane:end -->"
 
 
@@ -31,6 +34,10 @@ def check(repo: Path) -> list[str]:
     budget = int(cfg.get("budget_bytes", 24000))
     lane_budget = int(cfg.get("lane_budget_bytes", 8000))
     problems: list[str] = []
+    if budget > BUDGET_CEILING and not cfg.get("budget_owner_decision"):
+        problems.append(
+            f"canon.yaml: budget_bytes {budget} exceeds ceiling {BUDGET_CEILING} without agent_files.budget_owner_decision"
+        )
     for rel in cfg.get("files", []):
         path = repo / rel
         if not path.exists():

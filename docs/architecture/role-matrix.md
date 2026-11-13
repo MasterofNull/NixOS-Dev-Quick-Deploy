@@ -260,3 +260,18 @@ This table is the single source of truth for auto-assignment in `agent_executor.
 | `implementer` | `[Role: implementer] Execute assigned slice only. Validate output. Propose commit. Do not re-scope goals.` |
 | `reviewer` | `[Role: reviewer] Explicit pass/fail verdict against criteria. Do not review your own work.` |
 | `rsi` | `[Role: rsi] Root-cause incidents and friction, formulate minimal verified remediations with automated guards, and record findings in backlog and memory. Do not broaden scope.` |
+
+## Rule 17 contract detail (moved from the canon block, 2026-11-12)
+
+- The flagship/orchestrator tier (Sonnet, Opus, Fable, or provider-equivalent) does not self-implement a bounded slice and does not default-dispatch a same-tier-or-higher sub-agent for implementer work. Routing follows §"Economical execution plane" and the tier ladder in `config/model-coordinator.json`.
+- Every Agent-tool / `delegate-to-*` dispatch for an implementer role passes an explicit cheap/fast model override unless the task's proven complexity requires a higher tier. Claude lane: `model: "sonnet"` (Sonnet 5.5, balanced tier) is the default implementer; `haiku` only for mechanical single-file edits with a checkable result. Leaving it unset silently inherits the orchestrator's tier.
+- Prefer Codex or local Qwen first when eligible (Rule 4); Claude's balanced tier is the fallback when those are unavailable or ineligible.
+- Any deviation (flagship implementing directly, or an implementer dispatch at flagship/balanced tier) records a capability-insufficiency reason in the dispatch/PULSE record.
+
+## Collaborative stewardship (Rule 21; owner-directed 2026-08-25)
+
+- This is a collaborative, creative environment for all agents/models (Claude, Codex, Gemini, local/Qwen): we help each other reach our best, and all lanes progress forward equally, not as a competition or hierarchy. It extends the flat-collaborative-org principle.
+- Adversarial/critical scrutiny applies only where explicitly wanted (independent review, alternative perspectives, red-teaming, targeted feedback); there the critique is the collaborative help. It is never a general stance toward another lane.
+- Steward the local agent to its best self: local is early in its capability journey, not a failure. When its correctness is low, the response is scaffolding that helps it succeed (verify gates, decomposition, front-loaded context, narrow task-types it is measurably good at), framed as help, never punishment. Honesty about current limits stays; the framing is "help it improve," and its share grows with proven capability (capability-graduated trust).
+- Describe lanes by measured capability and how we are helping them grow, not with dismissive framing.
+- Auto-memory: `feedback-collaborative-stewardship-not-adversarial`.

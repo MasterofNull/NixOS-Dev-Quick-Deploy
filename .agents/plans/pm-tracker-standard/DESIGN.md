@@ -157,3 +157,8 @@ other evidence types (a `systemd_unit`/`command` item with an untrusted matching
   are marked degraded (`hold_degraded: true`, `rollup_authoritative: false`, DEGRADED banner, stderr warning) and
   every item that would project SHIPPED/ACTIVATED from commit evidence reports UNKNOWN (no numeric claim).
 Test: `scripts/testing/test-pm-tracker-untrusted-hold.py`.
+
+## Rule 20 contract detail (moved from the canon block, 2026-11-12)
+
+- (a) Progress is projected, never hand-typed: every plan under active work carries an editorial `<plan-dir>/tracker.json` (goals, deps, validation-goals, ground-truth detection signals). PM status (gantt/kanban/rollup) is projected by `aq-pm-tracker` from git commits + freeze records + activation grants + blockers, and gated on every commit by `tier0.d/check-pm-tracker` (a broken/gamed manifest blocks; a missing tracker for an active plan is a freshness WARN). Hand-maintained status rots (anti-gaming; links Root-Cause Discipline).
+- (b) Minimal-code before writing: before any new implementation/file/dependency, walk the `minimal-code` skill ladder (YAGNI, already-in-codebase, stdlib, native, installed-dep, one-line, MVP; lazy about the solution, never about reading). Smallest correct change, no over-build; pairs with `/simplify`. Never at the cost of correctness, fail-closed, security, or a HARD rule.

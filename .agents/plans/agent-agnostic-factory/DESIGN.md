@@ -74,3 +74,10 @@ The pipeline never blocks on a down agent; the queue guarantees its input is fol
 `RECORD: design-only. No code/config change proposed for immediate landing beyond the canonical
 docs/parity in this cycle. Router + catch-up-queue tooling are scoped slices pending review + owner
 activation.`
+
+## Rule 18 contract detail (moved from the canon block, 2026-11-12)
+
+- Roles, gates, funnels and lanes are model-agnostic: no role (orchestrator, architect, implementer, reviewer, binding-acceptance) is permanently tied to one model/agent. The orchestrator routes each role instance at dispatch time to whichever lane is available, eligible (role-matrix + `config/model-coordinator.json` tiers), independent (never self-review) and cheapest (Rule 17).
+- Binding acceptance may be Codex, a fresh Claude flagship, Gemini, or local Qwen, whichever is up. If the first choice is down, route to the next eligible lane and record the substitution; never block.
+- Local Qwen is the always-available floor (never-skip-local).
+- A returning agent plays catch-up via `.agent/collaboration/AGENT-CATCHUP-QUEUE.md`: work committed while it was down is queued with exact subject hashes for its confirmatory audit / late findings. Advisory unless it surfaces a real defect; then a bounded follow-up, never a history rewrite.
