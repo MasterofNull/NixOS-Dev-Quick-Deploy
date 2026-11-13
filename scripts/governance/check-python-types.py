@@ -20,7 +20,7 @@ import subprocess
 import sys
 
 BASELINE = "config/python-check-baseline.json"
-TOOLS = {"basedpyright": "basedpyright", "ruff": "ruff"}  # tool -> flake package attr
+TOOLS = {"basedpyright": "basedpyright", "ruff": "ruff"}  # tool -> attr in the repo flake's pinned nixpkgs
 EXCLUDE_PARTS = {"archive", "archived", "node_modules", "__pycache__"}
 EXCLUDE_PREFIXES = (".agent/archive/", ".agents/archive/", ".agents/delegation/")
 
@@ -49,7 +49,10 @@ def resolve_tool(name, root):
         return found
     nix = shutil.which("nix")
     if nix:
-        r = run([nix, "build", "--no-link", "--print-out-paths", f"{root}#{TOOLS[name]}"], root)
+        # --inputs-from pins nixpkgs to the repo's flake.lock without adding flake outputs that
+        # `nix flake check --all-systems` would have to evaluate (that load killed the CI runner).
+        r = run([nix, "build", "--no-link", "--print-out-paths", "--inputs-from", str(root),
+                 f"nixpkgs#{TOOLS[name]}"], root)
         out = r.stdout.split()
         if r.returncode == 0 and out:
             cand = os.path.join(out[0], "bin", name)

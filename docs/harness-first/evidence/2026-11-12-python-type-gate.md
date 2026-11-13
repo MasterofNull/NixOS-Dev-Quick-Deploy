@@ -16,15 +16,16 @@ only for errors it introduces.
 
 ## Delegation Decision
 
-Sonnet 5.5 implementer (Rule 17 default). Another implementer edits `flake.nix` in a separate worktree; this slice's
-flake change is one self-contained `packages.x86_64-linux` block, so a merge conflict there is possible and trivial.
+Sonnet 5.5 implementer (Rule 17 default). The slice adds no flake outputs: tools are built with
+`nix build --inputs-from <repo> nixpkgs#<tool>`, pinned by the repo's flake.lock. An earlier revision exported them as
+flake `packages`; that made the CI runner lose communication during `nix flake check --all-systems` (twice), so it was dropped.
 
 ## Commands Executed
 
 - `python3 scripts/governance/check-python-types.py --write-baseline` (full tree, from the flake-built tools)
 - `python3 scripts/governance/check-python-types.py --all`, `--staged`
 - `python3 scripts/testing/test-check-python-types.py`, `python3 scripts/testing/test-ci-checks-manifest.py`
-- `nix build --no-link --print-out-paths .#basedpyright`, `nix eval .#packages.x86_64-linux.ruff.name`
+- `nix build --no-link --print-out-paths --inputs-from . nixpkgs#basedpyright` (same store path as the pinned nixpkgs)
 
 ## Validation Evidence
 
@@ -50,7 +51,7 @@ Revert the PR, or drop the `gate_python_types` call in tier0 and the `python-typ
 ## Residual Risk
 
 - A full-tree run is about 150 s; `python-type-gate` carries Python path filters so `--changed` skips it otherwise.
-- A tool absent from PATH is built from the flake's pinned nixpkgs: first use downloads basedpyright (npm deps).
+- A tool absent from PATH is built from the repo's pinned nixpkgs via --inputs-from: first use downloads basedpyright (npm deps).
   Both tools are also added to the ai-dev system profile (`nix/data/profile-system-packages.nix`), live after the
   next rebuild.
 - Staged mode checks the working-tree file, not the index blob.
