@@ -60,3 +60,7 @@ silent. A dimension left blank with no deferral note = the slice is NOT done.
 Before marking a PRD / plan / phase COMPLETE, the orchestrator confirms every feature it shipped has a
 green (or consciously-deferred) row in `ACTIVATION-AUDIT.md`. A cycle with a dormant feature is not
 complete — it is *paused pending activation*, and that status is recorded, not rounded up to "done."
+
+## Rule 15 contract detail (moved from the canon block, 2026-11-12)
+
+"Committed" is not "done." A slice/PRD/plan/phase/cycle is complete only when every feature it ships is attested across the dimensions above, or carries a written, dated deferral. The attestation is pasted into the commit body and `.agent/ACTIVATION-AUDIT.md`. PM-tracked applies to material work under a tracked plan: update its `tracker.json` editorial with the work, dependencies, priority and detection signals; status is projected from ground truth, never hand-typed. A cycle with a dormant or stale-tracked feature is paused pending activation, not done.

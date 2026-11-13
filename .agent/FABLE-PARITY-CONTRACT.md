@@ -59,3 +59,9 @@ Fable 5.1 is the most capable Claude tier (above Opus). Remote Claude selection 
 - It does not lift local hardware ceilings (`enable_thinking=false`, thinking_budget≈200, token budgets, GPU layers=12 stay as-is — they are physics, not behavior).
 - It does not override HARD harness rules (never-skip-local, no-API-keys, archive-not-delete, NixOS-declarative-only, activation gate). Where this contract and a HARD rule conflict, the HARD rule wins.
 - It does not change user-facing style preferences (operator prefers compact/symbolic replies — principle 3 governs *clarity of what is kept*, not verbosity).
+
+## Enforcement (moved from the canon block, 2026-11-12)
+
+- Local payloads auto-inject the MICRO variant (`shared/llm_config.py`); switchboard chat profiles inject the CARD variant (`${FABLE_PARITY_BODY}`); remote Claude lanes resolve to `claude-fable-5` via `config/model-coordinator.json`.
+- Kill switch: `FABLE_PARITY=0` disables the injection.
+- HARD harness rules win on any conflict.
