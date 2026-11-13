@@ -140,7 +140,8 @@ def project_pulse(events=None) -> str:
         outcome = ev.payload.get("outcome", "")
         tail = f": {scope}" if scope else ""
         tail += f" — {outcome}" if outcome else ""
-        lines.append(f"[{iso}] [{ev.agent}] [{action}]{tail}")
+        who = ev.payload.get("instance") or ev.agent  # old events carry no instance label
+        lines.append(f"[{iso}] [{who}] [{action}]{tail}")
     return "\n".join(lines) + ("\n" if lines else "")
 
 

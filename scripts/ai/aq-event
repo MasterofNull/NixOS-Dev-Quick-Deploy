@@ -29,6 +29,7 @@ except Exception:
 
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -36,16 +37,23 @@ _LIB = Path(__file__).resolve().parent / "lib"
 sys.path.insert(0, str(_LIB))
 
 import event_log  # noqa: E402
+from instance_label import build_label  # noqa: E402
 import resume_projector as rp  # noqa: E402
 import span_projector as sprj  # noqa: E402
 import trace as tracing  # noqa: E402
+
+
+def _instance(a) -> str:
+    model = getattr(a, "model", "") or os.environ.get("AQ_INSTANCE_MODEL", "")
+    session = getattr(a, "session", "") or os.environ.get("AQ_INSTANCE_SESSION", "")
+    return build_label(a.agent, model, session) if model else ""
 
 
 def _cmd_pulse(a) -> int:
     payload = {"action": a.action}
     if a.outcome:
         payload["outcome"] = a.outcome
-    event_log.emit(a.agent, "pulse.append", payload=payload, subject=a.scope)
+    event_log.emit(a.agent, "pulse.append", payload=payload, subject=a.scope, instance=_instance(a))
     rp.write_pulse()
     return 0
 
@@ -133,7 +141,9 @@ def main() -> int:
 
     p = sub.add_parser("pulse"); p.add_argument("--agent", required=True)
     p.add_argument("--action", required=True); p.add_argument("--scope", default=None)
-    p.add_argument("--outcome", default=None); p.set_defaults(fn=_cmd_pulse)
+    p.add_argument("--outcome", default=None)
+    p.add_argument("--model", default=""); p.add_argument("--session", default="")
+    p.set_defaults(fn=_cmd_pulse)
 
     r = sub.add_parser("resume"); r.add_argument("--agent", required=True)
     r.add_argument("--objective", default=None); r.add_argument("--phase", default=None)
