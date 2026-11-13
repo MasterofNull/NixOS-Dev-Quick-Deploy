@@ -1,0 +1,22 @@
+cff-version: 1.2.0
+message: "If you use this software or its ideas, please cite it."
+title: "NixOS-Dev-Quick-Deploy (AQ-OS): a local-first, multi-agent NixOS development harness"
+abstract: >-
+  A production-grade NixOS-first deployment harness and AQ-OS AI-native operating
+  environment: a local-first, multi-agent, self-improving (Pessimistic Recursive
+  Self-Improvement) factory with declarative gates, bound review, and activation-gated
+  delivery.
+type: software
+authors:
+  - alias: MasterofNull
+    website: "https://github.com/MasterofNull"
+repository-code: "https://github.com/MasterofNull/NixOS-Dev-Quick-Deploy"
+url: "https://github.com/MasterofNull/NixOS-Dev-Quick-Deploy"
+license: AGPL-3.0-or-later
+keywords:
+  - NixOS
+  - multi-agent
+  - local-first AI
+  - recursive self-improvement
+  - LLM harness
+  - MCP

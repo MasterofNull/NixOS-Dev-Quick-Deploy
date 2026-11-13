@@ -6,7 +6,7 @@
 ![lean-ctx](https://img.shields.io/badge/context-lean--ctx-0284C7?style=flat-square)
 ![MCP](https://img.shields.io/badge/MCP-enabled-8B5CF6?style=flat-square)
 ![Multi-Agent](https://img.shields.io/badge/agents-multi--agent-F59E0B?style=flat-square)
-![License](https://img.shields.io/badge/license-MIT-16A34A?style=flat-square)
+![License](https://img.shields.io/badge/license-AGPL--3.0--or--later-16A34A?style=flat-square)
 
 A production-grade NixOS-first deployment harness and **AQ-OS AI-Native Operating Environment** that transforms a fresh host into a fully operational, deterministic local AI platform with declarative provisioning, host-local inference, `lean-ctx` context compression, multi-agent orchestration, continuous learning, and unified operator visibility.
 
@@ -38,7 +38,7 @@ NixOS-Dev-Quick-Deploy is an immutable, declarative **Pessimistic Recursive Self
 - [Workflows](#workflows)
 - [Configuration](#configuration)
 - [Documentation](#documentation)
-- [License](#license)
+- [License, citation, and support](#-license-citation-and-support)
 
 ---
 
@@ -644,6 +644,24 @@ aq-qa 0 --json
 
 ---
 
-## 📜 License
+## 📜 License, citation, and support
 
-[MIT](./LICENSE)
+This project is licensed **GNU AGPL-3.0-or-later** ([LICENSE](./LICENSE), [NOTICE](./NOTICE)).
+
+- **Personal use, research, and study** are fully welcome under the AGPL — just keep the
+  license and notice intact.
+- **If you run a modified version as a network/hosted service**, AGPL §13 requires you to
+  offer your users the complete corresponding source of your modified version.
+- **Using this in a paid product or service without releasing your modifications** under the
+  AGPL requires a separate commercial license — see [COMMERCIAL-LICENSE](./COMMERCIAL-LICENSE).
+
+This is an open, enforceable license — not a hidden mechanism. There is no telemetry or
+"call-home" code in this project, and none will be added.
+
+**Reciprocity is the spirit here.** If this work helps you, the project asks that you give
+back in kind: contribute improvements upstream, share findings in open repositories or papers,
+or cite the project (see [CITATION.cff](./CITATION.cff)). If your organization benefits
+commercially, support the project through the commercial license above.
+
+Commits up to and including the one immediately preceding the 2026-11-12 relicensing remain
+available under the prior MIT License ([LICENSE-MIT-historical](./LICENSE-MIT-historical)).

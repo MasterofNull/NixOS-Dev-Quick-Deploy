@@ -1,0 +1,62 @@
+NixOS-Dev-Quick-Deploy (AQ-OS)
+Copyright (C) 2025-2026 MasterofNull
+
+This program is free software: you can redistribute it and/or modify it under
+the terms of the GNU Affero General Public License as published by the Free
+Software Foundation, either version 3 of the License, or (at your option) any
+later version (AGPL-3.0-or-later). See the LICENSE file for the full text.
+
+This program is distributed in the hope that it will be useful, but WITHOUT ANY
+WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A
+PARTICULAR PURPOSE. See the GNU Affero General Public License for more details.
+
+================================================================================
+Why AGPL, and what it asks of you
+================================================================================
+
+This project is the result of substantial individual effort, released openly in
+the spirit of reciprocity and respect. The AGPL is chosen deliberately:
+
+- Personal use, research and study are fully welcome, with no obligation beyond
+  keeping this notice and the license intact.
+- If you modify this software and let others interact with it over a network
+  (for example as a hosted or paid service), AGPL section 13 requires you to
+  offer those users the complete corresponding source of your modified version.
+- Improvements shared back to the community (open-source repositories, papers,
+  public-domain write-ups) are the reciprocity this project hopes for. Citation
+  (see CITATION.cff) is the courtesy it asks in return.
+
+This is an open, enforceable license, not a hidden mechanism: the obligations
+above are the terms, stated plainly. There is no telemetry, beacon, or
+"call-home" code in this project, and none will be added. Compliance is a matter
+of the license, observed openly.
+
+Commercial use that does not wish to meet the AGPL's source-disclosure terms is
+accommodated through a separate commercial license — see COMMERCIAL-LICENSE.
+
+================================================================================
+Prior MIT-licensed history
+================================================================================
+
+Before this relicensing (2026-11-12), this project was distributed under the MIT
+License. That grant is irrevocable for copies already distributed: any commit up
+to and including the one immediately preceding the relicensing commit remains
+available under the MIT License to anyone who obtained it. All subsequent
+development is under the AGPL-3.0-or-later terms above. The historical MIT text
+is preserved at LICENSE-MIT-historical.
+
+================================================================================
+Third-party components (NOT covered by this project's license)
+================================================================================
+
+Some bundled materials are owned by third parties and retain their own licenses.
+They are NOT relicensed by this NOTICE or the LICENSE file, and the AGPL does not
+apply to them:
+
+- ai-stack/agents/skills/*/LICENSE.txt — Anthropic, PBC skill materials, under
+  Anthropic's own terms ("(C) 2025 Anthropic, PBC. All rights reserved.").
+- Nix flake inputs, Python/Node/Rust dependencies, and other vendored code retain
+  their upstream licenses and copyright notices.
+
+When in doubt about a specific file, the nearest LICENSE/COPYING file or the file's
+own header governs it, not this NOTICE.

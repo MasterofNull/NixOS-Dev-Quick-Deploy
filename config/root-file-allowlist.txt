@@ -26,3 +26,7 @@ README.md
 .vscode.configs.import.cspell.config.json
 .mcp.json
 .grype.yaml
+CITATION.cff
+COMMERCIAL-LICENSE
+LICENSE-MIT-historical
+NOTICE

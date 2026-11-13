@@ -29,7 +29,7 @@ stdenv.mkDerivation {
 
   meta = with lib; {
     description = "Token-optimized CLI tools for AI agents";
-    license = licenses.mit;
+    license = licenses.agpl3Plus;
     platforms = platforms.linux;
   };
 }
