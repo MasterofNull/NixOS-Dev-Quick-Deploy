@@ -371,6 +371,84 @@ class ReconcileTests(unittest.TestCase):
         self.assertEqual(self.incidents()[other]["status"], "open")
 
 
+class CodeScanningLiveTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        root = Path(self.tmp.name)
+        for name, value in {"_RUNTIME": root, "_BACKLOG": root / "b.md", "_WORKAROUNDS": root / "w.md"}.items():
+            p = patch.object(rsi, name, value); p.start(); self.addCleanup(p.stop)
+        p = patch.object(rsi, "_event"); p.start(); self.addCleanup(p.stop)
+        p = patch.dict(os.environ, {"AI_SECURITY_AUDIT_DIR": str(root / "sec")}); p.start(); self.addCleanup(p.stop)
+        self.export = root / "sec" / "github-code-scanning-alerts.json"
+
+    def ledger(self):
+        return json.loads((rsi._RUNTIME / "rsi-incidents.json").read_text())["incidents"]
+
+    def test_stale_default_export_is_refreshed_from_injected_fetch(self):
+        self.export.parent.mkdir(parents=True)
+        self.export.write_text("[]")
+        os.utime(self.export, (1, 1))
+        alerts = [_alert("trivy-custom-x", "wheel", "1.0", "open"), _alert("trivy-custom-x", "old", "1.0", "fixed")]
+        state, f, _ = sw.adapter_code_scanning(fetch=lambda: alerts)
+        self.assertEqual((state, len(f)), ("findings", 1))
+        self.assertEqual(len(json.loads(self.export.read_text())), 2)
+
+    def test_fetch_failure_leaves_export_and_is_unknown(self):
+        self.export.parent.mkdir(parents=True)
+        self.export.write_text("[]")
+        os.utime(self.export, (1, 1))
+        intake = sw._load_intake()
+
+        def boom():
+            raise intake.AlertSourceError("gh down")
+        state, f, _ = sw.adapter_code_scanning(fetch=boom)
+        self.assertEqual((state, f), ("unknown", []))
+        self.assertEqual(self.export.read_text(), "[]")
+
+    def test_explicit_path_never_fetches(self):
+        p = Path(self.tmp.name) / "explicit.json"
+        p.write_text("[]")
+        os.utime(p, (1, 1))
+
+        def fetch():
+            raise AssertionError("must not fetch")
+        state, _, d = sw.adapter_code_scanning(p, fetch=fetch)
+        self.assertEqual(state, "unknown")
+        self.assertIn("stale", d)
+
+    def test_run_resolves_fixed_and_keeps_open_alert_incident(self):
+        cat = "github-code-scanning:trivy-custom-x"
+        fixed = rsi.failure("a", "s", cat, "Dockerfile", "trivy", "wheel 1.0 vulnerable")
+        kept = rsi.failure("a", "s", cat, "Dockerfile", "trivy", "setuptools 1.0 vulnerable")
+        alerts = [_alert("trivy-custom-x", "wheel", "1.0", "fixed"),
+                  _alert("trivy-custom-x", "setuptools", "1.0", "open")]
+        with patch("builtins.print"):
+            sw.run(adapters={"code-scanning": lambda: sw.adapter_code_scanning(fetch=lambda: alerts)})
+        inc = self.ledger()
+        self.assertEqual(inc[fixed]["status"], "resolved")
+        self.assertIn("code-scanning alerts closed upstream", inc[fixed]["resolution"]["root_cause"])
+        self.assertEqual(inc[kept]["status"], "open")
+
+    def test_same_producer_and_error_different_path_resolves_only_planned_id(self):
+        cat = "github-code-scanning:trivy-custom-x"
+        a = rsi.failure("a", "s", cat, "Dockerfile", "trivy", "wheel 1.0 vulnerable")
+        b = rsi.failure("a", "s", cat, "other/Dockerfile", "trivy", "wheel 1.0 vulnerable")
+        self.assertNotEqual(a, b)
+        alerts = [_alert("trivy-custom-x", "wheel", "1.0", "fixed")]
+        by_id = {a: {"alerts": 1, "analysis": "x", "states": ["fixed"]}}
+        with patch.object(sw, "plan_reconcile", return_value=list(by_id.items())), patch("builtins.print"):
+            sw.run(adapters={"code-scanning": lambda: sw.adapter_code_scanning(fetch=lambda: alerts)})
+        inc = self.ledger()
+        self.assertEqual((inc[a]["status"], inc[b]["status"]), ("resolved", "open"))
+
+    def test_non_open_alerts_are_not_recorded(self):
+        alerts = [_alert("trivy-custom-x", "wheel", "1.0", "fixed"), _alert("trivy-custom-x", "pip", "1.0", "dismissed")]
+        with patch("builtins.print"):
+            sw.run(adapters={"code-scanning": lambda: sw.adapter_code_scanning(fetch=lambda: alerts)})
+        self.assertEqual(self.ledger() if (rsi._RUNTIME / "rsi-incidents.json").exists() else {}, {})
+
+
 class RunTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()

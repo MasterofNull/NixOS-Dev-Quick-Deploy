@@ -99,11 +99,22 @@ blocks:
       - {path: .agent/LOCAL-AGENT.md, mode: summary}
       - .agent/WORKFLOW-CANON.md
 
+  language-by-role:
+    source: blocks/language-by-role.md
+    summary: blocks/language-by-role.summary.md
+    targets:
+      - {path: AGENTS.md, mode: summary}
+      - {path: CLAUDE.md, mode: summary}
+      - {path: .agent/CODEX.md, mode: summary}
+      - {path: .agent/GEMINI.md, mode: summary}
+      - {path: .agent/LOCAL-AGENT.md, mode: summary}
+      - .agent/WORKFLOW-CANON.md
+
 # Always-on agent instruction files: required canon blocks are every block above
 # targeting the file; budgets are enforced by tier0.d/check-agent-instruction-parity.py.
 # lane_budget_bytes bounds the hand-written <!-- lane:begin/end --> region.
 agent_files:
-  budget_bytes: 24000
+  budget_bytes: 24600  # +600 on 2026-11-12 for the owner-directed language-by-role block (CODEX.md was 10 bytes under 24000)
   lane_budget_bytes: 8000
   files:
     - AGENTS.md

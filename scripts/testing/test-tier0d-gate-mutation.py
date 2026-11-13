@@ -203,21 +203,41 @@ def cve_setup(sb, vulns):
     return {"path_prefix": stub}
 
 
+def validator_bin():
+    found = shutil.which("harness-contracts")
+    if found:
+        return found
+    out = subprocess.run(["nix", "build", "--no-link", "--print-out-paths", f"{REPO}#harness-contracts"],
+                         capture_output=True, text=True)
+    if out.returncode != 0 or not out.stdout.strip():
+        raise Skip("harness-contracts not on PATH and nix build failed")
+    return out.stdout.split()[-1] + "/bin/harness-contracts"
+
+
 def owned_setup(sb, touch):
-    if not shutil.which("cargo"):
-        raise Skip("cargo not on PATH (gate itself WARN-skips without it)")
+    stub = sb.root / "_stubbin"
+    stub.mkdir()
+    (stub / "harness-contracts").symlink_to(validator_bin())
     sb.put("owned/a.txt", "a\n")
     sb.put("other/b.txt", "b\n")
     sb.commit()
     sb.put(touch, "changed\n")
     sb.stage()
-    # The sandbox HOME is empty, so a rustup-managed cargo (CI runners) finds no toolchain and the gate
-    # fails for a reason unrelated to scope; pin the toolchain dirs to the invoking user's real ones.
-    real_home = Path(os.environ.get("HOME", "/"))
-    return {"env": {"OWNED_PATHS": "owned/", "SCOPE_BASE": "HEAD", "ALLOW_UNCOMMITTED": "1",
-                    "CARGO_TARGET_DIR": str(sb.root / "_target"),
-                    "CARGO_HOME": os.environ.get("CARGO_HOME", str(real_home / ".cargo")),
-                    "RUSTUP_HOME": os.environ.get("RUSTUP_HOME", str(real_home / ".rustup"))}}
+    return {"path_prefix": stub, "env": {"OWNED_PATHS": "owned/", "SCOPE_BASE": "HEAD", "ALLOW_UNCOMMITTED": "1"}}
+
+
+def owned_no_validator(sb):
+    sb.put("owned/a.txt", "a\n")
+    sb.commit()
+    sb.put("owned/a.txt", "changed\n")
+    sb.stage()
+    # PATH holds only the tools the gate itself needs plus a failing nix, so no validator can be found.
+    stub = sb.root / "_stubbin"
+    stub.mkdir()
+    for tool in ("bash", "dirname", "git", "tail"):
+        (stub / tool).symlink_to(shutil.which(tool))
+    sb.put("_stubbin/nix", "#!/usr/bin/env bash\nexit 1\n", 0o755)
+    return {"env": {"PATH": str(stub), "OWNED_PATHS": "owned/", "SCOPE_BASE": "HEAD", "ALLOW_UNCOMMITTED": "1"}}
 
 
 def pm_setup(sb, tracker_text):
@@ -341,10 +361,9 @@ CASES = [
     Case("check-dependency-cve.sh", "bad: audit reports a high CVE in a modified manifest", lambda sb: cve_setup(sb, {"high": 1, "critical": 0}), "fail", r"FAIL: high/critical CVEs in pkg/package.json"),
     Case("check-dependency-cve.sh", "bad: audit reports a critical CVE", lambda sb: cve_setup(sb, {"high": 0, "critical": 2}), "fail", r"critical=2"),
 
-    Case("check-owned-scope.sh", "good: change inside the owned path", lambda sb: owned_setup(sb, "owned/a.txt"), "pass", r"(?s)^(?!.*FAIL|.*violation)",
-         copy=["crates/contract-validator"]),
-    Case("check-owned-scope.sh", "bad: change outside the owned path", lambda sb: owned_setup(sb, "other/b.txt"), "fail", r"other/b\.txt",
-         copy=["crates/contract-validator"]),
+    Case("check-owned-scope.sh", "good: change inside the owned path", lambda sb: owned_setup(sb, "owned/a.txt"), "pass", r"(?s)^(?!.*FAIL|.*violation)"),
+    Case("check-owned-scope.sh", "bad: change outside the owned path", lambda sb: owned_setup(sb, "other/b.txt"), "fail", r"other/b\.txt"),
+    Case("check-owned-scope.sh", "bad: validator unavailable fails closed", owned_no_validator, "fail", r"FAIL: harness-contracts binary unavailable"),
 
     Case("check-pm-tracker.sh", "bad: unparseable plan tracker.json", lambda sb: pm_setup(sb, "{not json"), "fail", r"tracker\.json does not validate/project",
          args=("--pre-commit",), copy=["scripts/ai/aq-pm-tracker", "scripts/ai/aq-refactor-status", "scripts/ai/lib", "config"]),
