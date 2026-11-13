@@ -15,7 +15,7 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts/ai/lib"))
 import event_log  # noqa: E402
 import resume_projector as rp  # noqa: E402
-from instance_label import build_label  # noqa: E402
+from instance_label import agent_slot, build_label  # noqa: E402
 
 TOOL = ROOT / "scripts/ai/aq-review-receipt"
 
@@ -35,6 +35,35 @@ class Helper(unittest.TestCase):
     def test_kill_switch_is_plain_identity(self) -> None:
         with mock.patch.dict(os.environ, {"PERSONA": "0"}):
             self.assertEqual(build_label("claude", "opus-5.5", "06eebc53"), "claude/opus-5.5")
+
+
+class DirectWriterSlot(unittest.TestCase):
+    def test_label_when_model_known(self) -> None:
+        with mock.patch.dict(os.environ, {"PERSONA": "1", "AQ_INSTANCE_MODEL": "opus-5.5",
+                                          "AQ_INSTANCE_SESSION": "0123456789ab"}):
+            self.assertEqual(agent_slot("claude-hook", "claude"), "Simurg@claude/opus-5.5#01234567")
+
+    def test_unchanged_when_model_unknown(self) -> None:
+        env = {k: v for k, v in os.environ.items() if k != "AQ_INSTANCE_MODEL"}
+        with mock.patch.dict(os.environ, env, clear=True):
+            self.assertEqual(agent_slot("claude-hook", "claude"), "claude-hook")
+
+    def test_persona_off_plain_identity(self) -> None:
+        with mock.patch.dict(os.environ, {"PERSONA": "0", "AQ_INSTANCE_MODEL": "opus-5.5"}):
+            self.assertEqual(agent_slot("claude-hook", "claude"), "claude/opus-5.5")
+
+    def test_hook_writes_line(self) -> None:
+        hook = ROOT / "scripts/ai/aq-hook-post-tool"
+        with tempfile.TemporaryDirectory() as td:
+            (Path(td) / ".agent/collaboration").mkdir(parents=True)
+            base = {**os.environ, "CLAUDE_PROJECT_DIR": td, "CLAUDE_TOOL_NAME": "Edit"}
+            base.pop("AQ_INSTANCE_MODEL", None)
+            log = Path(td) / ".agent/collaboration/PULSE.log"
+            subprocess.run([sys.executable, str(hook)], env=base, check=True)
+            subprocess.run([sys.executable, str(hook)], env={**base, "AQ_INSTANCE_MODEL": "opus-5.5", "PERSONA": "1"}, check=True)
+            a, b = log.read_text().splitlines()
+            self.assertIn("] [claude-hook] [post-tool]: Edit executed", a)
+            self.assertIn("] [Simurg@claude/opus-5.5] [post-tool]: Edit executed", b)
 
 
 class PulseAndEvents(unittest.TestCase):

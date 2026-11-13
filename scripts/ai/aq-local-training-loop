@@ -1198,7 +1198,8 @@ class TrainingLoop:
 
 def _pulse(msg: str) -> None:
     ts = _now()
-    entry = f"[{ts}] [aq-local-training-loop] [run]: {msg}\n"
+    from instance_label import agent_slot
+    entry = f"[{ts}] [{agent_slot('aq-local-training-loop', 'local')}] [run]: {msg}\n"
     try:
         with open(PULSE_LOG, "a", encoding="utf-8") as fh:
             fh.write(entry)
