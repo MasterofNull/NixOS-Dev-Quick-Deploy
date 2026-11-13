@@ -37,27 +37,32 @@ class Helper(unittest.TestCase):
             self.assertEqual(build_label("claude", "opus-5.5", "06eebc53"), "claude/opus-5.5")
 
 
+_LEAKY = ("AQ_INSTANCE_MODEL", "AQ_INSTANCE_SESSION", "PERSONA")
+
+
+def _clean_env(**extra: str) -> dict[str, str]:
+    return {**{k: v for k, v in os.environ.items() if k not in _LEAKY}, **extra}
+
+
 class DirectWriterSlot(unittest.TestCase):
     def test_label_when_model_known(self) -> None:
-        with mock.patch.dict(os.environ, {"PERSONA": "1", "AQ_INSTANCE_MODEL": "opus-5.5",
-                                          "AQ_INSTANCE_SESSION": "0123456789ab"}):
+        with mock.patch.dict(os.environ, _clean_env(PERSONA="1", AQ_INSTANCE_MODEL="opus-5.5",
+                                                    AQ_INSTANCE_SESSION="0123456789ab"), clear=True):
             self.assertEqual(agent_slot("claude-hook", "claude"), "Simurg@claude/opus-5.5#01234567")
 
     def test_unchanged_when_model_unknown(self) -> None:
-        env = {k: v for k, v in os.environ.items() if k != "AQ_INSTANCE_MODEL"}
-        with mock.patch.dict(os.environ, env, clear=True):
+        with mock.patch.dict(os.environ, _clean_env(), clear=True):
             self.assertEqual(agent_slot("claude-hook", "claude"), "claude-hook")
 
     def test_persona_off_plain_identity(self) -> None:
-        with mock.patch.dict(os.environ, {"PERSONA": "0", "AQ_INSTANCE_MODEL": "opus-5.5"}):
+        with mock.patch.dict(os.environ, _clean_env(PERSONA="0", AQ_INSTANCE_MODEL="opus-5.5"), clear=True):
             self.assertEqual(agent_slot("claude-hook", "claude"), "claude/opus-5.5")
 
     def test_hook_writes_line(self) -> None:
         hook = ROOT / "scripts/ai/aq-hook-post-tool"
         with tempfile.TemporaryDirectory() as td:
             (Path(td) / ".agent/collaboration").mkdir(parents=True)
-            base = {**os.environ, "CLAUDE_PROJECT_DIR": td, "CLAUDE_TOOL_NAME": "Edit"}
-            base.pop("AQ_INSTANCE_MODEL", None)
+            base = _clean_env(CLAUDE_PROJECT_DIR=td, CLAUDE_TOOL_NAME="Edit")
             log = Path(td) / ".agent/collaboration/PULSE.log"
             subprocess.run([sys.executable, str(hook)], env=base, check=True)
             subprocess.run([sys.executable, str(hook)], env={**base, "AQ_INSTANCE_MODEL": "opus-5.5", "PERSONA": "1"}, check=True)
