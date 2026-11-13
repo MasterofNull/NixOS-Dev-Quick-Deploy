@@ -1,0 +1,6 @@
+# Lint only; no formatting rules. Gate: scripts/governance/check-python-types.py (baseline ratchet).
+target-version = "py313"
+extend-exclude = [".agent/archive", ".agents/archive", ".agents/delegation", "result*", "node_modules", "archive", "archived"]
+
+[lint]
+select = ["F", "E9", "B", "PLE"]

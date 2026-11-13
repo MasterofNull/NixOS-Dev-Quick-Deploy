@@ -435,6 +435,23 @@ gate_python_syntax() {
   fi
 }
 
+# Gate 1b: Python types + lint (basedpyright, ruff) on staged files, against config/python-check-baseline.json.
+# Only --pre-commit: CI runs the whole tree through config/ci-checks.json (python-type-gate).
+gate_python_types() {
+  if [[ "$MODE" != "--pre-commit" ]]; then
+    pass "Python type gate runs in --pre-commit and CI (python-type-gate)"
+    return 0
+  fi
+  local out
+  if out="$(python3 scripts/governance/check-python-types.py --staged 2>&1)"; then
+    pass "Python type/lint gate: ${out##*$'\n'}"
+  else
+    printf '%s\n' "$out" >&2
+    fail "Python type/lint gate: new diagnostics over baseline"
+    return 1
+  fi
+}
+
 # Gate 2: Bash syntax validation
 gate_bash_syntax() {
   log "Checking Bash syntax..."
@@ -1399,6 +1416,7 @@ log ""
 
 # Always-run gates
 run_timed gate_python_syntax
+run_timed gate_python_types
 run_timed gate_bash_syntax
 run_timed gate_nix_syntax
 run_timed gate_json_syntax

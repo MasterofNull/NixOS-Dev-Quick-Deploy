@@ -30,3 +30,4 @@ CITATION.cff
 COMMERCIAL-LICENSE
 LICENSE-MIT-historical
 NOTICE
+ruff.toml

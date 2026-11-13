@@ -300,7 +300,7 @@ async def sync_feedback_corrections_to_gaps(
                 continue
             valid_rows.append(row)
         feedback_rows = valid_rows
-        if not feedback_rows:
+        if not feedback_rows or _qdrant is None:
             return 0
         try:
             ids = list({r["interaction_id"] for r in feedback_rows})

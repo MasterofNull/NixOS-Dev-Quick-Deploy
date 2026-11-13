@@ -1,15 +1,15 @@
 {
   "nixosTargets": {
-    "aqos-install-vm-ai-dev": 383,
+    "aqos-install-vm-ai-dev": 385,
     "aqos-install-vm-gaming": 267,
     "aqos-install-vm-luks": 320,
     "aqos-install-vm-minimal": 166,
     "aqos-install-vm-plain": 319,
     "aqos-vm": 317,
-    "aqos-vm-ai-dev": 381,
+    "aqos-vm-ai-dev": 383,
     "aqos-vm-gaming": 265,
     "aqos-vm-minimal": 164,
-    "hyperd-ai-dev": 388,
+    "hyperd-ai-dev": 390,
     "hyperd-gaming": 274,
     "hyperd-minimal": 174
   },
@@ -21,16 +21,16 @@
     "hyperd-hyperd": 68
   },
   "combinedTargets": {
-    "aqos-install-vm-ai-dev": 449,
+    "aqos-install-vm-ai-dev": 451,
     "aqos-install-vm-gaming": 333,
     "aqos-install-vm-luks": 386,
     "aqos-install-vm-minimal": 232,
     "aqos-install-vm-plain": 385,
     "aqos-vm": 383,
-    "aqos-vm-ai-dev": 447,
+    "aqos-vm-ai-dev": 449,
     "aqos-vm-gaming": 331,
     "aqos-vm-minimal": 230,
-    "hyperd-ai-dev": 456,
+    "hyperd-ai-dev": 458,
     "hyperd-gaming": 342,
     "hyperd-minimal": 242
   },
@@ -39,8 +39,8 @@
     "homeTargetCount": 5,
     "systemPackages": {
       "min": 164,
-      "max": 388,
-      "avg": 284.83
+      "max": 390,
+      "avg": 285.33
     },
     "homePackages": {
       "min": 66,
@@ -49,8 +49,8 @@
     },
     "combinedPackages": {
       "min": 230,
-      "max": 456,
-      "avg": 351.33
+      "max": 458,
+      "avg": 351.83
     }
   }
 }

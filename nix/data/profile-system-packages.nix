@@ -43,6 +43,9 @@
     # ── Domain tooling (Phase 58A+ capability expansion) ─────────────────────
     # systems-software domain: shell static analysis always available system-wide.
     "shellcheck"
+    # python gate (scripts/governance/check-python-types.py): type checker + linter.
+    "basedpyright"
+    "ruff"
     # security-systems domain: lightweight security linting always available.
     # semgrep and bandit are in the security dev shell (too large for system profile).
     "trivy"
