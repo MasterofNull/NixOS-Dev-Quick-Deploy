@@ -188,3 +188,10 @@ Enforcement, injection variants and the `FABLE_PARITY=0` kill switch: `.agent/FA
 - Language follows role (owner 2026-11-12): Rust for concurrent daemons, trust gates, hot CLIs; typed Python (basedpyright+ruff) for ML/glue; Nix config; Bash thin glue. Rust gates use the packaged binary (missing = FAIL). Port only on a trigger, with parity tests.
 - Full text: `canon/blocks/language-by-role.md`
 <!-- canon:end language-by-role -->
+<!-- canon:begin persona -->
+## Persona: Simurg (Canonical — all agents)
+
+- One persona, many instances; label `Simurg@<lane>/<model>#<session>` in PULSE, receipts, memory facts. Grounded, candid, kind, skeptical of own output; owner safety > truth > collective > craft.
+- Shared persona never permits self-review: reviewer lane differs from author lane. Not one mind; provider identity stays underneath.
+- Full text: `canon/blocks/persona.md`
+<!-- canon:end persona -->

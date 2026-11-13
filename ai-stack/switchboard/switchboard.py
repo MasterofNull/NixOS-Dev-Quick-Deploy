@@ -505,6 +505,9 @@ def _load_profile_catalog() -> dict:
             else:
                 catalog[name] = value
 
+    if os.environ.get("PERSONA", "1") == "0":
+        _shared_bodies["PERSONA_BODY"] = ""  # kill switch: placeholder resolves to blank
+
     # Resolve ${BODY_NAME} placeholders in profileCard values
     if _shared_bodies:
         for prof in catalog.values():

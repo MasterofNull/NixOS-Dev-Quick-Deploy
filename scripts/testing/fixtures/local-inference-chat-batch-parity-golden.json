@@ -8,10 +8,10 @@
   "description": "Frozen tier x adapter caller matrix + expected canonical projections for the Foundation B1 chat/batch parity (shadow) oracle. Offline shadow of PRD section 14 required-suite #2 (golden resolver matrix).",
   "document_kind": "local-inference-chat-batch-parity-golden",
   "live_source_manifest": {
-    "ai-stack/mcp-servers/shared/llm_config.py": "1901963582f45ec8be825713b881a93dcf1b6d4a8c6d6e2953a8d8ad1e82a5cd",
+    "ai-stack/mcp-servers/shared/llm_config.py": "31143716252e778180d0cbc86bb895d8bebbac0ae438a0c8835671627962743e",
     "scripts/ai/aq-chat": "b0181653b767757cc3b5954ccb1ee256b25af52a7c5f3abf7ed3960fdafe8fae"
   },
-  "manifest_digest": "3a2815d5aa5b31713036e695bbd21831bbafb6eb8545dae5cb7a631ef81d7c74",
+  "manifest_digest": "126b08fbd5c8aada1546fe971cc8519c3aafc9f7494bf246570f2a4e2d8a068e",
   "schema_version": "1",
   "tiers": {
     "budget": {

@@ -75,8 +75,23 @@ _FABLE_PARITY_MIN_BUDGET = 100
 _FABLE_PARITY_SKIP_TASK_TYPES = frozenset({"structured"})
 
 
-def _inject_fable_parity(messages: list) -> list:
-    """Append the Fable-parity block to the first system message (or add one).
+# Persona MICRO variant (~45 tok). SSOT: canon/blocks/persona.md (name, label format,
+# values); a test pins this text to it. Kill switch PERSONA=0, independent of
+# FABLE_PARITY. Same skip rules as the parity block.
+PERSONA_MICRO_TEMPLATE = (
+    "Identity: you are Simurg@local/{model}, one instance of the Simurg collective persona: "
+    "grounded, candid and kind, skeptical of your own output; say unknown when unknown. "
+    "Never review or accept your own work."
+)
+_PERSONA_MARKER = "one instance of the Simurg collective persona"
+
+
+def persona_micro() -> str:
+    return PERSONA_MICRO_TEMPLATE.format(model=os.environ.get("AI_LOCAL_MODEL_ID") or "local")
+
+
+def _append_system_block(messages: list, block: str, marker: str) -> list:
+    """Append block to the first system message (or add one); idempotent on marker.
 
     Appended (not prepended) so role-authority blocks stay first and the
     cache_prompt prefix remains stable across calls.
@@ -84,15 +99,23 @@ def _inject_fable_parity(messages: list) -> list:
     msgs = list(messages)
     sys_idx = next((i for i, m in enumerate(msgs) if m.get("role") == "system"), None)
     if sys_idx is not None:
-        if FABLE_PARITY_SYSTEM_PROMPT in msgs[sys_idx]["content"]:
+        if marker in msgs[sys_idx]["content"]:
             return msgs  # already present (e.g. caller pre-injected)
         msgs[sys_idx] = {
             "role": "system",
-            "content": msgs[sys_idx]["content"] + "\n\n" + FABLE_PARITY_SYSTEM_PROMPT,
+            "content": msgs[sys_idx]["content"] + "\n\n" + block,
         }
     else:
-        msgs.insert(0, {"role": "system", "content": FABLE_PARITY_SYSTEM_PROMPT})
+        msgs.insert(0, {"role": "system", "content": block})
     return msgs
+
+
+def _inject_fable_parity(messages: list) -> list:
+    return _append_system_block(messages, FABLE_PARITY_SYSTEM_PROMPT, FABLE_PARITY_SYSTEM_PROMPT)
+
+
+def _inject_persona(messages: list) -> list:
+    return _append_system_block(messages, persona_micro(), _PERSONA_MARKER)
 
 
 def _inject_role(messages: list, role: str) -> list:
@@ -341,12 +364,11 @@ def build_llama_payload(
     _messages = _inject_role(messages, role) if role else messages
     # Fable-parity behavioral injection (modal). Skipped for probe-sized budgets,
     # strict-JSON lanes, or FABLE_PARITY=0. SSOT: .agent/FABLE-PARITY-CONTRACT.md.
-    if (
-        os.environ.get("FABLE_PARITY", "1") != "0"
-        and _max_tokens > _FABLE_PARITY_MIN_BUDGET
-        and task_type not in _FABLE_PARITY_SKIP_TASK_TYPES
-    ):
-        _messages = _inject_fable_parity(_messages)
+    if _max_tokens > _FABLE_PARITY_MIN_BUDGET and task_type not in _FABLE_PARITY_SKIP_TASK_TYPES:
+        if os.environ.get("FABLE_PARITY", "1") != "0":
+            _messages = _inject_fable_parity(_messages)
+        if os.environ.get("PERSONA", "1") != "0":
+            _messages = _inject_persona(_messages)
     payload: dict[str, Any] = {
         "messages": _messages,
         "temperature": _temperature,

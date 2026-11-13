@@ -105,17 +105,25 @@ except ImportError:
             "Verify evidence before any state change. "
             "Report failures honestly with output; state verified work plainly."
         )
-        if (
-            os.environ.get("FABLE_PARITY", "1") != "0"
-            and _max > 100
-            and task_type != "structured"
+        # Persona MICRO — mirrors shared/llm_config.py; kill switch PERSONA=0.
+        _persona = (
+            f"Identity: you are Simurg@local/{os.environ.get('AI_LOCAL_MODEL_ID') or 'local'}, "
+            "one instance of the Simurg collective persona: grounded, candid and kind, "
+            "skeptical of your own output; say unknown when unknown. "
+            "Never review or accept your own work."
+        )
+        for _enabled, _block, _marker in (
+            (os.environ.get("FABLE_PARITY", "1") != "0", _fable_parity, _fable_parity),
+            (os.environ.get("PERSONA", "1") != "0", _persona, "one instance of the Simurg collective persona"),
         ):
+            if not (_enabled and _max > 100 and task_type != "structured"):
+                continue
             _sys_idx = next((i for i, m in enumerate(msgs) if m.get("role") == "system"), None)
             if _sys_idx is not None:
-                if _fable_parity not in msgs[_sys_idx]["content"]:
-                    msgs[_sys_idx] = {"role": "system", "content": msgs[_sys_idx]["content"] + "\n\n" + _fable_parity}
+                if _marker not in msgs[_sys_idx]["content"]:
+                    msgs[_sys_idx] = {"role": "system", "content": msgs[_sys_idx]["content"] + "\n\n" + _block}
             else:
-                msgs.insert(0, {"role": "system", "content": _fable_parity})
+                msgs.insert(0, {"role": "system", "content": _block})
         payload = {
             "messages": msgs,
             "temperature": _temperature,
