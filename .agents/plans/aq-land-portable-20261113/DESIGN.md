@@ -20,12 +20,12 @@ Owner goal 2026-11-13: the first piece a stranger can install, so outside use pr
 
 One Python 3.11+ stdlib file, `landgate`, needing only `git` and (for GitHub) `gh`. It keeps the five guarantees: a deterministic gate before review (S2 semantics, always on); a reviewer that is never the author; review bound to the exact head SHA (the :371-383 contract, plus the :276 merge-only rule reimplemented with `git merge-tree`, about 15 lines); a receipt; merge only when gate, review and CI pass.
 
-Config: `landgate.toml` at repo root, parsed by stdlib `tomllib` (comments allowed, no YAML dependency). Every key is optional except the gate; defaults suit a plain GitHub repo.
+Config: `landgate.toml` at repo root, parsed by stdlib `tomllib` (comments allowed, no YAML dependency). Every key is optional except the gate; there is no static author; defaults suit a plain GitHub repo.
 
 ```toml
 base = "main"          # default: the remote's default branch
-gate = "make test"     # required; gate = "" must be written to opt out, and is recorded in the receipt
-author = "me"          # default: git config user.name
+gate = "make test"     # required, non-empty; no opt-out for land or verify
+required_checks = ["landgate-verify"]   # CI checks that must pass
 host = "gh"            # "gh" | "git"
 receipts = "branch"    # branch `landgate-receipts`, or a directory path
 [[reviewer]]
@@ -39,7 +39,7 @@ run = "landgate ask"   # shows the diff, asks in the terminal
 
 Reviewer contract (the existing line format): stdout ends with `Reviewed-head-sha: <40 hex>` and `Review-Disposition: PASS|PASS_WITH_FOLLOWUPS|REQUEST_CHANGES`; env supplies `LANDGATE_HEAD`, `LANDGATE_DIFF_FILE`, `LANDGATE_WORKTREE`. Any CLI, local model or human satisfies it. An optional `family` tag makes two reviewers sharing the author's family ineligible, so "same model, new name" cannot pass. Order is config order; timeout, no verdict, wrong head or quota text falls through to the next; a negative verdict stops.
 
-The receipt is written by landgate itself (no registry): head, tree, base, diff sha256, gate command and exit code, reviewer, author, verdict, sha256 of the reviewer output, UTC time. It goes in the PR body and in `receipts`. `landgate verify <pr|file>` recomputes tree and diff hash.
+Author is given per invocation (`--author` or `LANDGATE_AUTHOR`, e.g. the agent or user name); if omitted while any non-human reviewer is configured, landgate stops. The receipt is written by landgate itself (no registry): head, author, author_family, tree, base, diff sha256, gate command and exit code, reviewer, author, verdict, sha256 of the reviewer output, UTC time. It goes in the PR body and in `receipts`. `landgate verify <pr|file>` recomputes tree and diff hash.
 
 Hosts: `gh` (PR, required checks from branch protection if readable, else all checks; squash with `--match-head-commit`). `git` (no PR or CI: fast-forward the reviewed head to base on a bare remote; it makes the acceptance test hermetic and serves users without GitHub). GitLab, Gitea, Bitbucket, server-side enforcement workflows and branch-protection setup are out of scope.
 
@@ -93,3 +93,20 @@ Acceptance tests (stdlib unittest, no network):
 3. `landgate init` detects an existing gate (`.pre-commit-config.yaml`, `Makefile` test target, `package.json` test script, `pyproject`/`tox`, `Cargo.toml`) and proposes it for confirmation; with none found it writes no gate and tells the user to set one, never assuming one.
 4. The `aq-land` shim ships in the same PR series as the extraction (LP-S1 and LP-S2 merge together), so the two cannot drift.
 5. Portability rule: the core contains no owner-specific paths, accounts, lanes, model names or hosts. A test greps `tools/landgate/` for `hyperd`, `.agents`, `.agent/`, `gemini`, `codex`, `qwen`, `aq-`, `tier0` and fails on a hit; all of those live only in the shim.
+
+## Status and follow-ups (Gemini review gemini-20261113-200053-721cps)
+Status: PLAN_READY_WITH_FOLLOWUPS. Build is deferred until after the delivery-friction wave (owner).
+
+Specified here, overriding earlier text:
+- Merge needs a non-empty CI rollup: every name in `required_checks` (default `["landgate-verify"]`) must be present and passing. If branch protection is unreadable and the rollup is empty, stop. Zero checks never merges.
+- `verify` reads policy (`gate`, `reviewer`, `required_checks`) from `landgate.toml` on the base branch, never the PR head, so a PR cannot weaken its own rules.
+- `verify` accepts a PR head other than `receipt.head` only if every commit in `receipt.head..PR head` is a merge commit with a parent on base and `git merge-tree` of its parents equals its tree (no manual edits); otherwise it fails and the author must re-gate and re-mint.
+- Shim boundary: the banned-string test covers only `tools/landgate/`; the shim and `test-aq-land.py` may name them. Checkpoint, lock and receipt paths are config or env (default `.git/landgate/`); the shim sets them to `.agents/delegation/outputs/aq-land` so existing tests and resume state keep working.
+
+## Review disposition
+1. Empty rollup: accepted; `required_checks` plus fail closed.
+2. Static author: accepted; per-invocation author, `author_family` in receipt, stop if omitted with non-human reviewers.
+3. Gate opt-out: accepted; removed, gate required non-empty.
+4. Base merges after review: accepted; exact merge-only check stated.
+5. Policy source: accepted; verify reads base-branch config.
+6. Shim boundary: accepted; banned strings only in the shim, paths configurable.
