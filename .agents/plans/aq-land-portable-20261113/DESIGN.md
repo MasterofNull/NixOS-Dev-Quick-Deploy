@@ -82,7 +82,14 @@ Acceptance tests (stdlib unittest, no network):
 - `landgate ask`: a human can review, so first run needs no accounts.
 - Repo shim: keeps repo policy out of the core.
 
-## Owner decisions
-1. Standalone license: AGPL-3.0-or-later (recommended, matches repo and commercial option) vs MIT or Apache for adoption.
-2. Name: `landgate` (recommended) or keep `aq-land`.
-3. Extract only after S2 and S4 merge (recommended).
+## Owner decisions (2026-11-13, asked in the CLI; all settled)
+1. License: AGPL-3.0-or-later.
+2. Name: `landgate`.
+3. Extraction only after S2 (merged, PR #774) and S4 (landing) are on main.
+
+## Review amendments (independent flagship review, accepted)
+1. v1 ships a CI step: `landgate verify` runs in the repo's CI (a ready-to-copy GitHub Actions job) and fails the PR if the receipt does not match head, tree, diff hash, gate exit and non-author reviewer. A self-written receipt is a claim; the CI re-check is what makes it an attestation.
+2. No eligible reviewer reachable (all unavailable, or only the author's family) stops the landing. There is no skip, no self-review, no auto-pass.
+3. `landgate init` detects an existing gate (`.pre-commit-config.yaml`, `Makefile` test target, `package.json` test script, `pyproject`/`tox`, `Cargo.toml`) and proposes it for confirmation; with none found it writes no gate and tells the user to set one, never assuming one.
+4. The `aq-land` shim ships in the same PR series as the extraction (LP-S1 and LP-S2 merge together), so the two cannot drift.
+5. Portability rule: the core contains no owner-specific paths, accounts, lanes, model names or hosts. A test greps `tools/landgate/` for `hyperd`, `.agents`, `.agent/`, `gemini`, `codex`, `qwen`, `aq-`, `tier0` and fails on a hit; all of those live only in the shim.
