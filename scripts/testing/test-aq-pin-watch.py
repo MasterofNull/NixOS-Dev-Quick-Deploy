@@ -505,6 +505,49 @@ def test_composite_pin_never_bumped():
     print("✓ composite_pin_never_bumped")
 
 
+def test_nix_pkgs_report_only():
+    """nix/pkgs hand-pins are reported (release/commit/npm/branch), own packages skipped, files untouched."""
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        (root / "config").mkdir()
+        (root / "config" / "intake.json").write_text(json.dumps({"candidates": []}))
+        pkgs = root / "nix" / "pkgs"
+        (pkgs / "by-name" / "oc").mkdir(parents=True)
+        files = {
+            "rel.nix": 'pname = "rel"; version = "1.0.0"; src = fetchFromGitHub { owner = "o"; repo = "rel"; rev = "v${version}"; };',
+            "npmpkg.nix": 'pname = "np"; version = "1.5.45"; src = fetchurl { url = "https://registry.npmjs.org/@s/cli/-/cli-${version}.tgz"; };',
+            "dl.nix": 'pname = "dl"; version = "0.42.3"; src = fetchurl { url = "https://github.com/o/dl/releases/download/v${version}/x.tgz"; };',
+            "pin.nix": 'owner = "o"; repo = "pin"; rev = "' + "a" * 40 + '";',
+            "br.nix": 'pname = "br"; src = fetchFromGitHub { owner = "o"; repo = "br"; rev = "main"; };',
+            "agentic-tools.nix": 'pname = "agentic-tools"; version = "1.0.0";',
+            "harness-contracts.nix": 'pname = "harness-contracts"; version = "0.1.0";',
+            "by-name/oc/package.nix": 'pname = "oc"; version = "1.3.0"; src = fetchFromGitHub { owner = "o"; repo = "oc"; tag = "v${finalAttrs.version}"; };',
+        }
+        for rel, body in files.items():
+            (pkgs / rel).write_text(body)
+        fixture = root / "fixture.json"
+        fixture.write_text(json.dumps({
+            "github:o/rel": "1.0.1", "npm:@s/cli": "1.5.47", "github:o/dl": "1.0.0",
+            "head:o/pin": "b" * 40, "head:o/br": "c" * 40, "github:o/oc": "1.3.0",
+        }))
+        before = {r: (pkgs / r).read_text() for r in files}
+        env = dict(os.environ, AQ_PIN_WATCH_REGISTRY_FIXTURE=str(fixture))
+        out = subprocess.run([sys.executable, str(script_path), "--intake", str(root / "config" / "intake.json"),
+                              "check", "--json"], capture_output=True, text=True, env=env, timeout=60)
+        assert out.returncode == 0, out.stderr
+        res = {r["id"]: r for r in json.loads(out.stdout)}
+        assert set(res) == {"nix-pkg:rel", "nix-pkg:np", "nix-pkg:dl", "nix-pkg:pin", "nix-pkg:br", "nix-pkg:oc"}, set(res)
+        assert (res["nix-pkg:rel"]["current"], res["nix-pkg:rel"]["latest"], res["nix-pkg:rel"]["change_class"]) == ("1.0.0", "1.0.1", "patch")
+        assert res["nix-pkg:np"]["latest"] == "1.5.47" and res["nix-pkg:np"]["change_class"] == "patch"
+        assert res["nix-pkg:dl"]["change_class"] == "major"
+        assert res["nix-pkg:pin"]["change_class"] == "commit" and res["nix-pkg:pin"]["latest"] == "b" * 12
+        assert res["nix-pkg:br"]["change_class"] == "unpinned-branch"
+        assert res["nix-pkg:oc"]["change_class"] == "none"
+        assert before == {r: (pkgs / r).read_text() for r in files}, "nix/pkgs must stay untouched"
+
+    print("✓ nix_pkgs_report_only: 7/7 assertions passed")
+
+
 def main():
     """Run all tests."""
     tests = [
@@ -517,6 +560,7 @@ def main():
         ("validation_failure_restores_files", test_validation_failure_restores_files),
         ("major_requires_signoff", test_major_requires_signoff),
         ("composite_pin_never_bumped", test_composite_pin_never_bumped),
+        ("nix_pkgs_report_only", test_nix_pkgs_report_only),
     ]
 
     passed = 0
