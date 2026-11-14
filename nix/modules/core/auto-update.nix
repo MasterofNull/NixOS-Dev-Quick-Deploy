@@ -1,5 +1,5 @@
 # Tiered unattended update pipeline (slice U3, tiered-auto-update FREEZE.md).
-# DISABLED unless mySystem.autoUpdate.enable. All decisions live in
+# DISABLED unless mySystem.autoUpdate.enable (check only; the run units also need autoUpdate.run.enable). All decisions live in
 # scripts/maintenance/aq-auto-update (deterministic, no LLM); this module only
 # schedules it as root:
 #   - aq-auto-update-check: daily, notify-only (never builds or switches)
@@ -43,8 +43,10 @@
     };
   };
 in {
-  config = lib.mkIf acfg.enable {
-    systemd.tmpfiles.rules = ["d ${acfg.stateDir} 0750 root root -"];
+  config = lib.mkIf acfg.enable (lib.mkMerge [
+  {
+    # 0755: status.json (written 0644 by the root check) must be readable by the owner session.
+    systemd.tmpfiles.rules = ["d ${acfg.stateDir} 0755 root root -"];
 
     systemd.services.aq-auto-update-check =
       common
@@ -67,6 +69,8 @@ in {
       };
     };
 
+  }
+  (lib.mkIf acfg.run.enable {
     # AQ_SUSPEND_CONTRACT: aq-auto-update-run
     systemd.services.aq-auto-update-run =
       common
@@ -91,5 +95,6 @@ in {
         Persistent = true;
       };
     };
-  };
+  })
+  ]);
 }
