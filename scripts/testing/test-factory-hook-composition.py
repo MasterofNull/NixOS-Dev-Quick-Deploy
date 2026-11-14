@@ -10,6 +10,7 @@ from pathlib import Path
 import stat
 import subprocess
 import sys
+import shutil
 import tempfile
 import unittest
 from concurrent.futures import ThreadPoolExecutor
@@ -20,7 +21,6 @@ sys.path.insert(0, str(ROOT / "scripts/ai/lib"))
 import factory_gate_install as installer
 
 PLAN = ROOT / ".agents/plans/factory-hook-composition-20261112"
-OUTPUTS = ROOT / ".agents/delegation/outputs"
 
 
 def snapshot(root: Path) -> dict[str, object]:
@@ -44,9 +44,9 @@ def snapshot(root: Path) -> dict[str, object]:
 
 class CompositionAdmissionTests(unittest.TestCase):
     def setUp(self) -> None:
-        OUTPUTS.mkdir(parents=True, exist_ok=True)
-        # Retain fixtures for review; delegate outputs must never use /tmp.
-        self.base = Path(tempfile.mkdtemp(prefix="hook-composition-test-", dir=OUTPUTS))
+        # Fixtures (FIFOs, hostile modes) live outside any repo tree and are always removed.
+        self.base = Path(tempfile.mkdtemp(prefix="hook-composition-test-"))
+        self.addCleanup(self.remove_base)
         self.target = self.base / "repository"
         self.target.mkdir()
         (self.target / ".git").mkdir()
@@ -56,6 +56,17 @@ class CompositionAdmissionTests(unittest.TestCase):
         (self.target / ".githooks").mkdir()
         self.put_hook(self.target / ".githooks/pre-commit")
         self.bundle = self.base / "absent-bundle"
+
+    def remove_base(self) -> None:
+        for dirpath, dirnames, _ in os.walk(self.base):
+            for name in dirnames:
+                path = os.path.join(dirpath, name)
+                try:
+                    if not os.path.islink(path):
+                        os.chmod(path, 0o700)
+                except OSError:
+                    pass
+        shutil.rmtree(self.base, ignore_errors=True)
 
     def put_hook(self, path: Path) -> None:
         path.write_text("#!/bin/sh\nprintf ran > COMMAND_EXECUTED\nexit 99\n")
