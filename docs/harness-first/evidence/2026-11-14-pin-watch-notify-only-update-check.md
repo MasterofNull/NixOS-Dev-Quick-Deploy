@@ -30,3 +30,20 @@ Sonnet 5.5 implementer (Rule 17 default). Codex reviewed, independent of the aut
 - Observable: `status.json` under the auto-update state dir (`pins_pending`), and a one-line summary from `aq-session-start`.
 - Intervenable: `mySystem.autoUpdate.enable = false` in the profile.
 - Deferred: live validation of the timer firing waits on the owner rebuild.
+
+## Validation Evidence
+
+- `test-aq-pin-watch.py`: 11/11 passed. `test-aq-auto-update.py`: 8/8 passed.
+- The Codex P2 fail-open finding is fixed by d187c6dea: an all-requests-failed check now exits 2.
+
+## Rollback Plan
+
+Set `mySystem.autoUpdate.enable = false` in `nix/modules/profiles/ai-dev.nix` and rebuild, or revert the PR. The run units are not enabled, so nothing is activated automatically.
+
+## Residual Risk
+
+The check timer has not been observed firing live until the owner rebuilds. nix/pkgs pin detection is report-only, and for unusual pin shapes it reports unknown.
+
+## Hint Feedback
+
+None.
