@@ -61,15 +61,7 @@ Before marking any slice, phase, or PRD complete, verify that the recursive self
 - [ ] A deterministic guard, check, or test was added or updated to prevent recurrence.
 - [ ] Findings and evidence are recorded in `.agent/collaboration/HANDOFF.md` and `.agent/collaboration/PULSE.log`.
 
-### 3. Owner Decision Inbox (approval SOP, owner-adopted 2026-10-02)
-Supersedes the 2026-09-30 "approvals CLI-first" rule. Plan: `.agents/plans/approval-inbox-20261002/PLAN.md`.
-- **One inbox, one record:** `aq-approve` lists and acts over the canonical PRSI/RSI queue and the attention queue. Decisions are audited (`approval-inbox-audit.jsonl`, `prsi-actions.jsonl`).
-- **Two sections, one numbering:** *Needs approval* (a fix is ready and waits for the owner) and *Deferred* (found and logged, but low priority or not fixable yet). Deferred items come from the existing RSI intake (`rsi_lifecycle failure` / `aq-rsi-run`); there is no second intake path.
-- **Surfacing:** `aq-resume` prints the inbox summary at session start. Any agent turn that adds items ends by printing `aq-approve` (the numbered list with its snapshot tag).
-- **Deciding in chat:** the owner replies "approve 1 3" / "deny 2" / "dismiss 4". The agent runs `aq-approve <verb> <numbers> --tag <tag> --door chat`. That command always raises the harness permission prompt, and the owner's confirmation is the approval. The prompt is forced by the PreToolUse hook `scripts/ai/aq-approval-ask-hook`, because permission `ask` rules do not prompt in auto mode (verified live 2026-10-02). Codex uses its own approval prompt. Local/Qwen proposes only.
-- **Guards:**
-  - A stale tag refuses the action and re-lists, so the owner never approves a renumbered list.
-  - Agents never run the write forms without that prompt; there is no self-approval.
-  - Dismiss hides an item but never marks it resolved (anti-gaming).
-  - Approve/deny on a deferred item is refused.
-- **Deferred surface:** the `/approve` dashboard page will use the same backend later.
+### 3. Owner Decisions (owner directive 2026-11-13; supersedes the 2026-10-02 approval-inbox SOP)
+- **Ask in the conversation:** the agent the owner is talking to asks each decision as a plain numbered question in the CLI, with a recommended default, and acts on the reply.
+- **Agents never self-approve.** Reserved owner acts (sudo/rebuild/systemctl, irreversible or outward-facing actions) still gate on that answer.
+- **No machinery required:** no inbox, queue, dashboard or separate approval command. The `aq-approve` tool stays on disk but is not the mandated path.
