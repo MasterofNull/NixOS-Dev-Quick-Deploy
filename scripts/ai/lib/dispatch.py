@@ -682,6 +682,7 @@ class DirectRunner:
             with _gen_span as _span, urllib.request.urlopen(req, timeout=config.timeout_secs) as resp:
                 tokens_in = tokens_out = 0
                 _stream_toks = 0  # content-chunk count; proxy for tokens_out mid-stream
+                _finish_reason = None
                 resp.fp.raw._sock.settimeout(config.timeout_secs)
                 # Phase 163: open file at stream start — write each content chunk
                 # immediately so tail -f / dispatch.py watch sees live output.
@@ -698,6 +699,7 @@ class DirectRunner:
                             # Usage chunk (include_usage=True) has choices:[] — independent
                             choices = chunk.get("choices") or []
                             if choices:
+                                _finish_reason = choices[0].get("finish_reason") or _finish_reason
                                 content = choices[0].get("delta", {}).get("content", "")
                                 if content:
                                     out_fh.write(content)
@@ -748,9 +750,10 @@ class DirectRunner:
                             role=config.role, run_id=task_id)
 
             result = output_file.read_text() if output_file.exists() else ""
-            if tokens_in or final_toks:
+            if tokens_in or final_toks or _finish_reason:
                 Path(str(output_file) + ".usage.json").write_text(
-                    json.dumps({"tokens_in": tokens_in, "tokens_out": final_toks})
+                    json.dumps({"tokens_in": tokens_in, "tokens_out": final_toks,
+                                "finish_reason": _finish_reason})
                 )
             # Emit agent_step_complete to feed training ingest pipeline.
             _emit_training_event(prompt, result, tokens_in, final_toks, config.role)
@@ -1737,6 +1740,7 @@ def dispatch_task(
                 usage.get("tokens_in"),
                 usage.get("tokens_out"),
             )
+            registry.update_finish_reason(task_id, usage.get("finish_reason"))
             usage_file.unlink(missing_ok=True)
         except Exception:
             pass

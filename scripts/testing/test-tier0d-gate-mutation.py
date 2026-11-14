@@ -40,6 +40,7 @@ COVERED_ELSEWHERE = {
     "check-grype-ignore-expiry.sh": "scripts/testing/test-ffmpeg-cve-mitigations.py",
     "check-lane-hook-parity.sh": "scripts/testing/test-lane-hook-parity.py",
     "check-payload-audit.sh": "scripts/testing/test-payload-audit-routine.py",
+    "check-plan-paths.py": "scripts/testing/test-check-plan-paths.py",
 }
 
 
