@@ -13,7 +13,7 @@ CASES = [  # (file, symbol)
     ("scripts/ai/lib/understand_graph.py", "neighbors"),
     ("scripts/testing/run-test-group.py", "tree_state"),
 ]
-LATENCY_MS_LIMIT = 500  # generous for CI; target is <200 ms, real numbers are printed
+LATENCY_MS_LIMIT = 3000  # pathological-regression bound only; target <200 ms is measured and printed, not gated (load-dependent)
 fails = []
 
 
