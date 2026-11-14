@@ -53,6 +53,10 @@ LANES = {"gemini": ("gemini", 1800, 0), "codex": ("codex", 2400, 900), "local": 
 GEMINI_MODEL = "gemini-3.8-flash-high"
 GEMINI_FALLBACK_MODEL = "gemini-3.8-flash-medium"
 QUOTA = re.compile(r"quota|usage limit|rate.?limit|RESOURCE_EXHAUSTED|\b429\b|exhausted|capacity", re.I)
+STRONG_QUOTA = re.compile(r"\b429\b|usage limit|RESOURCE_EXHAUSTED|quota (?:exceeded|exhausted)|cooldown active", re.I)
+LOCAL_CAP = re.compile(r"local headless cap reached", re.I)
+TRANSPORT = re.compile(r"Reconnecting\.\.\.|routing discovery failed|error sending request|connection (?:reset|refused|closed)|"
+                       r"could not resolve host|dns error|network is unreachable|tls handshake|stream disconnected", re.I)
 VERDICTS = ("PASS_WITH_FOLLOWUPS", "PASS", "REQUEST_CHANGES", "FAIL")
 # Network and server blips gh reports while polling; anything else (404, auth, bad request) stops at once.
 TRANSIENT = re.compile(r"error connecting|could not resolve host|no such host|temporary failure|connection (?:reset|refused|timed out)|"
@@ -338,7 +342,16 @@ class Land:
         return "\n".join(p) + "\n"
 
     def run_lane(self, lane, head, pfile, notes=None):
-        """Return (kind, detail, run_id, text): kind is ok|negative|unavailable. Gemini retries once on another model after a quota error."""
+        """Return (kind, detail, run_id, text). A transport failure (network blip, not a lane verdict) is retried once after a short wait."""
+        res = self._run_lane(lane, head, pfile, notes)
+        if res[:2] == ("unavailable", "transport error"):
+            say(f"{lane} transport error; retrying once")
+            time.sleep(env_int("AQ_LAND_TRANSPORT_WAIT_S", 20))
+            res = self._run_lane(lane, head, pfile, notes)
+        return res
+
+    def _run_lane(self, lane, head, pfile, notes=None):
+        """kind is ok|negative|unavailable. Gemini retries once on another model after a quota error."""
         if lane != "gemini":
             return self.run_once(lane, head, pfile)
         model = os.environ.get("AQ_LAND_GEMINI_MODEL") or GEMINI_MODEL
@@ -398,7 +411,16 @@ class Land:
         heads = re.findall(r"^Reviewed-head-sha:[ \t]*([0-9a-f]{40})[ \t]*$", text, re.M)
         rid = re.search(rf"\b({lane}-\d{{8}}-\d{{6}}-[a-z0-9]+)", text)
         if not verdicts:
-            kind = "quota error" if QUOTA.search(text) else f"no verdict (exit {proc.returncode})"
+            if LOCAL_CAP.search(text):
+                kind = "local cap"
+            elif STRONG_QUOTA.search(text):
+                kind = "quota error"
+            elif TRANSPORT.search(text):
+                kind = "transport error"
+            elif QUOTA.search(text):
+                kind = "quota error"
+            else:
+                kind = f"no verdict (exit {proc.returncode})"
             return "unavailable", kind, "", ""
         if not heads or heads[-1] != head:
             return "unavailable", f"review covers head {(heads or ['none'])[-1][:12]}, not {head[:12]}", "", ""
