@@ -108,13 +108,24 @@ def _check_foreign_hook_managers(repo: Path) -> list[str]:
     return foreign
 
 
+def _print_composition_refusal(report: dict, conflict: tuple[str, str], as_json: bool) -> None:
+    """Fail-closed refusal output; keeps the legacy foreign-hook-manager diagnostic on stderr."""
+    if as_json:
+        print(json.dumps(report))
+    elif conflict[0] == "FOREIGN_HOOK_MANAGER":
+        print(f"FAIL: Foreign hook manager(s) detected: {conflict[1]}. "
+              "Remove foreign hook manager or compose manually before retrofit.", file=sys.stderr)
+    else:
+        print(f"FAIL: {conflict[0]}: {conflict[1]}", file=sys.stderr)
+
+
 def cmd_init(args: argparse.Namespace) -> int:
     repo = Path(args.repo).resolve()
     kit_root = Path(args.kit_root).resolve()
 
     if conflict := fgi.composition_conflict(repo):
         report = fgi.composition_refusal(repo, "init", conflict)
-        print(json.dumps(report) if args.json else f"FAIL: {conflict[0]}: {conflict[1]}")
+        _print_composition_refusal(report, conflict, args.json)
         return 4
 
     if sys.platform == "win32":
@@ -209,7 +220,7 @@ def cmd_retrofit(args: argparse.Namespace) -> int:
         return 4
     if conflict := fgi.composition_conflict(repo):
         report = fgi.composition_refusal(repo, "retrofit", conflict)
-        print(json.dumps(report) if args.json else f"FAIL: {conflict[0]}: {conflict[1]}")
+        _print_composition_refusal(report, conflict, args.json)
         return 4
 
     if sys.platform == "win32":
@@ -299,7 +310,7 @@ def cmd_update(args: argparse.Namespace) -> int:
 
     if conflict := fgi.composition_conflict(repo):
         report = fgi.composition_refusal(repo, "update", conflict)
-        print(json.dumps(report) if args.json else f"FAIL: {conflict[0]}: {conflict[1]}")
+        _print_composition_refusal(report, conflict, args.json)
         return 4
 
     if sys.platform == "win32":
@@ -547,7 +558,7 @@ def cmd_doctor(args: argparse.Namespace) -> int:
 
     if conflict := fgi.composition_conflict(repo):
         report = fgi.composition_refusal(repo, "doctor", conflict)
-        print(json.dumps(report) if args.json else f"FAIL: {conflict[0]}: {conflict[1]}")
+        _print_composition_refusal(report, conflict, args.json)
         return 1
 
     checks: list[dict[str, str]] = []
