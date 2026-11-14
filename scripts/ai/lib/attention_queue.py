@@ -853,6 +853,8 @@ def snapshot_recovery_candidate() -> Optional[dict]:
                 data = _load_queue(fh)
             except ValueError:
                 return None
+            if not isinstance(data, dict):
+                return None
             alerts = data.get("alerts", [])
             if not isinstance(alerts, list):
                 return None
@@ -899,7 +901,9 @@ def retire_recovered(snapshot: dict) -> bool:
                 data = _load_queue(fh)
             except ValueError:
                 return False
-            alerts = data.get("alerts", [])
+            alerts = data.get("alerts") if isinstance(data, dict) else None
+            if not isinstance(alerts, list):
+                return False
             retired = None
             for a in alerts:
                 if (isinstance(a, dict) and a.get("id") == snapshot["id"]

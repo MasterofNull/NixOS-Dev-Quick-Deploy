@@ -42,3 +42,7 @@ Revert the PR. Retired alerts stay in the archive with status `recovered` and fu
 ## Hint Feedback
 
 None.
+
+## Review follow-up: malformed queue shapes
+
+A queue file holding valid JSON of the wrong shape (`[]`, `null`, non-list `alerts`) made the pre-QA snapshot raise AttributeError and abort the monitor. `snapshot_recovery_candidate` and `retire_recovered` now return no candidate / False for those shapes, and the monitor wraps the snapshot call so any exception skips retirement (one log line) and QA plus status publication continue. Regression tests: `scripts/testing/test-ai-stack-health-monitor.py`.

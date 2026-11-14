@@ -225,6 +225,11 @@ def main() -> int:
         with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
             monitor.main()
 
+    def run_probed():
+        seen = []
+        run_main(lambda phase: (seen.append(phase), clean_result())[1])
+        return seen
+
     monitor.push = aq.push
     try:
         # queue fields: generation 1 on create, +1 on every identical dedup push
@@ -331,6 +336,27 @@ def main() -> int:
                 d["alerts"][0]["dedup_key"] = "qa-phase-0"
             aq._QUEUE_FILE.write_text(json.dumps(d))
             assert_true(aq.snapshot_recovery_candidate() is None, f"migration must be a no-op: {label}")
+
+        # malformed queue shapes and snapshot exceptions skip retirement; the monitor still runs QA
+        for label, raw in {"list": "[]", "null": "null", "alerts not a list": '{"alerts": {"a": 1}}'}.items():
+            fresh_queue()
+            aq._QUEUE_FILE.write_text(raw)
+            assert_true(aq.snapshot_recovery_candidate() is None, f"bad shape snapshot must be None: {label}")
+            assert_true(aq.retire_recovered({"id": "x", "source": "ai-stack-health-monitor", "dedup_key": "qa-phase-0",
+                                             "observation_generation": 1}) is False, f"bad shape retire must be False: {label}")
+            probed = run_probed()
+            assert_true(probed == ["0"] and archive_rows() == [], f"monitor must run QA and skip retirement: {label}")
+        fresh_queue()
+        pid = push_p0()
+        real_snapshot = monitor.snapshot_recovery_candidate
+        def boom():
+            raise RuntimeError("lock error")
+        monitor.snapshot_recovery_candidate = boom
+        try:
+            probed = run_probed()
+        finally:
+            monitor.snapshot_recovery_candidate = real_snapshot
+        assert_true(probed == ["0"] and pending_ids() == [pid], "snapshot exception must not abort QA or retire")
 
         # bounded archive window and newest-by-timestamp selection
         fresh_queue()

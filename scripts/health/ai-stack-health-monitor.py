@@ -188,7 +188,12 @@ def main() -> int:
     phase_results = []
     for phase in _PHASES:
         # Snapshot before the probe so a failure observed while it runs cannot be retired by a later clean result.
-        recovery_snapshot = snapshot_recovery_candidate() if phase == "0" else None
+        recovery_snapshot = None
+        if phase == "0":
+            try:
+                recovery_snapshot = snapshot_recovery_candidate()
+            except Exception as exc:  # retirement is best-effort; it must never abort monitoring
+                print(f"[{_SOURCE}] Recovery snapshot skipped: {type(exc).__name__}: {exc}")
         data = run_aq_qa(phase)
         if "error" in data:
             phase_results.append({
