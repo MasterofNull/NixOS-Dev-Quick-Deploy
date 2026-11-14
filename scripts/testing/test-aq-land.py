@@ -210,7 +210,10 @@ class Base(unittest.TestCase):
         self.gh_state({})
         self.env = {**os.environ, "STUB_DIR": str(self.S), "AQ_LAND_GH": str(self.S / "gh"), "AQ_LAND_DELEGATE_DIR": str(self.S),
                     "AQ_LAND_RECEIPT_TOOL": str(self.S / "receipt"), "AQ_LAND_TIER0": str(self.S / "tier0"),
-                    "AQ_LAND_STATE_DIR": str(self.S / "state"), "AQ_LAND_WORKTREE_DIR": str(self.S / "wts"), "AQ_LAND_POLL_S": "0.05", "AQ_LAND_STALL_S": "2",
+                    "AQ_LAND_STATE_DIR": str(self.S / "state"),
+                    # without this record_outcome writes the stub PR to the live outcome-receipts.jsonl
+                    "AQ_DELEGATION_DIR": str(self.S / "deleg"),
+                    "AQ_LAND_WORKTREE_DIR": str(self.S / "wts"), "AQ_LAND_POLL_S": "0.05", "AQ_LAND_STALL_S": "2",
                     "AQ_LAND_REVIEW_TIMEOUT_S": "4", "AQ_LAND_CHECKS_TIMEOUT_S": "5", "AQ_LAND_LOCK_WAIT_S": "1"}
 
     def tearDown_state(self):
@@ -279,6 +282,9 @@ class Landing(Base):
         self.assertLess(body.index("### Review record"), body.index("## What"))
         self.assertEqual(len(self.published()), 1)
         self.assertNotIn("--no-verify", (self.S / "calls.log").read_text())
+        rc = self.S / "deleg" / "outcome-receipts.jsonl"  # the outcome receipt lands in the isolated dir, never the live one
+        self.assertEqual([json.loads(l)["pr"] for l in rc.read_text().splitlines()], [77])
+        self.assertEqual(oct(rc.stat().st_mode & 0o777), "0o600")
 
     def test_changed_body_file_is_pushed_on_rerun_and_unchanged_is_not(self):
         edits = lambda: [c for c in self.ghs()["calls"] if c.startswith("pr edit")]

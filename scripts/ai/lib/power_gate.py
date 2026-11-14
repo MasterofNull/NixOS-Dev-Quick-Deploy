@@ -158,7 +158,8 @@ def main(argv: list[str] | None = None) -> int:
     if a.defer_log:
         try:
             a.defer_log.parent.mkdir(parents=True, exist_ok=True)
-            with a.defer_log.open("a") as f:
+            fd = os.open(a.defer_log, os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o600)
+            with os.fdopen(fd, "a") as f:  # 0600 like outcome-receipts.jsonl: task text is prompt-derived
                 f.write(
                     json.dumps({"ts": int(time.time()), "task": a.task[:200], **d})
                     + "\n"
