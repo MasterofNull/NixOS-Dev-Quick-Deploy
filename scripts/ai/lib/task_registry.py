@@ -465,6 +465,11 @@ class TaskRegistry:
         if updates:
             self._update_registry(task_id, updates)
 
+    def update_finish_reason(self, task_id: str, finish_reason: Optional[str]) -> None:
+        """Record llama.cpp's stop type; "length" means the output hit the token limit (cut off mid-answer)."""
+        if finish_reason:
+            self._update_registry(task_id, {"finish_reason": finish_reason, "truncated": finish_reason == "length"})
+
     def get(self, task_id: str) -> Optional[dict]:
         for e in self._read_registry():
             if e.get("id") == task_id:
@@ -1058,6 +1063,8 @@ class TaskRegistry:
             print(f"Task not found: {task_id}", file=sys.stderr)
             return 1
         e = self._with_inferred_status(e)
+        if e.get("truncated") and e.get("status") == "done":
+            e["status"] = "TRUNCATED"  # display only: the stored row stays "done" so waiters and exit codes are unchanged
         print(json.dumps(e, indent=2))
         return 0
 
@@ -1074,6 +1081,9 @@ class TaskRegistry:
             print(f"Output file not found: {p} (task may still be running)", file=sys.stderr)
             return 1
         print(p.read_text(), end="")
+        if (self.get(task_id) or {}).get("truncated"):
+            print("\n[delegate] status TRUNCATED: output hit the token limit (finish_reason=length); the answer is cut off, "
+                  "re-run with a higher --max-tokens", file=sys.stderr)
         return 0
 
     def delegated_worktrees_snapshot(self, limit: int = 50) -> list:

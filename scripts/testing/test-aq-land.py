@@ -54,6 +54,12 @@ if model and model in c.get("quota_models", []):
 if mode == "quota":
     print("Error: 429 RESOURCE_EXHAUSTED quota exceeded")
     sys.exit(1)
+if mode == "transport":
+    print("Reconnecting... 5/5\nworkspace routing discovery failed: error sending request")
+    sys.exit(1)
+if mode == "cap":
+    print("[delegate-to-x] local headless cap reached (self-imposed)")
+    sys.exit(3)
 if mode == "silent":
     time.sleep(60)
 if mode == "hang":
@@ -557,6 +563,21 @@ class Lanes(Base):
         body = self.pr_body()
         self.assertIn("gemini: timeout after 4s", body)
         self.assertIn("codex: quota error", body)
+
+    def test_transport_failure_is_retried_once_and_not_called_quota(self):
+        self.cfg({"gemini": {"mode": "transport"}, "local": {"mode": "ok"}})
+        self.env["AQ_LAND_TRANSPORT_WAIT_S"] = "0"
+        self.land(expect=0)
+        body = self.pr_body()
+        self.assertIn("gemini: transport error", body)
+        self.assertNotIn("gemini: quota error", body)
+        self.assertEqual(len(self.calls("gemini")), 2)
+
+    def test_local_cap_is_labelled_and_not_retried(self):
+        self.cfg({"gemini": {"mode": "cap"}, "local": {"mode": "ok"}})
+        self.land(expect=0)
+        self.assertIn("gemini: local cap", self.pr_body())
+        self.assertEqual(len(self.calls("gemini")), 1)
 
     def test_no_eligible_lane_stops_and_releases_the_lock(self):
         self.cfg({"gemini": {"mode": "quota"}, "codex": {"budget_rc": 3}, "local": {"mode": "quota"}})
