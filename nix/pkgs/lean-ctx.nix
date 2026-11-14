@@ -23,19 +23,19 @@
 }:
 rustPlatform.buildRustPackage rec {
   pname = "lean-ctx";
-  version = "3.3.7";
+  version = "3.12.4";
 
   src = fetchFromGitHub {
     owner = "yvgude";
     repo = "lean-ctx";
     rev = "v${version}";
-    hash = "sha256-wOnAOywjP9E1TDQydSTquyP6kjM76zWej6AF8BxZyY4=";
+    hash = "sha256-CYhn0peQvpsV58BWlFEEuzG4vjqHMfTVEBhPtrPSyqU=";
   };
 
   # Rust sources live under the rust/ subdirectory of the monorepo
   sourceRoot = "source/rust";
 
-  cargoHash = "sha256-Ov7qwDEDzhBcD9ZoOGofn99NYHcvHrjPnbY0tqfNMwQ=";
+  cargoHash = "sha256-+nb2s5UMOD4bQ8/QWMI6LBZBCb+Ky8o/wKBH+iKqKQY=";
 
   nativeBuildInputs = [ pkg-config ];
   buildInputs = [ openssl ];

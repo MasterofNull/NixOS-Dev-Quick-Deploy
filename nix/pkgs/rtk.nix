@@ -22,11 +22,11 @@
 }:
 stdenv.mkDerivation rec {
   pname = "rtk";
-  version = "0.42.3";
+  version = "1.2.0";
 
   src = fetchurl {
     url = "https://github.com/rtk-ai/rtk/releases/download/v${version}/rtk-x86_64-unknown-linux-musl.tar.gz";
-    hash = "sha256-XfdkpjNwnLhdJIJY0IXSTslfqovKDmg1qTzVfK3E654=";
+    hash = "sha256-cP7ntKVIxD3elMd+IzVVCYGwvC+wE2kdjIEJtb0O2jc=";
   };
 
   nativeBuildInputs = [ autoPatchelfHook ];
