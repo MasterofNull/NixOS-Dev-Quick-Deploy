@@ -196,6 +196,29 @@ class Conflicts(Base):
         with mock.patch.dict(os.environ, {"AQ_INSTANCE_LANE": "codex"}):
             self.assertTrue(any("deletes or renames" in e for e in self.check()))
 
+    def test_committed_cross_lane_delete_detected_from_trailer_alone(self) -> None:
+        p = fact(self.repo, "a.b", instance=CLAUDE)
+        self.stage()
+        git(self.repo, "commit", "-qm", "add")
+        p.unlink()
+        self.stage()
+        git(self.repo, "commit", "-qm", "drop", "-m", "Co-Authored-By: Codex <noreply@openai.com>")
+        with mock.patch.dict(os.environ, {"AQ_INSTANCE_LANE": ""}):
+            self.assertTrue(any("deletes or renames" in e and "lane unknown" not in e for e in self.check()))
+
+    def test_committed_same_lane_delete_via_trailer_passes_and_unknown_trailer_fails_closed(self) -> None:
+        p = fact(self.repo, "a.b", instance=CLAUDE)
+        self.stage()
+        git(self.repo, "commit", "-qm", "add")
+        p.unlink()
+        self.stage()
+        git(self.repo, "commit", "-qm", "drop", "-m", "Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>")
+        self.assertEqual(self.check(), [])
+        git(self.repo, "reset", "-q", "--soft", "HEAD~1")
+        git(self.repo, "commit", "-qm", "drop", "-m", "Co-Authored-By: Mystery <x@example.invalid>")
+        with mock.patch.dict(os.environ, {"AQ_INSTANCE_LANE": ""}):
+            self.assertTrue(any("lane unknown" in e for e in self.check()))
+
     def test_cross_lane_split_of_branch_only_fact_with_reply_passes(self) -> None:
         p = fact(self.repo, "a.b", instance=CLAUDE)
         self.stage()

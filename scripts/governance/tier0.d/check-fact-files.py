@@ -115,13 +115,24 @@ def _gitleaks(repo: Path, rel: str, text: str) -> list[str]:
     return [f"{rel}: gitleaks flagged a secret"] if r.returncode == 1 else []
 
 
+# Co-Authored-By trailer substring -> lane; an unrecognized trailer falls through to unknown (fail closed).
+TRAILER_LANES = (("claude", "claude"), ("codex", "codex"), ("openai", "codex"), ("gemini", "gemini"),
+                 ("google", "gemini"), ("qwen", "local"), ("local", "local"))
+
+
 def _actor_lane(msg: str, new_fms: dict[str, dict[str, str]]) -> str:
-    """Lane doing a delete: from new facts in the same unit, an `instance:` line in the message, or AQ_INSTANCE_LANE."""
+    """Lane doing a delete: new facts in the unit, `instance:` message line, Co-Authored-By trailer, then AQ_INSTANCE_LANE."""
     for fm in new_fms.values():
         if lane_of(fm.get("instance", "")):
             return lane_of(fm["instance"])
     m = re.search(r"^instance:\s*(\S+)", msg, re.M)
-    return lane_of(m.group(1)) if m else os.environ.get("AQ_INSTANCE_LANE", "").strip().lower()
+    if m:
+        return lane_of(m.group(1))
+    for t in re.findall(r"^Co-Authored-By:\s*(.+)$", msg, re.M | re.I):
+        for key, lane in TRAILER_LANES:
+            if key in t.lower():
+                return lane
+    return os.environ.get("AQ_INSTANCE_LANE", "").strip().lower()
 
 
 def check_repo(repo: Path, base: str = "origin/main") -> list[str]:
