@@ -461,6 +461,9 @@ def check_command(intake_path: str, json_output: bool = False) -> int:
 
     # nix/pkgs hand-pins (report-only; repo root = parent of the intake config dir).
     results.extend(check_nix_pkgs(Path(intake_path).resolve().parent.parent))
+    # Fail closed: nix/pkgs lookups are upstream requests too, so their failures count.
+    unknown_count = sum(1 for r in results if r["status"] == "network_error")
+    ok_count = sum(1 for r in results if r["status"] == "ok")
 
     if json_output:
         print(json.dumps(results, indent=2))
@@ -474,7 +477,7 @@ def check_command(intake_path: str, json_output: bool = False) -> int:
             }.get(r["status"], "?")
             print(f"{status_char} {r['id']:30} {r['current']:15} → {r['latest']:15} ({r['change_class']})")
 
-    if unknown_count == len(results):
+    if unknown_count and not ok_count:
         return 2
     return 0
 

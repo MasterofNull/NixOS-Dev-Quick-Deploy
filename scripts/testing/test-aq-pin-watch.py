@@ -548,6 +548,29 @@ def test_nix_pkgs_report_only():
     print("✓ nix_pkgs_report_only: 7/7 assertions passed")
 
 
+def test_all_requests_failed_exits_2():
+    """Every upstream lookup failing (intake + nix/pkgs) must exit 2, not report success."""
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        (root / "config").mkdir()
+        (root / "nix" / "pkgs").mkdir(parents=True)
+        (root / "nix" / "pkgs" / "rel.nix").write_text(
+            'pname = "rel"; version = "1.0.0"; src = fetchFromGitHub { owner = "o"; repo = "rel"; rev = "v${version}"; };')
+        (root / "config" / "intake.json").write_text(json.dumps({"candidates": [{
+            "id": "c1", "name": "c1", "state": "enabled", "pinned_version": "1.0.0",
+            "source_url": "https://github.com/o/c1",
+            "install": {"type": "npx", "command": "npx", "args": ["c1@1.0.0"]}}]}))
+        fixture = root / "fixture.json"
+        fixture.write_text("{}")  # fixture active, no entries: every lookup returns None
+        env = dict(os.environ, AQ_PIN_WATCH_REGISTRY_FIXTURE=str(fixture))
+        out = subprocess.run([sys.executable, str(script_path), "--intake", str(root / "config" / "intake.json"),
+                              "check", "--json"], capture_output=True, text=True, env=env, timeout=60)
+        rows = json.loads(out.stdout)
+        assert any(r["id"] == "nix-pkg:rel" and r["status"] == "network_error" for r in rows), rows
+        assert out.returncode == 2, (out.returncode, out.stdout)
+    print("✓ all_requests_failed_exits_2")
+
+
 def main():
     """Run all tests."""
     tests = [
@@ -561,6 +584,7 @@ def main():
         ("major_requires_signoff", test_major_requires_signoff),
         ("composite_pin_never_bumped", test_composite_pin_never_bumped),
         ("nix_pkgs_report_only", test_nix_pkgs_report_only),
+        ("all_requests_failed_exits_2", test_all_requests_failed_exits_2),
     ]
 
     passed = 0
