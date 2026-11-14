@@ -304,6 +304,9 @@ PYEOF
         printf '(lessons unavailable)\n'
     fi
 
+    printf '\n## Shared Facts (.agent/memory/facts/)\n'
+    python3 "${REPO_ROOT}/scripts/ai/lib/fact_subjects.py" "$REPO_ROOT" 20 2>/dev/null || printf '(fact listing unavailable)\n'
+
     printf '\n## Active Collaborators (multi-agent awareness)\n'
     printf 'Running agents: %s\n' "$running_agents"
     printf 'Uncommitted files in shared tree: %s (cross-check ownership via PULSE/HANDOFF before staging; use `git commit -o <pathspec>`)\n' "${uncommitted_n:-?}"

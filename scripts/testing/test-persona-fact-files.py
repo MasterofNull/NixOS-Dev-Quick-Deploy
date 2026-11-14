@@ -1,0 +1,206 @@
+#!/usr/bin/env python3
+"""Persona P3: fact-file check (tier0.d/check-fact-files.py), conflict report and session-start listing."""
+from __future__ import annotations
+
+import importlib.util
+import subprocess
+import tempfile
+import unittest
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[2]
+_spec = importlib.util.spec_from_file_location("cff", ROOT / "scripts/governance/tier0.d/check-fact-files.py")
+assert _spec and _spec.loader
+cff = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(cff)  # type: ignore[union-attr]
+
+CODEX = "Simurg@codex/gpt-6.1#ab12cd34"
+CLAUDE = "Simurg@claude/sonnet-5.5#2222"
+
+
+def git(repo: Path, *a: str) -> str:
+    return subprocess.run(["git", "-C", str(repo), "-c", "commit.gpgsign=false", *a],
+                          capture_output=True, text=True, check=True).stdout
+
+
+def fact(repo: Path, subject: str, claim: str = "12 layers is the ceiling", evidence: str = "CLAUDE.md:80",
+         instance: str = CODEX, reply: str = "", extra: str = "") -> Path:
+    p = repo / ".agent/memory/facts" / f"{subject}.md"
+    p.parent.mkdir(parents=True, exist_ok=True)
+    r = f"owner_reply: {reply}\n" if reply else ""
+    p.write_text(f"---\nsubject: {subject}\nclaim: {claim}\nevidence: {evidence}\ninstance: {instance}\n{r}---\n{extra}", encoding="utf-8")
+    return p
+
+
+class Base(unittest.TestCase):
+    def setUp(self) -> None:
+        self.td = tempfile.TemporaryDirectory()
+        t = Path(self.td.name)
+        subprocess.run(["git", "init", "-q", "--bare", "-b", "main", str(t / "origin.git")], check=True)
+        self.repo = t / "w"
+        subprocess.run(["git", "clone", "-q", str(t / "origin.git"), str(self.repo)], check=True, capture_output=True)
+        git(self.repo, "config", "user.email", "t@example.invalid")
+        git(self.repo, "config", "user.name", "t")
+        (self.repo / "README").write_text("x\n")
+        git(self.repo, "add", ".")
+        git(self.repo, "commit", "-qm", "init")
+        git(self.repo, "push", "-q", "origin", "HEAD:main")
+        git(self.repo, "fetch", "-q")
+        git(self.repo, "checkout", "-qb", "slice")
+
+    def tearDown(self) -> None:
+        self.td.cleanup()
+
+    def land(self, subject: str, **kw) -> None:
+        """Land a fact on origin/main, then return to a fresh slice branch from it."""
+        git(self.repo, "checkout", "-q", "main")
+        fact(self.repo, subject, **kw)
+        git(self.repo, "add", ".")
+        git(self.repo, "commit", "-qm", f"fact {subject}")
+        git(self.repo, "push", "-q", "origin", "main")
+        git(self.repo, "checkout", "-qb", "slice2")
+
+    def check(self) -> list[str]:
+        return cff.check_repo(self.repo)
+
+    def stage(self) -> None:
+        git(self.repo, "add", "-A")
+
+
+class Format(Base):
+    def test_valid_labels_and_persona_off_pass(self) -> None:
+        fact(self.repo, "llama-cpp.n_gpu_layers")
+        fact(self.repo, "llama-cpp.kv", instance="codex/gpt-6.1")
+        self.stage()
+        self.assertEqual(self.check(), [])
+        self.assertEqual(cff.lane_of(CODEX), cff.lane_of("codex/gpt-6.1"))
+        self.assertEqual(cff.lane_of(CODEX), "codex")
+
+    def test_missing_subject_evidence_and_filename_mismatch(self) -> None:
+        p = fact(self.repo, "a.b")
+        p.write_text("---\nclaim: x\ninstance: codex/g\n---\n")
+        self.stage()
+        e = "\n".join(self.check())
+        self.assertIn("subject", e)
+        self.assertIn("evidence", e)
+
+    def test_cap_of_ten(self) -> None:
+        for i in range(11):
+            fact(self.repo, f"topic.s{i}")
+        self.stage()
+        self.assertTrue(any("cap is 10" in e for e in self.check()))
+
+    def test_privacy_rejections(self) -> None:
+        for bad in ("see /home/alice/x", "mail bob@example.com", "tok " + "Ab1" * 12):
+            fact(self.repo, "p.q", claim=bad)
+            self.stage()
+            self.assertTrue(self.check(), bad)
+        fact(self.repo, "p.q", evidence="0123456789abcdef0123456789abcdef01234567")
+        self.stage()
+        self.assertEqual(self.check(), [], "a full commit sha is evidence, not a secret")
+
+
+class Conflicts(Base):
+    def test_sequential_overwrite_needs_fresh_owner_reply_and_prints_both_claims(self) -> None:
+        self.land("llama-cpp.n_gpu_layers", claim="12 layers")
+        fact(self.repo, "llama-cpp.n_gpu_layers", claim="16 layers", instance=CLAUDE)
+        self.stage()
+        errs = self.check()
+        self.assertTrue(any("12 layers" in e and "16 layers" in e and "owner_reply" in e for e in errs), errs)
+        fact(self.repo, "llama-cpp.n_gpu_layers", claim="16 layers", instance=CLAUDE, reply="1 keep mine")
+        self.stage()
+        self.assertEqual(self.check(), [])
+
+    def test_same_lane_update_is_free(self) -> None:
+        self.land("llama-cpp.n_gpu_layers", claim="12 layers")
+        fact(self.repo, "llama-cpp.n_gpu_layers", claim="12 layers, verified", instance="Simurg@codex/gpt-7#9999")
+        self.stage()
+        self.assertEqual(self.check(), [])
+
+    def test_stale_branch_compares_against_fetched_origin_main(self) -> None:
+        git(self.repo, "checkout", "-q", "slice")
+        fact(self.repo, "x.y", claim="mine", instance=CLAUDE)
+        self.stage()
+        git(self.repo, "commit", "-qm", "branch fact")
+        # another lane lands the same subject after this branch was cut
+        git(self.repo, "checkout", "-q", "main")
+        fact(self.repo, "x.y", claim="theirs", instance=CODEX)
+        git(self.repo, "add", ".")
+        git(self.repo, "commit", "-qm", "theirs")
+        git(self.repo, "push", "-q", "origin", "main")
+        git(self.repo, "checkout", "-q", "slice")
+        errs = self.check()  # committed branch diff, no staged change
+        self.assertTrue(any("theirs" in e and "mine" in e for e in errs), errs)
+
+    def test_delete_and_split(self) -> None:
+        self.land("llama-cpp.n_gpu_layers", claim="12 layers")
+        (self.repo / ".agent/memory/facts/llama-cpp.n_gpu_layers.md").unlink()
+        self.stage()
+        self.assertTrue(any("deletes or renames" in e for e in self.check()))
+        fact(self.repo, "llama-cpp.n_gpu_layers.codex", instance=CODEX, reply="3 keep both")
+        fact(self.repo, "llama-cpp.n_gpu_layers.claude", claim="16", instance=CLAUDE, reply="3 keep both")
+        self.stage()
+        self.assertEqual(self.check(), [])
+
+    def test_rename_is_delete_plus_add(self) -> None:
+        self.land("llama-cpp.n_gpu_layers", claim="12 layers")
+        git(self.repo, "mv", ".agent/memory/facts/llama-cpp.n_gpu_layers.md", ".agent/memory/facts/llama-cpp.layers.md")
+        p = self.repo / ".agent/memory/facts/llama-cpp.layers.md"
+        p.write_text(p.read_text().replace("subject: llama-cpp.n_gpu_layers", "subject: llama-cpp.layers"))
+        self.stage()
+        self.assertTrue(any("deletes or renames" in e for e in self.check()))
+
+    def test_delete_of_branch_only_fact_is_free(self) -> None:
+        p = fact(self.repo, "a.b")
+        self.stage()
+        git(self.repo, "commit", "-qm", "add")
+        p.unlink()
+        self.stage()
+        self.assertEqual(self.check(), [])
+
+
+class Report(Base):
+    def test_report_counts(self) -> None:
+        git(self.repo, "checkout", "-q", "main")
+        fact(self.repo, "a.b", claim="one", instance=CODEX)
+        git(self.repo, "add", ".")
+        git(self.repo, "commit", "-qm", "a")
+        fact(self.repo, "a.b", claim="two", instance=CLAUDE, reply="1 keep mine")
+        git(self.repo, "add", ".")
+        git(self.repo, "commit", "-qm", "b")
+        out = cff.report(self.repo)
+        for want in ("facts_total=1", "multi_lane_subjects=1", "claim_changes=1", "owner_reply_entries=1"):
+            self.assertIn(want, out)
+
+
+class SessionStart(unittest.TestCase):
+    def test_lists_subjects_newest_first_capped(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            r = Path(td)
+            subprocess.run(["git", "init", "-q", td], check=True)
+            for i in range(25):
+                fact(r, f"topic.s{i:02d}", claim=f"c{i}")
+            git(r, "-c", "user.email=t@e.invalid", "-c", "user.name=t", "add", ".")
+            git(r, "-c", "user.email=t@e.invalid", "-c", "user.name=t", "commit", "-qm", "f")
+            out = subprocess.run(["python3", str(ROOT / "scripts/ai/lib/fact_subjects.py"), td],
+                                 capture_output=True, text=True, check=True).stdout
+            lines = [ln for ln in out.splitlines() if ln.startswith("- ")]
+            self.assertEqual(len(lines), 20)
+            self.assertIn("topic.s", lines[0])
+            self.assertIn("(codex)", lines[0])
+            self.assertIn("25 total", out)
+
+    def test_empty_prints_nothing_fatal(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            out = subprocess.run(["python3", str(ROOT / "scripts/ai/lib/fact_subjects.py"), td],
+                                 capture_output=True, text=True, check=True).stdout
+            self.assertIn("no fact files", out)
+
+    def test_aq_session_start_calls_it(self) -> None:
+        src = (ROOT / "scripts/ai/aq-session-start").read_text()
+        self.assertIn("fact_subjects.py", src)
+        self.assertIn("## Shared Facts", src)
+
+
+if __name__ == "__main__":
+    unittest.main()
