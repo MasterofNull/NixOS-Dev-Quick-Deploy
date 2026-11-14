@@ -4,17 +4,27 @@
     "title": "Persona P3: memory delta, collapse merge, conflict list",
     "prd_ref": ".agents/plans/persona-p3-collapse-20261113/DESIGN.md",
     "owner": "hyperd",
-    "goal": "Instances write tagged memory deltas; the local harness merges them into canonical memory with provenance; conflicting facts reach the owner through aq-approve and are never last-write-wins",
+    "goal": "Instances write tagged memory deltas; the local harness merges them into canonical memory with provenance; conflicting facts reach the owner to the owner through the agent in the CLI and are never last-write-wins",
     "success_criteria": [
       "A fact learned in one lane is recalled by another lane after one collapse (real lanes)",
-      "A conflicting fact from two lanes appears in aq-approve, not as a silent overwrite",
+      "A conflicting fact from two lanes is put to the owner in the CLI, not silently overwritten",
       "Replaying a delta changes nothing",
       "Coordinator or attention-queue failure never loses a delta or resolves a conflict silently"
     ]
   },
   "phases": [
-    {"id": "design", "name": "Design check", "goal": "Independent review of DESIGN.md before build", "order": 1},
-    {"id": "build", "name": "Build and activate", "goal": "Delta route, collapse, conflict executor, live E2E", "order": 2}
+    {
+      "id": "design",
+      "name": "Design check",
+      "goal": "Independent review of DESIGN.md before build",
+      "order": 1
+    },
+    {
+      "id": "build",
+      "name": "Build and activate",
+      "goal": "Delta route, collapse, conflict executor, live E2E",
+      "order": 2
+    }
   ],
   "items": [
     {
@@ -25,7 +35,12 @@
       "goal": "Frozen design for delta schema, collapse merge, conflict list",
       "validation_goal": "Review receipt from a lane different from the author; open questions 1-6 answered",
       "deps": [],
-      "detection": {"commit_match": ["docs\\(persona\\): .*P3 design", "feat\\(persona\\): .*P3 design"]}
+      "detection": {
+        "commit_match": [
+          "docs\\(persona\\): .*P3 design",
+          "feat\\(persona\\): .*P3 design"
+        ]
+      }
     },
     {
       "id": "P3-S1",
@@ -33,9 +48,15 @@
       "phase": "build",
       "kind": "slice",
       "goal": "POST /api/memory/delta with instance-tagged facts, redaction, pending-deltas fallback; memory_delta.py helper",
-      "validation_goal": "Acceptance tests 1, 5, 6, 8 pass against the live coordinator",
-      "deps": ["P3-D0"],
-      "detection": {"commit_match": ["feat\\(persona\\): .*P3-S1"]}
+      "validation_goal": "Acceptance tests 1, 6, 8 pass against the live coordinator",
+      "deps": [
+        "P3-D0"
+      ],
+      "detection": {
+        "commit_match": [
+          "feat\\(persona\\): .*P3-S1"
+        ]
+      }
     },
     {
       "id": "P3-S2",
@@ -43,19 +64,31 @@
       "phase": "build",
       "kind": "slice",
       "goal": "MemoryCrystallizer.collapse with collapsed_deltas idempotence, corroboration, disputed state, supersession off for deltas",
-      "validation_goal": "Acceptance tests 3, 4, 7 pass; existing test_memory_crystallizer tests still pass",
-      "deps": ["P3-S1"],
-      "detection": {"commit_match": ["feat\\(persona\\): .*P3-S2"]}
+      "validation_goal": "Acceptance tests 4, 5 pass; existing test_memory_crystallizer tests still pass",
+      "deps": [
+        "P3-S1"
+      ],
+      "detection": {
+        "commit_match": [
+          "feat\\(persona\\): .*P3-S2"
+        ]
+      }
     },
     {
       "id": "P3-S3",
-      "name": "Conflict list in aq-approve",
+      "name": "Conflicts asked in the CLI",
       "phase": "build",
       "kind": "slice",
-      "goal": "human_gate alert with memory_conflict_resolve executor; owner-only resolution via aq-approve review",
-      "validation_goal": "Acceptance test 2 passes live; approve without owner actor is refused",
-      "deps": ["P3-S2"],
-      "detection": {"commit_match": ["feat\\(persona\\): .*P3-S3"]}
+      "goal": "Delta reply returns conflicts; agent asks the owner; resolutions applied via the same route; disputed shown at session start",
+      "validation_goal": "Acceptance tests 2 and 3 pass live",
+      "deps": [
+        "P3-S2"
+      ],
+      "detection": {
+        "commit_match": [
+          "feat\\(persona\\): .*P3-S3"
+        ]
+      }
     },
     {
       "id": "P3-A1",
@@ -64,12 +97,22 @@
       "kind": "milestone",
       "goal": "Rule 15 attestation: integrated, ON, validated end to end, observable, intervenable",
       "validation_goal": "Cross-lane recall and conflict listing demonstrated with real Claude, Codex and local lanes",
-      "deps": ["P3-S3"],
+      "deps": [
+        "P3-S3"
+      ],
       "detection": {}
     }
   ],
   "issues": [
-    {"title": "Broker auto-supersession is last-write-wins for POST /api/memory/facts today", "sev": "high", "note": "memory_broker.py:145; fixed for deltas in P3-S2"},
-    {"title": "Antonym contradiction check matches substrings", "sev": "medium", "note": "memory_broker.py:395; fallback only, capped, never supersedes"}
+    {
+      "title": "Broker auto-supersession is last-write-wins for POST /api/memory/facts today",
+      "sev": "high",
+      "note": "memory_broker.py:145; fixed for deltas in P3-S2"
+    },
+    {
+      "title": "Antonym contradiction check matches substrings",
+      "sev": "medium",
+      "note": "memory_broker.py:395; fallback only, capped, never supersedes"
+    }
   ]
 }

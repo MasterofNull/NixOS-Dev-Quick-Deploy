@@ -1,173 +1,113 @@
-# Persona P3: memory delta, collapse merge, conflict list (design, rev 2)
+# Persona P3: memory delta, collapse merge, conflicts (design, rev 3: simple)
 
-Status: DRAFT rev 2 for independent re-review. Author: Simurg@claude/sonnet-5.5 (architect); reviewer lane must differ.
-PRD: `.agent/PROJECT-COLLECTIVE-PERSONA-PRD.md` section 4.4, 5, 6. Reviews folded in: Gemini REQUEST_REVISION
-(gemini-20261113-172653-qkwp7k), local PLAN_READY_WITH_FOLLOWUPS (local-20261113-172706-nk1035). See "Review disposition".
-Paths are relative to the repo root; `HC` = `ai-stack/mcp-servers/hybrid-coordinator`. Unverified items are marked UNVERIFIED.
+Status: DRAFT rev 3 for independent re-review (author Simurg@claude/sonnet-5.5; reviewer lane must differ). PRD: `.agent/PROJECT-COLLECTIVE-PERSONA-PRD.md` 4.4, 5, 6. Owner directive 2026-11-13 replaces "conflict list shown by aq-approve": the agent asks the owner in the CLI and applies the answer. `HC` = `ai-stack/mcp-servers/hybrid-coordinator`. UNVERIFIED marks what I could not check.
 
-## 0. What exists (read; file:line)
+## 0. Facts this design rests on (read, file:line)
 
-- Facts route `HC/memory/memory_service.py:34-90`: cap 8 facts, 500 chars (`:53,:56`); calls `mb.write` with defaults (`:72`);
-  stores no instance field (`:76-82`). Client `scripts/ai/aq-commit-facts:93` uses `${HYBRID_COORDINATOR_URL}`
-  (`config/service-endpoints.sh:27-29`).
-- `MemoryBroker.write` (`HC/memory_broker.py:109-122`) has params `check_contradictions`, `supersede`, `promote`, all default True.
-  A contradiction supersedes (`:145-158`) except `active_constraint` (`:130-143`). `check_contradiction` is a substring
-  antonym test (`:46-54, 395-420`).
-- Hidden last-write-wins paths: (a) `HC/consensus_manager.py:77-84` re-writes promoted facts with
-  `check_contradictions=True, supersede=True`; promotion fires when `promote=True` (`memory_broker.py:238-247`).
-  (b) `MemoryCrystallizer._crystallize_history` writes `broker.write(..., source="crystallizer")` with default supersede
-  (`HC/memory_crystallizer.py:352-356`). (c) cosine dedup: `HC/knowledge/memory_manager.py:66` (`MEMORY_DEDUP_THRESHOLD=0.95`),
-  `:228-248, :354-357` drops any new point whose nearest neighbour scores >= 0.95, unfiltered by subject or scope.
-  `store_agent_memory` already returned `"queued"` (`:332-336`), so the caller never learns the drop happened. An opposing
-  claim with near-identical text ("X is enabled"/"X is disabled") is plausibly >= 0.95; the actual score is UNVERIFIED.
-- Qdrant: `broker.read` is similarity search only (`memory_broker.py:260-335`); `memory_manager.py` never calls `scroll`
-  or `set_payload`. The same client type does elsewhere (`HC/extensions/interaction_tracker.py:459,643`;
-  `HC/knowledge/search_router.py:836`), but no payload index on `subject` is created anywhere (rg found none).
-- Attention queue: the broker's push is swallowed (`memory_broker.py:385-401`, `except Exception: pass` at `:400`). The coordinator
-  sets `ATTENTION_QUEUE_DIR=${mcp.repoPath}/.agents/attention` (`nix/modules/services/mcp-servers.nix:1407`) and
-  `ReadWritePaths` (`:1464`), and its AppArmor profile `ai-hybrid-coordinator` allows that path rw (`:2697-2699`) but
-  also has `deny /home/** wx,` (`:2777`; the same line is in `command-center-dashboard-api`, `:2964`). AppArmor deny
-  overrides allow, so writes under `/home` fail regardless of DAC (`/home/hyperd` is 0711, `.agents/attention` is
-  2775 hyperd:ai-stack, per the orchestrator). I did not test this at runtime. `PYTHONPATH` includes `scripts/ai/lib`
-  (`mcp-servers.nix:~1403`), so the import itself works.
-- aq-approve intake `scripts/ai/lib/approval_inbox.py:107-190` merges several JSON sources; `approve()` dispatches on item
-  `kind` (`:217-229`); the CLI takes numbers and batches (`approval_inbox.py inbox_cli`, `aq-approve:413-418`).
-  Postgres access in the crystallizer: `self._pg.execute/fetch_all` (`memory_crystallizer.py:125-130, 414-423`); `_pg` may be None.
-- Redaction: `ai-stack/mcp-servers/shared/telemetry_privacy.py:55` `redact_secrets` (returns text and hit list);
-  `memory_manager._sanitize_metadata` already scrubs metadata (`:167-179`).
-- Not found: delta/collapse code, a conflict store, an instance field on facts. These are P3's scope.
+- `POST /api/memory/facts` (`HC/memory/memory_service.py:34-90`): cap 8, 500 chars, `mb.write` defaults (`:72`), no instance field.
+- `MemoryBroker.write` has `check_contradictions`, `supersede`, `promote` (`HC/memory_broker.py:115-121`); a contradiction supersedes
+  (`:145-158`) except `active_constraint` (`:130-143`).
+- Hidden last-write-wins: consensus re-write with `supersede=True` (`HC/consensus_manager.py:77-84`, fired `memory_broker.py:238-247`); crystallizer default write (`HC/memory_crystallizer.py:352-356`); cosine >= 0.95 dedup silently drops a near-identical opposing claim (`HC/knowledge/memory_manager.py:66, 228-248, 354-357`; score for "enabled" vs "disabled" UNVERIFIED).
+- `broker.read` is similarity only (`memory_broker.py:260-335`); exact `(scope, subject)` lookup needs a real index. The crystallizer has an optional Postgres client (`execute/fetch_all`, `ensure_schema`: `memory_crystallizer.py:78-87, 125-130, 414-423`); `_pg` may be None.
+- `GET /api/memory/facts` is what `aq-session-start` reads (`memory_service.py:94-145`).
+- Redaction: `ai-stack/mcp-servers/shared/telemetry_privacy.py:55`. Label: `scripts/ai/lib/instance_label.py`.
+- Not found: delta or collapse code, an instance field on facts.
 
-## 1. Delta schema (harness-emitted)
+## 1. Delta (emitted by the harness wrapper)
 
 ```
-{ "v":1, "instance":"Simurg@codex/gpt-6.1#ab12cd34", "session":"ab12cd34", "ended_at":"<ISO>",
-  "facts":[{"subject":"<dotted key>","claim":"<=500 chars","scope":"<scope>","confidence":0..1,"evidence":"<ref>"}],
-  "decisions":[{"decision","why","authority"}], "threads":[{"open","owner_hint"}] }
+{ "instance":"Simurg@codex/gpt-6.1#ab12cd34", "ended_at":"<ISO>",
+  "facts":[{"subject":"<dotted key>","claim":"<=500 chars","scope":"<scope>","evidence":"<ref>"}],
+  "resolutions":[{"scope","subject","keep":"a|b|both","owner_reply":"<owner's words>"}] }   // only when answering a question
 ```
 
-- `subject` REQUIRED, regex `^[a-z0-9_-]+(\.[a-z0-9_-]+)+$` (for example `llama-cpp.n_gpu_layers`); missing or invalid: HTTP 400.
-- `evidence` REQUIRED for every fact (`path:line`, commit sha, or command); light check: non-empty, 8-300 chars, matches
-  one of those three shapes. It is a pointer, not verified truth; a bad pointer is reviewable provenance, not a gate.
-- Max 10 facts per delta (over: 400 with count, no truncation). Claims and evidence pass `redact_secrets` server-side.
-- Emission is by harness wrappers, not model self-invocation: `aq-commit-facts` (slice end) and the session-end path
-  (`aq-session-start`'s counterpart) call helper `scripts/ai/lib/memory_delta.py`, which builds the delta from the
-  instance's recorded facts and reads `HYBRID_COORDINATOR_URL`. Instances supply content; the wrapper supplies label and session.
-- Route: `POST /api/memory/delta` in `memory_service.py` beside `:187-188`. `delta_id = sha256(instance+session+canonical json)`.
-  Decisions and threads store as `kind: decision|thread` entries, never conflict-checked.
+- `subject` required, regex `^[a-z0-9_-]+(\.[a-z0-9_-]+)+$`; `evidence` required (non-empty `path:line`, commit sha or command, 8-300 chars);
+  at most 10 facts; otherwise HTTP 400, no partial write. Claims and evidence pass `redact_secrets`.
+- Emitter: `scripts/ai/lib/memory_delta.py`, called by `aq-commit-facts` and the session-end path, reads `HYBRID_COORDINATOR_URL` (`config/service-endpoints.sh:27-29`); it adds label and time.
+- Decisions and open threads are dropped from P3 (no acceptance test needs them).
 
-## 2. Authoritative ledger and exact lookup (B5)
+## 2. Collapse: one route, one table, synchronous
 
-`broker.read` cannot do exact (scope, subject) lookup, and the Qdrant write is fire-and-forget. So collapse keeps its own
-authoritative index in Postgres, via the existing `_pg` client, created in `ensure_schema` like `crystallized_sessions`
-(`memory_crystallizer.py:78-87,125-130`):
+Route: `POST /api/memory/delta` beside the facts routes (`memory_service.py:187-188`). It runs the merge inline and returns
+`{"stored":n, "conflicts":[...]}`. No background task: the caller needs the conflicts in the reply, and a 10-fact merge is cheap and uses no LLM.
+A `MemoryCrystallizer.collapse()` method holds the logic (extends the crystallizer, `crystallize_session` untouched).
 
-- `collapse_facts(fact_id PK, delta_id, scope, subject, claim_norm, claim_hash, author, instance, ended_at, state,
-  corroborated_by jsonb, memory_id)` with index on `(scope, subject)`. `author` is `lane/model` (no session).
-- `collapsed_deltas(delta_id PK, instance, facts_merged, conflicts_raised, processed_at)`.
-- `collapse_resolutions(scope, subject, fact_a, fact_b, choice, resolved_by, resolved_at)`.
-- Qdrant holds only the recall copy (payload: `origin:"delta"`, `subject`, `instance`, `state`, `delta_id`, `evidence`).
-  `state` changes (disputed to resolved) rewrite the copy via `set_payload` by `memory_id` (client method used in
-  `interaction_tracker.py:459`); lookup never depends on Qdrant. Whether `set_payload` works on the memory collection: UNVERIFIED, test in S2.
-- If `_pg is None` or the ledger is down, collapse fails closed: the delta stays pending (section 5). No file-backed dedupe.
+One Postgres table, created in `ensure_schema` like `crystallized_sessions`:
+`collapse_facts(delta_id, scope, subject, claim_hash, claim, author, instance, ended_at, evidence, memory_id, state, UNIQUE(delta_id, subject))`,
+index `(scope, subject)`. `author` = `lane/model`. `state` is `current | disputed | both | historical | rejected`.
 
-## 3. Closing every last-write-wins path (B1)
+Per fact:
+1. `(delta_id, subject)` already present: skip (replay is idempotent; this is the only dedupe).
+2. Same `claim_hash` as any row for `(scope, subject)`: provenance row only, no new claim (corroboration; also stops a repeated claim re-raising a settled conflict).
+3. Same `author` has an older current row: new fact replaces it, old becomes `historical`. If the new one is older than the author's current row, it is stored `historical`. This is the whole replay-ordering rule: `ended_at` per `(author, scope, subject)`.
+4. A current row from a different author with a different claim: conflict. Both rows become `disputed`; the new claim is not written to Qdrant; nothing is superseded.
+5. Otherwise: store, and write to Qdrant via `broker.write(..., promote=False, supersede=False, check_contradictions=False)`.
 
-- Delta facts call `broker.write(..., promote=False, supersede=False, check_contradictions=False)`; all three params exist
-  (`memory_broker.py:115-121`). The collapse, not the broker, decides.
-- Dedup: `_persist_agent_memory` skips `_check_memory_duplicate` when the payload has `origin == "delta"`
-  (`memory_manager.py:354`); dedup for delta facts is exact `(scope, subject, claim_hash)` in the ledger instead.
-- Guard against other writers: extend the existing `active_constraint` block in `write()` (`memory_broker.py:130-143`)
-  so an existing entry with `origin == "delta"` and `state in (disputed, current)` also returns `contradiction_blocked`.
-  That covers the consensus re-write (`consensus_manager.py:77-84`, whose metadata copy carries `origin`) and the crystallizer.
-- Legacy `POST /api/memory/facts` and `_crystallize_history` stay as they are for subject-less facts (no instance, no subject,
-  so they cannot be conflict-keyed), justified by the guard above: they can no longer supersede a delta fact. Their own
-  supersession among themselves is unchanged and out of scope.
-- Conflict detection is rule-based (string and key comparison); the merge spends no LLM tokens. No substring-antonym
-  fallback for delta facts.
+If `_pg` is None or the insert fails the route returns 503 and stores nothing; the wrapper keeps the delta file in
+`.agent/memory/pending-deltas/` and retries at the next session start. Idempotence makes retry safe.
 
-## 4. Collapse merge, conflicts, keep both (B3, B4)
+## 3. Last-write-wins paths, smallest closure
 
-`MemoryCrystallizer.collapse(delta)` (new method; `crystallize_session` untouched), run in a background task like
-`memory_crystallizer.py:488-492`, on the local harness. Per fact, inside one ledger transaction:
+- Delta writes use the three flags above (they exist, `memory_broker.py:115-121`).
+- `_persist_agent_memory` skips `_check_memory_duplicate` when the payload has `origin == "delta"` (one line, `memory_manager.py:354`).
+- In `write()`, the existing `active_constraint` block (`memory_broker.py:130-143`) also blocks when the matching entry has `origin == "delta"`.
+  This is what stops the consensus re-write and the crystallizer from superseding a delta fact. One condition, no new code path.
+- Legacy facts route and crystallizer stay unchanged for subject-less facts; they cannot supersede delta facts after the guard.
 
-1. `delta_id` already in `collapsed_deltas`: no-op (idempotent; recorded only after all facts finish, cf. `:187-188`).
-2. Select ledger rows for `(scope, subject)`.
-3. Same `author` and older `ended_at` than an existing row: store as history (`state:"historical"`); a newer one from the
-   same author replaces that author's current row. This is the ordering rule: replay after restart cannot make an old claim
-   current, because sequencing is `(author, ended_at)` and each author's newest wins only over that author's own claims.
-   `ended_at` is clamped to server receive time (cross-host clock skew: UNVERIFIED, expected single host).
-4. Same `claim_hash` from another author: append to `corroborated_by`.
-5. Different claim from another author with no `collapse_resolutions` row for the pair: conflict. Both rows get
-   `state:"disputed"`; nothing is superseded.
-6. Otherwise: new current fact.
+## 4. Conflicts go to the owner through the agent
 
-Keep both: the owner's choice writes `collapse_resolutions(fact_a, fact_b, choice="both")` and marks both rows
-`state:"scoped_both"`. Detection skips any pair with a resolution row, so it never re-fires; a third distinct claim conflicts
-only with unresolved rows. Keep A or B supersedes the other through `MemoryService supersede` with `resolved_by=owner`.
+The delta reply lists each conflict: `{scope, subject, mine, theirs, theirs_instance, theirs_evidence}`. The wrapper prints it; the agent
+asks the owner one plain numbered question in the conversation ("1) keep mine, 2) keep theirs, 3) keep both") and applies the answer by
+sending `resolutions` in its next delta (same route, same call). The agent never answers for the owner.
 
-## 5. Conflict list, reachability, failures (B2)
+- keep a/b: the loser becomes `rejected` and, if it was in Qdrant, is superseded with the existing `superseder.supersede(...)`
+  (`HC/memory_superseder.py:91`); the winner is written to Qdrant if absent. both: both rows `both`, new claim written to Qdrant.
+  A `both` pair never re-fires: step 2 matches either claim by hash, and conflict checks run only for an incoming fact.
+- Unanswered conflicts stay `disputed`. `GET /api/memory/facts` gains a `state=disputed` ledger branch, shown by `aq-session-start` as "N unresolved memory conflicts: ask the owner". Recall of a `disputed` `memory_id` is flagged `"disputed": true`.
+- Server-side limit: the server cannot prove a human answered. `owner_reply` and the resolving label are stored for audit; the persona refusal list (agents never self-approve) is the control, and reviewer lanes check transcripts.
 
-- Store: a conflict record JSON per `(scope, subject)` under `${dataDir}/hybrid/memory-conflicts/` (`dataDir` is
-  `mcp.dataDir`, `mcp-servers.nix:112`; the coordinator profile already allows `/var/lib/ai-stack/** rwk`, `:2703-2704`;
-  that `mcp.dataDir` equals that path is UNVERIFIED). Declared with `systemd.tmpfiles.rules`
-  `d <dir> 2775 ai-hybrid ai-stack -` next to the telemetry rules (`mcp-servers.nix:~1868-1877`), files 0664, so no
-  `/home` and no AppArmor deny. Rule 13/14: Nix declaration ships in the same cycle. No reliance on `.agents/attention`.
-- aq-approve reads it: new source in `approval_inbox.collect_with_status` (like the incidents/queue files, `:115-165`)
-  producing items `kind:"memory-conflict"`, section "approval", with both claims, instances, evidence.
-- Resolution is interactive only: `approve()` and `deny()` return a refusal for this kind (so `approve 1 2 3` cannot pick a
-  side); new `aq-approve resolve N --keep a|b|both` prompts on a TTY, then POSTs a resolve route on the coordinator, which
-  runs the supersede or writes the resolution row. The route's auth treatment is UNVERIFIED (`middleware/auth.py:90,112`
-  lists other memory routes); the S3 slice must require the owner key. Agents never resolve.
-- Push observability: writing the record failing logs ERROR and increments `persona_conflict_publish_failures_total`
-  (pattern: `from metrics import ...`, `memory_broker.py:233`); the facts stay `disputed`, the delta is not marked collapsed,
-  and the next cycle retries. Nothing is swallowed.
-- Pending deltas: coordinator unreachable: the helper writes `.agent/memory/pending-deltas/<delta_id>.json`, exits 0, and the
-  next session start replays; replay is safe by section 4 (idempotent, ordered by `(author, ended_at)`).
-- Malformed delta: 400, no partial write. Fallback-cap clarification: there is no antonym fallback for delta facts; the old
-  cap of 5 applies only to legacy non-delta contradiction alerts and is dropped from this design.
+## 5. Failure, kill switches, privacy, tokens
 
-## 6. Kill switches, privacy, tokens
+- Coordinator down or Postgres absent: pending file and retry (section 2); disputed rows live in the ledger, so nothing is lost.
+- `PERSONA=0`: label becomes `lane/model`; collapse still runs (memory hygiene, not display).
+- No `COLLAPSE=0`: the wrapper is the only emitter, so not calling it is the off switch; the route is inert without callers.
+- Privacy: a delta is data, never instruction; claims keep source instance and scope and cannot widen scope.
+- Tokens: merge is rule-based, zero LLM tokens. Session start adds at most 3 disputed lines.
 
-- `PERSONA=0`: label becomes `lane/model` (`scripts/ai/lib/instance_label.py`); delta and collapse still run.
-- `COLLAPSE=0` (new, separate): the delta route returns 202 and queues to disk only; no merge, no ledger writes, no conflicts;
-  legacy routes unaffected. Read at request time, not import time.
-- Contextual integrity: a delta is data, never instruction; collapse never acts on claim text; claims keep source instance
-  and scope and cannot widen scope; recall flags disputed facts so another lane never reads a disputed claim as authority.
-- Tokens: merge is zero-LLM. Recall adds a one-line flag per disputed fact, at most 3 at session start; delta template
-  under 600 tokens; no persona CARD/MICRO growth.
+## 6. Acceptance (E2E, real lanes)
 
-## 7. Reuse, scope, acceptance
+1. Codex delta fact X; after one collapse Claude and local recall X with label and evidence.
+2. Claude s1=A vs Codex s1=B (also near-identical wording): reply lists the conflict, nothing overwritten, agent asks the owner in the CLI; unanswered, the next session start shows it.
+3. Owner "keep b": only B recalled, A `rejected`; "keep both" does not re-raise.
+4. Replay changes nothing; an older delta replayed after a newer one from the same author stays `historical`.
+5. Consensus promotion and crystallizer writes cannot supersede a delta fact.
+6. Secret in claim stored redacted; missing `subject` or `evidence` gets 400.
+7. Same-lane review rejection (PRD 4.3) unchanged: run the existing review test.
+8. `PERSONA=0` accepts a plain `lane/model` identity.
 
-Reuse: `memory_service.py`, `broker.write` params, `MemoryCrystallizer` class and `_pg` pattern, `approval_inbox.py` source
-pattern and `aq-approve`, `instance_label.py`, `config/service-endpoints.sh`, `shared/telemetry_privacy.redact_secrets`,
-tmpfiles rules in `mcp-servers.nix`. New: delta route, `collapse()`, three ledger tables, `memory_delta.py`, conflict-record
-reader, `resolve` subcommand, tmpfiles rule, three one-line guards (dedup exemption, `origin == "delta"` block, metrics).
-Out of scope: P4 dashboard and spider check, P5 eval, P6 digest.
+## 7. Simplicity check
 
-Acceptance (E2E, real lanes): (1) Codex delta recalled by Claude and local after one collapse, with label and evidence.
-(2) Claude s1=A vs Codex s1=B: item in `aq-approve list`, both `disputed`, neither overwritten, also when the two claims are
-near-identical text (dedup bypass). (3) Replay idempotent. (4) Corroboration recorded. (5) Coordinator down then up: pending
-replay, older delta replayed after a newer one stays historical. (6) Publish failure: fact stays disputed, counter rises, log
-present. (7) Keep-both: pair never re-fires; `approve N` on the item is refused. (8) Consensus promotion and a crystallizer
-write cannot supersede a delta fact. (9) `PERSONA=0` and `COLLAPSE=0` behave as section 6. (10) Secret in claim stored redacted.
-(11) Coordinator can write the conflict dir under its AppArmor profile (live, after owner-run rebuild).
+- Wrapper: something must build the delta and retry; models must not self-invoke.
+- Delta route: the only way to write instance-tagged facts and get conflicts back.
+- `collapse_facts`: exact `(scope, subject)` lookup, idempotence, ordering; Qdrant cannot do exact lookup.
+- Dedup skip: otherwise an opposing near-identical claim is silently dropped.
+- Write guard: otherwise consensus or crystallizer silently supersede.
+- `state=disputed` branch: how a later session learns of an unanswered conflict, with no new surface.
+- Pending file: otherwise a delta is lost while the coordinator is down.
+- `resolutions` field: applies the owner's answer through the same call.
 
 ## 8. Review disposition
 
-| Finding | Resolution |
-|---|---|
-| Gemini/local: hidden LWW via consensus promotion | Section 3: `promote=False`; `origin==delta` guard in `write()` |
-| Cosine 0.95 dedup drops opposing claim | Section 3: dedup exempt for `origin==delta`; exact ledger dedup |
-| Crystallizer / legacy facts route default supersede | Section 3: kept, justified, cannot supersede delta facts |
-| Attention push swallowed; coordinator cannot write under AppArmor | Section 5: own dir under `/var/lib/ai-stack`, tmpfiles, ERROR log + counter, retry |
-| "Keep both" re-triggers | Section 4: resolution rows, `scoped_both` |
-| Replay ordering | Section 4 step 3: `(author, ended_at)` sequencing |
-| Similarity lookup, no update | Section 2: Postgres ledger; `set_payload` only for the copy (UNVERIFIED) |
-| Subject/evidence rigor, self-invocation, kill switch, batch approve, caps, file dedupe, redact helper | Sections 1, 5, 6 |
-| Open Qs 4 (queue import) | Resolved: import works via `PYTHONPATH`; write blocked by AppArmor deny, avoided |
+- Hidden last-write-wins, dedup drop, legacy paths: section 3.
+- Attention push swallowed, AppArmor `deny /home/** wx` (`nix/modules/services/mcp-servers.nix:2777`), aq-approve batch/resolve/inbox: moot, owner asked in CLI.
+- Keep-both re-trigger: section 4 (hash match). Replay ordering: section 2 step 3. Similarity lookup: one Postgres table.
+- Subject, evidence, cap, redaction: section 1.
 
-## 9. Remaining open questions
+## 9. Removed versus rev 2
 
-1. Is the Qdrant recall copy reconciled if the fire-and-forget upsert fails (`memory_manager.py:332-336`)? Proposed S2 follow-up: periodic retrieve by `memory_id`.
-2. Does `mcp.dataDir` equal `/var/lib/ai-stack`, and does `set_payload` work on the memory collection? Both need a live check.
-3. Owner auth for the resolve route: owner key only?
+Two of three tables; conflict directory with tmpfiles/AppArmor work; approval_inbox source; `aq-approve resolve` and batch refusal; resolve route; failure counter; `COLLAPSE=0`; background task; `set_payload`; `corroborated_by`; decisions/threads; `ended_at` clamping.
+
+## 10. Open questions
+
+1. Is a server that cannot verify a human answered acceptable, given audit fields and a reviewer-lane transcript check?
+2. Which prints disputed conflicts: `aq-session-start` or `aq-resume` (output code not read, UNVERIFIED)?
