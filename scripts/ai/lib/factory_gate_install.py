@@ -28,6 +28,7 @@ from typing import Any
 
 SCHEMA_VERSION = 1
 RECEIPT = Path(".factory/gate-install.json")
+COMPOSITION_RECEIPT = Path(".factory/hook-composition.json")
 EVIDENCE_RECEIPT = Path(".factory/gate-run-evidence.json")
 EVIDENCE_IGNORE_RULE = "/.factory/gate-run-evidence.json"
 BUNDLE_DESTINATION = Path(".factory/gate-bundle")
@@ -60,6 +61,108 @@ HOOK_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 def emit(value: dict[str, Any]) -> int:
     print(json.dumps(value, sort_keys=True))
     return 0
+
+
+def composition_conflict(target: Path) -> tuple[str, str] | None:
+    """Reserve composition state without trusting a receipt before its verifier exists."""
+    def inspect(path: Path) -> os.stat_result | None:
+        try:
+            return path.lstat()
+        except FileNotFoundError:
+            return None
+
+    try:
+        factory = target / COMPOSITION_RECEIPT.parent
+        factory_info = inspect(factory)
+        if factory_info is not None:
+            if not stat.S_ISDIR(factory_info.st_mode):
+                return "COMPOSITION_RECEIPT_INVALID", ".factory must be a local directory"
+            if inspect(target / COMPOSITION_RECEIPT) is not None:
+                return "COMPOSITION_RECEIPT_INVALID", "composition receipt validation is not implemented"
+        for name in (".pre-commit-config.yaml", ".pre-commit-config.yml"):
+            if inspect(target / name) is not None:
+                return "FOREIGN_HOOK_MANAGER", f"{name} requires verified explicit composition"
+    except OSError as error:
+        return "COMPOSITION_RECEIPT_INVALID", f"cannot inspect composition state: {error}"
+    return None
+
+
+def composition_refusal(target: Path, operation: str,
+                        conflict: tuple[str, str]) -> dict[str, Any]:
+    code, detail = conflict
+    return {
+        "schema_version": SCHEMA_VERSION, "target": str(target), "operation": operation,
+        "state": code, "safe_to_install": False, "preview_digest": None,
+        "writes": [], "directories": [], "blockers": [{"code": code, "detail": detail}],
+        "installation": {"state": "REFUSED", "receipt_path": str(COMPOSITION_RECEIPT)},
+        "hooks": {"state": "CONFLICT", "executable": {}},
+        "checks": {"state": "BLOCKED", "required_unconfigured": [code]},
+        "proof": {"state": "NOT_RUN"}, "activation": {"state": "BLOCKED"},
+        "ready": False,
+    }
+
+
+def _composition_inventory_file(target: Path, relative: str) -> dict[str, Any]:
+    """Bounded diagnostic read; never follow a component or block on a FIFO."""
+    descriptors: list[int] = []
+    try:
+        descriptor = os.open(target, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+        descriptors.append(descriptor)
+        parts = Path(relative).parts
+        for part in parts[:-1]:
+            descriptor = os.open(part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW,
+                                 dir_fd=descriptor)
+            descriptors.append(descriptor)
+        descriptor = os.open(parts[-1], os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK,
+                             dir_fd=descriptor)
+        descriptors.append(descriptor)
+        before = os.fstat(descriptor)
+        if not stat.S_ISREG(before.st_mode):
+            return {"state": "UNSAFE", "detail": "not a regular file"}
+        limit = 1024 * 1024
+        if before.st_size > limit:
+            return {"state": "UNSUPPORTED", "detail": "diagnostic size limit exceeded"}
+        content = bytearray()
+        while len(content) <= limit:
+            chunk = os.read(descriptor, min(65536, limit + 1 - len(content)))
+            if not chunk:
+                break
+            content.extend(chunk)
+        after = os.fstat(descriptor)
+        identity = lambda value: (value.st_dev, value.st_ino, value.st_mode,
+                                  value.st_size, value.st_mtime_ns, value.st_ctime_ns)
+        if len(content) > limit or identity(before) != identity(after):
+            return {"state": "UNSAFE", "detail": "file changed during inventory"}
+        return {"state": "PRESENT", "sha256": hashlib.sha256(content).hexdigest(),
+                "mode": stat.S_IMODE(after.st_mode), "size": after.st_size}
+    except FileNotFoundError:
+        return {"state": "ABSENT"}
+    except OSError as error:
+        return {"state": "UNSAFE", "detail": str(error)}
+    finally:
+        for descriptor in reversed(descriptors):
+            os.close(descriptor)
+
+
+def composition_preview(target: Path) -> dict[str, Any]:
+    """Read-only admission diagnostics, never an installable composition preview.
+
+    A diagnostic inventory is deliberately not a section-7 confirmation digest.
+    No target hook, manager, Git command, or sandbox probe runs on this path.
+    """
+    conflict = composition_conflict(target) or (
+        "OFFLINE_BOUNDARY_UNAVAILABLE", "composition sandbox and receipt verifier are not implemented")
+    report = composition_refusal(target, "composition-preview", conflict)
+    paths = (".git/config", ".git/HEAD", ".git/index", ".git/commondir",
+             ".githooks/pre-commit", ".githooks/reference-transaction",
+             ".pre-commit-config.yaml", ".pre-commit-config.yml")
+    inventory = {path: _composition_inventory_file(target, path) for path in paths}
+    report["inventory"] = inventory
+    report["inventory_digest"] = hashlib.sha256(
+        json.dumps(inventory, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+    report["deferred"] = ["offline sandbox", "immutable prewarm cache", "semantic catalog",
+                          "durable journal and rollback", "commit observer and receipt verifier"]
+    return report
 
 
 def git(root: Path, *args: str) -> subprocess.CompletedProcess[str]:
@@ -356,6 +459,8 @@ def collision_report(target: Path, bundle_root: Path, extra_destinations: tuple[
 
 
 def preview(target: Path, bundle_root: Path, stack: str | None, project_name: str) -> dict[str, Any]:
+    if conflict := composition_conflict(target):
+        return composition_refusal(target, "preview", conflict)
     detected = resolver(bundle_root, target, stack)
     commands, blocked = command_values(detected)
     _, entries = manifest_entries(bundle_root)
@@ -602,6 +707,8 @@ def backup_path(digest: str, relative: Path) -> Path:
 
 
 def retrofit_preview(target: Path, bundle_root: Path, stack: str | None, project_name: str) -> dict[str, Any]:
+    if conflict := composition_conflict(target):
+        return composition_refusal(target, "retrofit-preview", conflict)
     conflict = retrofit_metadata_conflict(target)
     upgrade = False
     if not conflict:
@@ -873,6 +980,8 @@ def render_agentic_settings(target: Path, template_root: Path, project_name: str
 
 
 def status(target: Path, bundle_root: Path, stack: str | None, project_name: str) -> dict[str, Any]:
+    if conflict := composition_conflict(target):
+        return composition_refusal(target, "status", conflict)
     receipt = load_json(target / RECEIPT)
     configured = git_value(target, "config", "--get", "core.hooksPath") if (target / ".git").exists() else None
     hooks_dir = target / (configured or HOOKS_PATH)
@@ -1082,6 +1191,8 @@ def readiness_preflight(target: Path, bundle_root: Path, stack: str | None, proj
     the existing installer status, gate runner receipts, structure lint and
     PM tracker check instead of a parallel policy engine.
     """
+    if conflict := composition_conflict(target):
+        return composition_refusal(target, "readiness-preflight", conflict)
     report = status(target, bundle_root, stack, project_name)
     blockers: list[dict[str, str]] = []
     coverage: list[dict[str, Any]] = []

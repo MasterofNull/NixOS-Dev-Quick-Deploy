@@ -108,9 +108,25 @@ def _check_foreign_hook_managers(repo: Path) -> list[str]:
     return foreign
 
 
+def _print_composition_refusal(report: dict, conflict: tuple[str, str], as_json: bool) -> None:
+    """Fail-closed refusal output; keeps the legacy foreign-hook-manager diagnostic on stderr."""
+    if as_json:
+        print(json.dumps(report))
+    elif conflict[0] == "FOREIGN_HOOK_MANAGER":
+        print(f"FAIL: Foreign hook manager(s) detected: {conflict[1]}. "
+              "Remove foreign hook manager or compose manually before retrofit.", file=sys.stderr)
+    else:
+        print(f"FAIL: {conflict[0]}: {conflict[1]}", file=sys.stderr)
+
+
 def cmd_init(args: argparse.Namespace) -> int:
     repo = Path(args.repo).resolve()
     kit_root = Path(args.kit_root).resolve()
+
+    if conflict := fgi.composition_conflict(repo):
+        report = fgi.composition_refusal(repo, "init", conflict)
+        _print_composition_refusal(report, conflict, args.json)
+        return 4
 
     if sys.platform == "win32":
         print("FAIL: Native Windows unsupported. Please use WSL.", file=sys.stderr)
@@ -197,6 +213,16 @@ def cmd_retrofit(args: argparse.Namespace) -> int:
     repo = Path(args.repo).resolve()
     kit_root = Path(args.kit_root).resolve()
 
+    if args.compose_pre_commit:
+        report = fgi.composition_preview(repo)
+        print(json.dumps(report) if args.json else
+              f"FAIL: {report['state']}: {report['blockers'][0]['detail']}")
+        return 4
+    if conflict := fgi.composition_conflict(repo):
+        report = fgi.composition_refusal(repo, "retrofit", conflict)
+        _print_composition_refusal(report, conflict, args.json)
+        return 4
+
     if sys.platform == "win32":
         print("FAIL: Native Windows unsupported. Please use WSL.", file=sys.stderr)
         return 4
@@ -281,6 +307,11 @@ retrofit = true
 def cmd_update(args: argparse.Namespace) -> int:
     repo = Path(args.repo).resolve()
     kit_root = Path(args.kit_root).resolve()
+
+    if conflict := fgi.composition_conflict(repo):
+        report = fgi.composition_refusal(repo, "update", conflict)
+        _print_composition_refusal(report, conflict, args.json)
+        return 4
 
     if sys.platform == "win32":
         print("FAIL: Native Windows unsupported. Please use WSL.", file=sys.stderr)
@@ -525,6 +556,11 @@ def cmd_doctor(args: argparse.Namespace) -> int:
     repo = Path(args.repo).resolve()
     kit_root = Path(args.kit_root).resolve()
 
+    if conflict := fgi.composition_conflict(repo):
+        report = fgi.composition_refusal(repo, "doctor", conflict)
+        _print_composition_refusal(report, conflict, args.json)
+        return 1
+
     checks: list[dict[str, str]] = []
     failures = 0
 
@@ -657,6 +693,8 @@ def main(argv: list[str] | None = None) -> int:
     p_retro.add_argument("--owner-handle", help="owner handle override (e.g. @username)")
     p_retro.add_argument("--confirm", help="preview digest confirmation for scripted run")
     p_retro.add_argument("--dry-run", action="store_true")
+    p_retro.add_argument("--compose-pre-commit", action="store_true",
+                         help="Inspect composition admission (currently refuses; no target writes).")
     p_retro.add_argument("--json", action="store_true")
     p_retro.set_defaults(func=cmd_retrofit)
 

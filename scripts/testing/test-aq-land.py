@@ -204,7 +204,7 @@ class Base(unittest.TestCase):
         self.gh_state({})
         self.env = {**os.environ, "STUB_DIR": str(self.S), "AQ_LAND_GH": str(self.S / "gh"), "AQ_LAND_DELEGATE_DIR": str(self.S),
                     "AQ_LAND_RECEIPT_TOOL": str(self.S / "receipt"), "AQ_LAND_TIER0": str(self.S / "tier0"),
-                    "AQ_LAND_STATE_DIR": str(self.S / "state"), "AQ_LAND_POLL_S": "0.05", "AQ_LAND_STALL_S": "2",
+                    "AQ_LAND_STATE_DIR": str(self.S / "state"), "AQ_LAND_WORKTREE_DIR": str(self.S / "wts"), "AQ_LAND_POLL_S": "0.05", "AQ_LAND_STALL_S": "2",
                     "AQ_LAND_REVIEW_TIMEOUT_S": "4", "AQ_LAND_CHECKS_TIMEOUT_S": "5", "AQ_LAND_LOCK_WAIT_S": "1"}
 
     def tearDown_state(self):
