@@ -35,6 +35,7 @@ import subprocess
 import sys
 import time
 import uuid
+from collections import deque
 from urllib.parse import urlsplit
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -49,6 +50,11 @@ _QUEUE_FILE = _ATTENTION_DIR / "ATTENTION.json"
 _ARCHIVE_FILE = _ATTENTION_DIR / "ATTENTION_ARCHIVE.jsonl"
 
 _SCHEMA_VERSION = "1.0"
+# Machine recovery is deliberately scoped to one producer/key pair; it is not a general policy.
+_RECOVERY_SOURCE = "ai-stack-health-monitor"
+_RECOVERY_KEY = "qa-phase-0"
+_RECOVERY_REASON = "phase-0-clean"
+_RECOVERY_ARCHIVE_WINDOW = 200  # physical JSONL records inspected for last_machine_recovery
 _DEFAULT_TTL_S = 86400      # 24h
 _MAX_ACTIVE = 50            # overflow cap — oldest get auto-deferred
 _LOCK_RETRY = 3
@@ -244,6 +250,15 @@ _SECRET_RE = re.compile(
 
 def _identity(source: str, title: str, dedup_key: Optional[str] = None) -> str:
     return _dedup_key(source, dedup_key if dedup_key else title)
+
+
+def _is_recovery_scope(source: object, dedup_key: object) -> bool:
+    return source == _RECOVERY_SOURCE and dedup_key == _RECOVERY_KEY
+
+
+def _generation(a: dict) -> int:
+    g = a.get("observation_generation")
+    return g if isinstance(g, int) and not isinstance(g, bool) and g >= 0 else 0
 
 
 def _alert_identity(a: dict) -> str:
@@ -572,7 +587,10 @@ def push(
         "expires_at": _expires_iso(ttl_s),
         "resolved_at": now if autonomy_boundary == "auto_ok" else None,
         "resolved_by": "system",
+        "dedup_key": dedup_key,
     }
+    if _is_recovery_scope(source, dedup_key):
+        alert["observation_generation"] = 1
 
     # auto_ok: archive immediately, never touch the active queue
     if autonomy_boundary == "auto_ok":
@@ -603,6 +621,11 @@ def push(
                 fields = {"title": title, "detail": detail, "why": why, "next_step": next_step,
                           "command": command, "link": link, "severity": severity,
                           "proposed_action": proposed_action}
+                if _is_recovery_scope(source, dedup_key):
+                    # Every failure observation bumps the fence, including a content-identical dedup push,
+                    # so a retirement snapshot taken before this push can no longer match.
+                    existing["dedup_key"] = dedup_key
+                    existing["observation_generation"] = _generation(existing) + 1
                 changed = dedup_key and any(existing.get(k) != v for k, v in fields.items())
                 if not changed:
                     _save_queue(fh, {**data, "alerts": alerts})
@@ -810,6 +833,120 @@ def extend_ttl(alert_id: str, extra_hours: int) -> bool:
         finally:
             fcntl.flock(fh, fcntl.LOCK_UN)
     return False
+
+
+def snapshot_recovery_candidate() -> Optional[dict]:
+    """Return an immutable {id, source, dedup_key, observation_generation} snapshot of the one pending
+    ai-stack-health-monitor / qa-phase-0 alert, or None.
+
+    Runs under the exclusive queue lock. A legacy row (no raw dedup_key/generation) is migrated only when exactly
+    one pending human_gate row of that source has the exact stored identity; zero, multiple, malformed or
+    mismatched candidates are a no-op. Nothing is inferred from a title, prefix or partial hash.
+    """
+    if not _QUEUE_FILE.exists():
+        return None
+    with open(_QUEUE_FILE, "r+", encoding="utf-8") as fh:
+        if not _acquire_lock(fh, exclusive=True, operation="recovery_snapshot"):
+            return None
+        try:
+            try:
+                data = _load_queue(fh)
+            except ValueError:
+                return None
+            alerts = data.get("alerts", [])
+            if not isinstance(alerts, list):
+                return None
+            candidates = [
+                a for a in alerts
+                if isinstance(a, dict) and a.get("source") == _RECOVERY_SOURCE
+                and a.get("status") == "pending" and a.get("autonomy_boundary") == "human_gate"
+                and a.get("identity") == _identity(_RECOVERY_SOURCE, str(a.get("title", "")), _RECOVERY_KEY)
+            ]
+            if len(candidates) != 1:
+                return None
+            cand = candidates[0]
+            raw = cand.get("dedup_key")
+            if raw is None and "observation_generation" not in cand:
+                cand["dedup_key"] = _RECOVERY_KEY
+                cand["observation_generation"] = 1
+                _save_queue(fh, data)
+                _write_mirror_snapshot(alerts)
+            elif raw != _RECOVERY_KEY or _generation(cand) < 1:
+                return None
+            return {"id": cand.get("id"), "source": _RECOVERY_SOURCE, "dedup_key": _RECOVERY_KEY,
+                    "observation_generation": _generation(cand)}
+        finally:
+            fcntl.flock(fh, fcntl.LOCK_UN)
+
+
+def retire_recovered(snapshot: dict) -> bool:
+    """Archive the snapshotted alert as machine-recovered. Returns True only if it was retired.
+
+    Under the exclusive lock, requires exact id/source/raw key/pending/generation equality with the snapshot;
+    a concurrent failure observation (generation bump) or human disposition wins.
+    """
+    if not isinstance(snapshot, dict) or not _QUEUE_FILE.exists():
+        return False
+    gen = snapshot.get("observation_generation")
+    if (not _is_recovery_scope(snapshot.get("source"), snapshot.get("dedup_key"))
+            or not isinstance(snapshot.get("id"), str) or not isinstance(gen, int) or isinstance(gen, bool)):
+        return False
+    with open(_QUEUE_FILE, "r+", encoding="utf-8") as fh:
+        if not _acquire_lock(fh, exclusive=True, operation="recovery_retire"):
+            return False
+        try:
+            try:
+                data = _load_queue(fh)
+            except ValueError:
+                return False
+            alerts = data.get("alerts", [])
+            retired = None
+            for a in alerts:
+                if (isinstance(a, dict) and a.get("id") == snapshot["id"]
+                        and a.get("source") == _RECOVERY_SOURCE and a.get("dedup_key") == _RECOVERY_KEY
+                        and a.get("status") == "pending" and a.get("observation_generation") == gen):
+                    retired = {**a, "status": "recovered", "recovered_at": _now_iso(),
+                               "recovery_reason": _RECOVERY_REASON, "resolved_by": _RECOVERY_SOURCE}
+                    break
+            if retired is None:
+                return False
+            data["alerts"] = [a for a in alerts if a is not retired and a.get("id") != snapshot["id"]]
+            _save_queue(fh, data)
+            _write_mirror_snapshot(data["alerts"])
+        finally:
+            fcntl.flock(fh, fcntl.LOCK_UN)
+    _append_archive(retired)
+    return True
+
+
+def last_machine_recovery() -> Optional[dict]:
+    """Newest machine recovery within the last _RECOVERY_ARCHIVE_WINDOW physical archive records, or None.
+
+    Bounded recent observation, not the globally newest recovery. Only four fields are exposed.
+    """
+    try:
+        with open(_ARCHIVE_FILE, "r", encoding="utf-8", errors="replace") as af:
+            tail = deque(af, maxlen=_RECOVERY_ARCHIVE_WINDOW)
+    except OSError:
+        return None
+    best, best_ts = None, None
+    for line in tail:
+        try:
+            rec = json.loads(line)
+            if (rec.get("status") != "recovered" or rec.get("source") != _RECOVERY_SOURCE
+                    or rec.get("dedup_key") != _RECOVERY_KEY or rec.get("recovery_reason") != _RECOVERY_REASON):
+                continue
+            ts = datetime.fromisoformat(str(rec["recovered_at"]).replace("Z", "+00:00"))
+            if ts.tzinfo is None:
+                continue
+        except (ValueError, KeyError, TypeError, AttributeError):
+            continue
+        if best_ts is None or ts > best_ts:
+            best_ts, best = ts, rec
+    if best is None:
+        return None
+    return {"source": _RECOVERY_SOURCE, "dedup_key": _RECOVERY_KEY,
+            "recovered_at": best["recovered_at"], "recovery_reason": _RECOVERY_REASON}
 
 
 def pending_count() -> int:
