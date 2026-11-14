@@ -269,8 +269,8 @@ def main() -> int:
                 try:
                     if retire_recovered(recovery_snapshot):
                         print(f"[{_SOURCE}] Retired recovered alert {recovery_snapshot['id']} (phase-0-clean)")
-                except (OSError, RuntimeError, ValueError) as exc:
-                    print(f"[{_SOURCE}] Recovery retirement skipped: {exc}", file=sys.stderr)
+                except Exception as exc:  # best-effort; must never abort monitoring
+                    print(f"[{_SOURCE}] Recovery retirement skipped: {type(exc).__name__}: {exc}", file=sys.stderr)
             continue
 
         # Group failures into one alert per phase for readability.

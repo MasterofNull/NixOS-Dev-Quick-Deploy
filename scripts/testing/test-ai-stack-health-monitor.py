@@ -358,6 +358,43 @@ def main() -> int:
             monitor.snapshot_recovery_candidate = real_snapshot
         assert_true(probed == ["0"] and pending_ids() == [pid], "snapshot exception must not abort QA or retire")
 
+        # retirement ordering: archive first, so write failures are retryable without duplicates
+        def recovered_rows(pid):
+            return [r for r in archive_rows() if r.get("id") == pid and r.get("status") == "recovered"]
+        fresh_queue()
+        pid = push_p0()
+        snap = aq.snapshot_recovery_candidate()
+        real_append = aq._append_archive
+        def failing_append(alert):
+            raise OSError("archive down")
+        aq._append_archive = failing_append
+        try:
+            assert_true(aq.retire_recovered(snap) is False, "archive failure must not report retired")
+        finally:
+            aq._append_archive = real_append
+        assert_true(pending_ids() == [pid] and not recovered_rows(pid), "archive failure keeps the alert pending")
+        assert_true(aq.retire_recovered(snap) is True and pending_ids() == [] and len(recovered_rows(pid)) == 1,
+                    "retry retires with exactly one archive record")
+
+        fresh_queue()
+        pid = push_p0()
+        snap = aq.snapshot_recovery_candidate()
+        real_save = aq._save_queue
+        def failing_save(fh, data):
+            raise OSError("queue write failed")
+        aq._save_queue = failing_save
+        try:
+            try:
+                aq.retire_recovered(snap)
+                raised = False
+            except OSError:
+                raised = True
+        finally:
+            aq._save_queue = real_save
+        assert_true(raised and pending_ids() == [pid] and len(recovered_rows(pid)) == 1, "save failure: alert pending, one archive record")
+        assert_true(aq.retire_recovered(snap) is True and pending_ids() == [] and len(recovered_rows(pid)) == 1,
+                    "retry after archived record removes the alert without a duplicate")
+
         # bounded archive window and newest-by-timestamp selection
         fresh_queue()
         def rec_row(ts):

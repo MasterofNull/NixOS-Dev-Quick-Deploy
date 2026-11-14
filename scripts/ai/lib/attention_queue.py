@@ -174,6 +174,27 @@ def _append_archive(alert: dict) -> None:
     _ensure_dirs()
     with open(_ARCHIVE_FILE, "a", encoding="utf-8") as af:
         af.write(json.dumps(alert) + "\n")
+        af.flush()
+        os.fsync(af.fileno())
+
+
+def _recovery_archived(alert_id: str, gen: int) -> bool:
+    """True if the archive already holds the machine-recovery record for this alert id + generation."""
+    try:
+        with open(_ARCHIVE_FILE, "r", encoding="utf-8", errors="replace") as af:
+            for line in af:
+                if alert_id not in line:
+                    continue
+                try:
+                    rec = json.loads(line)
+                except ValueError:
+                    continue
+                if (isinstance(rec, dict) and rec.get("id") == alert_id and rec.get("status") == "recovered"
+                        and rec.get("recovery_reason") == _RECOVERY_REASON and rec.get("observation_generation") == gen):
+                    return True
+    except OSError:
+        pass
+    return False
 
 
 def _emit_contention_event(
@@ -914,13 +935,19 @@ def retire_recovered(snapshot: dict) -> bool:
                     break
             if retired is None:
                 return False
+            # Archive first (under the lock): a failure here leaves the alert pending so the next run retries;
+            # a failure after it leaves an archive record that the retry recognises instead of duplicating.
+            if not _recovery_archived(snapshot["id"], gen):
+                try:
+                    _append_archive(retired)
+                except OSError:
+                    return False
             data["alerts"] = [a for a in alerts if a is not retired and a.get("id") != snapshot["id"]]
             _save_queue(fh, data)
             _write_mirror_snapshot(data["alerts"])
+            return True
         finally:
             fcntl.flock(fh, fcntl.LOCK_UN)
-    _append_archive(retired)
-    return True
 
 
 def last_machine_recovery() -> Optional[dict]:
