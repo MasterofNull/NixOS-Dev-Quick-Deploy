@@ -4,11 +4,11 @@
 }:
 pkgs.stdenvNoCC.mkDerivation rec {
   pname = "continue-cli";
-  version = "1.5.45";
+  version = "1.5.47";
 
   src = pkgs.fetchurl {
     url = "https://registry.npmjs.org/@continuedev/cli/-/cli-${version}.tgz";
-    sha256 = "0wp33iakvn960y6572h62rildjlb43v5224xvg3fr1r33r5n8z4i";
+    sha256 = "091pz9v5j0pj1ry17spmsyjyncn7ijd67f9fxvsby784vgakzx5w";
   };
 
   nativeBuildInputs = [pkgs.makeWrapper];
