@@ -240,7 +240,7 @@ exec {sys.executable} "$@"
     shim.chmod(0o755)
     out = Path(tmp) / "outputs" / "x.log"
     env = dict(os.environ, PATH=f"{bin_dir}:{os.environ['PATH']}", AQ_DELEGATION_DIR=tmp,
-               LLAMA_PORT=url.rsplit(":", 1)[1], AQ_NO_CONSULT="1", OUT_FOR_SENTINEL=str(out), **(extra_env or {}))
+               LLAMA_PORT=url.rsplit(":", 1)[1], AQ_NO_CONSULT="1", AQ_LOCAL_POWER_GATE="0", OUT_FOR_SENTINEL=str(out), **(extra_env or {}))
     r = subprocess.run(
         [str(REPO / "scripts" / "ai" / "delegate-to-local"), "--mode", mode, "--wait",
          "--prompt", prompt, *extra],

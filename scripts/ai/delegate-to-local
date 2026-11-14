@@ -49,7 +49,17 @@
 #                       commit on that branch — never staging/committing into
 #                       the shared REPO_ROOT index. direct/hybrid/ralph modes
 #                       never touch files, so isolation is a no-op for them.
+#   --ignore-power-gate
+#                       Skip the power/thermal gate (also: AQ_LOCAL_POWER_GATE=0).
+#                       The gate defers (exit 5, nothing launched, one DEFER line
+#                       with readings, logged to <delegation>/power-gate-deferred.jsonl)
+#                       unless (AC online OR battery >= 50%) AND 5-min load is not
+#                       busy (enter >= 0.70*ncpu, leave <= 0.55*ncpu) AND CPU temp
+#                       < 80C. Any unreadable sensor defers (fail closed).
 #   --help             Show this help
+#
+# Exit codes: 2 claimed elsewhere, 3 context oversize, 4 preflight failure,
+#             5 deferred by power/thermal gate.
 
 set -euo pipefail
 
@@ -182,6 +192,8 @@ WT_HB_BRANCH=""
 # frozen (L2B golden-manifest pin) — the router/claim consult seam lives here
 # in the shim instead. Escape hatch for callers that must bypass it (e.g. the
 # consult tooling's own self-tests, or a known-solo run).
+POWER_GATE=true
+[[ "${AQ_LOCAL_POWER_GATE:-1}" == "0" ]] && POWER_GATE=false
 NO_CONSULT=false
 if [[ "${AQ_NO_CONSULT:-0}" == "1" || "${AQ_NO_CONSULT:-}" == "true" ]]; then
     NO_CONSULT=true
@@ -209,6 +221,7 @@ while [[ $# -gt 0 ]]; do
         --cancel)        SUBCMD="cancel";        SUBCMD_ARG="${2:-}"; shift; [[ $# -gt 0 ]] && shift ;;
         --kill-all)      SUBCMD="kill-all";      shift   ;;
         --no-consult)    NO_CONSULT=true;        shift   ;;
+        --ignore-power-gate) POWER_GATE=false;   shift   ;;
         --shared|--no-worktree) SHARED_MODE=true; shift  ;;
         --json)          shift ;;
         --no-color)      shift ;;
@@ -301,6 +314,15 @@ case "${SUBCMD:-}" in
         [[ -n "$PROMPT" ]] || die "Provide --prompt TEXT or --prompt-file FILE (or --help)"
 
         ensure_dirs
+        if [[ "$POWER_GATE" == "true" ]]; then
+            _pg_rc=0
+            python3 "$LIB_DIR/power_gate.py" --state-file "$DELEGATION_DIR/power-gate.state" \
+                --defer-log "$DELEGATION_DIR/power-gate-deferred.jsonl" --task "${PROMPT:0:200}" || _pg_rc=$?
+            if [[ "$_pg_rc" -ne 0 ]]; then
+                [[ "$_pg_rc" -eq 5 ]] || echo "power-gate: gate crashed (exit $_pg_rc); failing closed" >&2
+                exit 5
+            fi
+        fi
         ID="$(task_id)"
         OUTPUT_FILE="$DELEGATION_DIR/outputs/${ID}.log"
 
