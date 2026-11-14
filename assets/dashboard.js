@@ -1680,6 +1680,23 @@ async function loadApprovalInbox() {
   }
 }
 
+// Machine-recovery projection: render only when exactly the allow-listed shape validates; archive strings never reach innerHTML.
+function _recentRecoveryRow(r) {
+  if (
+    !r ||
+    r.source !== "ai-stack-health-monitor" ||
+    r.dedup_key !== "qa-phase-0" ||
+    r.recovery_reason !== "phase-0-clean" ||
+    typeof r.recovered_at !== "string" ||
+    !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z$/.test(r.recovered_at)
+  ) {
+    return "";
+  }
+  const when = new Date(r.recovered_at);
+  if (Number.isNaN(when.getTime())) return "";
+  return fwRow("Recent recovery", when.toLocaleString(), "info");
+}
+
 async function loadAlerts() {
   try {
     const d = await apiFetch("/alerts/status");
@@ -1717,6 +1734,8 @@ async function loadAlerts() {
             : `${Math.round(d.oldest_age_s / 3600)}h`;
         rows.push(fwRow("Age", age, d.oldest_age_s > 86400 ? "err" : "info"));
       }
+      const recovery = _recentRecoveryRow(d.last_machine_recovery);
+      if (recovery) rows.push(recovery);
       if (pending > 0) {
         rows.push(
           `<div style="margin-top:.4rem;font-size:.55rem;color:var(--fg3)">Run: <code>aq-alerts</code></div>`

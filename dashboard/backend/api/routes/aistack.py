@@ -8897,6 +8897,8 @@ async def get_alerts_status() -> Dict[str, Any]:
       oldest_title   str|None — title of oldest pending alert (≤60 chars)
       oldest_age_s   int|None — seconds since oldest alert was created
       queue_file_exists bool  — whether ATTENTION.json exists
+      last_machine_recovery dict|None — {source, dedup_key, recovered_at, recovery_reason} from the newest 200
+                              archive records (bounded recent observation, not the global latest)
     """
     repo = _repo_root()
     _lib = repo / "scripts" / "ai" / "lib"
@@ -8913,9 +8915,17 @@ async def get_alerts_status() -> Dict[str, Any]:
     def _queue_exists():
         return (repo / ".agents" / "attention" / "ATTENTION.json").exists()
 
-    alerts, exists = await asyncio.gather(
+    def _read_recovery():
+        try:
+            from attention_queue import last_machine_recovery  # type: ignore
+            return last_machine_recovery()
+        except Exception:
+            return None
+
+    alerts, exists, recovery = await asyncio.gather(
         asyncio.to_thread(_read_alerts),
         asyncio.to_thread(_queue_exists),
+        asyncio.to_thread(_read_recovery),
     )
 
     import time as _time
@@ -8941,6 +8951,7 @@ async def get_alerts_status() -> Dict[str, Any]:
         "oldest_title": oldest_title,
         "oldest_age_s": oldest_age_s,
         "queue_file_exists": exists,
+        "last_machine_recovery": recovery,
         "generated_at": _time.strftime("%Y-%m-%dT%H:%M:%SZ", _time.gmtime()),
     }
 

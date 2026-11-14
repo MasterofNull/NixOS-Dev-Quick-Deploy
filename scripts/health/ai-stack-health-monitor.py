@@ -19,7 +19,7 @@ _REPO_ROOT = Path(os.environ.get("REPO_ROOT", Path(__file__).resolve().parent.pa
 _SCRIPT_DIR = _REPO_ROOT / "scripts"
 sys.path.insert(0, str(_SCRIPT_DIR / "ai" / "lib"))
 
-from attention_queue import push  # noqa: E402
+from attention_queue import push, retire_recovered, snapshot_recovery_candidate  # noqa: E402
 
 _HARNESS_RUNNER = _SCRIPT_DIR / "ai" / "lib" / "harness_runner.py"
 _TMPDIR = _REPO_ROOT / ".agents" / "tmp"
@@ -82,12 +82,43 @@ def run_aq_qa(phase: str) -> dict:
                 "checks": [],
                 "summary": {"failed": 1},
             }
-        data.setdefault("_monitor_returncode", result.returncode)
+        if not isinstance(data, dict):
+            return {"error": f"phase output is not a JSON object; rc={result.returncode}", "phase": phase,
+                    "checks": [], "summary": {"failed": 1}}
+        data["_monitor_returncode"] = result.returncode  # actual subprocess result; JSON must not shadow it
         if result.stderr:
             data.setdefault("_monitor_stderr", result.stderr[-1000:])
         return data
     except (subprocess.TimeoutExpired, FileNotFoundError) as e:
         return {"error": str(e), "phase": phase, "checks": [], "summary": {"failed": 1}}
+
+
+def _count(v: object) -> bool:
+    return isinstance(v, int) and not isinstance(v, bool) and v >= 0
+
+
+def is_complete_clean_phase0_result(data: object) -> bool:
+    """True only for a complete, non-degraded phase-0 run whose every emitted test passed.
+
+    Fail closed: SKIP, unknown status, partial/empty tests, count mismatch or a nonzero exit are not clean.
+    """
+    if not isinstance(data, dict) or "error" in data or data.get("phase") != "0":
+        return False
+    rc = data.get("_monitor_returncode")
+    if not isinstance(rc, int) or isinstance(rc, bool) or rc != 0:
+        return False
+    if data.get("degraded_confidence") is not False:
+        return False
+    passed, failed, skipped = data.get("passed"), data.get("failed"), data.get("skipped")
+    if not (_count(passed) and _count(failed) and _count(skipped)):
+        return False
+    tests = data.get("tests")
+    if not isinstance(tests, list) or not tests:
+        return False
+    for t in tests:
+        if not (isinstance(t, dict) and isinstance(t.get("id"), str) and t["id"] and t.get("status") == "PASS"):
+            return False
+    return passed == len(tests) and failed == 0 and skipped == 0
 
 
 def run_payload_audit() -> dict:
@@ -156,6 +187,8 @@ def main() -> int:
     total_failures = 0
     phase_results = []
     for phase in _PHASES:
+        # Snapshot before the probe so a failure observed while it runs cannot be retired by a later clean result.
+        recovery_snapshot = snapshot_recovery_candidate() if phase == "0" else None
         data = run_aq_qa(phase)
         if "error" in data:
             phase_results.append({
@@ -227,6 +260,12 @@ def main() -> int:
             "stderr": data.get("_monitor_stderr", ""),
         })
         if not failures:
+            if recovery_snapshot is not None and is_complete_clean_phase0_result(data):
+                try:
+                    if retire_recovered(recovery_snapshot):
+                        print(f"[{_SOURCE}] Retired recovered alert {recovery_snapshot['id']} (phase-0-clean)")
+                except (OSError, RuntimeError, ValueError) as exc:
+                    print(f"[{_SOURCE}] Recovery retirement skipped: {exc}", file=sys.stderr)
             continue
 
         # Group failures into one alert per phase for readability.

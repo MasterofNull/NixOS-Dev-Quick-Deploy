@@ -1,0 +1,45 @@
+{
+  "plan": {
+    "id": "health-alert-recovery-20261113",
+    "title": "Health-alert recovery retirement",
+    "prd_ref": ".agents/plans/health-alert-recovery-20261113/DESIGN.md",
+    "owner": "hyperd",
+    "goal": "Retire the qa-phase-0 health alert when a complete clean phase-0 run proves recovery, fenced against concurrent failures.",
+    "success_criteria": [
+      "Clean complete phase-0 run archives the exact snapshotted alert as recovered; every other outcome leaves it pending.",
+      "Independent implementation review and activation evidence accompany release acceptance."
+    ]
+  },
+  "phases": [
+    {
+      "id": "recovery",
+      "name": "Scoped recovery retirement",
+      "goal": "Queue fence, monitor predicate, API projection and dashboard row for one producer/key.",
+      "order": 1
+    }
+  ],
+  "items": [
+    {
+      "id": "retirement",
+      "name": "Generation-fenced alert retirement",
+      "phase": "recovery",
+      "kind": "slice",
+      "goal": "Snapshot before the probe, retire under lock on exact generation equality, project last machine recovery.",
+      "validation_goal": "Monitor, queue, route and dashboard fixtures plus QA 86.x pass.",
+      "deps": [],
+      "detection": {
+        "commit_match": [
+          "^fix\\(health\\): .*"
+        ],
+        "wired_caller": {
+          "file": "scripts/health/ai-stack-health-monitor.py",
+          "pattern": "retire_recovered"
+        },
+        "tests": [
+          "scripts/testing/test-ai-stack-health-monitor.py"
+        ]
+      }
+    }
+  ],
+  "issues": []
+}

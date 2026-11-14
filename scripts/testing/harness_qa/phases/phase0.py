@@ -4445,7 +4445,7 @@ def _check_phase86_attention_queue(ctx: RunContext) -> list[CheckResult]:
         rc = subprocess.run(
             ["python3", "-c",
              "import sys; sys.path.insert(0,'scripts/ai/lib'); "
-             "from attention_queue import push, get_pending, get_by_id, resolve, pending_count; "
+             "from attention_queue import push, get_pending, get_by_id, resolve, pending_count, snapshot_recovery_candidate, retire_recovered, last_machine_recovery; "
              "print('ok')"],
             capture_output=True, text=True, cwd=str(ctx.repo_root),
         )
@@ -4531,6 +4531,42 @@ def _check_phase86_attention_queue(ctx: RunContext) -> list[CheckResult]:
     else:
         results.append(passed(4, "86.6", "aq-reject: exists and executable"))
 
+    # 86.8 — machine recovery of the qa-phase-0 alert (isolated temp queue; never touches live queue state)
+    if not aq_lib.exists():
+        results.append(skipped(4, "86.8", "phase-0 alert recovery", "attention_queue.py not found"))
+    else:
+        rc = subprocess.run(
+            ["python3", "-c",
+             "import sys, tempfile, pathlib, json\n"
+             "sys.path.insert(0, 'scripts/ai/lib')\n"
+             "import attention_queue as aq\n"
+             "td = pathlib.Path(tempfile.mkdtemp())\n"
+             "aq._ATTENTION_DIR = td\n"
+             "aq._QUEUE_FILE = td / 'ATTENTION.json'\n"
+             "aq._ARCHIVE_FILE = td / 'ATTENTION_ARCHIVE.jsonl'\n"
+             "aq._STATE_FILE = td / 'notify-state.json'\n"
+             "aq._MIRROR_PATH = td / 'mirror.json'\n"
+             "def p(): return aq.push('ai-stack-health-monitor', 'high', 'human_gate', 'QA phase 0: 1 check failing', 'd', 'x', dedup_key='qa-phase-0')\n"
+             "pid = p()\n"
+             "assert aq.get_by_id(pid)['observation_generation'] == 1\n"
+             "snap = aq.snapshot_recovery_candidate()\n"
+             "p()\n"
+             "assert aq.get_by_id(pid)['observation_generation'] == 2\n"
+             "assert aq.retire_recovered(snap) is False and aq.get_by_id(pid) is not None, 'stale generation must not retire'\n"
+             "snap = aq.snapshot_recovery_candidate()\n"
+             "assert aq.retire_recovered(snap) is True and aq.get_by_id(pid) is None\n"
+             "row = json.loads(aq._ARCHIVE_FILE.read_text().splitlines()[-1])\n"
+             "assert row['status'] == 'recovered' and row['recovery_reason'] == 'phase-0-clean' and row['resolved_by'] == 'ai-stack-health-monitor'\n"
+             "assert set(aq.last_machine_recovery()) == {'source', 'dedup_key', 'recovered_at', 'recovery_reason'}\n"
+             "assert aq.retire_recovered(snap) is False\n"
+             "print('ok')"],
+            capture_output=True, text=True, cwd=str(ctx.repo_root),
+        )
+        if rc.returncode != 0 or "ok" not in rc.stdout:
+            results.append(failed(4, "86.8", "phase-0 alert recovery", rc.stderr.strip()[-400:] or rc.stdout.strip()))
+        else:
+            results.append(passed(4, "86.8", "phase-0 alert recovery: generation fence, retire-once, bounded projection"))
+
     # 86.7 — dashboard /api/aistack/alerts/status returns 200
     dashboard_url = f"http://127.0.0.1:{getattr(ctx, 'dashboard_port', 8889)}"
     status_code = None
@@ -4550,7 +4586,27 @@ def _check_phase86_attention_queue(ctx: RunContext) -> list[CheckResult]:
         if last_error is not None:
             raise last_error
         if status_code == 200:
-            results.append(passed(5, "86.7", "dashboard /api/aistack/alerts/status: 200 OK"))
+            try:
+                payload = json.loads(body)
+                recovery = payload.get("last_machine_recovery", "missing") if isinstance(payload, dict) else "missing"
+                if isinstance(payload, dict) and "last_machine_recovery" not in payload:
+                    # Same precedent as the 404 branch: a running dashboard predating this field needs a restart.
+                    results.append(skipped(5, "86.7", "dashboard alerts/status", "HTTP 200 without last_machine_recovery — service restart needed to pick up the field"))
+                    return results
+                ok_shape = (
+                    isinstance(payload, dict) and isinstance(payload.get("pending"), int)
+                    and not isinstance(payload.get("pending"), bool)
+                    and (recovery is None or (
+                        isinstance(recovery, dict)
+                        and set(recovery) == {"source", "dedup_key", "recovered_at", "recovery_reason"}
+                        and all(isinstance(v, str) for v in recovery.values())))
+                )
+            except ValueError:
+                ok_shape = False
+            if ok_shape:
+                results.append(passed(5, "86.7", "dashboard /api/aistack/alerts/status: 200 OK, pending int, last_machine_recovery null or exact 4 fields"))
+            else:
+                results.append(failed(5, "86.7", "dashboard /api/aistack/alerts/status", "HTTP 200 but pending/last_machine_recovery shape invalid"))
         elif status_code == 404:
             # Route not yet active — needs dashboard service restart after deploy
             results.append(skipped(5, "86.7", "dashboard alerts/status", "HTTP 404 — service restart needed to pick up new route"))

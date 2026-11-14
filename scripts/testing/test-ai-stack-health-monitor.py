@@ -9,18 +9,31 @@ import importlib.util
 import json
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
+from typing import Any
 
 
 ROOT = Path(__file__).resolve().parents[2]
 MONITOR = ROOT / "scripts" / "health" / "ai-stack-health-monitor.py"
 
 
-def load_monitor():
+def isolate_queue(aq, root: Path) -> None:
+    """Point the queue module (shared with the monitor) at a temp dir; never touch live queue state."""
+    aq._ATTENTION_DIR = root
+    aq._QUEUE_FILE = root / "ATTENTION.json"
+    aq._ARCHIVE_FILE = root / "ATTENTION_ARCHIVE.jsonl"
+    aq._STATE_FILE = root / "notify-state.json"
+    aq._MIRROR_PATH = root / "mirror.json"
+
+
+def load_monitor() -> Any:
     spec = importlib.util.spec_from_file_location("ai_stack_health_monitor_under_test", MONITOR)
     module = importlib.util.module_from_spec(spec)
     assert spec.loader is not None
     spec.loader.exec_module(module)
+    import attention_queue as aq
+    isolate_queue(aq, Path(tempfile.mkdtemp(prefix="health-monitor-queue-")))
     module.run_payload_audit = lambda: {"state": "ok", "findings": []}  # payload audit is covered by test-payload-audit-routine.py
     return module
 
@@ -150,6 +163,190 @@ def main() -> int:
     assert_true(monitor._TMPDIR.exists(), "run_aq_qa should create repo-local tmpdir")
     assert_true(monitor._PYTHONPYCACHEPREFIX.exists(), "run_aq_qa should create pycache dir")
     assert_true(monitor._CARGO_TARGET_DIR.exists(), "run_aq_qa should create cargo target dir")
+
+
+    # --- machine recovery of the qa-phase-0 alert -------------------------------------------------------
+    import attention_queue as aq
+
+    def clean_result(n=3):
+        return {"phase": "0", "_monitor_returncode": 0, "degraded_confidence": False, "passed": n, "failed": 0,
+                "skipped": 0, "tests": [{"id": f"0.{i}", "status": "PASS"} for i in range(n)]}
+
+    clean = monitor.is_complete_clean_phase0_result
+    assert_true(clean(clean_result()), "a complete all-PASS phase-0 result must be clean")
+    def mut(**kw):
+        d = clean_result()
+        d.update(kw)
+        return d
+    unclean = {
+        "non-dict": [], "error": mut(error="x"), "phase": mut(phase="1"), "rc missing": {k: v for k, v in clean_result().items() if k != "_monitor_returncode"},
+        "rc nonzero": mut(_monitor_returncode=1), "rc bool": mut(_monitor_returncode=False), "rc str": mut(_monitor_returncode="0"),
+        "degraded": mut(degraded_confidence=True), "degraded missing": {k: v for k, v in clean_result().items() if k != "degraded_confidence"},
+        "passed bool": mut(passed=True), "failed bool": mut(failed=False), "negative": mut(skipped=-1),
+        "skipped": mut(skipped=1, passed=2, tests=clean_result(3)["tests"][:2] + [{"id": "s", "status": "SKIP"}]),
+        "failed": mut(failed=1), "empty tests": mut(tests=[], passed=0), "count mismatch": mut(passed=2),
+        "test status": mut(tests=[{"id": "0.0", "status": "pass"}] * 3), "test no id": mut(tests=[{"id": "", "status": "PASS"}] * 3),
+        "test not obj": mut(tests=["PASS"] * 3), "tests not list": mut(tests="x"),
+    }
+    for name, data in unclean.items():
+        assert_true(not clean(data), f"predicate must reject: {name}")
+
+    # a JSON-supplied _monitor_returncode must not shadow the real subprocess result
+    original_run = monitor.subprocess.run
+    try:
+        monitor.subprocess.run = lambda cmd, **kw: subprocess.CompletedProcess(
+            cmd, 3, stdout=json.dumps(clean_result()), stderr="")
+        shadowed = monitor.run_aq_qa("0")
+        assert_true(shadowed["_monitor_returncode"] == 3 and not clean(shadowed),
+                    "actual nonzero returncode must override a JSON-supplied 0")
+        monitor.subprocess.run = lambda cmd, **kw: subprocess.CompletedProcess(cmd, 0, stdout="[1]", stderr="")
+        assert_true("error" in monitor.run_aq_qa("0"), "non-object JSON must be an error, not clean")
+    finally:
+        monitor.subprocess.run = original_run
+
+    def fresh_queue():
+        isolate_queue(aq, Path(tempfile.mkdtemp(prefix="health-monitor-queue-")))
+
+    def push_p0(detail="d"):
+        return aq.push(source="ai-stack-health-monitor", severity="high", autonomy_boundary="human_gate",
+                       title="QA phase 0: 1 check failing", detail=detail, proposed_action="fix",
+                       dedup_key="qa-phase-0", ttl_s=3600)
+
+    def pending_ids():
+        return [a["id"] for a in aq.get_pending()]
+
+    def archive_rows():
+        return [json.loads(l) for l in aq._ARCHIVE_FILE.read_text().splitlines()] if aq._ARCHIVE_FILE.exists() else []
+
+    def run_main(probe):
+        monitor.run_aq_qa = probe
+        monitor.write_status = lambda status: None
+        monitor._PHASES = ["0"]
+        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+            monitor.main()
+
+    monitor.push = aq.push
+    try:
+        # queue fields: generation 1 on create, +1 on every identical dedup push
+        fresh_queue()
+        pid = push_p0()
+        alert = aq.get_by_id(pid)
+        assert_true(alert["dedup_key"] == "qa-phase-0" and alert["observation_generation"] == 1, "new alert persists raw key + generation 1")
+        assert_true(push_p0() is None and aq.get_by_id(pid)["observation_generation"] == 2, "identical dedup push must bump the generation")
+        push_p0("changed")
+        assert_true(aq.get_by_id(pid)["observation_generation"] == 3, "changed dedup push must bump the generation")
+        other = aq.push(source="ai-stack-health-monitor", severity="high", autonomy_boundary="human_gate", title="o",
+                        detail="d", proposed_action="p", dedup_key="qa-phase-0-error", ttl_s=3600)
+        assert_true("observation_generation" not in aq.get_by_id(other), "other keys get no generation")
+
+        # clean run retires exactly once, with audit fields, and refreshes the mirror
+        fresh_queue()
+        pid = push_p0()
+        order = []
+        def clean_probe(phase):
+            order.append("probe")
+            return clean_result()
+        real_snapshot = monitor.snapshot_recovery_candidate
+        monitor.snapshot_recovery_candidate = lambda: (order.append("snapshot"), real_snapshot())[1]
+        try:
+            run_main(clean_probe)
+        finally:
+            monitor.snapshot_recovery_candidate = real_snapshot
+        assert_true(order == ["snapshot", "probe"], "snapshot must precede the probe")
+        assert_true(pending_ids() == [] and aq.get_by_id(pid) is None, "clean run must retire the pending alert")
+        rows = archive_rows()
+        assert_true(len(rows) == 1 and rows[0]["status"] == "recovered" and rows[0]["recovery_reason"] == "phase-0-clean"
+                    and rows[0]["resolved_by"] == "ai-stack-health-monitor" and rows[0]["recovered_at"].endswith("Z")
+                    and rows[0]["detail"] == "d" and rows[0]["id"] == pid, "archive record audit fields + preserved payload")
+        assert_true(json.loads(aq._MIRROR_PATH.read_text())["pending_human_gate"] == 0, "retirement must update the mirror snapshot")
+        run_main(clean_probe)
+        assert_true(len(archive_rows()) == 1, "a second clean run must not re-archive")
+        rec = aq.last_machine_recovery()
+        assert_true(rec == {"source": "ai-stack-health-monitor", "dedup_key": "qa-phase-0",
+                            "recovered_at": rows[0]["recovered_at"], "recovery_reason": "phase-0-clean"}, "last_machine_recovery projection")
+        # fail -> clean -> fail creates a new pending alert with later evidence
+        new_id = push_p0("later failure")
+        assert_true(new_id != pid and aq.get_by_id(new_id)["detail"] == "later failure", "re-failure must alert anew")
+
+        # concurrent failure observed while the probe runs wins
+        fresh_queue()
+        pid = push_p0()
+        def racing_probe(phase):
+            push_p0()  # identical dedup push: generation bump only
+            return clean_result()
+        run_main(racing_probe)
+        assert_true(pending_ids() == [pid] and not archive_rows(), "a failure during the probe must keep the alert pending")
+
+        # unclean / failing / error probes never retire
+        for label, probe in {
+            "skip": lambda p: mut(skipped=1, passed=2, tests=clean_result(3)["tests"][:2] + [{"id": "s", "status": "SKIP"}]),
+            "nonzero": lambda p: mut(_monitor_returncode=1),
+            "error": lambda p: {"error": "timeout", "phase": p, "checks": [], "summary": {"failed": 1}},
+            "failing": lambda p: {"phase": "0", "tests": [{"id": "0.1", "status": "FAIL"}], "_monitor_returncode": 1},
+        }.items():
+            fresh_queue()
+            pid = push_p0()
+            run_main(probe)
+            assert_true(aq.get_by_id(pid) is not None and not [r for r in archive_rows() if r.get("status") == "recovered"],
+                        f"{label} probe must not retire the alert")
+
+        # retire_recovered fences: wrong id/source/key/generation, manual resolution
+        fresh_queue()
+        pid = push_p0()
+        snap = aq.snapshot_recovery_candidate()
+        assert_true(snap["id"] == pid and snap["observation_generation"] == 1, "snapshot content")
+        for bad in ({**snap, "observation_generation": 2}, {**snap, "id": "attn-x"}, {**snap, "source": "x"},
+                    {**snap, "dedup_key": "qa-phase-0-error"}, {**snap, "observation_generation": True}, {}, None):
+            assert_true(aq.retire_recovered(bad) is False and aq.get_by_id(pid) is not None, f"fenced retire {bad}")
+        assert_true(aq.resolve(pid, "deferred", resolved_by="human"), "manual resolve")
+        assert_true(aq.retire_recovered(snap) is False and archive_rows()[-1]["status"] == "deferred", "manual decision must win")
+
+        # legacy migration: exactly one exact-identity row
+        fresh_queue()
+        pid = push_p0()
+        data = json.loads(aq._QUEUE_FILE.read_text())
+        for a in data["alerts"]:
+            a.pop("dedup_key"); a.pop("observation_generation")
+        aq._QUEUE_FILE.write_text(json.dumps(data))
+        snap = aq.snapshot_recovery_candidate()
+        stored = aq.get_by_id(pid)
+        assert_true(snap and snap["observation_generation"] == 1 and stored["dedup_key"] == "qa-phase-0" and stored["observation_generation"] == 1,
+                    "legacy row migrated to raw key + generation 1")
+        for label, mutate in {
+            "duplicate": lambda d: d["alerts"].append({**d["alerts"][0], "id": "attn-dup"}),
+            "wrong identity": lambda d: d["alerts"][0].update(identity="0" * 16),
+            "wrong boundary": lambda d: d["alerts"][0].update(autonomy_boundary="auto_ok"),
+            "wrong source": lambda d: d["alerts"][0].update(source="other"),
+            "wrong raw key": lambda d: d["alerts"][0].update(dedup_key="other"),
+            "bad generation": lambda d: d["alerts"][0].update(observation_generation=0),
+        }.items():
+            fresh_queue()
+            push_p0()
+            d = json.loads(aq._QUEUE_FILE.read_text())
+            d["alerts"][0].pop("dedup_key"); d["alerts"][0].pop("observation_generation")
+            mutate(d)
+            if label == "wrong raw key":
+                d["alerts"][0]["dedup_key"] = "other"
+            if label == "bad generation":
+                d["alerts"][0]["dedup_key"] = "qa-phase-0"
+            aq._QUEUE_FILE.write_text(json.dumps(d))
+            assert_true(aq.snapshot_recovery_candidate() is None, f"migration must be a no-op: {label}")
+
+        # bounded archive window and newest-by-timestamp selection
+        fresh_queue()
+        def rec_row(ts):
+            return json.dumps({"status": "recovered", "source": "ai-stack-health-monitor", "dedup_key": "qa-phase-0",
+                               "recovery_reason": "phase-0-clean", "recovered_at": ts, "detail": "secret"})
+        aq._ARCHIVE_FILE.write_text("\n".join([rec_row("2026-01-02T00:00:00Z"), rec_row("2026-01-01T00:00:00Z"),
+                                               "not json", rec_row("garbage")]) + "\n")
+        assert_true(aq.last_machine_recovery()["recovered_at"] == "2026-01-02T00:00:00Z", "newest recovered_at wins, not archive order")
+        aq._ARCHIVE_FILE.write_text(rec_row("2026-01-02T00:00:00Z") + "\n" + "\n".join(json.dumps({"status": "approved"}) for _ in range(200)) + "\n")
+        assert_true(aq.last_machine_recovery() is None, "a recovery older than the 200-record window is null")
+    finally:
+        monitor.push = original_push
+        monitor.run_aq_qa = original_run_qa
+        monitor._PHASES = original_phases
+        monitor.write_status = original_write_status
 
     original_status_path = monitor._STATUS_PATH
     try:

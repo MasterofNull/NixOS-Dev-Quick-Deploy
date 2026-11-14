@@ -352,9 +352,73 @@ def test_dashboard_js_poller_cadence_semantics() -> None:
     assert_true("_qaProbeActive ? 1000 : 2000" in js, "scheduler must still branch 1s/2s on the cadence flag")
 
 
+def test_alerts_status_recent_recovery() -> None:
+    """Route projection (bounded 200-record window, exactly four fields) and the loadAlerts Recent recovery row."""
+    sys.path.insert(0, str(ROOT / "scripts" / "ai" / "lib"))
+    import attention_queue as aq
+
+    td = Path(tempfile.mkdtemp(prefix="alerts-status-"))
+    saved = (aq._ATTENTION_DIR, aq._QUEUE_FILE, aq._ARCHIVE_FILE)
+    aq._ATTENTION_DIR, aq._QUEUE_FILE, aq._ARCHIVE_FILE = td, td / "ATTENTION.json", td / "ATTENTION_ARCHIVE.jsonl"
+    try:
+        body = asyncio.run(aistack.get_alerts_status())
+        assert_true("last_machine_recovery" in body and body["last_machine_recovery"] is None, "no archive -> null")
+        assert_true(isinstance(body["pending"], int), "pending stays an integer")
+
+        def row(ts, **kw):
+            r = {"status": "recovered", "source": "ai-stack-health-monitor", "dedup_key": "qa-phase-0",
+                 "recovery_reason": "phase-0-clean", "recovered_at": ts, "detail": "leak", "id": "attn-x"}
+            r.update(kw)
+            return json.dumps(r)
+
+        lines = [row("2026-02-01T00:00:00Z"), row("2026-03-01T00:00:00Z"), row("2026-04-01T00:00:00Z", source="other"),
+                 row("2026-05-01T00:00:00Z", status="approved"), row("bad")]
+        aq._ARCHIVE_FILE.write_text("\n".join(lines) + "\n")
+        got = asyncio.run(aistack.get_alerts_status())["last_machine_recovery"]
+        assert_true(got == {"source": "ai-stack-health-monitor", "dedup_key": "qa-phase-0",
+                            "recovered_at": "2026-03-01T00:00:00Z", "recovery_reason": "phase-0-clean"},
+                    f"newest valid exact record, exactly four fields: {got}")
+        aq._ARCHIVE_FILE.write_text(row("2026-03-01T00:00:00Z") + "\n" + "\n".join(row("x", source="o") for _ in range(200)) + "\n")
+        assert_true(asyncio.run(aistack.get_alerts_status())["last_machine_recovery"] is None,
+                    "recovery older than 200 records is null, not falsely latest")
+    finally:
+        aq._ATTENTION_DIR, aq._QUEUE_FILE, aq._ARCHIVE_FILE = saved
+        shutil.rmtree(td, ignore_errors=True)
+
+    js = (ROOT / "assets" / "dashboard.js").read_text(encoding="utf-8")
+    fn_src = _slice_between(js, "function _recentRecoveryRow", "async function loadAlerts")
+    load_src = _slice_between(js, "async function loadAlerts", "// ─── OVERVIEW: DATABASE METRICS")
+    assert_true("_recentRecoveryRow(d.last_machine_recovery)" in load_src, "loadAlerts must render the projection")
+    good = {"source": "ai-stack-health-monitor", "dedup_key": "qa-phase-0", "recovered_at": "2026-03-01T00:00:00Z",
+            "recovery_reason": "phase-0-clean"}
+    cases = [good, None, {**good, "recovered_at": "<img src=x onerror=1>"}, {**good, "source": "other"},
+             {**good, "recovery_reason": "<b>x</b>"}, {**good, "dedup_key": "qa-phase-0-error"}]
+    node = shutil.which("node") or "node"
+    harness = (
+        'function fwRow(k, v, cls = "") { return `<div class="fw-row">${k}|${v}|${cls}</div>`; }\n'
+        f"{fn_src}\n"
+        f"const cases = {json.dumps(cases)};\n"
+        "process.stdout.write(JSON.stringify(cases.map((c) => _recentRecoveryRow(c))));\n"
+    )
+    with tempfile.NamedTemporaryFile("w", suffix=".js", delete=False) as f:
+        f.write(harness)
+        path = f.name
+    try:
+        proc = subprocess.run([node, path], capture_output=True, text=True, timeout=10)
+        assert_true(proc.returncode == 0, f"node render harness failed: {proc.stderr}")
+        out = json.loads(proc.stdout.strip())
+    finally:
+        os.unlink(path)
+    assert_true("Recent recovery|" in out[0] and out[0].endswith("|info</div>"), "valid projection renders a Recent recovery row")
+    assert_true("2026" in out[0], "formatted timestamp rendered")
+    assert_true(out[1:] == [""] * 5, "null/invalid projections render nothing and never echo archive strings")
+    assert_true("Clear" in load_src and "Pending" in load_src, "badge/pending rows remain in loadAlerts")
+
+
 def main() -> int:
     sbx = _RepoRootSandbox()
     try:
+        test_alerts_status_recent_recovery()
         test_missing_file_is_unavailable(sbx)
         test_malformed_json_is_unavailable(sbx)
         test_unknown_field_is_rejected(sbx)
