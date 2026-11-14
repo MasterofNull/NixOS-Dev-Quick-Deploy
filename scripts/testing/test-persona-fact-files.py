@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import importlib.util
+import os
 import subprocess
 import tempfile
 import unittest
+from unittest import mock
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -176,11 +178,31 @@ class Conflicts(Base):
         self.stage()
         self.assertTrue(any("deletes or renames" in e for e in self.check()))
 
-    def test_delete_of_branch_only_fact_is_free(self) -> None:
+    def test_same_lane_delete_of_branch_only_fact_is_free(self) -> None:
         p = fact(self.repo, "a.b")
         self.stage()
         git(self.repo, "commit", "-qm", "add")
         p.unlink()
+        self.stage()
+        with mock.patch.dict(os.environ, {"AQ_INSTANCE_LANE": "codex"}):
+            self.assertEqual(self.check(), [])
+
+    def test_cross_lane_delete_of_branch_only_fact_needs_reply(self) -> None:
+        p = fact(self.repo, "a.b", instance=CLAUDE)
+        self.stage()
+        git(self.repo, "commit", "-qm", "add")
+        p.unlink()
+        self.stage()
+        with mock.patch.dict(os.environ, {"AQ_INSTANCE_LANE": "codex"}):
+            self.assertTrue(any("deletes or renames" in e for e in self.check()))
+
+    def test_cross_lane_split_of_branch_only_fact_with_reply_passes(self) -> None:
+        p = fact(self.repo, "a.b", instance=CLAUDE)
+        self.stage()
+        git(self.repo, "commit", "-qm", "add")
+        p.unlink()
+        fact(self.repo, "a.b.claude", instance=CLAUDE, reply="3 keep both")
+        fact(self.repo, "a.b.codex", claim="other", instance=CODEX, reply="3 keep both")
         self.stage()
         self.assertEqual(self.check(), [])
 

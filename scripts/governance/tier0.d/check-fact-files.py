@@ -115,6 +115,15 @@ def _gitleaks(repo: Path, rel: str, text: str) -> list[str]:
     return [f"{rel}: gitleaks flagged a secret"] if r.returncode == 1 else []
 
 
+def _actor_lane(msg: str, new_fms: dict[str, dict[str, str]]) -> str:
+    """Lane doing a delete: from new facts in the same unit, an `instance:` line in the message, or AQ_INSTANCE_LANE."""
+    for fm in new_fms.values():
+        if lane_of(fm.get("instance", "")):
+            return lane_of(fm["instance"])
+    m = re.search(r"^instance:\s*(\S+)", msg, re.M)
+    return lane_of(m.group(1)) if m else os.environ.get("AQ_INSTANCE_LANE", "").strip().lower()
+
+
 def check_repo(repo: Path, base: str = "origin/main") -> list[str]:
     errs: list[str] = []
     have_base = _git(repo, "rev-parse", "--verify", "-q", base).returncode == 0
@@ -170,19 +179,28 @@ def check_repo(repo: Path, base: str = "origin/main") -> list[str]:
                         )
                         if msg_e not in errs:
                             errs.append(msg_e)
+        actor = _actor_lane(msg, new_fms)
         for rel in deleted:
-            old = _show(repo, f"{base_ref}:{rel}")
-            old_fm = parse_frontmatter(old) if old else None
-            if not old_fm:
-                continue  # fact never on origin/main: nothing of another lane is lost
             subj = Path(rel).stem
             splits = [f for p, f in new_fms.items()
                       if Path(p).stem.startswith(subj + ".") and f.get("owner_reply", "").strip()]
-            if len(splits) < 2 and "owner_reply:" not in msg:
-                errs.append(
-                    f"{rel}: deletes or renames a fact on {base_ref} (lane {lane_of(old_fm.get('instance', ''))}, "
-                    f"claim {old_fm.get('claim')!r}); needs 2 scoped split facts '{subj}.<scope>' carrying 'owner_reply'"
+            has_reply = len(splits) >= 2 or "owner_reply:" in msg
+            for ref in dict.fromkeys((prev, base_ref)):
+                old = _show(repo, f"{ref}:{rel}")
+                old_fm = parse_frontmatter(old) if old else None
+                if not old_fm:
+                    continue  # fact not on this baseline: nothing of another lane is lost there
+                ol = lane_of(old_fm.get("instance", ""))
+                # main baseline: any delete needs the reply; predecessor (branch-only): only a lane change does
+                if has_reply or (ref != base_ref and ol == actor):
+                    continue
+                msg_e = (
+                    f"{rel}: deletes or renames a fact on {ref} (lane {ol}, claim {old_fm.get('claim')!r}); "
+                    f"needs 2 scoped split facts '{subj}.<scope>' carrying 'owner_reply'"
+                    f"{'' if actor else ' (acting lane unknown: set AQ_INSTANCE_LANE or add an instance: line to the message)'}"
                 )
+                if msg_e not in errs:
+                    errs.append(msg_e)
     return errs
 
 
