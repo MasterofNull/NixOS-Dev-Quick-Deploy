@@ -6,13 +6,13 @@
 }:
 python3.pkgs.buildPythonApplication rec {
   pname = "mosaic-osint";
-  version = "1.0.0-unstable-2026-10-19";
+  version = "1.0.0-unstable-2024-05-24";
 
   src = fetchFromGitHub {
     owner = "Or1un";
     repo = "MOSAIC";
-    rev = "0df2c04a2fefaf05b1d5aef9f75b4407662f62bc";
-    sha256 = "105v4q6gbk9ck100admykpjancyih7wn3x6rqv02nlci1v88xv5v";
+    rev = "main";
+    sha256 = "sha256-ROuyMS+pgYFcvQgrrn9nel1nMYigAY5z/m2Ehn/9x28=";
   };
 
   # MOSAIC is a script-based tool, we just need to wrap it
@@ -31,7 +31,7 @@ python3.pkgs.buildPythonApplication rec {
     cp -r . $out/share/mosaic
 
     makeWrapper ${python3.interpreter} $out/bin/mosaic-osint \
-      --add-flags "$out/share/mosaic/MOSAIC.py" \
+      --add-flags "$out/share/mosaic/mosaic.py" \
       --prefix PYTHONPATH : "$PYTHONPATH"
   '';
 
