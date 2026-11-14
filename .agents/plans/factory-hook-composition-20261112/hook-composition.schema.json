@@ -1,0 +1,135 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "repository_identity": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "git_directory": {
+          "const": ".git"
+        },
+        "identity_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      },
+      "required": [
+        "git_directory",
+        "identity_sha256"
+      ]
+    },
+    "core_hooks_path": {
+      "const": ".githooks"
+    },
+    "wrapper": {
+      "$ref": "#/$defs/artifact"
+    },
+    "native": {
+      "$ref": "#/$defs/artifact"
+    },
+    "backup": {
+      "$ref": "#/$defs/artifact"
+    },
+    "reference_observer": {
+      "$ref": "#/$defs/artifact"
+    },
+    "yaml_sha256": {
+      "$ref": "#/$defs/sha256"
+    },
+    "manager_binary_sha256": {
+      "$ref": "#/$defs/sha256"
+    },
+    "resolved_config_sha256": {
+      "$ref": "#/$defs/sha256"
+    },
+    "cache_manifest_sha256": {
+      "$ref": "#/$defs/sha256"
+    },
+    "factory_bundle_sha256": {
+      "$ref": "#/$defs/sha256"
+    },
+    "factory_config_sha256": {
+      "$ref": "#/$defs/sha256"
+    },
+    "semantic_inventory_sha256": {
+      "$ref": "#/$defs/sha256"
+    },
+    "approved_classification_sha256": {
+      "$ref": "#/$defs/sha256"
+    },
+    "approval_record_sha256": {
+      "$ref": "#/$defs/sha256"
+    },
+    "prewarm_input_lock_sha256": {
+      "$ref": "#/$defs/sha256"
+    },
+    "sandbox_policy_sha256": {
+      "$ref": "#/$defs/sha256"
+    },
+    "preview_sha256": {
+      "$ref": "#/$defs/sha256"
+    },
+    "journal_generation": {
+      "type": "integer",
+      "minimum": 1
+    }
+  },
+  "required": [
+    "schema_version",
+    "repository_identity",
+    "core_hooks_path",
+    "wrapper",
+    "native",
+    "backup",
+    "reference_observer",
+    "yaml_sha256",
+    "manager_binary_sha256",
+    "resolved_config_sha256",
+    "cache_manifest_sha256",
+    "factory_bundle_sha256",
+    "factory_config_sha256",
+    "semantic_inventory_sha256",
+    "approved_classification_sha256",
+    "approval_record_sha256",
+    "prewarm_input_lock_sha256",
+    "sandbox_policy_sha256",
+    "preview_sha256",
+    "journal_generation"
+  ],
+  "title": "Reserved factory hook composition receipt v1",
+  "description": "Reserved structural contract for the deferred active protocol. No receipt is accepted by this admission sub-slice. Canonical encoding, identity, ownership, digests, no-follow I/O and immutable closure checks require a future runtime verifier; structural validation alone never authorizes composition.",
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "artifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "path": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^(?!/)(?!.*\\\\)(?!.*(?:^|/)\\.{1,2}(?:/|$))[^/]+(?:/[^/]+)*$"
+        },
+        "mode": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 4095
+        },
+        "sha256": {
+          "$ref": "#/$defs/sha256"
+        }
+      },
+      "required": [
+        "path",
+        "mode",
+        "sha256"
+      ]
+    }
+  }
+}
