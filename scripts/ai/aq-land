@@ -244,6 +244,7 @@ class Land:
             return
         r = run([self.tier0, "--pre-commit"], cwd=self.W, timeout=3600, check=False, stage="tier0")
         if r.returncode != 0:
+            self.save(tier0_failures=self.cp.get("tier0_failures", 0) + 1)
             raise Stop("tier0", self.blocker("tier0", r))
         r = run(["git", "-C", self.W, "commit", "-q", "-F", self.a.commit_msg_file], timeout=900, check=False, stage="commit")
         if r.returncode != 0:
@@ -403,6 +404,8 @@ class Land:
                 say(f"lane {lane} unavailable ({detail}); trying the next eligible lane")
                 continue
             if kind == "negative":
+                if detail.startswith("REQUEST_CHANGES"):
+                    self.save(rc_rounds=self.cp.get("rc_rounds", 0) + 1)
                 if reviewer_could_not_run(rtext):
                     rest = ",".join(order[order.index(lane) + 1:])
                     hint = (f"if that is right, re-run with --lanes {rest}" if rest else "no other eligible lane is left")
@@ -556,6 +559,7 @@ class Land:
                     st = "pending"  # reads live PR state and the receipt branch, so a re-run after publish can pass
                 (failed if st == "fail" else pending if st == "pending" else []).append(name)
             if failed:
+                self.save(ci_failures=self.cp.get("ci_failures", 0) + 1)
                 raise Stop("checks", "failed: " + ", ".join(failed))
             if not pending and seen.get(REVIEW_CHECK, ("pending",))[0] == "pass":
                 break
@@ -615,7 +619,22 @@ class Land:
             with Lock(self.state_root / "lock", env_int("AQ_LAND_LOCK_WAIT_S", 7200), self.branch):
                 n = self.locked()
         self.wait_and_merge(n, self.head())
+        self.record_outcome(n)
         return 0
+
+    def record_outcome(self, n):
+        """Append the outcome receipt; a failure here warns and never fails the landing."""
+        try:
+            sys.path.insert(0, str(HERE / "lib"))
+            from delegation_dir import resolve_delegation_dir
+            from outcome_receipt import record_landing
+            rec = self.cp.get("review") or {}
+            record_landing(resolve_delegation_dir(HERE), pr=n, head=rec.get("head") or self.head(), author_lane=self.a.author_lane,
+                           reviews=[{"lane": rec["lane"], "run_id": rec["run_id"], "verdict": rec["disposition"]}] if rec else [],
+                           request_changes_rounds=self.cp.get("rc_rounds", 0), tier0=None, ci="pass",
+                           tier0_failures=self.cp.get("tier0_failures", 0), ci_failures=self.cp.get("ci_failures", 0))
+        except Exception as e:  # noqa: BLE001
+            print(f"aq-land: WARN outcome receipt not written: {e.__class__.__name__}: {str(e)[:120]}", file=sys.stderr)
 
 
 class Lock:
