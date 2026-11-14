@@ -5,7 +5,7 @@
 }:
 python3.pkgs.buildPythonApplication rec {
   pname = "maigret";
-  version = "0.6.1";
+  version = "0.6.6";
 
   pyproject = true;
 
@@ -13,7 +13,7 @@ python3.pkgs.buildPythonApplication rec {
     owner = "soxoj";
     repo = "maigret";
     rev = "v${version}";
-    sha256 = "sha256-gojeqNZd0n5Qs7YVFBy6zDdjXR6KKdebcu8vfNs/AE8=";
+    sha256 = "19cl1dzz07y37zb628wjd6wbk5cq9lipafy3769axzr96df28mzm";
   };
 
   nativeBuildInputs = with python3.pkgs; [
@@ -80,6 +80,8 @@ python3.pkgs.buildPythonApplication rec {
     sed -i 's/curl-cffi = ">=0.14,<1.0"/curl-cffi = "*"/' pyproject.toml
     sed -i 's/PySocks = "^1.7.1"/PySocks = "*"/' pyproject.toml
     sed -i 's/XMind = "^1.2.0"/XMind = "*"/' pyproject.toml
+    # nixpkgs ships socid-extractor 0.0.28; 0.6.6 declares >=0.1.1 (see commit body)
+    sed -i 's/socid-extractor = ">=0.1.1,<0.2.0"/socid-extractor = "*"/' pyproject.toml
   '';
 
   # Disable tests as they usually require network for OSINT tools
