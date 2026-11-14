@@ -111,35 +111,44 @@ def main() -> int:
         print("PASS: aq-delegation-registry from a worktree uses the main registry; --registry overrides")
 
         # A repo under /tmp must not silently get a reboot-wiped delegation dir (sh and py resolvers).
-        strict = {k: v for k, v in env.items() if k != "AQ_ALLOW_VOLATILE_DIR"}
-        sh = subprocess.run(["bash", "-c", f'source "{main_repo}/scripts/ai/lib/delegation-dir.sh"; resolve_delegation_dir "{main_repo}/scripts/ai"'],
-                            capture_output=True, text=True, env=strict, cwd=main_repo)
-        py = subprocess.run([sys.executable, "-c", "import sys; sys.path.insert(0, sys.argv[1]); from delegation_dir import resolve_delegation_dir as r; print(r(sys.argv[2]))",
-                             str(REPO_ROOT / "scripts" / "ai" / "lib"), str(main_repo / "scripts" / "ai")],
-                            capture_output=True, text=True, env=strict, cwd=main_repo)
-        if sh.returncode == 0 or "volatile" not in sh.stderr or py.returncode == 0 or "volatile" not in py.stderr:
-            print(f"FAIL: volatile delegation dir not refused:\nsh={sh}\npy={py}")
-            return 1
-        explicit = subprocess.run(["bash", "-c", f'AQ_DELEGATION_DIR="{td}/x" ; source "{main_repo}/scripts/ai/lib/delegation-dir.sh"; echo ok'],
-                                  capture_output=True, text=True, env=strict, cwd=main_repo)
-        override_py = subprocess.run([sys.executable, "-c", "import sys; sys.path.insert(0, sys.argv[1]); from delegation_dir import resolve_delegation_dir as r; print(r(sys.argv[2]))",
-                                      str(REPO_ROOT / "scripts" / "ai" / "lib"), str(main_repo / "scripts" / "ai")],
-                                     capture_output=True, text=True, env={**strict, "AQ_DELEGATION_DIR": f"{td}/x"}, cwd=main_repo)
-        if explicit.returncode != 0 or override_py.returncode != 0:
-            print(f"FAIL: explicit override was refused:\n{explicit}\n{override_py}")
-            return 1
-        print("PASS: derived delegation dir under /tmp is refused; explicit AQ_DELEGATION_DIR still honoured")
-        # git lookup failure (PATH without git) must not bypass the guard via the script-relative fallback.
-        nogit = Path(td) / "nogit-bin"
-        nogit.mkdir()
-        nogit_env = {**strict, "PATH": str(nogit)}
-        py = subprocess.run([sys.executable, "-c", "import sys; sys.path.insert(0, sys.argv[1]); from delegation_dir import resolve_delegation_dir as r; print(r(sys.argv[2]))",
-                             str(REPO_ROOT / "scripts" / "ai" / "lib"), str(main_repo / "scripts" / "ai")],
-                            capture_output=True, text=True, env=nogit_env, cwd=main_repo)
-        if py.returncode == 0 or "volatile" not in py.stderr:
-            print(f"FAIL: git-less fallback delegation dir under /tmp not refused:\npy={py}")
-            return 1
-        print("PASS: git-lookup-failure fallback under /tmp is refused")
+        # The fixture is built under /tmp explicitly: CI sets TMPDIR outside /tmp, so the default
+        # tempfile location would not be volatile and the refusal would never fire.
+        with tempfile.TemporaryDirectory(dir="/tmp") as vtd:
+            vmain = Path(vtd) / "main"
+            (vmain / "scripts").mkdir(parents=True)
+            shutil.copytree(REPO_ROOT / "scripts" / "ai", vmain / "scripts" / "ai")
+            git(vmain, "init", "-q")
+            git(vmain, "add", "-A")
+            git(vmain, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "init")
+            strict = {k: v for k, v in env.items() if k != "AQ_ALLOW_VOLATILE_DIR"}
+            sh = subprocess.run(["bash", "-c", f'source "{vmain}/scripts/ai/lib/delegation-dir.sh"; resolve_delegation_dir "{vmain}/scripts/ai"'],
+                                capture_output=True, text=True, env=strict, cwd=vmain)
+            py = subprocess.run([sys.executable, "-c", "import sys; sys.path.insert(0, sys.argv[1]); from delegation_dir import resolve_delegation_dir as r; print(r(sys.argv[2]))",
+                                 str(REPO_ROOT / "scripts" / "ai" / "lib"), str(vmain / "scripts" / "ai")],
+                                capture_output=True, text=True, env=strict, cwd=vmain)
+            if sh.returncode == 0 or "volatile" not in sh.stderr or py.returncode == 0 or "volatile" not in py.stderr:
+                print(f"FAIL: volatile delegation dir not refused:\nsh={sh}\npy={py}")
+                return 1
+            explicit = subprocess.run(["bash", "-c", f'AQ_DELEGATION_DIR="{td}/x" ; source "{main_repo}/scripts/ai/lib/delegation-dir.sh"; echo ok'],
+                                      capture_output=True, text=True, env=strict, cwd=main_repo)
+            override_py = subprocess.run([sys.executable, "-c", "import sys; sys.path.insert(0, sys.argv[1]); from delegation_dir import resolve_delegation_dir as r; print(r(sys.argv[2]))",
+                                          str(REPO_ROOT / "scripts" / "ai" / "lib"), str(main_repo / "scripts" / "ai")],
+                                         capture_output=True, text=True, env={**strict, "AQ_DELEGATION_DIR": f"{td}/x"}, cwd=main_repo)
+            if explicit.returncode != 0 or override_py.returncode != 0:
+                print(f"FAIL: explicit override was refused:\n{explicit}\n{override_py}")
+                return 1
+            print("PASS: derived delegation dir under /tmp is refused; explicit AQ_DELEGATION_DIR still honoured")
+            # git lookup failure (PATH without git) must not bypass the guard via the script-relative fallback.
+            nogit = Path(td) / "nogit-bin"
+            nogit.mkdir()
+            nogit_env = {**strict, "PATH": str(nogit)}
+            py = subprocess.run([sys.executable, "-c", "import sys; sys.path.insert(0, sys.argv[1]); from delegation_dir import resolve_delegation_dir as r; print(r(sys.argv[2]))",
+                                 str(REPO_ROOT / "scripts" / "ai" / "lib"), str(vmain / "scripts" / "ai")],
+                                capture_output=True, text=True, env=nogit_env, cwd=vmain)
+            if py.returncode == 0 or "volatile" not in py.stderr:
+                print(f"FAIL: git-less fallback delegation dir under /tmp not refused:\npy={py}")
+                return 1
+            print("PASS: git-lookup-failure fallback under /tmp is refused")
         return 0
 
 
