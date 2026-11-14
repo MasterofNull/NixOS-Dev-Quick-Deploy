@@ -1,0 +1,149 @@
+{
+  "plan": {
+    "id": "frugal-sota-leadership-20261113",
+    "title": "SOTA Agentic OS (AQ-OS), Co-Evolving System 1 Models & Verified Software Factory",
+    "prd_ref": ".agent/PROJECT-FRUGAL-SOTA-LEADERSHIP-PRD.md",
+    "goal": "Establish and prove SOTA leadership across the Agentic Operating System (AQ-OS), Co-Evolving Local System 1 Models, Deterministic Compiler/Verifier Phalanx, and Multi-Model Collaborative Environment (Simurg) on a basic laptop + pooled subscriptions, multiplied by open-source reciprocity."
+  },
+  "phases": [
+    {
+      "id": "mvp",
+      "name": "MVP - S1-S4 (frozen 2026-11-13)"
+    },
+    {
+      "id": "deferred",
+      "name": "Deferred (post-MVP)"
+    }
+  ],
+  "items": [
+    {
+      "id": "s1-context-packet",
+      "name": "S1 - aq-context-packet v0 (NEW)",
+      "phase": "mvp",
+      "goal": "Deterministic <=2,500-token context packet for local models (AST signatures, optional graph callers).",
+      "validation_goal": "scripts/testing/test-aq-context-packet.py: cap, determinism, latency, degrade, refuse.",
+      "deps": [],
+      "detection": {
+        "freeze_record": ".agents/plans/frugal-sota-leadership-20261113/FREEZE.md",
+        "tests": [
+          "scripts/testing/test-aq-context-packet.py"
+        ]
+      },
+      "acceptance": {
+        "status": "pending",
+        "by": null,
+        "date": null,
+        "note": "Pending independent review."
+      }
+    },
+    {
+      "id": "s2-land-tier0",
+      "name": "S2 - aq-land runs tier0 on touched scope before review",
+      "phase": "mvp",
+      "goal": "Local compiler/test wall before cross-family review.",
+      "validation_goal": "aq-land refuses review dispatch on failing tier0.",
+      "deps": [
+        "s1-context-packet"
+      ],
+      "detection": {
+        "freeze_record": ".agents/plans/frugal-sota-leadership-20261113/FREEZE.md"
+      },
+      "acceptance": {
+        "status": "pending",
+        "by": null,
+        "date": null,
+        "note": "Pending independent review."
+      }
+    },
+    {
+      "id": "s3-local-power-gate",
+      "name": "S3 - delegate-to-local power/thermal gate",
+      "phase": "mvp",
+      "goal": "Defer local jobs unless AC or battery>=50%, load5 hysteresis (0.70/0.55 x ncpu), CPU temp<80C; unreadable sensor = defer, never drop.",
+      "validation_goal": "Tests cover each gate input and hysteresis.",
+      "deps": [],
+      "detection": {
+        "freeze_record": ".agents/plans/frugal-sota-leadership-20261113/FREEZE.md"
+      },
+      "acceptance": {
+        "status": "pending",
+        "by": null,
+        "date": null,
+        "note": "Pending independent review."
+      }
+    },
+    {
+      "id": "s4-receipts-scoreboard",
+      "name": "S4 - receipt JSONL + aq-scoreboard (NEW)",
+      "phase": "mvp",
+      "goal": "Append-only receipts with real token counts, post-redaction scan-or-quarantine, aq-scoreboard CLI with raw counts.",
+      "validation_goal": "Tests cover append-only, quarantine, scoreboard counts.",
+      "deps": [
+        "s1-context-packet"
+      ],
+      "detection": {
+        "freeze_record": ".agents/plans/frugal-sota-leadership-20261113/FREEZE.md"
+      },
+      "acceptance": {
+        "status": "pending",
+        "by": null,
+        "date": null,
+        "note": "Pending independent review."
+      }
+    },
+    {
+      "id": "f3-system1-distillation-deferred",
+      "name": "F3 - system1 router / trajectory distillation (deferred, NEW)",
+      "phase": "deferred",
+      "goal": "Deferred post-MVP.",
+      "validation_goal": "Deferred; no validation until re-scoped.",
+      "deps": [],
+      "detection": {
+        "blocker_note": "Deferred by frozen MVP scope 2026-11-13; see FREEZE.md.",
+        "freeze_record": ".agents/plans/frugal-sota-leadership-20261113/FREEZE.md"
+      },
+      "acceptance": {
+        "status": "pending",
+        "by": null,
+        "date": null,
+        "note": "Pending independent review."
+      }
+    },
+    {
+      "id": "f4-reciprocity-deferred",
+      "name": "F4 - ecosystem reciprocity (deferred, NEW)",
+      "phase": "deferred",
+      "goal": "Deferred post-MVP.",
+      "validation_goal": "Deferred; no validation until re-scoped.",
+      "deps": [],
+      "detection": {
+        "blocker_note": "Deferred by frozen MVP scope 2026-11-13; see FREEZE.md.",
+        "freeze_record": ".agents/plans/frugal-sota-leadership-20261113/FREEZE.md"
+      },
+      "acceptance": {
+        "status": "pending",
+        "by": null,
+        "date": null,
+        "note": "Pending independent review."
+      }
+    },
+    {
+      "id": "f5-dashboard-deferred",
+      "name": "F5 - dashboard card, quota arbitrage, unmeasured KPIs (deferred)",
+      "phase": "deferred",
+      "goal": "Deferred post-MVP.",
+      "validation_goal": "Deferred; no validation until re-scoped.",
+      "deps": [],
+      "detection": {
+        "blocker_note": "Deferred by frozen MVP scope 2026-11-13; see FREEZE.md.",
+        "freeze_record": ".agents/plans/frugal-sota-leadership-20261113/FREEZE.md"
+      },
+      "acceptance": {
+        "status": "pending",
+        "by": null,
+        "date": null,
+        "note": "Pending independent review."
+      }
+    }
+  ]
+}

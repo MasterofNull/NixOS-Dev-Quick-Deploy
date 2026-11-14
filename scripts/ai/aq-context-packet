@@ -1,0 +1,225 @@
+#!/usr/bin/env python3
+"""aq-context-packet -- deterministic context packet (<= 2,500 est. tokens) for a local model.
+
+  aq-context-packet FILE [FILE ...] [-s SYMBOL ...] [--max-tokens N] [--json]
+
+Python files are parsed with `ast`: target symbol bodies in full, signatures + line ranges for the rest.
+Other languages fall back to plain line ranges. Direct callers/callees come from aq-graph-query when a
+graph exists and answers within the timeout; otherwise the header says why it was skipped.
+Over the cap: bodies degrade to signatures + line ranges ("degraded": true); if the requested target
+itself cannot fit, exit 1 (refuse). Tokens are estimated as chars/4. Output carries no timestamps.
+"""
+try:  # aq-usage-hook
+    import importlib.util as _aqu, os as _aqo
+    _aqs = _aqu.spec_from_file_location("aq_usage", _aqo.path.join(_aqo.path.dirname(_aqo.path.realpath(__file__)), "lib", "aq_usage.py"))
+    _aqm = _aqu.module_from_spec(_aqs); _aqs.loader.exec_module(_aqm); _aqm.record(__file__, __name__)
+except Exception:
+    pass
+import argparse
+import ast
+import json
+import re
+import subprocess
+import sys
+from pathlib import Path
+
+MAX_TOKENS = 2500
+GRAPH_TIMEOUT_S = 3
+HERE = Path(__file__).resolve().parent
+ROOT = HERE.parent.parent
+NON_PY_WINDOW = 40
+
+
+def est_tokens(text: str) -> int:
+    return (len(text) + 3) // 4
+
+
+class Refuse(Exception):
+    pass
+
+
+def _py_symbols(src: str):
+    """Return [(qualname, kind, start, end, signature)] sorted by start line, or None if unparsable."""
+    try:
+        tree = ast.parse(src)
+    except SyntaxError:
+        return None
+    lines = src.splitlines()
+    out = []
+
+    def sig(node):
+        first = node.body[0].lineno if node.body else node.end_lineno
+        head = lines[node.lineno - 1:max(node.lineno, first - 1)]
+        text = "\n".join(h.rstrip() for h in head)
+        if isinstance(node.body[0], ast.Expr) and isinstance(getattr(node.body[0], "value", None), ast.Constant) \
+                and isinstance(node.body[0].value.value, str):
+            doc = node.body[0].value.value.strip().splitlines()
+            if doc:
+                text = text.rstrip() + "\n" + " " * (node.col_offset + 4) + '"""' + doc[0].strip() + '"""'
+        return text if text.strip() else lines[node.lineno - 1]
+
+    def walk(body, prefix):
+        for node in body:
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                start = min([node.lineno] + [d.lineno for d in node.decorator_list])
+                name = prefix + node.name
+                kind = "class" if isinstance(node, ast.ClassDef) else "def"
+                out.append((name, kind, start, node.end_lineno, sig(node)))
+                if isinstance(node, ast.ClassDef):
+                    walk(node.body, name + ".")
+
+    walk(tree.body, "")
+    return sorted(out, key=lambda s: (s[2], s[0]))
+
+
+def _graph(symbols):
+    """Direct callers/callees per symbol via aq-graph-query. Returns (status, {symbol: {...}})."""
+    if not (ROOT / ".understand-anything" / "knowledge-graph.json").is_file():
+        return "skipped: no knowledge graph", {}
+    tool = HERE / "aq-graph-query"
+    if not tool.is_file():
+        return "skipped: aq-graph-query not found", {}
+    res = {}
+    for sym in sorted(set(symbols)):
+        name = sym.rsplit(".", 1)[-1]
+        try:
+            p = subprocess.run([sys.executable, str(tool), "--root", str(ROOT), "--json", "symbol", name],
+                               capture_output=True, text=True, timeout=GRAPH_TIMEOUT_S)
+            data = json.loads(p.stdout) if p.returncode == 0 else {}
+        except (subprocess.TimeoutExpired, OSError, ValueError):
+            return "skipped: graph query slow or failed", {}
+        calls, called_by = set(), set()
+        for m in data.get("matches", []):
+            calls.update(m.get("calls", []))
+            called_by.update(m.get("called_by", []))
+        res[sym] = {"calls": sorted(calls)[:15], "called_by": sorted(called_by)[:15]}
+    return "used", res
+
+
+def build(files, wanted, max_tokens):
+    """Build the packet dict; degrade in steps; raise Refuse if the target cannot fit."""
+    entries = []
+    for f in sorted(set(files)):
+        p = Path(f)
+        if not p.is_file():
+            raise Refuse(f"no such file: {f}")
+        src = p.read_text(encoding="utf-8", errors="replace")
+        lines = src.splitlines()
+        rel = _rel(p)
+        is_py = p.suffix == ".py" or (lines[:1] and lines[0].startswith("#!") and "python" in lines[0])
+        syms = _py_symbols(src) if is_py else None
+        ent = {"file": rel, "lang": "python" if syms is not None else "text", "targets": [], "others": []}
+        if syms is not None:
+            tg = []
+            for w in wanted:
+                tg.extend([x for x in syms if x[0] == w] or [x for x in syms if x[0].endswith("." + w)])
+            tg = sorted(set(tg), key=lambda x: (x[2], x[0]))
+            tnames = {t[0] for t in tg}
+            for t in tg:
+                ent["targets"].append({"name": t[0], "lines": [t[2], t[3]], "sig": t[4],
+                                       "body": "\n".join(lines[t[2] - 1:t[3]])})
+            for s in syms:
+                if s[0] not in tnames and not any(s[0].startswith(n + ".") for n in tnames):
+                    ent["others"].append({"name": s[0], "kind": s[1], "lines": [s[2], s[3]], "sig": s[4]})
+        else:
+            w = next((w for w in wanted if re.search(r"\b" + re.escape(w) + r"\b", src)), None)
+            if w:
+                i = next(n for n, ln in enumerate(lines) if re.search(r"\b" + re.escape(w) + r"\b", ln))
+                end = min(len(lines), i + NON_PY_WINDOW)
+                ent["targets"].append({"name": w, "lines": [i + 1, end], "sig": lines[i].rstrip(),
+                                       "body": "\n".join(lines[i:end])})
+            else:
+                end = min(len(lines), NON_PY_WINDOW)
+                ent["others"].append({"name": "(file head)", "kind": "range", "lines": [1, end],
+                                      "sig": lines[0].rstrip() if lines else ""})
+        entries.append(ent)
+    found = {t["name"].rsplit(".", 1)[-1] for e in entries for t in e["targets"]} | \
+            {t["name"] for e in entries for t in e["targets"]}
+    for w in wanted:
+        if w not in found:
+            raise Refuse(f"symbol {w!r} not found in any given file")
+
+    status, graph = _graph([t["name"] for e in entries for t in e["targets"]])
+    pk = {"header": {"graph": status, "max_tokens": max_tokens, "token_estimate": 0, "degraded": False,
+                     "omitted_signatures": 0},
+          "files": entries, "graph": graph}
+
+    def fits():
+        pk["header"]["token_estimate"] = est_tokens(render(pk))
+        # token_estimate digits change the length; re-measure once to settle
+        pk["header"]["token_estimate"] = est_tokens(render(pk))
+        return pk["header"]["token_estimate"] <= max_tokens
+
+    if fits():
+        return pk
+    pk["header"]["degraded"] = True
+    for e in entries:
+        for t in e["targets"]:
+            t["body"] = None
+    if fits():
+        return pk
+    # drop other-symbol signatures from the end, one at a time
+    for e in reversed(entries):
+        while e["others"]:
+            e["others"].pop()
+            pk["header"]["omitted_signatures"] += 1
+            if fits():
+                return pk
+    pk["graph"] = {}
+    if fits():
+        return pk
+    raise Refuse(f"target does not fit in {max_tokens} tokens even as signatures (estimate "
+                 f"{pk['header']['token_estimate']})")
+
+
+def _rel(p: Path) -> str:
+    try:
+        return str(p.resolve().relative_to(ROOT))
+    except ValueError:
+        return str(p)
+
+
+def render(pk) -> str:
+    h = pk["header"]
+    out = [f"# context-packet graph={h['graph']} max_tokens={h['max_tokens']} "
+           f"tokens~{h['token_estimate']} degraded={str(h['degraded']).lower()} "
+           f"omitted_signatures={h['omitted_signatures']}"]
+    for e in pk["files"]:
+        out.append(f"## {e['file']} ({e['lang']})")
+        for t in e["targets"]:
+            a, b = t["lines"]
+            out.append(f"### target {t['name']} [{a}-{b}]")
+            out.append(t["body"] if t["body"] is not None else t["sig"])
+            g = pk["graph"].get(t["name"])
+            if g and (g["calls"] or g["called_by"]):
+                out.append(f"# calls: {', '.join(g['calls'])}")
+                out.append(f"# called_by: {', '.join(g['called_by'])}")
+        if e["others"]:
+            out.append("### other symbols")
+            for o in e["others"]:
+                out.append(f"{o['sig']}  # [{o['lines'][0]}-{o['lines'][1]}]")
+    return "\n".join(out) + "\n"
+
+
+def main(argv=None) -> int:
+    ap = argparse.ArgumentParser(description=(__doc__ or "").splitlines()[0])
+    ap.add_argument("files", nargs="+")
+    ap.add_argument("-s", "--symbol", action="append", default=[], help="target symbol (repeatable)")
+    ap.add_argument("--max-tokens", type=int, default=MAX_TOKENS)
+    ap.add_argument("--json", action="store_true")
+    a = ap.parse_args(argv)
+    cap = min(a.max_tokens, MAX_TOKENS)
+    try:
+        pk = build(a.files, sorted(set(a.symbol)), cap)
+    except Refuse as ex:
+        print(f"aq-context-packet: refused: {ex}", file=sys.stderr)
+        return 1
+    if a.json:
+        print(json.dumps(pk, indent=2, sort_keys=True))
+    else:
+        sys.stdout.write(render(pk))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
