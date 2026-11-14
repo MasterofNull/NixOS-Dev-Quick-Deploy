@@ -1,0 +1,60 @@
+{
+  "plan": {
+    "id": "aq-land-portable",
+    "title": "Portable landing tool (landgate)",
+    "prd_ref": ".agents/plans/aq-land-portable-20261113/DESIGN.md",
+    "owner": "hyperd",
+    "goal": "Package aq-land as a standalone tool a stranger can install and use, to earn outside receipts",
+    "success_criteria": [
+      "Hermetic bare-repo acceptance test passes",
+      "This repo's aq-land runs on the core with test-aq-land.py unchanged",
+      "A stranger completes the README walkthrough in 5 minutes"
+    ]
+  },
+  "phases": [
+    {"id": "design", "name": "Design", "goal": "Frozen design and owner decisions", "order": 1},
+    {"id": "build", "name": "Extract and package", "goal": "Core, shim, packaging", "order": 2}
+  ],
+  "items": [
+    {
+      "id": "LP-D0",
+      "name": "Design",
+      "phase": "design",
+      "kind": "milestone",
+      "goal": "Portable core design on top of S2 and S4",
+      "validation_goal": "Owner answers decisions 1-3",
+      "deps": [],
+      "detection": {"commit_match": ["aq-land-portable.*design"]}
+    },
+    {
+      "id": "LP-S1",
+      "name": "Extract core",
+      "phase": "build",
+      "kind": "slice",
+      "goal": "tools/landgate single file with gate, reviewer, receipt, hosts gh and git",
+      "validation_goal": "Hermetic bare-repo acceptance tests",
+      "deps": ["LP-D0"],
+      "detection": {"commit_match": ["feat\\(landgate\\): .*LP-S1"]}
+    },
+    {
+      "id": "LP-S2",
+      "name": "Repo shim",
+      "phase": "build",
+      "kind": "slice",
+      "goal": "scripts/ai/aq-land becomes a thin config over the core",
+      "validation_goal": "scripts/testing/test-aq-land.py passes unchanged",
+      "deps": ["LP-S1"],
+      "detection": {"commit_match": ["feat\\(landgate\\): .*LP-S2"]}
+    },
+    {
+      "id": "LP-S3",
+      "name": "Packaging and README",
+      "phase": "build",
+      "kind": "slice",
+      "goal": "pipx install, standalone repo split, README walkthrough run in CI",
+      "validation_goal": "CI runs README commands verbatim",
+      "deps": ["LP-S1"],
+      "detection": {"commit_match": ["feat\\(landgate\\): .*LP-S3"]}
+    }
+  ]
+}
