@@ -30,9 +30,9 @@ Sonnet 5.5 implementer (Rule 17 default). The independent reviewer lane is chose
 | models-dev | 2026-03-17 | 2026-11-14 (a5458bdc) | data package |
 | continue-cli | 1.5.45 | 1.5.47 | |
 | maigret | 0.6.1 | 0.6.6 | |
-| mosaic | rev=main | 0df2c04 | reproducible pin |
 
-Skipped, both logged in `.agent/memory/issues-backlog.md`:
+Skipped, all logged in `.agent/memory/issues-backlog.md`:
+- mosaic: bumping it exposes that its launcher runs from the read-only store and writes results there (Codex P2, codex-20261114-021334-bbi4vy). The bump was reverted; this needs its own slice.
 - pi-agent: never buildable (`lib.fakeHash`).
 - herdr: trust-pinned, so it goes through supply-chain review first.
 
@@ -41,3 +41,20 @@ Skipped, both logged in `.agent/memory/issues-backlog.md`:
 - ON: after the next owner rebuild (`aq-deploy-current`).
 - Validate live: `opencode --version` reports 1.19.5.
 - Intervenable: revert the per-package commit.
+
+## Validation Evidence
+
+- Each package built individually: `opencode --version` printed 1.19.5, and the models-dev store path has its API JSON.
+- Codex review codex-20261114-021334-bbi4vy returned REQUEST_CHANGES, for mosaic only. The mosaic commit was reverted in 247289968.
+
+## Rollback Plan
+
+Revert the per-package commit and rebuild.
+
+## Residual Risk
+
+opencode skips a major range (1.3 to 1.19). Its CLI flags used by harness wrappers are confirmed only by `--version`. Watch the first opencode run after the rebuild.
+
+## Hint Feedback
+
+None.
