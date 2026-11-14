@@ -1106,6 +1106,7 @@
         "scripts/testing/test-delegate-to-local-argparse.sh",
         "scripts/testing/test-delegate-to-local-launch-verification.py",
         "scripts/testing/test-delegate-to-local-status-json.py",
+        "scripts/testing/test-delegate-truncation-status.py",
         "scripts/testing/test-no-antigravity-ide-trigger.py"
       ],
       "needs": [
@@ -1126,6 +1127,7 @@
         "scripts/testing/test-delegate-to-local-argparse.sh",
         "scripts/testing/test-delegate-to-local-launch-verification.py",
         "scripts/testing/test-delegate-to-local-status-json.py",
+        "scripts/testing/test-delegate-truncation-status.py",
         "scripts/testing/test-delegate-wrapper-shell-safety.py",
         "scripts/testing/test-no-antigravity-ide-trigger.py"
       ]
@@ -1303,6 +1305,7 @@
         "scripts/testing/test-check-flake-age.sh",
         "scripts/testing/test-check-frontier-fold.py",
         "scripts/testing/test-check-harness-first-pr-evidence-gate.py",
+        "scripts/testing/test-check-plan-paths.py",
         "scripts/testing/test-check-mergeable.sh",
         "scripts/testing/test-ci-checks-manifest.py",
         "scripts/testing/test-ci-merge-parity.py",
@@ -1400,6 +1403,7 @@
         "scripts/testing/test-check-flake-age.sh",
         "scripts/testing/test-check-frontier-fold.py",
         "scripts/testing/test-check-harness-first-pr-evidence-gate.py",
+        "scripts/testing/test-check-plan-paths.py",
         "scripts/testing/test-check-mergeable.sh",
         "scripts/testing/test-ci-checks-manifest.py",
         "scripts/testing/test-ci-merge-parity.py",
