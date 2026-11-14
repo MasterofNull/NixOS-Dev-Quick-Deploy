@@ -1,0 +1,5 @@
+{
+  "classification": "durable_plan",
+  "tracking_route": "tracker.json",
+  "evidence": "tracker.json declares plan.id=health-alert-recovery-20261113, an owned goal, prd_ref=.agents/plans/health-alert-recovery-20261113/DESIGN.md (exists) and 1 item; durable goals, slices and tasks are authored there."
+}
