@@ -160,6 +160,69 @@ class Conflicts(Base):
         self.stage()
         self.assertTrue(any("owner_reply" in e for e in self.check()))
 
+    def test_metadata_only_lane_transfer_then_claim_change_fails(self) -> None:
+        fact(self.repo, "x.y", claim="mine", instance=CLAUDE)
+        self._commit_branch("a")
+        fact(self.repo, "x.y", claim="mine", instance=CODEX)  # metadata-only transfer
+        self._commit_branch("b")
+        self.assertTrue(any("transferred across lanes" in e for e in self.check()))
+        fact(self.repo, "x.y", claim="rewritten", instance=CODEX)  # same-lane edit now looks free
+        self._commit_branch("c")
+        self.assertTrue(any("transferred across lanes" in e for e in self.check()))
+
+    def test_lane_transfer_with_fresh_reply_passes(self) -> None:
+        fact(self.repo, "x.y", claim="mine", instance=CLAUDE)
+        self._commit_branch("a")
+        fact(self.repo, "x.y", claim="mine", instance=CODEX, reply="2 keep theirs")
+        self._commit_branch("b")
+        self.assertEqual(self.check(), [])
+
+    def _stale_branch(self) -> None:
+        git(self.repo, "checkout", "-q", "slice")
+        fact(self.repo, "x.y", claim="mine", instance=CLAUDE)
+        self._commit_branch("branch fact")
+        git(self.repo, "checkout", "-q", "main")
+        fact(self.repo, "x.y", claim="theirs", instance=CODEX)
+        git(self.repo, "add", ".")
+        git(self.repo, "commit", "-qm", "theirs")
+        git(self.repo, "push", "-q", "origin", "main")
+        git(self.repo, "checkout", "-q", "slice")
+
+    def test_stale_branch_resolved_by_final_commit_with_reply_passes(self) -> None:
+        self._stale_branch()
+        self.assertTrue(self.check())
+        fact(self.repo, "x.y", claim="merged", instance=CLAUDE, reply="1 keep mine")
+        self._commit_branch("resolve")
+        self.assertEqual(self.check(), [])
+
+    def test_stale_branch_final_commit_without_reply_fails(self) -> None:
+        self._stale_branch()
+        fact(self.repo, "x.y", claim="merged", instance=CLAUDE)
+        self._commit_branch("resolve")
+        self.assertTrue(any("owner_reply" in e for e in self.check()))
+
+    def test_delete_then_readd_on_branch_judged_on_final_state(self) -> None:
+        self.land("a.b", claim="one", instance=CLAUDE)
+        (self.repo / ".agent/memory/facts/a.b.md").unlink()
+        self._commit_branch("drop")
+        fact(self.repo, "a.b", claim="two", instance=CODEX)
+        self._commit_branch("readd")
+        self.assertTrue(any("owner_reply" in e for e in self.check()))
+
+    def test_net_delete_of_main_fact_by_same_lane_needs_reply(self) -> None:
+        self.land("a.b", claim="one", instance=CLAUDE)
+        (self.repo / ".agent/memory/facts/a.b.md").unlink()
+        self.stage()
+        with mock.patch.dict(os.environ, {"AQ_INSTANCE_LANE": "claude"}):
+            self.assertTrue(any("deletes or renames" in e or "net delete" in e for e in self.check()))
+
+    def test_subdirectory_fact_is_not_a_fact_file(self) -> None:
+        p = self.repo / ".agent/memory/facts/sub/a.b.md"
+        p.parent.mkdir(parents=True)
+        p.write_text("junk")
+        self.stage()
+        self.assertEqual(self.check(), [])
+
     def test_delete_and_split(self) -> None:
         self.land("llama-cpp.n_gpu_layers", claim="12 layers")
         (self.repo / ".agent/memory/facts/llama-cpp.n_gpu_layers.md").unlink()
@@ -176,7 +239,7 @@ class Conflicts(Base):
         p = self.repo / ".agent/memory/facts/llama-cpp.layers.md"
         p.write_text(p.read_text().replace("subject: llama-cpp.n_gpu_layers", "subject: llama-cpp.layers"))
         self.stage()
-        self.assertTrue(any("deletes or renames" in e for e in self.check()))
+        self.assertTrue(any("net delete or rename" in e for e in self.check()))
 
     def test_same_lane_delete_of_branch_only_fact_is_free(self) -> None:
         p = fact(self.repo, "a.b")

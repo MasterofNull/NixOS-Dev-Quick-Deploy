@@ -98,7 +98,7 @@ def _facts(names: str) -> list[tuple[str, str]]:
     for ln in names.splitlines():
         if "\t" in ln:
             st, p = ln.split("\t", 1)
-            if p.startswith(FACTS_DIR) and p.endswith(".md"):
+            if p.startswith(FACTS_DIR) and p.endswith(".md") and "/" not in p[len(FACTS_DIR):]:
                 out.append((st[0], p))
     return out
 
@@ -135,6 +135,29 @@ def _actor_lane(msg: str, new_fms: dict[str, dict[str, str]]) -> str:
     return os.environ.get("AQ_INSTANCE_LANE", "").strip().lower()
 
 
+def _lane_gate(errs: list[str], rel: str, old_fm: dict[str, str], fm: dict[str, str],
+               claim_only_across_lanes: bool = False) -> None:
+    """Another lane's fact changes owner only via a fresh `owner_reply`; a lane change alone is a transfer."""
+    ol, nl = lane_of(old_fm.get("instance", "")), lane_of(fm.get("instance", ""))
+    if ol == nl:
+        return
+    claim_changed = old_fm.get("claim") != fm.get("claim")
+    if claim_only_across_lanes and not claim_changed:
+        return
+    reply = fm.get("owner_reply", "").strip()
+    if reply and reply != old_fm.get("owner_reply", "").strip():
+        return
+    if claim_changed:
+        e = (f"{rel}: claim changed across lanes ({ol} -> {nl}) without a fresh 'owner_reply'. "
+             f"Ask the owner (1 keep mine, 2 keep theirs, 3 keep both) and record the answer. "
+             f"theirs ({ol}): {old_fm.get('claim')!r} | mine ({nl}): {fm.get('claim')!r}")
+    else:
+        e = (f"{rel}: fact transferred across lanes ({ol} -> {nl}) without a fresh 'owner_reply'; "
+             f"a metadata-only lane change would let the new lane rewrite the claim unchallenged")
+    if e not in errs:
+        errs.append(e)
+
+
 def check_repo(repo: Path, base: str = "origin/main") -> list[str]:
     errs: list[str] = []
     have_base = _git(repo, "rev-parse", "--verify", "-q", base).returncode == 0
@@ -154,6 +177,8 @@ def check_repo(repo: Path, base: str = "origin/main") -> list[str]:
                 msg = _git(repo, "log", "-1", "--format=%B", sha).stdout
                 units.append((sha[:9], fl, (lambda s: (lambda p: _show(repo, f"{s}:{p}")))(sha), msg, f"{sha}^"))
 
+    touched: set[str] = set()
+    deleted_reply: dict[str, bool] = {}
     for label, files, reader, msg, prev in units:
         if len(files) > MAX_PER_COMMIT:
             errs.append(f"{label}: {len(files)} fact files touched, cap is {MAX_PER_COMMIT} per commit")
@@ -173,45 +198,50 @@ def check_repo(repo: Path, base: str = "origin/main") -> list[str]:
             if not fm:
                 continue
             new_fms[rel] = fm
-            # Baselines: the predecessor revision (per-commit transition) and current main.
-            for ref in dict.fromkeys((prev, base_ref)):
-                old = _show(repo, f"{ref}:{rel}")
-                old_fm = parse_frontmatter(old) if old else None
-                if not old_fm:
-                    continue
-                ol, nl = lane_of(old_fm.get("instance", "")), lane_of(fm.get("instance", ""))
-                if old_fm.get("claim") != fm.get("claim") and ol != nl:
-                    reply = fm.get("owner_reply", "").strip()
-                    if not reply or reply == old_fm.get("owner_reply", "").strip():
-                        msg_e = (
-                            f"{rel}: claim changed across lanes ({ol} -> {nl}) without a fresh 'owner_reply'. "
-                            f"Ask the owner (1 keep mine, 2 keep theirs, 3 keep both) and record the answer. "
-                            f"theirs ({ol}): {old_fm.get('claim')!r} | mine ({nl}): {fm.get('claim')!r}"
-                        )
-                        if msg_e not in errs:
-                            errs.append(msg_e)
+            touched.add(rel)
+            # Transition vs the predecessor only: a later commit may legitimately resolve an earlier one.
+            old = _show(repo, f"{prev}:{rel}")
+            old_fm = parse_frontmatter(old) if old else None
+            if old_fm:
+                _lane_gate(errs, rel, old_fm, fm)
         actor = _actor_lane(msg, new_fms)
         for rel in deleted:
             subj = Path(rel).stem
             splits = [f for p, f in new_fms.items()
                       if Path(p).stem.startswith(subj + ".") and f.get("owner_reply", "").strip()]
             has_reply = len(splits) >= 2 or "owner_reply:" in msg
-            for ref in dict.fromkeys((prev, base_ref)):
-                old = _show(repo, f"{ref}:{rel}")
-                old_fm = parse_frontmatter(old) if old else None
-                if not old_fm:
-                    continue  # fact not on this baseline: nothing of another lane is lost there
-                ol = lane_of(old_fm.get("instance", ""))
-                # main baseline: any delete needs the reply; predecessor (branch-only): only a lane change does
-                if has_reply or (ref != base_ref and ol == actor):
-                    continue
-                msg_e = (
-                    f"{rel}: deletes or renames a fact on {ref} (lane {ol}, claim {old_fm.get('claim')!r}); "
-                    f"needs 2 scoped split facts '{subj}.<scope>' carrying 'owner_reply'"
-                    f"{'' if actor else ' (acting lane unknown: set AQ_INSTANCE_LANE or add an instance: line to the message)'}"
-                )
-                if msg_e not in errs:
-                    errs.append(msg_e)
+            deleted_reply[rel] = has_reply
+            old = _show(repo, f"{prev}:{rel}")
+            old_fm = parse_frontmatter(old) if old else None
+            if not old_fm:
+                continue  # fact not on the predecessor: nothing of another lane is lost
+            ol = lane_of(old_fm.get("instance", ""))
+            if has_reply or ol == actor:
+                continue
+            msg_e = (
+                f"{rel}: deletes or renames a fact on {prev} (lane {ol}, claim {old_fm.get('claim')!r}); "
+                f"needs 2 scoped split facts '{subj}.<scope>' carrying 'owner_reply'"
+                f"{'' if actor else ' (acting lane unknown: set AQ_INSTANCE_LANE or add an instance: line to the message)'}"
+            )
+            if msg_e not in errs:
+                errs.append(msg_e)
+
+    # Final branch state (the index: staged changes over HEAD) judged against current main.
+    for rel in sorted(touched | set(deleted_reply)):
+        final = _show(repo, f":{rel}")
+        old = _show(repo, f"{base_ref}:{rel}")
+        old_fm = parse_frontmatter(old) if old else None
+        if not old_fm:
+            continue
+        if final is None:
+            if not deleted_reply.get(rel):
+                errs.append(f"{rel}: net delete or rename of a fact on {base_ref} "
+                            f"(lane {lane_of(old_fm.get('instance', ''))}, claim {old_fm.get('claim')!r}) "
+                            f"needs 2 scoped split facts '{Path(rel).stem}.<scope>' carrying 'owner_reply'")
+            continue
+        fm = parse_frontmatter(final)
+        if fm and old_fm.get("claim") != fm.get("claim"):
+            _lane_gate(errs, rel, old_fm, fm, claim_only_across_lanes=True)
     return errs
 
 
