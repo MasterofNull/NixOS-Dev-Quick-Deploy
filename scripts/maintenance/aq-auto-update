@@ -361,6 +361,13 @@ def cmd_check(ctx):
                       side_effect=False)
     ctx.status["pin_watch_rc"] = rc
     ctx.status["pin_watch"] = out[-2000:]
+    try:
+        # Stdout is the JSON list; stderr noise may trail it, so decode the first value only.
+        rows, _ = json.JSONDecoder().raw_decode(out[out.index("["):])
+        ctx.status["pins_pending"] = [f"{r['id']} {r['current']} -> {r['latest']}" for r in rows
+                                      if r.get("status") == "ok" and r.get("change_class") not in ("none", "unknown")]
+    except (ValueError, TypeError, KeyError):
+        pass
     in_w = in_window(now_utc())
     ctx.status["in_activation_window"] = in_w
     return ctx.finish("check-only", "notify-only check complete", 0 if rc == 0 else 1)

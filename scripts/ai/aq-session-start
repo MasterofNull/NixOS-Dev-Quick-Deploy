@@ -83,6 +83,23 @@ if [[ "$machine" -eq 0 && -x "${SCRIPT_DIR}/aq-ctx-freshness" ]]; then
     "${SCRIPT_DIR}/aq-ctx-freshness" --heal-shallow || true
 fi
 
+# One-line summary of the daily notify-only update check (aq-auto-update-check).
+# Fail-safe: absent/unreadable status prints nothing.
+if [[ "$machine" -eq 0 ]]; then
+    python3 - "${AQ_AUTO_UPDATE_STATE_DIR:-/var/lib/aq-auto-update}/status.json" 2>/dev/null <<'PY' || true
+import json, sys
+try:
+    s = json.load(open(sys.argv[1]))
+except (OSError, ValueError):
+    sys.exit(0)
+p = s.get("pins_pending") or []
+r = "; reboot pending" if s.get("pending_reboot") else ""
+if p or r:
+    print(f"\n[update-check {str(s.get('finished_at', '?'))[:10]}] {len(p)} pin(s) behind upstream: "
+          f"{', '.join(x.split(' ')[0] for x in p[:8])}{r} (aq-pin-watch check)")
+PY
+fi
+
 # ── 0. Workflow session registration ─────────────────────────────────────────
 # Creates a record in workflow-sessions.json so aq-report operator_trust
 # has data (intent_coverage). Silent on failure — never blocks hydration.

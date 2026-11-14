@@ -290,6 +290,108 @@ def query_latest(candidate: Candidate) -> Optional[str]:
     return None
 
 
+# nix/pkgs adapter: report-only (a bump needs a rebuild to refresh hashes).
+NIX_PKG_SKIP = {"agentic-tools", "harness-contracts"}  # our own packages, no upstream
+
+
+def _fixture_value(key: str) -> Tuple[bool, Optional[str]]:
+    """(fixture_active, value). With a fixture active the nix adapter never touches the network."""
+    path = os.environ.get("AQ_PIN_WATCH_REGISTRY_FIXTURE")
+    if not path:
+        return False, None
+    try:
+        with open(path) as f:
+            return True, json.load(f).get(key)
+    except (OSError, json.JSONDecodeError):
+        return True, None
+
+
+def query_default_branch_head(owner: str, repo: str) -> Optional[str]:
+    """Latest default-branch commit sha."""
+    active, val = _fixture_value(f"head:{owner}/{repo}")
+    if active:
+        return val
+    data = fetch_json(f"https://api.github.com/repos/{owner}/{repo}/commits/HEAD")
+    return data.get("sha") if data else None
+
+
+def parse_nix_pkg(path: Path) -> Optional[dict]:
+    """Extract name/version/source from a hand-pinned nix/pkgs expression (regex, no nix eval)."""
+    text = path.read_text()
+
+    def first(pat):
+        m = re.search(pat, text)
+        return m.group(1) if m else None
+
+    name = first(r'\bpname\s*=\s*"([^"]+)"') or (path.parent.name if path.name == "package.nix" else path.stem)
+    version = first(r'\bversion\s*=\s*"([^"]+)"')
+    owner, repo = first(r'\bowner\s*=\s*"([^"]+)"'), first(r'\brepo\s*=\s*"([^"]+)"')
+    rev = first(r'\b(?:rev|tag)\s*=\s*"([^"]+)"')
+    npm = re.search(r'registry\.npmjs\.org/((?:@[^/]+/)?[^/]+)/-/', text)
+    dl = re.search(r'github\.com/([^/]+)/([^/]+)/releases/download/', text)
+    if owner and repo and rev:
+        if re.fullmatch(r"[0-9a-f]{40}", rev):
+            return {"name": name, "kind": "commit", "owner": owner, "repo": repo, "current": rev}
+        if rev in ("main", "master"):
+            return {"name": name, "kind": "branch", "owner": owner, "repo": repo, "current": rev}
+        cur = version if "${" in rev and version else rev
+        return {"name": name, "kind": "release", "owner": owner, "repo": repo, "current": cur.lstrip("v")}
+    if npm and version:
+        return {"name": name, "kind": "npm", "package": npm.group(1), "current": version}
+    if dl and version:
+        return {"name": name, "kind": "release", "owner": dl.group(1), "repo": dl.group(2), "current": version}
+    if "fetchPypi" in text and version:
+        return {"name": name, "kind": "pypi", "package": name, "current": version}
+    return None
+
+
+def check_nix_pkgs(repo_root: Path) -> List[dict]:
+    """Report-only results for nix/pkgs/*.nix and nix/pkgs/by-name/*/package.nix."""
+    pkgs_dir = repo_root / "nix" / "pkgs"
+    files = sorted(pkgs_dir.glob("*.nix")) + sorted(pkgs_dir.glob("by-name/*/package.nix"))
+    results = []
+    for f in files:
+        try:
+            info = parse_nix_pkg(f)
+        except OSError:
+            info = None
+        stem = f.parent.name if f.name == "package.nix" else f.stem
+        if stem in NIX_PKG_SKIP or (info and info["name"] in NIX_PKG_SKIP):
+            continue
+        rid = f"nix-pkg:{info['name'] if info else stem}"
+        if not info:
+            results.append({"id": rid, "name": stem, "current": "unparseable", "latest": "unknown",
+                            "change_class": "unknown", "status": "skipped"})
+            continue
+        kind, current = info["kind"], info["current"]
+        if kind == "npm":
+            active, latest = _fixture_value(f"npm:{info['package']}")
+            latest = latest if active else query_npm_latest(info["package"])
+        elif kind == "pypi":
+            active, latest = _fixture_value(f"pypi:{info['package']}")
+            latest = latest if active else query_pypi_latest(info["package"])
+        elif kind == "release":
+            active, latest = _fixture_value(f"github:{info['owner']}/{info['repo']}")
+            latest = latest if active else query_github_releases(info["owner"], info["repo"])
+        else:  # commit / branch pins compare against the default-branch head
+            latest = query_default_branch_head(info["owner"], info["repo"])
+        entry = {"id": rid, "name": info["name"], "current": current[:12] if kind == "commit" else current,
+                 "latest": "unknown", "change_class": "unknown", "status": "network_error"}
+        if latest is not None:
+            entry["status"] = "ok"
+            if kind == "commit":
+                entry["latest"] = latest[:12]
+                entry["change_class"] = "none" if latest == current else "commit"
+            elif kind == "branch":
+                entry["latest"] = latest[:12]
+                entry["change_class"] = "unpinned-branch"
+            else:
+                entry["latest"] = latest
+                entry["change_class"] = classify_version_change(parse_semver(current), parse_semver(latest))
+        results.append(entry)
+    return results
+
+
 def check_command(intake_path: str, json_output: bool = False) -> int:
     """Check for updates. Returns 0 if all ok, 2 if all network failures."""
     try:
@@ -357,6 +459,12 @@ def check_command(intake_path: str, json_output: bool = False) -> int:
             "status": "ok"
         })
 
+    # nix/pkgs hand-pins (report-only; repo root = parent of the intake config dir).
+    results.extend(check_nix_pkgs(Path(intake_path).resolve().parent.parent))
+    # Fail closed: nix/pkgs lookups are upstream requests too, so their failures count.
+    unknown_count = sum(1 for r in results if r["status"] == "network_error")
+    ok_count = sum(1 for r in results if r["status"] == "ok")
+
     if json_output:
         print(json.dumps(results, indent=2))
     else:
@@ -369,7 +477,7 @@ def check_command(intake_path: str, json_output: bool = False) -> int:
             }.get(r["status"], "?")
             print(f"{status_char} {r['id']:30} {r['current']:15} → {r['latest']:15} ({r['change_class']})")
 
-    if unknown_count == len(results):
+    if unknown_count and not ok_count:
         return 2
     return 0
 

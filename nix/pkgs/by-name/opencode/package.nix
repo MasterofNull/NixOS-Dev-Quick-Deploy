@@ -5,6 +5,7 @@
   fetchFromGitHub,
   makeBinaryWrapper,
   models-dev,
+  nodejs,
   nix-update-script,
   ripgrep,
   sysctl,
@@ -14,13 +15,13 @@
 }:
 stdenvNoCC.mkDerivation (finalAttrs: {
   pname = "opencode";
-  version = "1.3.0";
+  version = "1.19.5";
 
   src = fetchFromGitHub {
     owner = "anomalyco";
     repo = "opencode";
     tag = "v${finalAttrs.version}";
-    hash = "sha256-JQsccVflS/GAjzguvZTLn7UH7tsou8yCSlaA48DVY10=";
+    hash = "sha256-tmFnVEBsnLZNuBaSIt7rZYuBV4jf/Ccaq2a6AwjyCec=";
   };
 
   node_modules = stdenvNoCC.mkDerivation {
@@ -71,7 +72,7 @@ stdenvNoCC.mkDerivation (finalAttrs: {
     # NOTE: Required else we get errors that our fixed-output derivation references store paths
     dontFixup = true;
 
-    outputHash = "sha256-K6wRsvkhKzNL727/nqAUedv0HvfJt7vu13RKKcJ9adk=";
+    outputHash = "sha256-PzpSEA5O3d0h4sYdK8y2+FX4+A2OjLU+7yydLcgLyo4=";
     outputHashAlgo = "sha256";
     outputHashMode = "recursive";
   };
@@ -81,6 +82,7 @@ stdenvNoCC.mkDerivation (finalAttrs: {
     installShellFiles
     makeBinaryWrapper
     models-dev
+    nodejs
     writableTmpDirAsHomeHook
   ];
 
@@ -103,6 +105,9 @@ stdenvNoCC.mkDerivation (finalAttrs: {
     runHook preConfigure
 
     cp -R ${finalAttrs.node_modules}/. .
+    chmod -R u+w .
+    # Vendored .bin scripts use /usr/bin/env, absent in the sandbox
+    patchShebangs node_modules packages/*/node_modules
 
     runHook postConfigure
   '';

@@ -303,6 +303,15 @@
         '';
       };
 
+      run.enable = lib.mkOption {
+        type = lib.types.bool;
+        default = false;
+        description = ''
+          Also schedule the activation run (Sunday window build + switch). Off by
+          default: enable alone gives only the daily notify-only check.
+        '';
+      };
+
       flakeAttr = lib.mkOption {
         type = lib.types.str;
         default = "hyperd-ai-dev";

@@ -22,6 +22,9 @@ in {
     mySystem.roles.agenticToolchain.enable = lib.mkDefault true;
     mySystem.mcpServers.enable = lib.mkDefault true;
     mySystem.monitoring.enable = lib.mkDefault true;
+    # Owner 2026-11-13: daily notify-only update check ON; activation run (build/switch) stays OFF.
+    mySystem.autoUpdate.enable = lib.mkDefault true;
+    mySystem.autoUpdate.run.enable = lib.mkDefault false;
     mySystem.monitoring.commandCenter.enable = lib.mkDefault true;
     mySystem.localhostIsolation.enable = lib.mkDefault true;
     mySystem.aiStack.switchboard.enable = lib.mkDefault true;
