@@ -19,7 +19,8 @@ assert GIT, "git is required for this fixture"
 def hermetic_environ():
     # AQ_DELEGATION_DIR is dropped: the fixtures assert repo-relative worktree roots and registries, and an
     # ambient value (run-test-group, CI runner, operator shell) relocates them.
-    return {k: v for k, v in os.environ.items() if k != "AQ_DELEGATION_DIR"}
+    # AQ_ALLOW_VOLATILE_DIR: fixture repos live under /tmp, which the derived-dir refusal rejects in production.
+    return {**{k: v for k, v in os.environ.items() if k != "AQ_DELEGATION_DIR"}, "AQ_ALLOW_VOLATILE_DIR": "1"}
 
 
 def run(args, *, env=None, check=True):
