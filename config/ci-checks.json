@@ -366,6 +366,20 @@
       "ci_workflow": ".github/workflows/test.yml#syntax"
     },
     {
+      "id": "local-power-gate-tests",
+      "cmd": "scripts/testing/test-local-power-gate.py",
+      "paths": [
+        "scripts/ai/delegate-to-local",
+        "scripts/ai/lib/power_gate.py",
+        "scripts/testing/test-local-power-gate.py"
+      ],
+      "needs": [
+        "python3",
+        "bash"
+      ],
+      "ci_workflow": ".github/workflows/test.yml#syntax"
+    },
+    {
       "id": "delegation-dir-resolution-tests",
       "cmd": "scripts/testing/test-delegation-dir-resolution.py",
       "paths": [
