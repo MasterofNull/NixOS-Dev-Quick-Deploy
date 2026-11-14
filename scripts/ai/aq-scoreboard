@@ -1,0 +1,76 @@
+#!/usr/bin/env python3
+"""Raw counts from the outcome receipt log. No ratios, no scores."""
+import argparse
+import json
+import sys
+from collections import Counter
+from pathlib import Path
+
+HERE = Path(__file__).resolve().parent
+sys.path.insert(0, str(HERE / "lib"))
+from delegation_dir import resolve_delegation_dir  # noqa: E402
+from outcome_receipt import LOG, QUARANTINE  # noqa: E402
+
+
+def _lines(p: Path):
+    try:
+        text = p.read_text(encoding="utf-8")
+    except OSError:
+        return
+    for ln in text.splitlines():
+        try:
+            r = json.loads(ln)
+        except ValueError:
+            continue
+        if isinstance(r, dict):
+            yield r
+
+
+def summarize(d: Path, since: str = "") -> dict:
+    recs = [r for r in _lines(d / LOG) if (r.get("recorded_at") or "") >= since]
+    tok: dict = {}
+    for r in recs:
+        for lane, t in (r.get("tokens") or {}).items():
+            s = tok.setdefault(lane, {"in": 0, "out": 0, "known": 0, "unknown": 0})
+            if t.get("in") is None and t.get("out") is None:
+                s["unknown"] += 1
+            else:
+                s["known"] += 1
+                s["in"] += t.get("in") or 0
+                s["out"] += t.get("out") or 0
+    return {
+        "prs_landed": len(recs),
+        "by_author_lane": dict(Counter(r.get("author_lane") for r in recs)),
+        "by_reviewer_lane": dict(Counter(x for r in recs for x in r.get("reviewer_lanes", []))),
+        "request_changes_rounds": sum(r.get("request_changes_rounds", 0) for r in recs),
+        "tier0_failures_before_merge": sum(r.get("tier0_failures", 0) for r in recs),
+        "ci_failures_before_merge": sum(r.get("ci_failures", 0) for r in recs),
+        "tokens_by_lane": tok,
+        "quarantined": sum(1 for r in _lines(d / QUARANTINE) if (r.get("recorded_at") or "") >= since),
+    }
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument("--since", default="", help="ISO date, e.g. 2026-11-13")
+    ap.add_argument("--json", action="store_true")
+    ap.add_argument("--dir", default="", help="delegation dir (default: shared)")
+    a = ap.parse_args()
+    s = summarize(Path(a.dir) if a.dir else resolve_delegation_dir(HERE), a.since)
+    if a.json:
+        print(json.dumps(s, indent=2, sort_keys=True))
+        return 0
+    print(f"PRs landed: {s['prs_landed']}")
+    print(f"By author lane: {s['by_author_lane']}")
+    print(f"By reviewer lane: {s['by_reviewer_lane']}")
+    print(f"REQUEST_CHANGES rounds: {s['request_changes_rounds']}")
+    print(f"tier0 failures caught before merge: {s['tier0_failures_before_merge']}")
+    print(f"CI failures caught before merge: {s['ci_failures_before_merge']}")
+    for lane, t in sorted(s["tokens_by_lane"].items()):
+        print(f"Tokens {lane}: in={t['in']} out={t['out']} (known runs {t['known']}, unknown runs {t['unknown']})")
+    print(f"Quarantined: {s['quarantined']}")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
