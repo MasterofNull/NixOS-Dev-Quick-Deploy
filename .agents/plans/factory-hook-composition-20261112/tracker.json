@@ -1,0 +1,127 @@
+{
+  "plan": {
+    "id": "factory-hook-composition-20261112",
+    "title": "Factory hook composition",
+    "prd_ref": ".agents/plans/factory-hook-composition-20261112/DESIGN.md",
+    "owner": "hyperd",
+    "goal": "Receipt-owned offline hook composition preserving default refusal.",
+    "success_criteria": [
+      "All frozen section 9 journeys pass with real dependencies.",
+      "Independent implementation review and activation evidence accompany release acceptance."
+    ]
+  },
+  "phases": [
+    {
+      "id": "admission",
+      "name": "Safe admission",
+      "goal": "Preserve refusal while inspecting composition intent.",
+      "order": 1
+    },
+    {
+      "id": "active-protocol",
+      "name": "Active composition protocol",
+      "goal": "Deliver and independently validate the frozen MVP.",
+      "order": 2
+    }
+  ],
+  "items": [
+    {
+      "id": "admission",
+      "name": "Refusal-only composition admission",
+      "phase": "admission",
+      "kind": "slice",
+      "goal": "Diagnose composition intent without executing hooks or authorizing mutation.",
+      "validation_goal": "Focused refusal, no-write, I/O fault and ordinary installer regression fixtures pass.",
+      "deps": [],
+      "detection": {
+        "commit_match": [
+          "^(feat|fix)\\(factory\\): .*composition.*admission"
+        ],
+        "wired_caller": {
+          "file": "scripts/ai/aq-factory",
+          "pattern": "composition_preview"
+        },
+        "tests": [
+          "scripts/testing/test-factory-hook-composition.py"
+        ]
+      }
+    },
+    {
+      "id": "prewarm",
+      "name": "Immutable manager cache",
+      "phase": "active-protocol",
+      "kind": "slice",
+      "goal": "Implement explicit approved prewarm, closure inventory and immutable publication.",
+      "validation_goal": "Corrupt, missing, writable and changed cache generations refuse before every stage.",
+      "deps": [
+        "admission"
+      ],
+      "detection": {
+        "blocker_note": "Deferred beyond the refusal-only admission sub-slice; no implementation or acceptance claimed."
+      }
+    },
+    {
+      "id": "sandbox-catalog",
+      "name": "Offline boundary and semantic catalog",
+      "phase": "active-protocol",
+      "kind": "slice",
+      "goal": "Bind independently approved native/manager semantics and sandbox every stage and descendant.",
+      "validation_goal": "Real positive-control DNS/TCP/Unix/FD probes are denied in every sandboxed stage.",
+      "deps": [
+        "prewarm"
+      ],
+      "detection": {
+        "blocker_note": "Deferred beyond the refusal-only admission sub-slice; no implementation or acceptance claimed."
+      }
+    },
+    {
+      "id": "journal",
+      "name": "Confirmed installation and rollback",
+      "phase": "active-protocol",
+      "kind": "slice",
+      "goal": "Reinventory under an exclusive lock, bind confirmation, journal durable mutation and recover verified state.",
+      "validation_goal": "Concurrent confirmation/rollback, fsync/rename failures and SIGKILL at each phase preserve exact known state or refuse.",
+      "deps": [
+        "sandbox-catalog"
+      ],
+      "detection": {
+        "blocker_note": "Deferred beyond the refusal-only admission sub-slice; no implementation or acceptance claimed."
+      }
+    },
+    {
+      "id": "observer",
+      "name": "Commit observer and receipt-aware doctor",
+      "phase": "active-protocol",
+      "kind": "slice",
+      "goal": "Bind traversal to real Git reference transitions and consume one attempt durably.",
+      "validation_goal": "Real commit, commit-msg abort, replay, expiry, PID reuse, reboot and consumption crash fixtures pass.",
+      "deps": [
+        "journal"
+      ],
+      "detection": {
+        "blocker_note": "Deferred beyond the refusal-only admission sub-slice; no implementation or acceptance claimed."
+      }
+    },
+    {
+      "id": "runtime-acceptance",
+      "name": "Independent full MVP acceptance",
+      "phase": "active-protocol",
+      "kind": "slice",
+      "goal": "Exercise every frozen acceptance journey with real dependencies and independent review.",
+      "validation_goal": "Design section 9 matrix passes; runtime activation is separately attested.",
+      "deps": [
+        "observer"
+      ],
+      "detection": {
+        "blocker_note": "Deferred beyond the refusal-only admission sub-slice; no implementation or acceptance claimed."
+      }
+    }
+  ],
+  "issues": [
+    {
+      "title": "Active protocol unavailable",
+      "sev": "high",
+      "note": "All receipts and composition confirmations remain refused. See ACCEPTANCE.md for the exact deferred matrix."
+    }
+  ]
+}
