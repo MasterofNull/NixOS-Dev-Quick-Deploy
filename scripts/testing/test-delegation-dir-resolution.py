@@ -129,6 +129,17 @@ def main() -> int:
             print(f"FAIL: explicit override was refused:\n{explicit}\n{override_py}")
             return 1
         print("PASS: derived delegation dir under /tmp is refused; explicit AQ_DELEGATION_DIR still honoured")
+        # git lookup failure (PATH without git) must not bypass the guard via the script-relative fallback.
+        nogit = Path(td) / "nogit-bin"
+        nogit.mkdir()
+        nogit_env = {**strict, "PATH": str(nogit)}
+        py = subprocess.run([sys.executable, "-c", "import sys; sys.path.insert(0, sys.argv[1]); from delegation_dir import resolve_delegation_dir as r; print(r(sys.argv[2]))",
+                             str(REPO_ROOT / "scripts" / "ai" / "lib"), str(main_repo / "scripts" / "ai")],
+                            capture_output=True, text=True, env=nogit_env, cwd=main_repo)
+        if py.returncode == 0 or "volatile" not in py.stderr:
+            print(f"FAIL: git-less fallback delegation dir under /tmp not refused:\npy={py}")
+            return 1
+        print("PASS: git-lookup-failure fallback under /tmp is refused")
         return 0
 
 

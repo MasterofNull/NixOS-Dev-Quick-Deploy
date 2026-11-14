@@ -31,7 +31,7 @@ def resolve_delegation_dir(script_dir) -> Path:
     except (OSError, subprocess.SubprocessError):
         pass
     print("WARN: git unavailable; delegation dir falls back to script-relative path", file=sys.stderr)
-    return Path(script_dir).resolve().parent.parent / ".agents" / "delegation"
+    return refuse_volatile(Path(script_dir).resolve().parent.parent / ".agents" / "delegation")
 
 
 def resolve_main_root(script_dir) -> Path:
