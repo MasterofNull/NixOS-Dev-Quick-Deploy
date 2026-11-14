@@ -126,7 +126,12 @@ class Land:
         self.receipt_tool = os.environ.get("AQ_LAND_RECEIPT_TOOL", str(HERE / "aq-review-receipt"))
         self.tier0 = os.environ.get("AQ_LAND_TIER0", str(Path(self.W) / "scripts/governance/tier0-validation-gate.sh"))
         common = self.git("rev-parse", "--path-format=absolute", "--git-common-dir")
-        self.state_root = Path(os.environ.get("AQ_LAND_STATE_DIR", Path(common).parent / ".agents/delegation/outputs/aq-land"))
+        if os.environ.get("AQ_LAND_STATE_DIR"):
+            self.state_root = Path(os.environ["AQ_LAND_STATE_DIR"])
+        elif os.environ.get("AQ_ALLOW_VOLATILE_DIR") != "1" and str(Path(common).parent).startswith(("/tmp/", "/var/tmp/", "/dev/shm/")):
+            raise Stop("preflight", f"repo {Path(common).parent} is under a volatile path (wiped on reboot); move it or set AQ_LAND_STATE_DIR")
+        else:
+            self.state_root = Path(common).parent / ".agents/delegation/outputs/aq-land"
         self.branch = self.git("rev-parse", "--abbrev-ref", "HEAD")
         if self.branch in ("HEAD", "main"):
             raise Stop("preflight", f"cannot land from {self.branch!r}; check out the slice branch")
