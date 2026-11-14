@@ -591,6 +591,7 @@ jobs:
             --only intelligence-classifier-tests \
             --only delegate-headless-budget-tests \
             --only dispatch-preflight-tests \
+            --only local-power-gate-tests \
             --only delegation-dir-resolution-tests \
             --only aq-review-request-tests \
             --only llm-speed-probe-tests \
