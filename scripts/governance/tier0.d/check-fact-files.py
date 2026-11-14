@@ -121,20 +121,20 @@ def check_repo(repo: Path, base: str = "origin/main") -> list[str]:
     base_ref = base if have_base else "HEAD"
     mb = _git(repo, "merge-base", base_ref, "HEAD").stdout.strip() if _git(repo, "rev-parse", "-q", "--verify", "HEAD").returncode == 0 else ""
 
-    # (label, status+path list, reader of the NEW content, commit message text)
-    units: list[tuple[str, list[tuple[str, str]], object, str]] = []
+    # (label, status+path list, reader of the NEW content, commit message text, predecessor ref prefix)
+    units: list[tuple[str, list[tuple[str, str]], object, str, str]] = []
     staged = _facts(_git(repo, "diff", "--cached", "--name-status", "--no-renames", "--", FACTS_DIR).stdout)
     if staged:
-        units.append(("staged", staged, lambda p: _show(repo, f":{p}"), ""))
+        units.append(("staged", staged, lambda p: _show(repo, f":{p}"), "", "HEAD"))
     if mb:
         revs = _git(repo, "rev-list", "--reverse", f"{mb}..HEAD").stdout.split()
         for sha in revs:
             fl = _facts(_git(repo, "diff-tree", "-r", "--no-commit-id", "--name-status", "--no-renames", "-m", "--first-parent", sha).stdout)
             if fl:
                 msg = _git(repo, "log", "-1", "--format=%B", sha).stdout
-                units.append((sha[:9], fl, (lambda s: (lambda p: _show(repo, f"{s}:{p}")))(sha), msg))
+                units.append((sha[:9], fl, (lambda s: (lambda p: _show(repo, f"{s}:{p}")))(sha), msg, f"{sha}^"))
 
-    for label, files, reader, msg in units:
+    for label, files, reader, msg, prev in units:
         if len(files) > MAX_PER_COMMIT:
             errs.append(f"{label}: {len(files)} fact files touched, cap is {MAX_PER_COMMIT} per commit")
         new_fms: dict[str, dict[str, str]] = {}
@@ -153,19 +153,23 @@ def check_repo(repo: Path, base: str = "origin/main") -> list[str]:
             if not fm:
                 continue
             new_fms[rel] = fm
-            old = _show(repo, f"{base_ref}:{rel}")
-            old_fm = parse_frontmatter(old) if old else None
-            if not old_fm:
-                continue
-            ol, nl = lane_of(old_fm.get("instance", "")), lane_of(fm.get("instance", ""))
-            if old_fm.get("claim") != fm.get("claim") and ol != nl:
-                reply = fm.get("owner_reply", "").strip()
-                if not reply or reply == old_fm.get("owner_reply", "").strip():
-                    errs.append(
-                        f"{rel}: claim changed across lanes ({ol} -> {nl}) without a fresh 'owner_reply'. "
-                        f"Ask the owner (1 keep mine, 2 keep theirs, 3 keep both) and record the answer. "
-                        f"theirs ({ol}): {old_fm.get('claim')!r} | mine ({nl}): {fm.get('claim')!r}"
-                    )
+            # Baselines: the predecessor revision (per-commit transition) and current main.
+            for ref in dict.fromkeys((prev, base_ref)):
+                old = _show(repo, f"{ref}:{rel}")
+                old_fm = parse_frontmatter(old) if old else None
+                if not old_fm:
+                    continue
+                ol, nl = lane_of(old_fm.get("instance", "")), lane_of(fm.get("instance", ""))
+                if old_fm.get("claim") != fm.get("claim") and ol != nl:
+                    reply = fm.get("owner_reply", "").strip()
+                    if not reply or reply == old_fm.get("owner_reply", "").strip():
+                        msg_e = (
+                            f"{rel}: claim changed across lanes ({ol} -> {nl}) without a fresh 'owner_reply'. "
+                            f"Ask the owner (1 keep mine, 2 keep theirs, 3 keep both) and record the answer. "
+                            f"theirs ({ol}): {old_fm.get('claim')!r} | mine ({nl}): {fm.get('claim')!r}"
+                        )
+                        if msg_e not in errs:
+                            errs.append(msg_e)
         for rel in deleted:
             old = _show(repo, f"{base_ref}:{rel}")
             old_fm = parse_frontmatter(old) if old else None
@@ -189,20 +193,24 @@ def report(repo: Path) -> str:
     deletes = 0
     for sha in reversed(log):
         for st, p in _facts(_git(repo, "diff-tree", "-r", "--no-commit-id", "--name-status", "--no-renames", "-m", "--first-parent", "--root", sha).stdout):
-            s = subjects.setdefault(Path(p).stem, {"lanes": set(), "claims": set(), "changes": 0, "replies": 0})
+            s = subjects.setdefault(Path(p).stem, {"lanes": set(), "claim": None, "reply": "", "changes": 0, "replies": 0})
             if st == "D":
                 deletes += 1
                 continue
             fm = parse_frontmatter(_show(repo, f"{sha}:{p}") or "") or {}
-            if fm.get("claim") and fm["claim"] not in s["claims"]:
+            claim, reply = fm.get("claim"), fm.get("owner_reply", "").strip()
+            if claim and s["claim"] is not None and claim != s["claim"]:
                 s["changes"] += 1
-            s["claims"].add(fm.get("claim", ""))
+            if claim:
+                s["claim"] = claim
             s["lanes"].add(lane_of(fm.get("instance", "")))
-            if fm.get("owner_reply", "").strip():
+            if reply and reply != s["reply"]:
                 s["replies"] += 1
+            if reply:
+                s["reply"] = reply
     live = sorted(p.stem for p in (repo / FACTS_DIR).glob("*.md")) if (repo / FACTS_DIR).is_dir() else []
     multi = sum(1 for s in subjects.values() if len(s["lanes"] - {""}) > 1)
-    claim_changes = sum(max(0, s["changes"] - 1) for s in subjects.values())
+    claim_changes = sum(s["changes"] for s in subjects.values())
     replies = sum(s["replies"] for s in subjects.values())
     return (f"facts_total={len(live)} subjects_seen={len(subjects)} multi_lane_subjects={multi} "
             f"claim_changes={claim_changes} owner_reply_entries={replies} deletes={deletes}")

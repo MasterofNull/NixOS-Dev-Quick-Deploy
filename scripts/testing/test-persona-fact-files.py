@@ -132,6 +132,32 @@ class Conflicts(Base):
         errs = self.check()  # committed branch diff, no staged change
         self.assertTrue(any("theirs" in e and "mine" in e for e in errs), errs)
 
+    def _commit_branch(self, msg: str) -> None:
+        self.stage()
+        git(self.repo, "commit", "-qm", msg)
+
+    def test_cross_lane_overwrite_within_branch_needs_owner_reply(self) -> None:
+        fact(self.repo, "x.y", claim="mine", instance=CLAUDE)
+        self._commit_branch("a")
+        fact(self.repo, "x.y", claim="theirs", instance=CODEX)
+        self._commit_branch("b")
+        errs = self.check()
+        self.assertTrue(any("mine" in e and "theirs" in e and "owner_reply" in e for e in errs), errs)
+
+    def test_cross_lane_overwrite_within_branch_with_reply_passes(self) -> None:
+        fact(self.repo, "x.y", claim="mine", instance=CLAUDE)
+        self._commit_branch("a")
+        fact(self.repo, "x.y", claim="theirs", instance=CODEX, reply="2 keep theirs")
+        self._commit_branch("b")
+        self.assertEqual(self.check(), [])
+
+    def test_staged_overwrite_of_committed_branch_fact_needs_reply(self) -> None:
+        fact(self.repo, "x.y", claim="mine", instance=CLAUDE)
+        self._commit_branch("a")
+        fact(self.repo, "x.y", claim="theirs", instance=CODEX)
+        self.stage()
+        self.assertTrue(any("owner_reply" in e for e in self.check()))
+
     def test_delete_and_split(self) -> None:
         self.land("llama-cpp.n_gpu_layers", claim="12 layers")
         (self.repo / ".agent/memory/facts/llama-cpp.n_gpu_layers.md").unlink()
@@ -171,6 +197,29 @@ class Report(Base):
         out = cff.report(self.repo)
         for want in ("facts_total=1", "multi_lane_subjects=1", "claim_changes=1", "owner_reply_entries=1"):
             self.assertIn(want, out)
+
+
+    def _history(self, *revs: dict) -> str:
+        git(self.repo, "checkout", "-q", "main")
+        for i, kw in enumerate(revs):
+            fact(self.repo, "a.b", **kw)
+            git(self.repo, "add", ".")
+            git(self.repo, "commit", "-qm", f"r{i}")
+        return cff.report(self.repo)
+
+    def test_reversion_counts_two_changes(self) -> None:
+        out = self._history(dict(claim="A"), dict(claim="B", instance=CLAUDE, reply="1"), dict(claim="A"))
+        self.assertIn("claim_changes=2", out)
+
+    def test_evidence_only_edit_is_not_a_claim_change(self) -> None:
+        out = self._history(dict(claim="A"), dict(claim="A", evidence="CLAUDE.md:81"))
+        self.assertIn("claim_changes=0", out)
+
+    def test_unchanged_owner_reply_not_recounted(self) -> None:
+        out = self._history(dict(claim="A"), dict(claim="B", instance=CLAUDE, reply="1 keep mine"),
+                            dict(claim="B", instance=CLAUDE, reply="1 keep mine", evidence="CLAUDE.md:81"))
+        self.assertIn("owner_reply_entries=1", out)
+        self.assertIn("claim_changes=1", out)
 
 
 class SessionStart(unittest.TestCase):
