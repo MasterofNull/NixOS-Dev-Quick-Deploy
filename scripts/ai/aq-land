@@ -29,6 +29,7 @@ import importlib.util
 import json
 import os
 import re
+import shutil
 import signal
 import subprocess
 import sys
@@ -241,7 +242,7 @@ class Land:
     # ---- stages
     def stage_commit(self):
         if not self.a.commit_msg_file or not self.git("diff", "--cached", "--name-only"):
-            return
+            return False
         r = run([self.tier0, "--pre-commit"], cwd=self.W, timeout=3600, check=False, stage="tier0")
         if r.returncode != 0:
             raise Stop("tier0", self.blocker("tier0", r))
@@ -249,6 +250,29 @@ class Land:
         if r.returncode != 0:
             raise Stop("commit", self.blocker("commit", r))
         say(f"committed {self.head()[:9]}")
+        return True
+
+    def gate_committed(self):
+        """tier0 --pre-commit gates a staged change; a pre-committed branch has none, so stage its net diff on a
+        throwaway worktree at the merge-base and gate that. The branch and the caller's worktree are never touched."""
+        base = self.git("merge-base", "refs/remotes/origin/main", "HEAD")
+        wt_root = Path(os.environ.get("AQ_LAND_WORKTREE_DIR", Path(self.git("rev-parse", "--path-format=absolute", "--git-common-dir")).parent / ".agents/delegation/worktrees"))
+        wt_root.mkdir(parents=True, exist_ok=True)
+        wt = wt_root / f"aq-land-gate-{self.slug}-{os.getpid()}"
+        run(["git", "-C", self.W, "worktree", "add", "-q", "--detach", str(wt), base], timeout=300, stage="tier0")
+        try:
+            diff = run(["git", "-C", self.W, "diff", "--binary", "--full-index", base, "HEAD"], timeout=300, stage="tier0").stdout
+            a = run(["git", "-C", str(wt), "apply", "--index", "--binary", "-"], input=diff, check=False, stage="tier0", timeout=300)
+            if a.returncode != 0:
+                raise Stop("tier0", f"cannot stage the branch diff on a clean merge-base checkout to gate it: {(a.stderr or a.stdout).strip()[:200]}")
+            t0 = time.time()
+            r = run([self.tier0, "--pre-commit"], cwd=str(wt), timeout=3600, check=False, stage="tier0")
+            say(f"tier0 on the branch diff against {base[:9]}: exit {r.returncode} in {time.time() - t0:.0f}s")
+            if r.returncode != 0:
+                raise Stop("tier0", self.blocker("tier0", r))
+        finally:
+            shutil.rmtree(wt, ignore_errors=True)  # ours; `worktree remove` needs a force flag the source-guard test bans
+            run(["git", "-C", self.W, "worktree", "prune"], check=False, timeout=60)
 
     def sync_main(self):
         run(["git", "-C", self.W, "fetch", "-q", "origin"], timeout=180, stage="merge")
@@ -583,12 +607,15 @@ class Land:
         return self.gitrc("merge-base", "--is-ancestor", "refs/remotes/origin/main", "HEAD") != 0
 
     def locked(self):
-        self.stage_commit()
+        gated = self.stage_commit()
         for _ in range(4):  # main or the branch can move during a review; re-judge the evidence each round
             self.sync_main()
             head = self.head()
             rec = self.cp.get("review")
             if not self.review_valid(rec, head):
+                if not gated:
+                    self.gate_committed()
+                    gated = True
                 self.review(head)
                 continue
             if self.main_advanced():

@@ -38,6 +38,27 @@ class PreReviewGate(_mod.Base):
         self.assertIn("tier0", (self.S / "tier0.log").read_text())
         self.assertEqual(len(self.calls("gemini")), 1)
 
+    def test_precommitted_failing_gate_stops_before_reviewer_and_cleans_up(self):
+        head = self.g("rev-parse", "HEAD")
+        (self.S / "tier0.fail").write_text("")
+        line = self.stop_line(self.land(expect=1))
+        self.assertIn("STOP tier0", line)
+        self.assertIn("FAIL: stub gate", line)
+        for lane in ("gemini", "codex", "local"):
+            self.assertEqual(self.calls(lane), [], lane)
+        self.assertEqual(sh_ls(self), "")
+        self.assertEqual(self.published(), [])
+        self.assertEqual(self.g("rev-parse", "HEAD"), head)
+        self.assertEqual(list((self.S / "wts").glob("*")), [])
+        self.assertNotIn("aq-land-gate", self.g("worktree", "list"))
+
+    def test_precommitted_passing_gate_proceeds_to_review(self):
+        r = self.land(expect=0)
+        self.assertIn("tier0 on the branch diff", r.stderr + r.stdout)
+        self.assertIn("tier0", (self.S / "tier0.log").read_text())
+        self.assertEqual(len(self.calls("gemini")), 1)
+        self.assertEqual(list((self.S / "wts").glob("*")), [])
+
 
 if __name__ == "__main__":
     unittest.main()
