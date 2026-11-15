@@ -117,7 +117,8 @@ class Conflicts(Base):
         self.land("llama-cpp.n_gpu_layers", claim="12 layers")
         fact(self.repo, "llama-cpp.n_gpu_layers", claim="12 layers, verified", instance="Simurg@codex/gpt-7#9999")
         self.stage()
-        self.assertEqual(self.check(), [])
+        with mock.patch.dict(os.environ, {"AQ_INSTANCE_LANE": "codex"}):
+            self.assertEqual(self.check(), [])
 
     def test_stale_branch_compares_against_fetched_origin_main(self) -> None:
         git(self.repo, "checkout", "-q", "slice")
@@ -254,6 +255,64 @@ class Conflicts(Base):
         self._approved_delete(p)
         with mock.patch.dict(os.environ, {"AQ_INSTANCE_LANE": "claude"}):
             self.assertEqual(self.check(), [])
+
+    def _edit_claim_with_trailer(self, trailer: str, extra_msg: str = "") -> list[str]:
+        self.land("a.b", claim="one", instance=CLAUDE)
+        fact(self.repo, "a.b", claim="two", instance=CLAUDE)
+        self.stage()
+        git(self.repo, "commit", "-qm", f"edit\n{extra_msg}\nCo-Authored-By: {trailer}")
+        with mock.patch.dict(os.environ, {"AQ_INSTANCE_LANE": ""}):
+            return self.check()
+
+    def test_codex_trailer_editing_claude_claim_keeping_label_fails(self) -> None:
+        errs = self._edit_claim_with_trailer("Codex <noreply@openai.com>")
+        self.assertTrue(any("claim edited by lane codex" in e for e in errs), errs)
+
+    def test_claude_trailer_editing_own_claim_passes(self) -> None:
+        self.assertEqual(self._edit_claim_with_trailer("Claude Sonnet 5.5 <noreply@anthropic.com>"), [])
+
+    def test_trailer_lane_comes_from_the_name_not_the_address(self) -> None:
+        errs = self._edit_claim_with_trailer("Codex <claude@example.invalid>")
+        self.assertTrue(any("claim edited by lane codex" in e for e in errs), errs)
+
+    def test_unknown_actor_claim_edit_fails_closed_with_hint(self) -> None:
+        self.land("a.b", claim="one", instance=CLAUDE)
+        fact(self.repo, "a.b", claim="two", instance=CLAUDE)
+        self.stage()
+        with mock.patch.dict(os.environ, {"AQ_INSTANCE_LANE": ""}):
+            errs = self.check()
+        self.assertTrue(any("AQ_INSTANCE_LANE" in e for e in errs), errs)
+
+    def test_cross_lane_claim_edit_with_message_reply_passes(self) -> None:
+        self.assertEqual(self._edit_claim_with_trailer("Codex <noreply@openai.com>", "owner_reply: 1 keep mine"), [])
+
+    def _delete_with_msg(self, msg: str) -> list[str]:
+        p = self._main_fact_path()
+        p.unlink()
+        self.stage()
+        git(self.repo, "commit", "-qm", msg)
+        with mock.patch.dict(os.environ, {"AQ_INSTANCE_LANE": "codex"}):
+            return self.check()
+
+    def test_delete_empty_owner_reply_fails(self) -> None:
+        self.assertTrue(self._delete_with_msg("drop\n\nowner_reply:"))
+
+    def test_delete_blank_owner_reply_fails(self) -> None:
+        self.assertTrue(self._delete_with_msg("drop\n\nowner_reply:   \nx"))
+
+    def test_delete_prose_mention_of_owner_reply_fails(self) -> None:
+        self.assertTrue(self._delete_with_msg("drop\n\nno owner_reply: given here"))
+
+    def test_delete_real_owner_reply_passes(self) -> None:
+        self.assertEqual(self._delete_with_msg("drop\n\nowner_reply: 1 keep theirs gone"), [])
+
+    def test_frontmatter_empty_owner_reply_does_not_approve_claim_change(self) -> None:
+        self.land("x.y", claim="mine", instance=CLAUDE)
+        fact(self.repo, "x.y", claim="theirs", instance=CODEX, extra="")
+        p = self.repo / ".agent/memory/facts/x.y.md"
+        p.write_text(p.read_text().replace("---\n", "---\n", 1).replace("\n---\n", "\nowner_reply: ''\n---\n", 1))
+        self.stage()
+        self.assertTrue(any("owner_reply" in e for e in self.check()))
 
     def test_subdirectory_fact_is_not_a_fact_file(self) -> None:
         p = self.repo / ".agent/memory/facts/sub/a.b.md"

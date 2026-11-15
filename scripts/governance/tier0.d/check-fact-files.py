@@ -120,18 +120,34 @@ TRAILER_LANES = (("claude", "claude"), ("codex", "codex"), ("openai", "codex"), 
                  ("google", "gemini"), ("qwen", "local"), ("local", "local"))
 
 
+# A real approval is an anchored, non-empty field; a bare or prose mention of the key is not one.
+REPLY_LINE_RE = re.compile(r"^owner_reply:\s*\S.+$", re.M)
+
+
+def msg_has_reply(msg: str) -> bool:
+    return bool(REPLY_LINE_RE.search(msg))
+
+
+def fm_reply(fm: dict[str, str]) -> str:
+    return fm.get("owner_reply", "").strip()
+
+
 def _actor_lane(msg: str, new_fms: dict[str, dict[str, str]]) -> str:
-    """Lane doing a delete: new facts in the unit, `instance:` message line, Co-Authored-By trailer, then AQ_INSTANCE_LANE."""
+    """Lane doing a delete: new facts in the unit, `instance:` message line, Co-Authored-By trailer, then AQ_INSTANCE_LANE.
+
+    Claim edits pass new_fms={}: the label of the fact being edited is what the editor controls, so it proves nothing."""
     for fm in new_fms.values():
         if lane_of(fm.get("instance", "")):
             return lane_of(fm["instance"])
     m = re.search(r"^instance:\s*(\S+)", msg, re.M)
     if m:
         return lane_of(m.group(1))
+    lanes: set[str] = set()
     for t in re.findall(r"^Co-Authored-By:\s*(.+)$", msg, re.M | re.I):
-        for key, lane in TRAILER_LANES:
-            if key in t.lower():
-                return lane
+        words = re.findall(r"[a-z0-9]+", t.split("<", 1)[0].lower())  # display name words, not the address
+        lanes.add(next((lane for w in words for key, lane in TRAILER_LANES if w == key), ""))
+    if lanes:
+        return next(iter(lanes)) if len(lanes) == 1 and "" not in lanes else ""  # mixed or unrecognized: fail closed
     return os.environ.get("AQ_INSTANCE_LANE", "").strip().lower()
 
 
@@ -144,8 +160,8 @@ def _lane_gate(errs: list[str], rel: str, old_fm: dict[str, str], fm: dict[str, 
     claim_changed = old_fm.get("claim") != fm.get("claim")
     if claim_only_across_lanes and not claim_changed:
         return
-    reply = fm.get("owner_reply", "").strip()
-    if reply and reply != old_fm.get("owner_reply", "").strip():
+    reply = fm_reply(fm)
+    if reply and reply != fm_reply(old_fm):
         return
     if claim_changed:
         e = (f"{rel}: claim changed across lanes ({ol} -> {nl}) without a fresh 'owner_reply'. "
@@ -154,6 +170,23 @@ def _lane_gate(errs: list[str], rel: str, old_fm: dict[str, str], fm: dict[str, 
     else:
         e = (f"{rel}: fact transferred across lanes ({ol} -> {nl}) without a fresh 'owner_reply'; "
              f"a metadata-only lane change would let the new lane rewrite the claim unchallenged")
+    if e not in errs:
+        errs.append(e)
+
+
+def _actor_gate(errs: list[str], rel: str, old_fm: dict[str, str], fm: dict[str, str], msg: str) -> None:
+    """A claim edit by a lane other than the stored provenance lane needs a fresh owner_reply, whatever label it keeps."""
+    if old_fm.get("claim") == fm.get("claim"):
+        return
+    ol, actor = lane_of(old_fm.get("instance", "")), _actor_lane(msg, {})
+    if actor and actor == ol:
+        return
+    reply = fm_reply(fm)
+    if (reply and reply != fm_reply(old_fm)) or msg_has_reply(msg):
+        return
+    hint = "" if actor else " (acting lane unknown: set AQ_INSTANCE_LANE or add an instance: line to the message)"
+    e = (f"{rel}: claim edited by lane {actor or 'unknown'} but the fact belongs to lane {ol} "
+         f"without a fresh 'owner_reply'{hint}. theirs: {old_fm.get('claim')!r} | mine: {fm.get('claim')!r}")
     if e not in errs:
         errs.append(e)
 
@@ -206,12 +239,13 @@ def check_repo(repo: Path, base: str = "origin/main") -> list[str]:
             old_fm = parse_frontmatter(old) if old else None
             if old_fm:
                 _lane_gate(errs, rel, old_fm, fm)
+                _actor_gate(errs, rel, old_fm, fm, msg)
         actor = _actor_lane(msg, new_fms)
         for rel in deleted:
             subj = Path(rel).stem
             splits = [f for p, f in new_fms.items()
-                      if Path(p).stem.startswith(subj + ".") and f.get("owner_reply", "").strip()]
-            has_reply = len(splits) >= 2 or "owner_reply:" in msg
+                      if Path(p).stem.startswith(subj + ".") and fm_reply(f)]
+            has_reply = len(splits) >= 2 or msg_has_reply(msg)
             last_delete[rel] = has_reply
             old = _show(repo, f"{prev}:{rel}")
             old_fm = parse_frontmatter(old) if old else None
@@ -259,7 +293,7 @@ def report(repo: Path) -> str:
                 deletes += 1
                 continue
             fm = parse_frontmatter(_show(repo, f"{sha}:{p}") or "") or {}
-            claim, reply = fm.get("claim"), fm.get("owner_reply", "").strip()
+            claim, reply = fm.get("claim"), fm_reply(fm)
             if claim and s["claim"] is not None and claim != s["claim"]:
                 s["changes"] += 1
             if claim:
