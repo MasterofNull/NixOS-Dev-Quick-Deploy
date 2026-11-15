@@ -966,42 +966,42 @@ ignore:
   - vulnerability: CVE-2026-52295
     package:
       name: ffmpeg
-      version: "8.1.2"
-    reason: "Range false positive (CPE 'before 9.0'): ffmpeg 8.1.2 source already carries the fixes - mov_read_iacb allocates via ff_alloc_extradata (padded), iamf_writer.c pads extradata with INT_MAX guards, wmaenc.c uses av_mallocz(size+AV_INPUT_BUFFER_PADDING_SIZE). Scoped to 8.1.2. WR-SEC-3 expires=2026-11-14"
+      version: "8.1.3"
+    reason: "Range false positive (CPE 'before 9.0'): ffmpeg 8.1.3 source already carries the fixes - re-verified 2026-11-14 in n8.1.3: mov_read_iacb allocates via ff_alloc_extradata (padded), iamf_writer.c pads extradata with INT_MAX guards, wmaenc.c uses av_mallocz(size+AV_INPUT_BUFFER_PADDING_SIZE). Scoped to 8.1.3 (nixpkgs pin now ships 8.1.3; the earlier 8.1.2 scope matched nothing). WR-SEC-3 expires=2026-12-14"
 
   - vulnerability: CVE-2026-52296
     package:
       name: ffmpeg
-      version: "8.1.2"
-    reason: "Range false positive (CPE 'before 9.0'): ffmpeg 8.1.2 source already carries the fixes - mov_read_iacb allocates via ff_alloc_extradata (padded), iamf_writer.c pads extradata with INT_MAX guards, wmaenc.c uses av_mallocz(size+AV_INPUT_BUFFER_PADDING_SIZE). Scoped to 8.1.2. WR-SEC-3 expires=2026-11-14"
+      version: "8.1.3"
+    reason: "Range false positive (CPE 'before 9.0'): ffmpeg 8.1.3 source already carries the fixes - re-verified 2026-11-14 in n8.1.3: mov_read_iacb allocates via ff_alloc_extradata (padded), iamf_writer.c pads extradata with INT_MAX guards, wmaenc.c uses av_mallocz(size+AV_INPUT_BUFFER_PADDING_SIZE). Scoped to 8.1.3 (nixpkgs pin now ships 8.1.3; the earlier 8.1.2 scope matched nothing). WR-SEC-3 expires=2026-12-14"
 
   - vulnerability: CVE-2026-52297
     package:
       name: ffmpeg
-      version: "8.1.2"
-    reason: "Range false positive (CPE 'before 9.0'): ffmpeg 8.1.2 source already carries the fixes - mov_read_iacb allocates via ff_alloc_extradata (padded), iamf_writer.c pads extradata with INT_MAX guards, wmaenc.c uses av_mallocz(size+AV_INPUT_BUFFER_PADDING_SIZE). Scoped to 8.1.2. WR-SEC-3 expires=2026-11-14"
+      version: "8.1.3"
+    reason: "Range false positive (CPE 'before 9.0'): ffmpeg 8.1.3 source already carries the fixes - re-verified 2026-11-14 in n8.1.3: mov_read_iacb allocates via ff_alloc_extradata (padded), iamf_writer.c pads extradata with INT_MAX guards, wmaenc.c uses av_mallocz(size+AV_INPUT_BUFFER_PADDING_SIZE). Scoped to 8.1.3 (nixpkgs pin now ships 8.1.3; the earlier 8.1.2 scope matched nothing). WR-SEC-3 expires=2026-12-14"
 
   - vulnerability: CVE-2026-107696
     package:
       name: ffmpeg
-    reason: "No released upstream fix ('through 9.0.2'; master only): RTSP redirect infinite loop in ff_rtsp_connect. Affects 8.1.2 and the 9.0.1 CLI, so not version-scoped. Library consumers (pipewire, opencv, qtmultimedia, gst-libav) are not known to hand ffmpeg untrusted network URLs (not audited per consumer); aq-transcribe blocks rtsp/sftp/dash-network protocols via -protocol_whitelist file,pipe. WR-SEC-3 expires=2026-11-14"
+    reason: "Re-verified 2026-11-14: still no released upstream fix (latest tags n9.0.2, n8.1.3; CVE range 'through 9.0.2'; fix on master only): RTSP redirect infinite loop in ff_rtsp_connect. Affects 8.1.3 and the 9.0.2 CLI, so not version-scoped. Library consumers (pipewire, opencv, qtmultimedia, gst-libav) are not known to hand ffmpeg untrusted network URLs (repo consumer list unchanged: only scripts/ai/aq-transcribe invokes ffmpeg); aq-transcribe blocks rtsp/sftp/dash-network protocols via -protocol_whitelist file,pipe. WR-SEC-3 expires=2026-12-14"
 
   - vulnerability: CVE-2026-107675
     package:
       name: ffmpeg
-    reason: "No released upstream fix ('through 9.0.2'; master only): sftp (libssh) missing host-key verification. Affects 8.1.2 and the 9.0.1 CLI, so not version-scoped. Library consumers (pipewire, opencv, qtmultimedia, gst-libav) are not known to hand ffmpeg untrusted network URLs (not audited per consumer); aq-transcribe blocks rtsp/sftp/dash-network protocols via -protocol_whitelist file,pipe. WR-SEC-3 expires=2026-11-14"
+    reason: "Re-verified 2026-11-14: still no released upstream fix (latest tags n9.0.2, n8.1.3; CVE range 'through 9.0.2'; fix on master only): sftp (libssh) missing host-key verification. Affects 8.1.3 and the 9.0.2 CLI, so not version-scoped. Library consumers (pipewire, opencv, qtmultimedia, gst-libav) are not known to hand ffmpeg untrusted network URLs (repo consumer list unchanged: only scripts/ai/aq-transcribe invokes ffmpeg); aq-transcribe blocks rtsp/sftp/dash-network protocols via -protocol_whitelist file,pipe. WR-SEC-3 expires=2026-12-14"
 
   - vulnerability: CVE-2026-107676
     package:
       name: ffmpeg
-    reason: "No released upstream fix ('through 9.0.2'; master only): uninitialized bytes in av_dynamic_hdr_plus_to_t35. Affects 8.1.2 and the 9.0.1 CLI, so not version-scoped. Library consumers (pipewire, opencv, qtmultimedia, gst-libav) are not known to hand ffmpeg untrusted network URLs (not audited per consumer); aq-transcribe blocks rtsp/sftp/dash-network protocols via -protocol_whitelist file,pipe. WR-SEC-3 expires=2026-11-14"
+    reason: "Re-verified 2026-11-14: still no released upstream fix (latest tags n9.0.2, n8.1.3; CVE range 'through 9.0.2'; fix on master only): uninitialized bytes in av_dynamic_hdr_plus_to_t35. Affects 8.1.3 and the 9.0.2 CLI, so not version-scoped. Library consumers (pipewire, opencv, qtmultimedia, gst-libav) are not known to hand ffmpeg untrusted network URLs (repo consumer list unchanged: only scripts/ai/aq-transcribe invokes ffmpeg); aq-transcribe blocks rtsp/sftp/dash-network protocols via -protocol_whitelist file,pipe. WR-SEC-3 expires=2026-12-14"
 
   - vulnerability: CVE-2026-107677
     package:
       name: ffmpeg
-    reason: "No released upstream fix ('through 9.0.2'; master only): DASH demuxer infinite loop on empty SegmentTemplate media. Affects 8.1.2 and the 9.0.1 CLI, so not version-scoped. Library consumers (pipewire, opencv, qtmultimedia, gst-libav) are not known to hand ffmpeg untrusted network URLs (not audited per consumer); aq-transcribe blocks rtsp/sftp/dash-network protocols via -protocol_whitelist file,pipe. WR-SEC-3 expires=2026-11-14"
+    reason: "Re-verified 2026-11-14: still no released upstream fix (latest tags n9.0.2, n8.1.3; CVE range 'through 9.0.2'; fix on master only): DASH demuxer infinite loop on empty SegmentTemplate media. Affects 8.1.3 and the 9.0.2 CLI, so not version-scoped. Library consumers (pipewire, opencv, qtmultimedia, gst-libav) are not known to hand ffmpeg untrusted network URLs (repo consumer list unchanged: only scripts/ai/aq-transcribe invokes ffmpeg); aq-transcribe blocks rtsp/sftp/dash-network protocols via -protocol_whitelist file,pipe. WR-SEC-3 expires=2026-12-14"
 
   - vulnerability: CVE-2026-107678
     package:
       name: ffmpeg
-    reason: "No released upstream fix ('through 9.0.2'; master only): stack exhaustion in av_encryption_init_info_free (recursive PSSH). Affects 8.1.2 and the 9.0.1 CLI, so not version-scoped. Library consumers (pipewire, opencv, qtmultimedia, gst-libav) are not known to hand ffmpeg untrusted network URLs (not audited per consumer); aq-transcribe blocks rtsp/sftp/dash-network protocols via -protocol_whitelist file,pipe. WR-SEC-3 expires=2026-11-14"
+    reason: "Re-verified 2026-11-14: still no released upstream fix (latest tags n9.0.2, n8.1.3; CVE range 'through 9.0.2'; fix on master only): stack exhaustion in av_encryption_init_info_free (recursive PSSH). Affects 8.1.3 and the 9.0.2 CLI, so not version-scoped. Library consumers (pipewire, opencv, qtmultimedia, gst-libav) are not known to hand ffmpeg untrusted network URLs (repo consumer list unchanged: only scripts/ai/aq-transcribe invokes ffmpeg); aq-transcribe blocks rtsp/sftp/dash-network protocols via -protocol_whitelist file,pipe. WR-SEC-3 expires=2026-12-14"
