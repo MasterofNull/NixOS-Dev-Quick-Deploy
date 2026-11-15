@@ -60,9 +60,10 @@ def _append(p: Path, line: str) -> None:
         os.close(fd)
 
 
-def _run(cmd: list[str], cwd: Path, timeout: int = 60) -> str | None:
+def _run(cmd: list[str], cwd: Path, timeout: int = 60) -> bytes | None:
+    # bytes, not text: text=True would translate \r in paths and raise on non-UTF-8 names
     try:
-        r = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, timeout=timeout)
+        r = subprocess.run(cmd, cwd=cwd, capture_output=True, timeout=timeout)
     except (OSError, subprocess.SubprocessError):
         return None
     return r.stdout if r.returncode == 0 else None
@@ -71,8 +72,8 @@ def _run(cmd: list[str], cwd: Path, timeout: int = 60) -> str | None:
 def _pr_meta(repo: Path, pr: int) -> dict | None:
     out = _run(["gh", "pr", "view", str(pr), "--json", "mergeCommit,baseRefOid,headRefOid"], repo, 30)
     try:
-        m = json.loads(out or "")
-    except ValueError:
+        m = json.loads((out or b"").decode("utf-8"))
+    except ValueError:  # includes UnicodeDecodeError
         return None
     merge = (m.get("mergeCommit") or {}).get("oid") if isinstance(m, dict) else None
     if not (merge and m.get("baseRefOid") and m.get("headRefOid")):
@@ -90,7 +91,7 @@ def _numstat(repo: Path, pr: int, base: str, head: str) -> list[dict] | None:
         return None
     # -z: NUL-delimited, paths unquoted. Plain: "a\td\tpath\0". Rename: "a\td\t\0old\0new\0".
     files: list[dict] = []
-    toks = out.split("\0")
+    toks = [os.fsdecode(t) for t in out.split(b"\0")]  # surrogateescape: reversible for non-UTF-8 names
     i = 0
     while i < len(toks) and toks[i]:
         a, d, path = (toks[i].split("\t", 2) + ["", "", ""])[:3]
@@ -101,6 +102,15 @@ def _numstat(repo: Path, pr: int, base: str, head: str) -> list[dict] | None:
             i += 2
         files.append({"path": path, **entry})
     return files
+
+
+def _undecodable(f: dict) -> bool:
+    try:
+        f["path"].encode("utf-8")
+        f.get("renamed_from", "").encode("utf-8")
+    except UnicodeEncodeError:
+        return True
+    return False
 
 
 def collect(delegation_dir: Path, receipts_dir: Path, repo: Path, only: set[int] | None = None) -> dict:
@@ -137,6 +147,10 @@ def collect(delegation_dir: Path, receipts_dir: Path, repo: Path, only: set[int]
                 c["quarantined"] += 1
             else:
                 c["pending"] += 1
+            continue
+        if any(_undecodable(f) for f in files):  # not representable as portable UTF-8 JSON: never alter, quarantine
+            _append(quar_p, json.dumps({"pr": pr, "recorded_at": stamp, "reasons": ["undecodable_path"]}))
+            c["quarantined"] += 1
             continue
         row = dict(rec, rejected_rounds=rec.get("request_changes_rounds", 0), files=files, merge_sha=meta["merge_sha"])
         redacted, found = _redact(json.dumps(row, sort_keys=True))

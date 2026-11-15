@@ -239,6 +239,34 @@ class Collector(unittest.TestCase):
         c = self.collect()
         self.assertEqual((c["collected"], c["quarantined"]), (0, 1), c)
 
+    def test_cr_and_non_utf8_paths_do_not_abort(self) -> None:
+        r = self.repo
+        cr = "a\rb.txt"
+        bad = os.fsencode(r) + b"/bad\xff.txt"
+        (r / cr).write_text("c\n")
+        Path(os.fsdecode(bad)).write_text("b\n")
+        _git(r, "add", "-A")
+        _git(r, "commit", "-qm", "odd")
+        head = _git(r, "rev-parse", "HEAD")
+        got = col._numstat(r, 1, self.head, head)
+        paths = sorted(f["path"] for f in got)
+        self.assertEqual(paths, sorted([cr, os.fsdecode(b"bad\xff.txt")]), got)  # \r exact, bytes reversible
+        self.assertEqual(os.fsencode([p for p in paths if p != cr][0]), b"bad\xff.txt")
+        self.set_gh(self.head, head)
+        self.receipts(_receipt(40))
+        c = self.collect()  # must not raise
+        self.assertEqual((c["collected"], c["quarantined"]), (0, 1), c)
+        self.assertEqual(self.lines("trajectories.quarantine.jsonl")[0]["reasons"], ["undecodable_path"])
+        # \r-only path is collected with the exact name
+        _git(r, "rm", "-q", "--cached", "bad\udcff.txt".encode("utf-8", "surrogateescape").decode("utf-8", "surrogateescape"))
+        _git(r, "commit", "-qm", "drop")
+        self.set_gh(self.head, _git(r, "rev-parse", "HEAD"))
+        self.receipts(_receipt(41))
+        c = self.collect()
+        self.assertEqual(c["collected"], 1, c)
+        row = [x for x in self.lines("trajectories.jsonl") if x["pr"] == 41][0]
+        self.assertIn(cr, [f["path"] for f in row["files"]])
+
     def test_scoreboard_counts(self) -> None:
         self.set_gh(self.head, self.head)
         self.receipts(_receipt(14), _receipt(15, author_lane="Bearer abcdefghijklmnopqrstuvwxyz0123"),
