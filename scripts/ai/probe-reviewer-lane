@@ -175,7 +175,7 @@ def parse_disposition(text: str) -> str | None:
 def _json(text: str) -> Any:
     try:
         return json.loads(text)
-    except ValueError:
+    except (ValueError, RecursionError):
         return None
 
 
@@ -191,9 +191,11 @@ def chat(transport: Transport, lane: dict[str, str], token: str, model: str, use
     data = _json(text)
     try:
         content = data["choices"][0]["message"]["content"]
-    except (TypeError, KeyError, IndexError):
+    except (TypeError, KeyError, IndexError, AttributeError):
         raise LaneUnavailable(f"chat response not parseable (HTTP 200, body head {scrub(text, token)[:120]!r})") from None
-    return scrub(content or "", token), hdrs, dt
+    if not isinstance(content, str) or not isinstance(hdrs, dict):
+        raise LaneUnavailable("malformed response")
+    return scrub(content, token), hdrs, dt
 
 
 def score(results: list[dict[str, Any]]) -> dict[str, Any]:
@@ -242,6 +244,10 @@ def probe(lane_name: str, lane: dict[str, str], model: str, transport: Transport
         out["status"] = "lane_unavailable"
         out["entitled"] = out.get("entitled", False)
         out["reason"] = str(exc)
+    except Exception as exc:  # noqa: BLE001 - any surprise is "lane could not run"; type name only, the message could carry the token
+        out["status"] = "lane_unavailable"
+        out["entitled"] = out.get("entitled", False)
+        out["reason"] = f"unexpected error ({type(exc).__name__})"
     return scrub_obj(out, token)
 
 

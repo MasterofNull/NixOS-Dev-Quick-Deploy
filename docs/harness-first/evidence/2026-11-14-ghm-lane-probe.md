@@ -33,6 +33,8 @@ scripts/governance/tier0-validation-gate.sh --pre-commit
 - A first attempt to inspect raw responses with curl and the token on the command line was blocked by the permission classifier; the script's own scrubbed diagnostics were used instead, and the token stayed in memory only.
 - Capability score: not run (lane unavailable). The 10-case run path is covered by the stubbed tests only.
 
+- Malformed-response hardening (independent review codex-20261115-020808-t3gja7, P2): a 200 response whose `message.content` is an array or number, a missing `choices`, or a non-dict JSON body now yields `lane_unavailable` ("malformed response") instead of an AttributeError traceback; `probe()` also converts any unexpected exception into `lane_unavailable` carrying only the exception type name (the message could carry the token), and the scrubbed result file is still written. Covered by 2 added tests (17 total).
+
 ## Rollback Plan
 - `git revert <sha>`. The script is not called by any other tool; probe result JSON lives under `.agents/delegation/outputs/lane-probes/` (mode 0600).
 

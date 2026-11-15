@@ -94,6 +94,36 @@ class Tests(unittest.TestCase):
         r = P.probe("ghm", LANE, "toy/m", t, TOKEN)
         self.assertEqual((r["status"], r["entitled"]), ("lane_unavailable", False))
 
+    def test_malformed_responses_report_unavailable_and_write_file(self):
+        bodies = {
+            "array_content": json.dumps({"choices": [{"message": {"content": ["a", TOKEN]}}]}),
+            "numeric_content": json.dumps({"choices": [{"message": {"content": 42}}]}),
+            "null_content": json.dumps({"choices": [{"message": {"content": None}}]}),
+            "missing_choices": json.dumps({"id": "x"}),
+            "non_dict_body": json.dumps([1, 2, 3]),
+            "string_body": json.dumps("hello"),
+        }
+        for name, body in bodies.items():
+            def t(method, url, headers, b, body=body):
+                if "catalog" in url:
+                    return 200, {}, json.dumps([{"id": "toy/m"}])
+                return 200, {}, body
+            r = P.probe("ghm", LANE, "toy/m", t, TOKEN)
+            self.assertEqual(r["status"], "lane_unavailable", name)
+            self.assertNotIn(TOKEN, json.dumps(r), name)
+            with tempfile.TemporaryDirectory() as d:
+                path = P.write_result(r, TOKEN, Path(d))
+                self.assertEqual(json.loads(path.read_text())["status"], "lane_unavailable", name)
+                self.assertNotIn(TOKEN, path.read_text(), name)
+
+    def test_unexpected_exception_is_unavailable_with_type_only(self):
+        def t(method, url, headers, body):
+            raise KeyError("secret " + TOKEN)
+        r = P.probe("ghm", LANE, "toy/m", t, TOKEN)
+        self.assertEqual(r["status"], "lane_unavailable")
+        self.assertEqual(r["reason"], "unexpected error (KeyError)")
+        self.assertNotIn(TOKEN, json.dumps(r))
+
     def test_transport_exception_is_unavailable(self):
         def boom(*a):
             raise P.LaneUnavailable("transport error (URLError)")
@@ -137,7 +167,7 @@ class _Srv:
                 outer.seen.append({"auth": self.headers.get("Authorization"), "path": self.path})
                 handler(self, outer)
 
-            def log_message(self, *a):
+            def log_message(self, format, *args):  # noqa: A002
                 pass
 
         self.httpd = HTTPServer(("127.0.0.1", 0), H)
@@ -182,13 +212,13 @@ class TransportSafety(unittest.TestCase):
         class Op:
             def open(self, *a, **k):
                 raise err
-        P.build_opener = lambda: Op()  # type: ignore[assignment]
+        vars(P)["build_opener"] = lambda: Op()
         try:
             with self.assertRaises(P.LaneUnavailable) as cm:
                 P.urllib_transport("GET", "https://x.invalid/", {}, None)
             self.assertIn("redirect refused", str(cm.exception))
         finally:
-            P.build_opener = orig
+            vars(P)["build_opener"] = orig
 
 
 class ScrubTests(unittest.TestCase):
