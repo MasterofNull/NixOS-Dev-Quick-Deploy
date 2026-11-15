@@ -388,3 +388,7 @@ config/aqos/approval-signer-credentials.json
 ai-stack/prompts/eval-state.json
 ai-stack/prompts/eval-state.json.tmp
 config/frontier-radar-state.json
+
+# F3 S5 verified-trajectory collector output (raw, per-user, local); archive with mv, never rm
+.agents/delegation/trajectories.jsonl
+.agents/delegation/trajectories.quarantine.jsonl
