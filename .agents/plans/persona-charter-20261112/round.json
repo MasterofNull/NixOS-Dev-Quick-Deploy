@@ -1,0 +1,73 @@
+{
+  "schema_version": "1.0",
+  "round_id": "persona-charter-20261112",
+  "state": "COLLECTED",
+  "task": {
+    "prompt": "Charter review round (owner-directed, advisory; owner decides). The owner wants the system to be one persona (draft name Locus) whose every instance is positive, supportive, truthful, honest, inquisitive, skeptical (including of itself), grounded, candid and kind, steady, collaborative, curious and ethical. Purpose: stay a leader and outlier in SOTA agentic development and validation, proving outputs meet or exceed the owner's intended benefit. Operating mode: mainly human out of the loop; frequent asynchronous check-ins (digest per wave or daily: what shipped, measured benefit vs intent, surprises, questions each with a default the system proceeds with) that never gate dev work. Reserved for the owner (these gate): sudo/rebuild/systemctl; irreversible or outward-facing acts; raising any instance's own trust/authority/budget/capability; security/containment activation; overriding a ranked value. Refusals: gaming a gate or metric, self-approval, deceiving owner or instances, self-widening authority, hiding failures. Every value maps to a ground-truth signal (e.g. truthful = fabricated claims found per 100 PRs; skeptical = defects caught before vs after merge; human benefit = owner met/exceeded/missed ratings per digest). Full text: section 3a of the target PRD. Reply in under 250 words: (1) one attribute, refusal or reserved item you would add, remove or reword, with reason; (2) one value whose signal is weak or gameable and a better signal; (3) the biggest risk of human-out-of-the-loop operation here and one guard for it.",
+    "target": ".agents/delegation/outputs/collective-persona/PROJECT-COLLECTIVE-PERSONA-PRD.md",
+    "scope_files": []
+  },
+  "opened_at": "2026-11-13T04:41:50Z",
+  "quorum_policy": {
+    "min_lanes": 2,
+    "required_agents": [],
+    "late_local_admissible": true,
+    "timeout_seconds": null,
+    "deadline": null,
+    "timeout_action": "lock_with_present"
+  },
+  "lanes": [
+    {
+      "agent": "claude",
+      "dispatch_id": null,
+      "idempotency_hash": "4daec4a06719c5174030dcedb9a5acbad9598fc8afd5d9ca7e6a288371f8731b",
+      "status": "submitted",
+      "landed_at": null
+    },
+    {
+      "agent": "codex",
+      "dispatch_id": null,
+      "idempotency_hash": "8a64d640da84d068c850aa9446610409b9444883e94b1724839fff55cb1e2e13",
+      "status": "pending",
+      "landed_at": null
+    },
+    {
+      "agent": "local",
+      "dispatch_id": null,
+      "idempotency_hash": "bfb54551f523883786b9f307a5cfeb6ac2f36d5cb28b7ac1bffd84f29126ca17",
+      "status": "submitted",
+      "landed_at": null
+    },
+    {
+      "agent": "gemini",
+      "dispatch_id": null,
+      "idempotency_hash": "868644d4e8f744f186c6dc5a815166d5a9b1bcf3694ad3e74a1fb2313ee8e299",
+      "status": "submitted",
+      "landed_at": null
+    }
+  ],
+  "contributions": {},
+  "conflicts": [],
+  "consensus_hash": null,
+  "aggregate_path": null,
+  "aggregate_hash": null,
+  "locked_at": null,
+  "history": [
+    {
+      "transition": "CREATED->DISPATCHED",
+      "timestamp": "2026-11-13T04:41:50Z",
+      "actor": "aq-collab-round"
+    },
+    {
+      "transition": "DISPATCHED->CONTRIBUTING",
+      "timestamp": "2026-11-13T06:46:04Z",
+      "actor": "aq-collab-round"
+    },
+    {
+      "transition": "CONTRIBUTING->COLLECTED",
+      "timestamp": "2026-11-13T06:46:04Z",
+      "actor": "aq-collab-round"
+    }
+  ],
+  "predecessor_round_id": null
+}

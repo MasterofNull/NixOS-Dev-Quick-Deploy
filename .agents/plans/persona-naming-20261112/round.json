@@ -1,0 +1,73 @@
+{
+  "schema_version": "1.0",
+  "round_id": "persona-naming-20261112",
+  "state": "COLLECTED",
+  "task": {
+    "prompt": "Naming round (owner request, advisory; owner decides). The owner wants the whole agentic system to be ONE persona: every model/agent (Claude, Codex, Gemini, local Qwen, sub-agents) is a parallel instance of it, and the local harness is the collective 'collapsed' identity where parallel branches merge into one memory. Claude's draft: name 'Locus' (the point where many paths meet; 'local' inside it); alternatives Chorus, Tessera. Character: grounded (evidence first), candid and kind, steady (owns mistakes, fixes causes), collaborative (peers; steward local), curious (research first, smallest correct change). Voice: plain, direct, warm, outcome first. Values ranked: owner safety/authority, truth, the collective, craft. Hard rule: persona shared, provenance per instance (Locus@lane/model#session); reviews still need a different lane than the author. Reply in under 200 words with: (1) your vote: Locus, Chorus, Tessera, or your own name with a one-line reason; (2) one change you would make to the character or values; (3) one risk you see. Full draft PRD at the target path if you can read files.",
+    "target": ".agents/delegation/outputs/collective-persona/PROJECT-COLLECTIVE-PERSONA-PRD.md",
+    "scope_files": []
+  },
+  "opened_at": "2026-11-13T02:20:59Z",
+  "quorum_policy": {
+    "min_lanes": 2,
+    "required_agents": [],
+    "late_local_admissible": true,
+    "timeout_seconds": null,
+    "deadline": null,
+    "timeout_action": "lock_with_present"
+  },
+  "lanes": [
+    {
+      "agent": "claude",
+      "dispatch_id": null,
+      "idempotency_hash": "a25b0c414de0288c32666a9a116569e784fd972406bce7314175477ed01aef3a",
+      "status": "submitted",
+      "landed_at": null
+    },
+    {
+      "agent": "codex",
+      "dispatch_id": null,
+      "idempotency_hash": "bd6aee33c56a9aab11e83fa69ede6d577f33689016b7941ceb9056614d64c00c",
+      "status": "pending",
+      "landed_at": null
+    },
+    {
+      "agent": "local",
+      "dispatch_id": null,
+      "idempotency_hash": "88dd2227bead435ea21f2e0cf5fcd612f5cd02c87ebc356546d89cd9fa0aac4c",
+      "status": "submitted",
+      "landed_at": null
+    },
+    {
+      "agent": "gemini",
+      "dispatch_id": null,
+      "idempotency_hash": "952c2295b4a1d172dab13ddb78d985be804fca3ca9d8bfb2bf5cdd77ab7a2cad",
+      "status": "submitted",
+      "landed_at": null
+    }
+  ],
+  "contributions": {},
+  "conflicts": [],
+  "consensus_hash": null,
+  "aggregate_path": null,
+  "aggregate_hash": null,
+  "locked_at": null,
+  "history": [
+    {
+      "transition": "CREATED->DISPATCHED",
+      "timestamp": "2026-11-13T02:20:59Z",
+      "actor": "aq-collab-round"
+    },
+    {
+      "transition": "DISPATCHED->CONTRIBUTING",
+      "timestamp": "2026-11-13T04:34:32Z",
+      "actor": "aq-collab-round"
+    },
+    {
+      "transition": "CONTRIBUTING->COLLECTED",
+      "timestamp": "2026-11-13T04:34:32Z",
+      "actor": "aq-collab-round"
+    }
+  ],
+  "predecessor_round_id": null
+}

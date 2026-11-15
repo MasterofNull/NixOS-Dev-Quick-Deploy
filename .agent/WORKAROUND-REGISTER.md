@@ -473,3 +473,9 @@ Codex lane absent).
 - fix-path: when upstream locks the flag differently (or drops it), run a plain `nix flake update` and close this entry. Until then, every flake refresh must re-apply the override for nixified-ai only.
 - class: T3 dependency-hold · severity: low · status: CLOSED · opened: 2026-11-05 · review-by: 2026-12-05.
 - closed 2026-11-05: flake.nix overrides nixified-ai's enable-container-tests input with the lockable github:nixified-ai/flake?dir=flags/container-tests/disabled, so nixified-ai tracks its latest revision again. The upstream issue is still worth filing: other consumers hit the same error.
+
+## 2026-11-14 — Codex headless cap raised to 1.5M for orchestrator review queues (owner-approved, temporary)
+- What: `DELEGATE_CODEX_DAILY_TOKEN_BUDGET=1500000`, set ONLY in the orchestrator's review/land queue processes (Simurg@claude/opus-5.5#da0ef470). The global default (1000000) and config/agent-dispatch-budget.json are unchanged.
+- Why: Gemini is quota-exhausted until ~2026-11-20 17:21 PST, which leaves Codex as the only non-Claude reviewer for gate and large diffs; the 1M cap admitted about 1 review per hour. The owner chose a "temp raise" in the CLI on 2026-11-14.
+- Root cause / proper fix: a single non-Claude reviewer is a single point of failure. The proper fix is a second reviewer lane (opencode or continue-cli), which is backlog.
+- Expiry: 2026-11-20 (Gemini reset) or when the second lane lands, whichever comes first. Do not carry it into new sessions.
