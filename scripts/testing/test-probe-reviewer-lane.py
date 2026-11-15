@@ -8,8 +8,10 @@ import io
 import json
 import sys
 import tempfile
+import threading
 import unittest
 from contextlib import redirect_stdout
+from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -123,6 +125,101 @@ class Tests(unittest.TestCase):
             with redirect_stdout(io.StringIO()):
                 rc = P.main(["--token-cmd", "false", "--out-dir", d], transport=make_transport())
             self.assertEqual(rc, 3)
+
+
+class _Srv:
+    def __init__(self, handler):
+        self.seen: list[dict] = []
+        outer = self
+
+        class H(BaseHTTPRequestHandler):
+            def do_GET(self):
+                outer.seen.append({"auth": self.headers.get("Authorization"), "path": self.path})
+                handler(self, outer)
+
+            def log_message(self, *a):
+                pass
+
+        self.httpd = HTTPServer(("127.0.0.1", 0), H)
+        self.port = self.httpd.server_address[1]
+        threading.Thread(target=self.httpd.serve_forever, daemon=True).start()
+
+    def close(self):
+        self.httpd.shutdown()
+        self.httpd.server_close()
+
+
+class TransportSafety(unittest.TestCase):
+    def test_redirect_refused_and_token_not_forwarded(self):
+        target = _Srv(lambda h, o: (h.send_response(200), h.end_headers()))
+        origin = _Srv(lambda h, o: (h.send_response(302), h.send_header("Location", f"http://127.0.0.1:{target.port}/x"), h.end_headers()))
+        try:
+            req = P.urllib.request.Request(f"http://127.0.0.1:{origin.port}/", headers={"Authorization": f"Bearer {TOKEN}"})
+            with self.assertRaises(P.urllib.error.HTTPError) as cm:
+                P.build_opener().open(req, timeout=5)
+            self.assertEqual(cm.exception.code, 302)
+            self.assertEqual(len(origin.seen), 1)
+            self.assertEqual(target.seen, [])
+        finally:
+            origin.close()
+            target.close()
+
+    def test_transport_maps_3xx_to_unavailable_and_refuses_http(self):
+        srv = _Srv(lambda h, o: (h.send_response(302), h.send_header("Location", "https://other.invalid/"), h.end_headers()))
+        try:
+            with self.assertRaises(P.LaneUnavailable) as cm:
+                P.urllib_transport("GET", f"http://127.0.0.1:{srv.port}/", {"Authorization": f"Bearer {TOKEN}"}, None)
+            self.assertIn("non-https", str(cm.exception))
+            self.assertEqual(srv.seen, [])  # refused before any request
+        finally:
+            srv.close()
+
+    def test_3xx_status_is_redirect_refused(self):
+        class R(P.urllib.request.HTTPRedirectHandler):
+            pass
+        err = P.urllib.error.HTTPError("https://x.invalid/", 302, "Found", {}, io.BytesIO(b""))  # type: ignore[arg-type]
+        orig = P.build_opener
+        class Op:
+            def open(self, *a, **k):
+                raise err
+        P.build_opener = lambda: Op()  # type: ignore[assignment]
+        try:
+            with self.assertRaises(P.LaneUnavailable) as cm:
+                P.urllib_transport("GET", "https://x.invalid/", {}, None)
+            self.assertIn("redirect refused", str(cm.exception))
+        finally:
+            P.build_opener = orig
+
+
+class ScrubTests(unittest.TestCase):
+    def test_echoed_token_fully_scrubbed_including_truncated_field(self):
+        def t(method, url, headers, body):
+            if "catalog" in url:
+                return 200, {}, json.dumps([{"id": "toy/m"}, {"id": "id-" + TOKEN}])
+            return reply(TOKEN[:30] + " and " + TOKEN, hdrs={"x-ratelimit-remaining": TOKEN[:14]})
+        r = P.probe("ghm", LANE, "toy/m", t, TOKEN, skip_capability=True)
+        blob = json.dumps(r)
+        for n in range(12, len(TOKEN) + 1):
+            self.assertNotIn(TOKEN[:n], blob)
+        self.assertTrue(r["chat"]["reply_head"].startswith("[REDACTED]"))
+        with tempfile.TemporaryDirectory() as d:
+            path = P.write_result(r, TOKEN, Path(d))
+            self.assertNotIn(TOKEN[:12], path.read_text())
+            with self.assertRaises(RuntimeError):
+                P.write_result({"lane": "ghm", "x": TOKEN[:12] + "zz"}, TOKEN, Path(d))
+
+    def test_main_stdout_scrubbed_on_echo(self):
+        def t(method, url, headers, body):
+            if "catalog" in url:
+                return 200, {}, json.dumps([{"id": "toy/m"}])
+            return reply(TOKEN)
+        with tempfile.TemporaryDirectory() as d:
+            buf = io.StringIO()
+            with redirect_stdout(buf):
+                P.main(["--token-cmd", f"echo {TOKEN}", "--probe-only", "--out-dir", d], transport=t)
+            self.assertNotIn(TOKEN[:12], buf.getvalue())
+            for f in Path(d).iterdir():
+                self.assertNotIn(TOKEN[:12], f.read_text())
 
 
 if __name__ == "__main__":

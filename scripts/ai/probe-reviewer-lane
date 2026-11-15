@@ -18,6 +18,7 @@ import subprocess
 import sys
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -103,8 +104,30 @@ class LaneUnavailable(Exception):
     """Transport, entitlement or rate-limit failure: the lane could not run. Never a verdict."""
 
 
+MIN_PREFIX = 12
+
+
 def scrub(text: str, token: str) -> str:
-    return text.replace(token, "[REDACTED]") if token else text
+    """Redact the full token and any prefix of it that is MIN_PREFIX+ chars (a truncated echo is still a leak)."""
+    if not token:
+        return text
+    for n in range(len(token), max(MIN_PREFIX, 1) - 1, -1):
+        text = text.replace(token[:n], "[REDACTED]")
+    return text
+
+
+def leaks(blob: str, token: str) -> bool:
+    return bool(token) and scrub(blob, token) != blob
+
+
+def scrub_obj(obj: Any, token: str) -> Any:
+    if isinstance(obj, str):
+        return scrub(obj, token)
+    if isinstance(obj, list):
+        return [scrub_obj(x, token) for x in obj]
+    if isinstance(obj, dict):
+        return {scrub(str(k), token): scrub_obj(v, token) for k, v in obj.items()}
+    return obj
 
 
 def get_token(cmd: str) -> str:
@@ -117,12 +140,27 @@ def get_token(cmd: str) -> str:
     return out
 
 
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    """urllib forwards Authorization across redirects; refuse every redirect instead."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):  # noqa: ANN001
+        return None
+
+
+def build_opener() -> urllib.request.OpenerDirector:
+    return urllib.request.build_opener(_NoRedirect)
+
+
 def urllib_transport(method: str, url: str, headers: dict[str, str], body: bytes | None) -> tuple[int, dict[str, str], str]:
+    if urllib.parse.urlsplit(url).scheme != "https":
+        raise LaneUnavailable("non-https endpoint refused")
     req = urllib.request.Request(url, data=body, headers=headers, method=method)
     try:
-        with urllib.request.urlopen(req, timeout=90) as resp:  # noqa: S310 - fixed https endpoints from config
+        with build_opener().open(req, timeout=90) as resp:  # noqa: S310 - https-only, no redirects
             return resp.status, {k.lower(): v for k, v in resp.headers.items()}, resp.read().decode("utf-8", "replace")
     except urllib.error.HTTPError as exc:
+        if 300 <= exc.code < 400:
+            raise LaneUnavailable("redirect refused") from None
         return exc.code, {k.lower(): v for k, v in exc.headers.items()}, exc.read().decode("utf-8", "replace")
     except (urllib.error.URLError, OSError, TimeoutError) as exc:
         raise LaneUnavailable(f"transport error ({type(exc).__name__})") from None
@@ -155,7 +193,7 @@ def chat(transport: Transport, lane: dict[str, str], token: str, model: str, use
         content = data["choices"][0]["message"]["content"]
     except (TypeError, KeyError, IndexError):
         raise LaneUnavailable(f"chat response not parseable (HTTP 200, body head {scrub(text, token)[:120]!r})") from None
-    return content or "", hdrs, dt
+    return scrub(content or "", token), hdrs, dt
 
 
 def score(results: list[dict[str, Any]]) -> dict[str, Any]:
@@ -203,13 +241,13 @@ def probe(lane_name: str, lane: dict[str, str], model: str, transport: Transport
     except LaneUnavailable as exc:
         out["status"] = "lane_unavailable"
         out["entitled"] = out.get("entitled", False)
-        out["reason"] = scrub(str(exc), token)
-    return out
+        out["reason"] = str(exc)
+    return scrub_obj(out, token)
 
 
 def write_result(result: dict[str, Any], token: str, out_dir: Path) -> Path:
     blob = json.dumps(result, indent=2)
-    if token and token in blob:
+    if leaks(blob, token):
         raise RuntimeError("token leak guard tripped: result not written")
     out_dir.mkdir(parents=True, exist_ok=True)
     path = out_dir / f"lane-probe-{result['lane']}-{datetime.now(timezone.utc):%Y%m%d-%H%M%S}.json"
