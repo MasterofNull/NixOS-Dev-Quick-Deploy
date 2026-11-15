@@ -122,6 +122,7 @@ def collect(delegation_dir: Path, receipts_dir: Path, repo: Path, only: set[int]
     quar = _jsonl(quar_p)
     settled = {r.get("pr") for r in quar if r.get("reasons") != RETRY}
     retried = {r.get("pr") for r in quar if r.get("reasons") == RETRY}
+    fresh: set = set()  # PRs given a retry-quarantine row in this run (not yet in settled)
     c = {"collected": 0, "quarantined": 0, "not_eligible": 0, "pending": 0, "already_done": 0}
     for rec in _jsonl(receipts_dir / LOG):
         pr = rec.get("pr")
@@ -132,7 +133,7 @@ def collect(delegation_dir: Path, receipts_dir: Path, repo: Path, only: set[int]
         if not is_eligible(rec):
             c["not_eligible"] += 1
             continue
-        if pr in done or pr in settled:
+        if pr in done or pr in settled or pr in fresh:
             c["already_done"] += 1
             continue
         meta = _pr_meta(repo, pr)
@@ -144,12 +145,15 @@ def collect(delegation_dir: Path, receipts_dir: Path, repo: Path, only: set[int]
         if files is None:
             if pr not in retried:
                 _append(quar_p, json.dumps({"pr": pr, "recorded_at": stamp, "reasons": RETRY}))
+                retried.add(pr)
+                fresh.add(pr)
                 c["quarantined"] += 1
             else:
                 c["pending"] += 1
             continue
         if any(_undecodable(f) for f in files):  # not representable as portable UTF-8 JSON: never alter, quarantine
             _append(quar_p, json.dumps({"pr": pr, "recorded_at": stamp, "reasons": ["undecodable_path"]}))
+            settled.add(pr)
             c["quarantined"] += 1
             continue
         row = dict(rec, rejected_rounds=rec.get("request_changes_rounds", 0), files=files, merge_sha=meta["merge_sha"])
@@ -161,9 +165,11 @@ def collect(delegation_dir: Path, receipts_dir: Path, repo: Path, only: set[int]
             if "redactor_unavailable" not in reasons:
                 q["redacted"] = redacted
             _append(quar_p, json.dumps(q))
+            settled.add(pr)
             c["quarantined"] += 1
             continue
         _append(main_p, redacted)
+        done.add(pr)
         c["collected"] += 1
     return c
 

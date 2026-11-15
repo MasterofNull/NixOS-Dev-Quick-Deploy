@@ -279,6 +279,30 @@ class Collector(unittest.TestCase):
         self.assertEqual((s["trajectories_collected"], s["trajectories_quarantined"], s["receipts_not_eligible"],
                           s["receipts_pending"]), (1, 1, 2, 0), s)
 
+    def test_duplicate_receipts_one_run_one_row(self) -> None:
+        self.set_gh(self.head, self.head)
+        self.receipts(_receipt(50), _receipt(50, recorded_at="2026-11-14T11:00:00Z"))
+        c = self.collect()
+        self.assertEqual((c["collected"], c["already_done"]), (1, 1), c)
+        self.assertEqual(len(self.lines("trajectories.jsonl")), 1)
+        self.receipts(_receipt(51, author_lane="Bearer abcdefghijklmnopqrstuvwxyz0123"),
+                      _receipt(51, author_lane="Bearer abcdefghijklmnopqrstuvwxyz0123"))
+        c = self.collect()
+        self.assertEqual((c["quarantined"], c["already_done"]), (1, 1), c)
+        self.assertEqual(len([x for x in self.lines("trajectories.quarantine.jsonl") if x["pr"] == 51]), 1)
+
+    def test_duplicate_unreachable_receipts_one_retry_row(self) -> None:
+        self.set_gh("d" * 40, "e" * 40)
+        self.receipts(_receipt(52), _receipt(52), _receipt(52))
+        c = self.collect()
+        self.assertEqual((c["quarantined"], c["pending"], c["already_done"]), (1, 0, 2), c)
+        self.assertEqual(len(self.lines("trajectories.quarantine.jsonl")), 1)
+        self.set_gh(self.head, self.head)  # retry then collect in one run: still one main row
+        self.receipts(_receipt(52), _receipt(52))
+        c = self.collect()
+        self.assertEqual((c["collected"], c["already_done"]), (1, 1), c)
+        self.assertEqual(len(self.lines("trajectories.jsonl")), 1)
+
 
 if __name__ == "__main__":
     unittest.main()
