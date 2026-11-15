@@ -82,16 +82,24 @@ def _pr_meta(repo: Path, pr: int) -> dict | None:
 
 def _numstat(repo: Path, pr: int, base: str, head: str) -> list[dict] | None:
     rng = f"{base}...{head}"
-    out = _run(["git", "diff", "--numstat", "--no-renames", rng], repo)
+    out = _run(["git", "diff", "--numstat", "-z", rng], repo)
     if out is None:  # commit missing locally: fetch the PR ref once, then retry
         _run(["git", "fetch", "--quiet", "origin", f"refs/pull/{pr}/head"], repo)
-        out = _run(["git", "diff", "--numstat", "--no-renames", rng], repo)
+        out = _run(["git", "diff", "--numstat", "-z", rng], repo)
     if out is None:
         return None
-    files = []
-    for ln in out.splitlines():
-        a, d, path = (ln.split("\t", 2) + ["", "", ""])[:3]
-        files.append({"path": path, "added": int(a) if a.isdigit() else 0, "deleted": int(d) if d.isdigit() else 0})
+    # -z: NUL-delimited, paths unquoted. Plain: "a\td\tpath\0". Rename: "a\td\t\0old\0new\0".
+    files: list[dict] = []
+    toks = out.split("\0")
+    i = 0
+    while i < len(toks) and toks[i]:
+        a, d, path = (toks[i].split("\t", 2) + ["", "", ""])[:3]
+        i += 1
+        entry: dict = {"added": int(a) if a.isdigit() else 0, "deleted": int(d) if d.isdigit() else 0}  # binary "-" -> 0
+        if path == "" and i + 1 < len(toks):
+            entry["renamed_from"], path = toks[i], toks[i + 1]
+            i += 2
+        files.append({"path": path, **entry})
     return files
 
 

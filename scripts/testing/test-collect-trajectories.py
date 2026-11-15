@@ -208,6 +208,37 @@ class Collector(unittest.TestCase):
         c = self.collect()
         self.assertEqual((c["pending"], c["collected"], c["quarantined"]), (1, 0, 0), c)
 
+    def test_numstat_z_exact_paths(self) -> None:
+        r = self.repo
+        _git(r, "config", "core.quotepath", "true")
+        (r / "mod.txt").write_text("".join(f"line{i}\n" for i in range(20)))
+        _git(r, "add", ".")
+        _git(r, "commit", "-qm", "pre")
+        pre = _git(r, "rev-parse", "HEAD")
+        uni, tab = "caf\u00e9-\u65e5\u672c.txt", "t\tab.txt"
+        (r / uni).write_text("u\n")
+        (r / tab).write_text("t\n")
+        (r / "bin.dat").write_bytes(b"\x00\x01\x02\xff")
+        _git(r, "mv", "mod.txt", "moved.txt")
+        (r / "moved.txt").write_text("".join(f"line{i}\n" for i in range(20)) + "extra\n")
+        _git(r, "add", "-A")
+        _git(r, "commit", "-qm", "paths")
+        got = col._numstat(r, 1, pre, _git(r, "rev-parse", "HEAD"))
+        by = {f["path"]: f for f in got}
+        self.assertEqual(sorted(by), sorted([uni, tab, "bin.dat", "moved.txt"]), got)
+        self.assertEqual((by["bin.dat"]["added"], by["bin.dat"]["deleted"]), (0, 0))
+        self.assertEqual(by["moved.txt"]["renamed_from"], "mod.txt")
+        self.assertEqual((by[uni]["added"], by[tab]["added"]), (1, 1))
+        # privacy scan runs on these exact paths: a secret-looking path is still caught
+        (r / "etc/run/secrets").mkdir(parents=True, exist_ok=True)
+        (r / "etc/run/secrets/\u00e9.txt").write_text("x\n")
+        _git(r, "add", "-A")
+        _git(r, "commit", "-qm", "sec")
+        self.set_gh(_git(r, "rev-parse", "HEAD~1"), _git(r, "rev-parse", "HEAD"))
+        self.receipts(_receipt(30))
+        c = self.collect()
+        self.assertEqual((c["collected"], c["quarantined"]), (0, 1), c)
+
     def test_scoreboard_counts(self) -> None:
         self.set_gh(self.head, self.head)
         self.receipts(_receipt(14), _receipt(15, author_lane="Bearer abcdefghijklmnopqrstuvwxyz0123"),
