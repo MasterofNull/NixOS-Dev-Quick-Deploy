@@ -161,6 +161,8 @@ if a[0] == "mint":
     json.dump({"run_id": rid, "reviewer_lane": "local-direct" if lane == "local" else lane, "reviewed_head_sha": a[a.index("--head") + 1]},
               open(a[a.index("--out") + 1], "w"))
 else:
+    if a[0] == "publish":
+        g = json.load(open(f"{S}/gh.json")); g.setdefault("calls", []).append("RECEIPT publish"); json.dump(g, open(f"{S}/gh.json", "w"))
     done = f"{S}/published"
     key = os.path.basename(a[1])
     seen = open(done).read().split() if os.path.exists(done) else []
@@ -809,6 +811,70 @@ class Checks(Base):
         self.run_checks([[bad], [ok]], required=["review-disposition"])
         self.assertEqual(self.ghs()["reruns"], ["12"])
         self.assertEqual(self.ghs()["merges"], 1)
+
+
+class Friction(Base):
+    """aq-land delivery-friction fixes of 2026-11-14 (issues-backlog, AQ-LAND)."""
+
+    def raw(self, *args, cwd=None):
+        r = subprocess.run([sys.executable, str(TOOL), "--worktree", str(self.wd), *args], capture_output=True, text=True,
+                           env=self.env, cwd=cwd, timeout=120)
+        self.assertNotIn("Traceback", r.stderr)
+        return r
+
+    def test_resume_without_body_file_uses_the_saved_body(self):
+        self.gh_state({"required": ["never-reported"]})
+        self.land(expect=1)  # PR created, reviewed, receipted; stops at checks
+        r = self.raw("--title", "t")
+        self.assertNotIn("IsADirectoryError", r.stderr)
+        self.assertIn("STOP checks", r.stderr)  # got past the body stage
+        self.assertIn("### Review record", self.pr_body())
+
+    def test_no_body_file_and_no_saved_body_stops_before_review(self):
+        r = self.raw("--title", "t")
+        self.assertIn("no --body-file and no saved body", self.stop_line(r))
+        self.assertEqual(self.calls("gemini"), [])
+
+    def test_relative_body_commit_msg_and_criteria_paths_survive_the_chdir(self):
+        (self.S / "msg.txt").write_text("feat: rel\n")
+        (self.S / "crit.txt").write_text("CRITERIA-MARK\n")
+        self.change("scripts/bar.py", "print(2)\n", commit=False)
+        r = self.raw("--title", "t", "--body-file", "body.md", "--commit-msg-file", "msg.txt", "--criteria-file", "crit.txt", cwd=self.S)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("CRITERIA-MARK", (self.S / "prompt-gemini.txt").read_text())
+        self.assertEqual(self.g("log", "-1", "--format=%s"), "feat: rel")
+
+    def test_receipt_is_published_before_the_pr_body_is_edited(self):
+        self.gh_state({"required": ["never-reported"]})
+        self.land(expect=1)
+        self.change("scripts/baz.py", "print(3)\n")
+        (self.S / "body.md").write_text(BODY.replace("- scope", "- scope v2"))
+        self.land(expect=1)
+        calls = self.ghs()["calls"]
+        edit = calls.index("pr edit 77")
+        self.assertEqual([i for i, c in enumerate(calls) if c == "RECEIPT publish"][-1] < edit, True, calls)
+        self.assertEqual(len(self.published()), 2)
+
+    def test_bad_body_format_stops_in_preflight_before_any_review_or_push(self):
+        (self.S / "body.md").write_text(BODY.replace("## Details", "## Summary"))
+        r = self.land(expect=1)
+        line = self.stop_line(r)
+        self.assertIn("preflight", line)
+        self.assertIn("## Details", line)
+        self.assertEqual(self.calls("gemini"), [])
+        self.assertEqual(self.ghs()["prs"], [])
+
+    def test_static_gates_failure_stops_in_preflight_and_a_pass_proceeds(self):
+        gate = self.S / "static-gates.sh"
+        gate.write_text('#!/bin/sh\necho "FAIL: no evidence file"\nexit 1\n')
+        gate.chmod(0o755)
+        self.env["AQ_LAND_STATIC_GATES"] = str(gate)
+        line = self.stop_line(self.land(expect=1))
+        self.assertIn("preflight", line)
+        self.assertIn("no evidence file", line)
+        self.assertEqual(self.calls("gemini"), [])
+        gate.write_text("#!/bin/sh\nexit 0\n")
+        self.land(expect=0)
 
 
 if __name__ == "__main__":
