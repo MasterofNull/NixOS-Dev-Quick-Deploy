@@ -152,7 +152,7 @@ Enforcement, injection variants and the `FABLE_PARITY=0` kill switch: `.agent/FA
 - Land via `aq-land` (PR only; body Details then What/How/Why), never push `main`; docs ship inside their code PR, never alone; evidence `docs/harness-first/evidence/<date>-<slug>.md`.
 - Resumable trail: RESUME.json + PULSE.log + HANDOFF.md; down lanes catch up via AGENT-CATCHUP-QUEUE.md.
 - sudo/nrs/systemctl = owner acts: give exact copy-paste cmds; no rebuild during DB jobs.
-- Done = enable -> rebuild (`aq-deploy-current`) -> validate live -> peer review -> owner grant; no derelict capabilities; archive only with parity.
+- Done = enable -> rebuild (`aq-deploy-current`) -> validate live -> peer review -> owner grant; no derelict capabilities; archive only with parity. New agents/models/lanes: probe, test, validate on synthetic data before real work or personal data; start restricted; widen authority only on measured results (`probe-reviewer-lane`).
 - Discover first: CAPABILITY-INDEX.md, `aq-graph-query`, `aq-wiki --section`, `aq-hints`; friction -> `aq-rsi report`.
 - Full text: `canon/blocks/delivery-workflow.md`
 <!-- canon:end delivery-workflow -->
