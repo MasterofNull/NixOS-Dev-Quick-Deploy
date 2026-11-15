@@ -216,6 +216,45 @@ class Conflicts(Base):
         with mock.patch.dict(os.environ, {"AQ_INSTANCE_LANE": "claude"}):
             self.assertTrue(any("deletes or renames" in e or "net delete" in e for e in self.check()))
 
+    def _main_fact_path(self) -> Path:
+        self.land("a.b", claim="one", instance=CLAUDE)
+        return self.repo / ".agent/memory/facts/a.b.md"
+
+    def _approved_delete(self, p: Path) -> None:
+        p.unlink()
+        self.stage()
+        git(self.repo, "commit", "-qm", "drop\n\nowner_reply: 1 keep theirs gone")
+
+    def _restore(self) -> None:
+        fact(self.repo, "a.b", claim="one", instance=CLAUDE)
+        self.stage()
+        git(self.repo, "commit", "-qm", "restore")
+
+    def test_earlier_delete_approval_does_not_authorize_later_unapproved_delete(self) -> None:
+        p = self._main_fact_path()
+        self._approved_delete(p)
+        self._restore()
+        p.unlink()
+        self.stage()
+        with mock.patch.dict(os.environ, {"AQ_INSTANCE_LANE": "claude"}):
+            self.assertTrue(any("net delete" in e for e in self.check()), self.check())
+
+    def test_approved_delete_as_final_transition_passes(self) -> None:
+        p = self._main_fact_path()
+        self._approved_delete(p)
+        with mock.patch.dict(os.environ, {"AQ_INSTANCE_LANE": "claude"}):
+            self.assertEqual(self.check(), [])
+
+    def test_restore_then_approved_delete_passes(self) -> None:
+        p = self._main_fact_path()
+        p.unlink()
+        self.stage()
+        git(self.repo, "commit", "-qm", "drop")
+        self._restore()
+        self._approved_delete(p)
+        with mock.patch.dict(os.environ, {"AQ_INSTANCE_LANE": "claude"}):
+            self.assertEqual(self.check(), [])
+
     def test_subdirectory_fact_is_not_a_fact_file(self) -> None:
         p = self.repo / ".agent/memory/facts/sub/a.b.md"
         p.parent.mkdir(parents=True)

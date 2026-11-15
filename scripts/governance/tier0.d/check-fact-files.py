@@ -166,9 +166,6 @@ def check_repo(repo: Path, base: str = "origin/main") -> list[str]:
 
     # (label, status+path list, reader of the NEW content, commit message text, predecessor ref prefix)
     units: list[tuple[str, list[tuple[str, str]], object, str, str]] = []
-    staged = _facts(_git(repo, "diff", "--cached", "--name-status", "--no-renames", "--", FACTS_DIR).stdout)
-    if staged:
-        units.append(("staged", staged, lambda p: _show(repo, f":{p}"), "", "HEAD"))
     if mb:
         revs = _git(repo, "rev-list", "--reverse", f"{mb}..HEAD").stdout.split()
         for sha in revs:
@@ -176,9 +173,14 @@ def check_repo(repo: Path, base: str = "origin/main") -> list[str]:
             if fl:
                 msg = _git(repo, "log", "-1", "--format=%B", sha).stdout
                 units.append((sha[:9], fl, (lambda s: (lambda p: _show(repo, f"{s}:{p}")))(sha), msg, f"{sha}^"))
+    # Strict chronological order: the index is the newest unit, so it is processed last.
+    staged = _facts(_git(repo, "diff", "--cached", "--name-status", "--no-renames", "--", FACTS_DIR).stdout)
+    if staged:
+        units.append(("staged", staged, lambda p: _show(repo, f":{p}"), "", "HEAD"))
 
-    touched: set[str] = set()
-    deleted_reply: dict[str, bool] = {}
+    # Per-path state of the LAST transition only (None = present, True/False = deleted with/without approval).
+    # An approval never carries across a later restore or a later delete.
+    last_delete: dict[str, bool | None] = {}
     for label, files, reader, msg, prev in units:
         if len(files) > MAX_PER_COMMIT:
             errs.append(f"{label}: {len(files)} fact files touched, cap is {MAX_PER_COMMIT} per commit")
@@ -198,7 +200,7 @@ def check_repo(repo: Path, base: str = "origin/main") -> list[str]:
             if not fm:
                 continue
             new_fms[rel] = fm
-            touched.add(rel)
+            last_delete[rel] = None
             # Transition vs the predecessor only: a later commit may legitimately resolve an earlier one.
             old = _show(repo, f"{prev}:{rel}")
             old_fm = parse_frontmatter(old) if old else None
@@ -210,7 +212,7 @@ def check_repo(repo: Path, base: str = "origin/main") -> list[str]:
             splits = [f for p, f in new_fms.items()
                       if Path(p).stem.startswith(subj + ".") and f.get("owner_reply", "").strip()]
             has_reply = len(splits) >= 2 or "owner_reply:" in msg
-            deleted_reply[rel] = has_reply
+            last_delete[rel] = has_reply
             old = _show(repo, f"{prev}:{rel}")
             old_fm = parse_frontmatter(old) if old else None
             if not old_fm:
@@ -227,14 +229,14 @@ def check_repo(repo: Path, base: str = "origin/main") -> list[str]:
                 errs.append(msg_e)
 
     # Final branch state (the index: staged changes over HEAD) judged against current main.
-    for rel in sorted(touched | set(deleted_reply)):
+    for rel in sorted(last_delete):
         final = _show(repo, f":{rel}")
         old = _show(repo, f"{base_ref}:{rel}")
         old_fm = parse_frontmatter(old) if old else None
         if not old_fm:
             continue
         if final is None:
-            if not deleted_reply.get(rel):
+            if last_delete.get(rel) is not True:
                 errs.append(f"{rel}: net delete or rename of a fact on {base_ref} "
                             f"(lane {lane_of(old_fm.get('instance', ''))}, claim {old_fm.get('claim')!r}) "
                             f"needs 2 scoped split facts '{Path(rel).stem}.<scope>' carrying 'owner_reply'")
