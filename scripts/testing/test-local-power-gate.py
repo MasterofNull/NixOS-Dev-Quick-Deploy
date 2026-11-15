@@ -135,6 +135,7 @@ class PowerGate(unittest.TestCase):
         self.assertIn("DEFER", r.stdout)
         self.assertEqual(len(r.stdout.strip().splitlines()), 1)
         self.assertIn('"task": "t"', log.read_text())
+        self.assertEqual(oct(log.stat().st_mode & 0o777), "0o600")
 
     def _delegate(
         self, *extra: str, env_extra: dict | None = None
