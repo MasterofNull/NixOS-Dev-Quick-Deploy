@@ -9810,3 +9810,11 @@ File: scripts/ai/lib/worktree-isolation.sh; scripts/automation/prsi-orchestrator
   Severity: medium
   Action: Change the test fixture to require a verified non-allowlisted writable directory (or explicitly skip with runner-capability evidence); do not weaken `validate_file_path` or remove `/tmp` from the allowlist.
   File: scripts/testing/test-write-region.py:_outside_workspace_dir
+
+[FIX IN VALIDATION] deploy-factory-owner-20261115 — Factory preview/confirmation resolved a live GitHub owner independently, causing digest mismatch. Severity: medium. Action: pin fixture owner; 26 invariants pass. File: scripts/testing/test-factory-gate-readiness.py:50.
+
+[FIX IN VALIDATION] deploy-retry-qa-20261115 — Reconciliation trusted running revision after failed wrapper QA. Severity: high. Action: require phase0 QA before completion; retry regression passes without rebuilding. File: scripts/maintenance/aq-update:514.
+
+[FIX IN VALIDATION] deploy-sudo-prompts-20261115 — Single-prompt wording contradicted intentional timestamp_timeout=0 policy. Severity: low. Action: correct wording, preserve policy. File: scripts/maintenance/aq-update:6.
+
+[DEFERRED] deploy-extension-timeouts-20261115 — Optional Qwen, debugpy and Jupyter extension installation timed out during successful Home Manager activation. Root cause unisolated. Severity: low. Action: separate extension maintenance investigation. File: nix/modules/home (activation output).

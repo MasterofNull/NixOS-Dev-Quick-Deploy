@@ -3,14 +3,14 @@
 
   aq-update [--daily | --refresh-inputs] [--dry-run | --resume]
                                        phase 1, prepare: unattended, needs NO sudo, safe to walk away from
-  aq-update --deploy [--dry-run]       phase 2, deploy: short, owner-attended, asks for sudo once
+  aq-update --deploy [--dry-run]       phase 2, deploy: short, owner-attended, may prompt for sudo
 
 No Nix-affecting change since the deployed revision: fast-forward the checkout, no rebuild, done.
 Otherwise phase 1 refreshes every flake input in a worktree, verifies with CI's commands, lands the lock
 through scripts/ai/aq-land (can take 30-60 minutes), syncs the checkout, records a verified revision in the
 ledger and ends by printing exactly one READY line carrying the command for phase 2. It never calls sudo.
-Phase 2 (--deploy) runs only the short privileged steps: `sudo -v` once at its start (later steps reuse the
-cached credential; nothing is kept alive across the wait and no credential is stored), aq-deploy-current,
+Phase 2 (--deploy) runs only the short privileged steps: `sudo -v` at its start (sudo policy determines
+whether later steps prompt again), aq-deploy-current,
 the MCP integrity baseline refresh (root-owned, so sudo) and validation of the running revision.
 --deploy refuses unless the ledger shows a prepared, verified revision whose tree matches the checkout HEAD.
 If you deployed that revision yourself (e.g. a manual rebuild), --deploy detects the running revision already
@@ -335,6 +335,16 @@ Every rebuild includes all current inputs, refreshed immediately before it; the 
             shown = got[:8] + ("-dirty" if got.endswith("-dirty") else "")
             raise Fail("validate", f"running revision {shown} != verified {target[:8]}")
 
+    def validate_qa(self):
+        env = {**os.environ, "AQ_CONFINE_REQUIRE_CONTEXT": "1"}
+        p = run([str(self.repo / "scripts/ai/aq-qa"), "0", "--machine"], cwd=self.repo,
+                check=False, stage="validate", env=env)
+        print("\n".join((p.stdout + p.stderr).splitlines()[-25:]))
+        summaries = re.findall(r"^SUMMARY phase=0 (\d+) passed · (\d+) failed · (\d+) skipped · [^\n]+$",
+                               p.stdout, re.MULTILINE)
+        if p.returncode or len(summaries) != 1 or summaries[0][1] != "0":
+            raise Fail("validate", "aq-qa 0 --machine failed or did not report a valid zero-failure SUMMARY")
+
 
 def main(argv):
     if "--help" in argv or "-h" in argv:
@@ -366,7 +376,7 @@ def make_stage(c, done):
         (a kill between the effect and its ledger line must not repeat a rebuild)."""
         if reality and trust_state and reality() and name not in done:
             c.log(name, "done", reconciled=True)
-            done[name] = {"stage": name}
+            done[name] = {"stage": name, "reconciled": True}
         if name in done and (reality is None or reality()):
             return done[name]
         c.log(name, "start")
@@ -461,7 +471,7 @@ def go(c, resume):
           lambda: c.out("rev-parse", "HEAD") == target)
     stage("ready", lambda: {"rev": target, "cmd": DEPLOY_CMD})
     print(f"{TAG}: READY {d[:8]} -> {target[:8]} verified, landed and synced (no sudo used); "
-          f"when you can answer one sudo prompt run: {DEPLOY_CMD}")
+          f"when you can answer sudo prompts run: {DEPLOY_CMD}")
     return 0
 
 
@@ -504,10 +514,12 @@ def deploy_phase(c):
         print(f"{TAG}: revision {target[:8]} is already running (deployed outside aq-update); skipping the rebuild, "
               "running only the MCP baseline refresh and validation")
         c.log("deploy", "done", reconciled=True, already_deployed=True)
-        done["deploy"] = {"stage": "deploy"}
+        done["deploy"] = {"stage": "deploy", "reconciled": True}
     stage("deploy", lambda: c.deploy_stage(target), lambda: c.deployed_or_none() == target, trust_state=True)
     stage("baseline", lambda: c.baseline_stage(target))
     c.validate(target)
+    if done["deploy"].get("reconciled"):
+        c.validate_qa()
     c.log("finish", "finished", rebuild=True, rev=target)
     print(f"{TAG}: OK deployed {target[:8]} and validated; ledger {c.ledger}")
     return 0

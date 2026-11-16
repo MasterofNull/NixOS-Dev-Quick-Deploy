@@ -1,8 +1,12 @@
 ---
 Status: Active
 Owner: "hyperd (orchestrator claude)"
-Last Updated: 2026-07-08
+Last Updated: 2026-11-16
 ---
+
+## Deployment validation retry repair (2026-11-16)
+
+Direct CLI and fixture paths are integrated and active when invoked; no daemon or Nix change requires a rebuild. Validated by 41 update tests, 26 factory invariants, live phase 0 (208 passed, 0 failed, 9 skipped; deterministic fixture owner supplied), 70 tier0 gates, and independent implementation review. QA output and ledger status are observable; deploy retries are intervenable without rebuilding an already running revision. PM scope: approved delivery-loop S4 repair. Evidence: `docs/harness-first/evidence/2026-11-15-deploy-validation.md`.
 
 # Activation Audit — implemented ≠ done
 
