@@ -47,6 +47,7 @@ def run(*command: str, cwd: Path | None = None, expected: int | None = 0,
         environment["PATH"] = str(path_prefix) + os.pathsep + environment.get("PATH", "")
     if extra_env:
         environment.update(extra_env)
+    environment["FACTORY_OWNER_HANDLE"] = "factory-fixture"
     result = subprocess.run(command, cwd=cwd, env=environment, text=True, capture_output=True, check=False)
     if expected is not None and (result.returncode == 0) != (expected == 0):
         raise AssertionError(f"unexpected exit {result.returncode}: {' '.join(command)}\n{result.stdout}\n{result.stderr}")
