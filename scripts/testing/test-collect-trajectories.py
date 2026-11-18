@@ -303,6 +303,28 @@ class Collector(unittest.TestCase):
         self.assertEqual((c["collected"], c["already_done"]), (1, 1), c)
         self.assertEqual(len(self.lines("trajectories.jsonl")), 1)
 
+    def test_j_long_changed_repo_path_exempt_from_entropy_while_slash_secret_quarantines(self) -> None:
+        r = self.repo
+        long_rel = "docs/harness-first/evidence/2026-11-15-deploy-validation.md"
+        self.assertEqual(col.scan(json.dumps({"path": long_rel})), ["entropy"],
+                         "precondition: bare scan flags this 59-char path as entropy > 4.0")
+        (r / long_rel).parent.mkdir(parents=True, exist_ok=True)
+        (r / long_rel).write_text("ok\n")
+        _git(r, "add", "-A")
+        _git(r, "commit", "-qm", "long-path")
+        long_head = _git(r, "rev-parse", "HEAD")
+        self.set_gh(self.head, long_head)
+        self.receipts(_receipt(60))
+        c = self.collect()
+        self.assertEqual((c["collected"], c["quarantined"]), (1, 0), c)
+        # A real base64-like secret containing '/' in another field still quarantines with entropy
+        slash_secret = "AbCdEfGhIjKlMnOpQrStUvWxYz012345/789+AbCdEf"
+        self.receipts(_receipt(61, author_lane=slash_secret))
+        c = self.collect()
+        self.assertEqual((c["collected"], c["quarantined"]), (0, 1), c)
+        q = [x for x in self.lines("trajectories.quarantine.jsonl") if x["pr"] == 61][0]
+        self.assertIn("entropy", q["reasons"])
+
 
 if __name__ == "__main__":
     unittest.main()

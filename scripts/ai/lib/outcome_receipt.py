@@ -32,10 +32,16 @@ def _entropy(s: str) -> float:
     return -sum(c / n * math.log2(c / n) for c in Counter(s).values())
 
 
-def scan(text: str) -> list[str]:
-    """Names of fail-closed findings in already-redacted text; empty means clean."""
+def scan(text: str, *, allowed_paths: set[str] | frozenset[str] = frozenset()) -> list[str]:
+    """Names of fail-closed findings in already-redacted text; empty means clean.
+
+    `allowed_paths` exempts multi-segment (`/`-containing) `_BLOB` tokens extracted from the PR's
+    verified changed-file list (`git diff --numstat`) from the generic entropy heuristic; pattern
+    checks (`_HITS`) and `_redact` still run on every path and token unconditionally.
+    """
     hits = [f"pattern{i}" for i, p in enumerate(_HITS) if p.search(text)]
-    if any(not _HEX.fullmatch(b) and _entropy(b) > 4.0 for b in _BLOB.findall(text)):
+    allowed_blobs = {tok for p in allowed_paths for tok in _BLOB.findall(p) if "/" in tok}
+    if any(b not in allowed_blobs and not _HEX.fullmatch(b) and _entropy(b) > 4.0 for b in _BLOB.findall(text)):
         hits.append("entropy")
     return hits
 
