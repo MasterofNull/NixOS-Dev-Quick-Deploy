@@ -179,6 +179,7 @@
           ./nix/modules/core/fs-integrity-monitor.nix
           ./nix/modules/core/disk-health-monitor.nix
           ./nix/modules/core/power-policy.nix
+          ./nix/modules/core/timer-stagger.nix
           ./nix/modules/core/custom-kernel.nix
           ./nix/modules/roles/default.nix
           ./nix/modules/services/default.nix

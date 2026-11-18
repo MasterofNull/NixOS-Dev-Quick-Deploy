@@ -69,14 +69,14 @@ AIDB_KEY   = _read_key("AIDB_API_KEY_FILE",   "AIDB_API_KEY")
 # VSCodium / Continue.dev don't hang when hybrid-coordinator is under load.
 _TOOL_TIMEOUTS: dict[str, int] = {
     "get_hints":          5,
-    "harness_health":     5,
-    "qa_check":           5,
+    "harness_health":     30,  # runs a QA phase; 5s timed out under host load
+    "qa_check":           30,
     "coordinator_status": 5,
     "coordinator_lessons":5,
     "hints_feedback":     5,
     "workflow_blueprints":8,
     "hybrid_search":      15,
-    "recall_memory":      10,
+    "recall_memory":      20,  # > memory_broker read budget (AI_MEMORY_BROKER_RW_TIMEOUT_S, 10s)
     "store_memory":       10,
     "query_aidb":         15,
     "augment_query":      15,
@@ -97,6 +97,18 @@ _TOOL_TIMEOUTS: dict[str, int] = {
 }
 _DEFAULT_TIMEOUT_POST = 30
 _DEFAULT_TIMEOUT_GET  = 10
+
+
+def _env_timeout(name: str, default: int) -> int:
+    """AQ_MCP_TIMEOUT_<TOOL>_S overrides one tool; AQ_MCP_TIMEOUT_SCALE multiplies all."""
+    try:
+        scale = float(os.getenv("AQ_MCP_TIMEOUT_SCALE", "1") or 1)
+        return int(float(os.getenv(f"AQ_MCP_TIMEOUT_{name.upper()}_S", "") or default) * scale)
+    except ValueError:
+        return default
+
+
+_TOOL_TIMEOUTS = {k: _env_timeout(k, v) for k, v in _TOOL_TIMEOUTS.items()}
 
 # Client-side hints cache — avoids repeated calls to /hints on every keystroke.
 # Entries expire after _HINTS_CACHE_TTL seconds.

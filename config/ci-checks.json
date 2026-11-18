@@ -2332,6 +2332,10 @@
   ],
   "ci_exempt": [
     {
+      "script": "scripts/testing/check-timer-stagger.py",
+      "reason": "full nix eval of the host config (minutes); run locally via nice -n 19 before timer changes, see docs/harness-first/evidence/2026-11-18-timer-stagger.md"
+    },
+    {
       "script": "scripts/testing/check-harness-first-platform-owner-approval.py",
       "reason": "needs GITHUB_TOKEN and the PR reviews API; inherently remote"
     },
