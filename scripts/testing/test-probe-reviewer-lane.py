@@ -251,6 +251,28 @@ class ScrubTests(unittest.TestCase):
             for f in Path(d).iterdir():
                 self.assertNotIn(TOKEN[:12], f.read_text())
 
+    def test_short_credential_scrubbed_and_leak_guard_trips(self):
+        short_tok = "sec98765"  # < MIN_PREFIX (12)
+        self.assertLess(len(short_tok), P.MIN_PREFIX)
+        self.assertTrue(P.leaks(f"header {short_tok} tail", short_tok))
+        self.assertEqual(P.scrub(f"header {short_tok} tail", short_tok), "header [REDACTED] tail")
+
+        def t(method, url, headers, body):
+            if "catalog" in url:
+                return 200, {}, json.dumps([{"id": "toy/m"}])
+            return reply(f"echoed {short_tok}")
+
+        with tempfile.TemporaryDirectory() as d:
+            buf = io.StringIO()
+            with redirect_stdout(buf):
+                rc = P.main(["--token-cmd", f"echo {short_tok}", "--probe-only", "--out-dir", d], transport=t)
+            self.assertEqual(rc, 0)
+            self.assertNotIn(short_tok, buf.getvalue())
+            for f in Path(d).iterdir():
+                self.assertNotIn(short_tok, f.read_text())
+            with self.assertRaises(RuntimeError):
+                P.write_result({"lane": "ghm", "leak": short_tok}, short_tok, Path(d))
+
 
 if __name__ == "__main__":
     unittest.main()

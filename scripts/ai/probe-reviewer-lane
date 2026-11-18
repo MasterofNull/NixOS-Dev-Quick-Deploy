@@ -108,10 +108,11 @@ MIN_PREFIX = 12
 
 
 def scrub(text: str, token: str) -> str:
-    """Redact the full token and any prefix of it that is MIN_PREFIX+ chars (a truncated echo is still a leak)."""
+    """Redact the full token (regardless of length) and any prefix of it that is MIN_PREFIX+ chars."""
     if not token:
         return text
-    for n in range(len(token), max(MIN_PREFIX, 1) - 1, -1):
+    text = text.replace(token, "[REDACTED]")
+    for n in range(len(token) - 1, max(MIN_PREFIX, 1) - 1, -1):
         text = text.replace(token[:n], "[REDACTED]")
     return text
 
