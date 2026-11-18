@@ -10,11 +10,11 @@
   "tiers": {
     "_comment": "Version SSOT. Route phase/slice complexity -> tier -> concrete current model id. When a new model version ships, bump the id HERE only; downstream pools (remote_agents.py, delegate-to-gemini) should read these ids rather than hardcoding their own. Prevents the drift where pools stay pinned to superseded versions.",
     "anthropic": {
-      "_comment": "claude-fable-5-1 (Mythos-class tier, above Opus) is the flagship AND creative lane — most capable generally-available Claude. Opus 5.5 = deep fallback when Fable is unavailable; Sonnet 5.5 = balanced (default Claude implementer); Haiku 4.5 = fast. Behavioral parity contract for ALL lanes (any provider): .agent/FABLE-PARITY-CONTRACT.md.",
+      "_comment": "claude-fable-5-1 (Mythos-class tier, above Opus) is the flagship AND creative lane — most capable generally-available Claude. Opus 5.5 = deep fallback when Fable is unavailable; Sonnet 5.5 = balanced (default Claude implementer); Haiku 5.5 = fast. Behavioral parity contract for ALL lanes (any provider): .agent/FABLE-PARITY-CONTRACT.md.",
       "flagship": "claude-fable-5-1",
       "flagship_fallback": "claude-opus-5-5",
       "balanced": "claude-sonnet-5-5",
-      "fast": "claude-haiku-4-5-20251001",
+      "fast": "claude-haiku-5-5",
       "creative": "claude-fable-5-1"
     },
     "google": {
@@ -55,9 +55,9 @@
       }
     },
     "openai": {
-      "_comment": "OpenAI GPT-6 family (refreshed 2026-09-25 from gpt-5.5). flagship=gpt-6-astra (flagship reasoning/coding), balanced=gpt-6-sol (balanced coding/agentic), fast=gpt-6-luna (efficient/high-volume). Specialized gpt-5.6-cyber (vuln research) is available but NOT wired into a routing tier here.",
-      "flagship": "gpt-6-astra",
-      "balanced": "gpt-6-sol",
+      "_comment": "OpenAI GPT-6 family (refreshed 2026-09-25 from gpt-5.5). flagship=gpt-6.2-astra (flagship reasoning/coding), balanced=gpt-6.2-sol (balanced coding/agentic), fast=gpt-6-luna (efficient/high-volume). Specialized gpt-5.6-cyber (vuln research) is available but NOT wired into a routing tier here.",
+      "flagship": "gpt-6.2-astra",
+      "balanced": "gpt-6.2-sol",
       "fast": "gpt-6-luna"
     },
     "local": {
