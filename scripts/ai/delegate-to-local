@@ -310,6 +310,13 @@ case "${SUBCMD:-}" in
         if [[ -n "$PROMPT_FILE" ]]; then
             [[ -f "$PROMPT_FILE" ]] || die "Prompt file not found: $PROMPT_FILE"
             PROMPT="$(cat "$PROMPT_FILE")"
+            # Slice-brief caps: output_tokens becomes the max-tokens budget unless --max-tokens was given;
+            # dispatch.py records actual-vs-cap to brief-caps.jsonl (AQ_BRIEF_FILE).
+            python3 "$LIB_DIR/brief_caps.py" validate "$PROMPT_FILE" >&2 || true
+            if [[ -z "$MAX_TOKENS" ]] && grep -q '^caps:' "$PROMPT_FILE"; then
+                MAX_TOKENS="$(python3 "$LIB_DIR/brief_caps.py" output-tokens "$PROMPT_FILE" 2>/dev/null || true)"
+            fi
+            export AQ_BRIEF_FILE="$PROMPT_FILE"
         fi
         [[ -n "$PROMPT" ]] || die "Provide --prompt TEXT or --prompt-file FILE (or --help)"
 

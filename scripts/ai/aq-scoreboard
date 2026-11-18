@@ -10,6 +10,7 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE / "lib"))
 from delegation_dir import resolve_delegation_dir  # noqa: E402
 from outcome_receipt import LOG, QUARANTINE, is_eligible  # noqa: E402
+import brief_caps  # noqa: E402
 
 
 def _lines(p: Path):
@@ -53,6 +54,8 @@ def summarize(d: Path, since: str = "") -> dict:
         "tier0_failures_before_merge": sum(r.get("tier0_failures", 0) for r in recs),
         "ci_failures_before_merge": sum(r.get("ci_failures", 0) for r in recs),
         "tokens_by_lane": tok,
+        "brief_caps": brief_caps.summarize(
+            [r for r in _lines(d / brief_caps.LOG) if (r.get("recorded_at") or "") >= since]),
         "quarantined": sum(1 for r in _lines(d / QUARANTINE) if (r.get("recorded_at") or "") >= since),
     }
 
@@ -75,6 +78,9 @@ def main() -> int:
     print(f"CI failures caught before merge: {s['ci_failures_before_merge']}")
     for lane, t in sorted(s["tokens_by_lane"].items()):
         print(f"Tokens {lane}: in={t['in']} out={t['out']} (known runs {t['known']}, unknown runs {t['unknown']})")
+    bc = s["brief_caps"]
+    print(f"Brief-cap runs: {bc['runs']} (no checks declared {bc['no_checks_declared']}, "
+          f"over cap {bc['over_cap']}, unknown actual {bc['unknown']})")
     print(f"Quarantined: {s['quarantined']}")
     print(f"Trajectories collected: {s['trajectories_collected']} (quarantined {s['trajectories_quarantined']}, "
           f"receipts not eligible {s['receipts_not_eligible']}, pending {s['receipts_pending']})")

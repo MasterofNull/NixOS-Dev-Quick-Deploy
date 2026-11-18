@@ -1748,6 +1748,15 @@ def dispatch_task(
     status = "done" if success else "failed"
     registry.update_status(task_id, status)
     registry.record_completion(task_id, status)
+    # Measurement only: actual-vs-cap tokens for a brief-driven run (AQ_BRIEF_FILE set by delegate-to-local).
+    _brief = os.environ.get("AQ_BRIEF_FILE")
+    if _brief:
+        try:
+            from brief_caps import measure as _measure_brief  # type: ignore
+            _measure_brief(registry.delegation_dir, task_id, Path(_brief).read_text(encoding="utf-8"),
+                           lane=f"local-{config.mode}")
+        except Exception as e:  # never fail a delegation on a measurement error
+            print(f"[dispatch] brief-caps measurement skipped: {e}", file=sys.stderr)
     return success
 
 
