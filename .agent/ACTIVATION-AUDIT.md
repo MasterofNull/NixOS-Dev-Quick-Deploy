@@ -834,3 +834,6 @@ Owner deployed via `scripts/maintenance/aq-deploy-current`: system and Home Mana
 - Functionally validated: `scripts/testing/test-aq-confine.py` (213/213 PASS), `scripts/testing/test-context-compaction-sandwich.py` (PASS), and `scripts/testing/test-ipm-thermal-thresholds.py` (7/7 PASS); recorded in `docs/harness-first/evidence/2026-11-10-local-agent-ipm-and-confine-fixes.md`.
 - Observable / intervenable / PM-tracked: QA `0.10.66` (`test-aq-confine`), `ai-stack-health-monitor.service`, `ai-hybrid-coordinator` `/health` IPM state, `aq-agent-loop --timeout / --max-calls`.
 - Deferral: systemd unit reload for `ai-stack-health-monitor` (`MemoryMax=1280M`) and `ai-hybrid-coordinator` (`InferenceParamManager`) executes on next owner `aq-deploy-current` (2026-11-10).
+
+## 2026-11-18 sweep-lanes natural exit
+Existing live QA path; repaired producer and full regression suite pass, independent Codex review PASS. Integration and main CI pending landing. No system activation required for this repository script; owner rebuild remains separately deferred. Evidence: docs/harness-first/evidence/2026-11-18-sweep-lanes-exit.md.
