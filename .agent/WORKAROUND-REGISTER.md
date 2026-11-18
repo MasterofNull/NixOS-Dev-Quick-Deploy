@@ -402,6 +402,55 @@ Codex lane absent).
 - fix-path: `nix flake update nixpkgs` once nixos-26.05 ffmpeg_8 >= 8.1.3, then drop the (a)+(b) ignores; drop (c) on a fixed release. Group (b) expires 2026-10-22 and is renewed weekly only while the channel lacks 8.1.3. No local overlay: ffmpeg_8 override rebuilds large referrer closures (measured by reviewer: 455/192/132 referrers for the three variants; see fast-lane-manifest.nix).
 - class: T5 · severity: HIGH (DoS/OOB-read in demux paths on untrusted media) · owner hyperd.
 - re-check 2026-11-14: nixpkgs pin (flake.lock 1dd30c29) now ships ffmpeg 8.1.3 (`nix eval` ffmpeg/-headless/-full = 8.1.3), so group (b) is fixed by the channel and its ignores are gone; the (a) range-FP ignores were re-scoped from 8.1.2 to 8.1.3 (the 8.1.2 scope matched nothing; grype on the live closure SBOM flagged 52295/6/7 on 8.1.3 until re-scoped). Group (c) re-verified: latest upstream tags are n9.0.2 and n8.1.3 and neither carries the fixes (n8.1.3/n9.0.2 libssh.c has no host-key check; CVEs say 'through 9.0.2'), mitigation intact (`scripts/ai/aq-transcribe` line 139 `-protocol_whitelist file,pipe`; aq-transcribe is still the only repo ffmpeg consumer). New expiry 2026-12-14 for all 8 entries. Evidence `docs/harness-first/evidence/2026-11-14-wr-sec-3-recheck.md`. Unregistered new ffmpeg 8.1.3 findings (CVE-2026-96611, 120210, 120243-7) are not covered by this entry; see the evidence file.
+- re-check 2026-11-18 (closure triage, 171 alerts): 2026-11-18 CVE-2026-1251xx..1262xx wave (112 alerts plus 7 earlier; 119 total on ffmpeg 8.1.3, 29 high / 86 medium / 4 low) added to group (c) as version-scoped (8.1.3) ignores, expires=2026-12-14, same date as the rest of the group. No released fix (NVD 'through 9.0.2'; 9.0.2 and n9.1-dev are the newest tags; fix-PR merge state UNVERIFIED), so no bump helps. Mitigation evidence: `scripts/ai/aq-transcribe:139` (`timeout ${AQ_TRANSCRIBE_FFMPEG_TIMEOUT:-600} ffmpeg -nostdin -y -protocol_whitelist file,pipe`, PCM wav output only) never reaches the wave's encoder/hwaccel paths (exr, apng, gif, nellymoser, dvbsub, oapv, lcevc, vulkan/v4l2/vaapi, VVC); 32-bit-only and big-endian-only items do not apply to x86_64-LE; `scripts/testing/test-ffmpeg-cve-mitigations.py` covers it. Re-check by 2026-12-14 (weekly: ffmpeg 9.0.3/n9.1 tag and fix-PR merge). Evidence `docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md`.
+
+## WR-SEC-4 — glib 2.88.3 CRITICAL CVE-2026-58016 (+1) ignored in .grype.yaml — OPEN (MAINT-DUE 2026-12-18)
+- symptom: 2 CRITICAL closure alerts on glib 2.88.3 (D-Bus introspection XML parse, g_dbus_node_info_new_for_xml).
+- band-aid in place? yes: version-scoped `.grype.yaml` ignores, each with `expires=2026-12-18`; enforced by `scripts/governance/tier0.d/check-grype-ignore-expiry.sh` (WARN pre-commit, FAIL maintenance/CI). Reason cites that attacker-supplied introspection XML is needed; local bus only. Absence of untrusted introspection producers on this host is UNVERIFIED (no busctl evidence collected).
+- root cause: nixos-26.05 head (f6840765) still ships glib 2.88.3; fixed in 2.89.0+ (unstable 2.90.0, already in closure for unstable consumers). A 2.88.x backport is UNVERIFIED. A global glib override is a mass rebuild of nearly everything, so no bump.
+- producer to fix: nixpkgs 26.05 (glib bump/backport).
+- fix-path: Weekly check of nixos-26.05 glib; on a bump `nix flake update nixpkgs` and drop the ignores. Fallback: unstable leaf/overlay with a measured referrer count, batched with the gst decoder slice.
+- class: T5 · severity: CRITICAL on paper, not reachable from llama/AIDB/coordinator · opened 2026-11-18 · evidence `docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md` · re-check by 2026-12-18.
+
+## WR-SEC-5 — sqlite 3.53.3 CVEs ignored in .grype.yaml — OPEN (MAINT-DUE 2026-12-18)
+- symptom: 22 closure alerts (8 high) on sqlite 3.53.3 from the stable lane (python3 3.13, dashboard).
+- band-aid in place? yes: version-scoped `.grype.yaml` ignores, each with `expires=2026-12-18`; enforced by `scripts/governance/tier0.d/check-grype-ignore-expiry.sh` (WARN pre-commit, FAIL maintenance/CI). Repo never builds FTS5 detail=none tables (`rg detail=none` over .py/.sql/.rs: 0 hits), which covers the high CVE-2026-119373; the other highs (119374/79/586) were not individually read, UNVERIFIED.
+- root cause: nixos-26.05 head still ships sqlite 3.53.3; fixed in 3.53.4/3.54.0 (NVD `<3.54.0`); 3.54.0 is already in the closure for unstable consumers.
+- producer to fix: nixpkgs 26.05 (sqlite bump).
+- fix-path: Re-check weekly; on a stable bump drop the ignores. Optional later: python3 leaf from unstable (rebuild-heavy).
+- class: T5 · severity: high/medium, partly on runtime path (python3, dashboard) · opened 2026-11-18 · evidence `docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md` · re-check by 2026-12-18.
+
+## WR-SEC-6 — harfbuzz WebAssembly-shaper CVE-2026-113679/113680 ignored in .grype.yaml — OPEN (MAINT-DUE 2026-12-18)
+- symptom: 6 alerts (3 high, 3 medium) on harfbuzz 13.2.1 and 14.5.1.
+- band-aid in place? yes: version-scoped `.grype.yaml` ignores, each with `expires=2026-12-18`; enforced by `scripts/governance/tier0.d/check-grype-ignore-expiry.sh` (WARN pre-commit, FAIL maintenance/CI). Applicability: the flaw is in the experimental WebAssembly shaper. `nix eval` of harfbuzz mesonFlags (13.2.1 stable and 14.5.1 unstable) shows no -Dwasm option and buildInputs only glib+freetype (no wasm runtime), so the shaper is not compiled. Upstream default-off of the option is UNVERIFIED against meson_options.txt.
+- root cause: NVD range 8.0.0 through 14.6.0: no fixed release; upstream commit 5e821de8 is unreleased, so even 14.5.1 is flagged.
+- producer to fix: upstream harfbuzz (release with 5e821de8).
+- fix-path: On a harfbuzz release containing the fix, bump and drop; if a build ever enables wasm, convert to a real exception with a font-source note.
+- class: T5 · severity: high on paper, not compiled in · opened 2026-11-18 · evidence `docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md` · re-check by 2026-12-18.
+
+## WR-SEC-7 — legacy audio decoders (libmodplug, wildmidi, game-music-emu, fluidsynth) ignored in .grype.yaml — OPEN (MAINT-DUE 2026-12-18)
+- symptom: 12 medium alerts on libmodplug 0.8.9.0, wildmidi 0.4.6/0.5.0, game-music-emu 0.6.4, fluidsynth 2.5.6; gme 0.6.5 and wildmidi 0.5.0 are already in the closure and still hit.
+- band-aid in place? yes: version-scoped `.grype.yaml` ignores, each with `expires=2026-12-18`; enforced by `scripts/governance/tier0.d/check-grype-ignore-expiry.sh` (WARN pre-commit, FAIL maintenance/CI). Desktop media plugins only, no AI-stack path; decoder removal is a later slice (override gst-plugins-bad libmodplug/wildmidi/fluidsynth = null, pydub -> headless ffmpeg; plugin-null behaviour UNVERIFIED, needs one build-check).
+- root cause: No upstream fix ("through 0.8.9.1", "through 0.5.0", "through 0.6.5", "through 2.6.1"); pulled by gst-plugins-bad, ffmpeg-full (pydub) and SDL2_mixer via desktop/Qt/GTK defaults.
+- producer to fix: upstream decoders, or removal from the closure.
+- fix-path: Dedicated rebuild-window slice (hundreds of derivations: gtk4, qtmultimedia, webkit, wireshark-qt); drop the ignores when the decoders leave the closure. Logged in issues-backlog.
+- class: T5 · severity: medium · opened 2026-11-18 · evidence `docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md` · re-check by 2026-12-18.
+
+## WR-SEC-8 — speex 1.2.1 and libical 3.0.20 CVEs ignored in .grype.yaml — OPEN (MAINT-DUE 2026-12-18)
+- symptom: speex CVE-2026-116741 (3 high, OOB write) and libical CVE-2026-111269 (3 medium).
+- band-aid in place? yes: version-scoped `.grype.yaml` ignores, each with `expires=2026-12-18`; enforced by `scripts/governance/tier0.d/check-grype-ignore-expiry.sh` (WARN pre-commit, FAIL maintenance/CI). speex needs a caller using speex_bits_init_buffer, reachable only via ffmpeg libspeex/gst-plugins-good/libshout (ffmpeg wrapper use UNVERIFIED); libical is consumed only by bluez 5.86/5.87.
+- root cause: speex 1.2.1 is the last release (2022, upstream xiph/speex#42 open, effectively abandoned); libical has no release past 3.0.20 for the fix (commit d753885c unreleased, NVD "through 4.0.6").
+- producer to fix: upstream (libical); Opus replaces speex (ladder rung 3, not practical now).
+- fix-path: Re-check libical releases; drop --enable-libspeex only if ffmpeg is rebuilt anyway.
+- class: T5 · severity: high (speex) / medium (libical), not on AI-stack path · opened 2026-11-18 · evidence `docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md` · re-check by 2026-12-18.
+
+## WR-SEC-9 — prometheus 3.12.0 CVE-2026-119566 ignored in .grype.yaml — OPEN (MAINT-DUE 2027-02-16)
+- symptom: 1 medium alert on prometheus 3.12.0 (AI-stack metrics service, monitoring.nix).
+- band-aid in place? yes: version-scoped `.grype.yaml` ignores, each with `expires=2027-02-16`; enforced by `scripts/governance/tier0.d/check-grype-ignore-expiry.sh` (WARN pre-commit, FAIL maintenance/CI). Configuration fact: the flaw needs Azure AD / Google IAM auth on a redirectable remote_write; the only remote_write in the repo is `monitoring.nix:49` to local 127.0.0.1 Tempo with no cloud auth. 90-day window is longer than the 30-day default because the triage ties it to config, not to an upstream wait; re-check on any monitoring.nix change.
+- root cause: nixos-26.05 head ships prometheus 3.12.0; fixed in >3.15.1 (unstable 3.16.0).
+- producer to fix: nixpkgs 26.05 (prometheus bump).
+- fix-path: Re-check weekly; on a bump drop; or move services.prometheus.package to unstable when a monitoring rebuild is due.
+- class: T5 · severity: medium, package on runtime path but flaw config-gated · opened 2026-11-18 · evidence `docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md` · re-check by 2027-02-16.
 
 ## WR-REVIEW-1 — review claims are receipt-backed but not cryptographically attributable — OPEN
 - symptom: ~85 merged PRs carry `Reviewed-by: codex|claude-sonnet|...` with no matching reviewer run (fabricated/self-asserted reviewer claims).

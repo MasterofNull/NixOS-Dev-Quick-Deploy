@@ -469,7 +469,7 @@ ignore:
   - vulnerability: CVE-2026-75904
     package:
       name: libmodplug
-    reason: "Internal component (libmodplug 0.8.9.0); contained to local subsystem without exposed attack surface"
+    reason: "Internal component (libmodplug 0.8.9.0); legacy audio decoder with no upstream fix, desktop media paths only. WR-SEC-7 expires=2026-12-18; triage evidence docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
 
   - vulnerability: CVE-2026-7233
     package:
@@ -1005,3 +1005,894 @@ ignore:
     package:
       name: ffmpeg
     reason: "Re-verified 2026-11-14: still no released upstream fix (latest tags n9.0.2, n8.1.3; CVE range 'through 9.0.2'; fix on master only): stack exhaustion in av_encryption_init_info_free (recursive PSSH). Affects 8.1.3 and the 9.0.2 CLI, so not version-scoped. Library consumers (pipewire, opencv, qtmultimedia, gst-libav) are not known to hand ffmpeg untrusted network URLs (repo consumer list unchanged: only scripts/ai/aq-transcribe invokes ffmpeg); aq-transcribe blocks rtsp/sftp/dash-network protocols via -protocol_whitelist file,pipe. WR-SEC-3 expires=2026-12-14"
+
+  # --- 2026-11-18 closure triage (171 alerts): time-boxed, version-scoped exceptions ---
+  # Evidence: triage evidence .agents/delegation/outputs/cve-triage-20261118.md + docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md
+
+  - vulnerability: CVE-2026-125198
+    package:
+      name: ffmpeg
+      version: "8.1.3"
+    reason: "2026-11-18 ffmpeg 8.1.3 wave (group c): no released fix, CVE ranges 'through 9.0.2', fixes master/PR only (merge state UNVERIFIED). Mitigation: scripts/ai/aq-transcribe:139 'timeout .. ffmpeg -nostdin -y -protocol_whitelist file,pipe' with PCM wav output only, so the batch's encoder/hwaccel/network paths are unreachable; test-ffmpeg-cve-mitigations.py covers it; 32-bit/big-endian-only items do not apply to x86_64-LE. Library consumers (pipewire, gst-libav, chromaprint, opencv, qtmultimedia, pydub) are desktop/media, not AI stack. WR-SEC-3 expires=2026-12-14; triage evidence .agents/delegation/outputs/cve-triage-20261118.md + docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-125206
+    package:
+      name: ffmpeg
+      version: "8.1.3"
+    reason: "2026-11-18 ffmpeg 8.1.3 wave (group c): no released fix, CVE ranges 'through 9.0.2', fixes master/PR only (merge state UNVERIFIED). Mitigation: scripts/ai/aq-transcribe:139 'timeout .. ffmpeg -nostdin -y -protocol_whitelist file,pipe' with PCM wav output only, so the batch's encoder/hwaccel/network paths are unreachable; test-ffmpeg-cve-mitigations.py covers it; 32-bit/big-endian-only items do not apply to x86_64-LE. Library consumers (pipewire, gst-libav, chromaprint, opencv, qtmultimedia, pydub) are desktop/media, not AI stack. WR-SEC-3 expires=2026-12-14; triage evidence .agents/delegation/outputs/cve-triage-20261118.md + docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-125195
+    package:
+      name: ffmpeg
+      version: "8.1.3"
+    reason: "2026-11-18 ffmpeg 8.1.3 wave (group c): no released fix, CVE ranges 'through 9.0.2', fixes master/PR only (merge state UNVERIFIED). Mitigation: scripts/ai/aq-transcribe:139 'timeout .. ffmpeg -nostdin -y -protocol_whitelist file,pipe' with PCM wav output only, so the batch's encoder/hwaccel/network paths are unreachable; test-ffmpeg-cve-mitigations.py covers it; 32-bit/big-endian-only items do not apply to x86_64-LE. Library consumers (pipewire, gst-libav, chromaprint, opencv, qtmultimedia, pydub) are desktop/media, not AI stack. WR-SEC-3 expires=2026-12-14; triage evidence .agents/delegation/outputs/cve-triage-20261118.md + docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-125188
+    package:
+      name: ffmpeg
+      version: "8.1.3"
+    reason: "2026-11-18 ffmpeg 8.1.3 wave (group c): no released fix, CVE ranges 'through 9.0.2', fixes master/PR only (merge state UNVERIFIED). Mitigation: scripts/ai/aq-transcribe:139 'timeout .. ffmpeg -nostdin -y -protocol_whitelist file,pipe' with PCM wav output only, so the batch's encoder/hwaccel/network paths are unreachable; test-ffmpeg-cve-mitigations.py covers it; 32-bit/big-endian-only items do not apply to x86_64-LE. Library consumers (pipewire, gst-libav, chromaprint, opencv, qtmultimedia, pydub) are desktop/media, not AI stack. WR-SEC-3 expires=2026-12-14; triage evidence .agents/delegation/outputs/cve-triage-20261118.md + docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-125098
+    package:
+      name: ffmpeg
+      version: "8.1.3"
+    reason: "2026-11-18 ffmpeg 8.1.3 wave (group c): no released fix, CVE ranges 'through 9.0.2', fixes master/PR only (merge state UNVERIFIED). Mitigation: scripts/ai/aq-transcribe:139 'timeout .. ffmpeg -nostdin -y -protocol_whitelist file,pipe' with PCM wav output only, so the batch's encoder/hwaccel/network paths are unreachable; test-ffmpeg-cve-mitigations.py covers it; 32-bit/big-endian-only items do not apply to x86_64-LE. Library consumers (pipewire, gst-libav, chromaprint, opencv, qtmultimedia, pydub) are desktop/media, not AI stack. WR-SEC-3 expires=2026-12-14; triage evidence .agents/delegation/outputs/cve-triage-20261118.md + docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-125236
+    package:
+      name: ffmpeg
+      version: "8.1.3"
+    reason: "2026-11-18 ffmpeg 8.1.3 wave (group c): no released fix, CVE ranges 'through 9.0.2', fixes master/PR only (merge state UNVERIFIED). Mitigation: scripts/ai/aq-transcribe:139 'timeout .. ffmpeg -nostdin -y -protocol_whitelist file,pipe' with PCM wav output only, so the batch's encoder/hwaccel/network paths are unreachable; test-ffmpeg-cve-mitigations.py covers it; 32-bit/big-endian-only items do not apply to x86_64-LE. Library consumers (pipewire, gst-libav, chromaprint, opencv, qtmultimedia, pydub) are desktop/media, not AI stack. WR-SEC-3 expires=2026-12-14; triage evidence .agents/delegation/outputs/cve-triage-20261118.md + docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-125243
+    package:
+      name: ffmpeg
+      version: "8.1.3"
+    reason: "2026-11-18 ffmpeg 8.1.3 wave (group c): no released fix, CVE ranges 'through 9.0.2', fixes master/PR only (merge state UNVERIFIED). Mitigation: scripts/ai/aq-transcribe:139 'timeout .. ffmpeg -nostdin -y -protocol_whitelist file,pipe' with PCM wav output only, so the batch's encoder/hwaccel/network paths are unreachable; test-ffmpeg-cve-mitigations.py covers it; 32-bit/big-endian-only items do not apply to x86_64-LE. Library consumers (pipewire, gst-libav, chromaprint, opencv, qtmultimedia, pydub) are desktop/media, not AI stack. WR-SEC-3 expires=2026-12-14; triage evidence .agents/delegation/outputs/cve-triage-20261118.md + docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-125247
+    package:
+      name: ffmpeg
+      version: "8.1.3"
+    reason: "2026-11-18 ffmpeg 8.1.3 wave (group c): no released fix, CVE ranges 'through 9.0.2', fixes master/PR only (merge state UNVERIFIED). Mitigation: scripts/ai/aq-transcribe:139 'timeout .. ffmpeg -nostdin -y -protocol_whitelist file,pipe' with PCM wav output only, so the batch's encoder/hwaccel/network paths are unreachable; test-ffmpeg-cve-mitigations.py covers it; 32-bit/big-endian-only items do not apply to x86_64-LE. Library consumers (pipewire, gst-libav, chromaprint, opencv, qtmultimedia, pydub) are desktop/media, not AI stack. WR-SEC-3 expires=2026-12-14; triage evidence .agents/delegation/outputs/cve-triage-20261118.md + docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-125266
+    package:
+      name: ffmpeg
+      version: "8.1.3"
+    reason: "2026-11-18 ffmpeg 8.1.3 wave (group c): no released fix, CVE ranges 'through 9.0.2', fixes master/PR only (merge state UNVERIFIED). Mitigation: scripts/ai/aq-transcribe:139 'timeout .. ffmpeg -nostdin -y -protocol_whitelist file,pipe' with PCM wav output only, so the batch's encoder/hwaccel/network paths are unreachable; test-ffmpeg-cve-mitigations.py covers it; 32-bit/big-endian-only items do not apply to x86_64-LE. Library consumers (pipewire, gst-libav, chromaprint, opencv, qtmultimedia, pydub) are desktop/media, not AI stack. WR-SEC-3 expires=2026-12-14; triage evidence .agents/delegation/outputs/cve-triage-20261118.md + docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-125192
+    package:
+      name: ffmpeg
+      version: "8.1.3"
+    reason: "2026-11-18 ffmpeg 8.1.3 wave (group c): no released fix, CVE ranges 'through 9.0.2', fixes master/PR only (merge state UNVERIFIED). Mitigation: scripts/ai/aq-transcribe:139 'timeout .. ffmpeg -nostdin -y -protocol_whitelist file,pipe' with PCM wav output only, so the batch's encoder/hwaccel/network paths are unreachable; test-ffmpeg-cve-mitigations.py covers it; 32-bit/big-endian-only items do not apply to x86_64-LE. Library consumers (pipewire, gst-libav, chromaprint, opencv, qtmultimedia, pydub) are desktop/media, not AI stack. WR-SEC-3 expires=2026-12-14; triage evidence .agents/delegation/outputs/cve-triage-20261118.md + docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-125190
+    package:
+      name: ffmpeg
+      version: "8.1.3"
+    reason: "2026-11-18 ffmpeg 8.1.3 wave (group c): no released fix, CVE ranges 'through 9.0.2', fixes master/PR only (merge state UNVERIFIED). Mitigation: scripts/ai/aq-transcribe:139 'timeout .. ffmpeg -nostdin -y -protocol_whitelist file,pipe' with PCM wav output only, so the batch's encoder/hwaccel/network paths are unreachable; test-ffmpeg-cve-mitigations.py covers it; 32-bit/big-endian-only items do not apply to x86_64-LE. Library consumers (pipewire, gst-libav, chromaprint, opencv, qtmultimedia, pydub) are desktop/media, not AI stack. WR-SEC-3 expires=2026-12-14; triage evidence .agents/delegation/outputs/cve-triage-20261118.md + docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-125182
+    package:
+      name: ffmpeg
+      version: "8.1.3"
+    reason: "2026-11-18 ffmpeg 8.1.3 wave (group c): no released fix, CVE ranges 'through 9.0.2', fixes master/PR only (merge state UNVERIFIED). Mitigation: scripts/ai/aq-transcribe:139 'timeout .. ffmpeg -nostdin -y -protocol_whitelist file,pipe' with PCM wav output only, so the batch's encoder/hwaccel/network paths are unreachable; test-ffmpeg-cve-mitigations.py covers it; 32-bit/big-endian-only items do not apply to x86_64-LE. Library consumers (pipewire, gst-libav, chromaprint, opencv, qtmultimedia, pydub) are desktop/media, not AI stack. WR-SEC-3 expires=2026-12-14; triage evidence .agents/delegation/outputs/cve-triage-20261118.md + docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-125268
+    package:
+      name: ffmpeg
+      version: "8.1.3"
+    reason: "2026-11-18 ffmpeg 8.1.3 wave (group c): no released fix, CVE ranges 'through 9.0.2', fixes master/PR only (merge state UNVERIFIED). Mitigation: scripts/ai/aq-transcribe:139 'timeout .. ffmpeg -nostdin -y -protocol_whitelist file,pipe' with PCM wav output only, so the batch's encoder/hwaccel/network paths are unreachable; test-ffmpeg-cve-mitigations.py covers it; 32-bit/big-endian-only items do not apply to x86_64-LE. Library consumers (pipewire, gst-libav, chromaprint, opencv, qtmultimedia, pydub) are desktop/media, not AI stack. WR-SEC-3 expires=2026-12-14; triage evidence .agents/delegation/outputs/cve-triage-20261118.md + docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-125217
+    package:
+      name: ffmpeg
+      version: "8.1.3"
+    reason: "2026-11-18 ffmpeg 8.1.3 wave (group c): no released fix, CVE ranges 'through 9.0.2', fixes master/PR only (merge state UNVERIFIED). Mitigation: scripts/ai/aq-transcribe:139 'timeout .. ffmpeg -nostdin -y -protocol_whitelist file,pipe' with PCM wav output only, so the batch's encoder/hwaccel/network paths are unreachable; test-ffmpeg-cve-mitigations.py covers it; 32-bit/big-endian-only items do not apply to x86_64-LE. Library consumers (pipewire, gst-libav, chromaprint, opencv, qtmultimedia, pydub) are desktop/media, not AI stack. WR-SEC-3 expires=2026-12-14; triage evidence .agents/delegation/outputs/cve-triage-20261118.md + docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-125176
+    package:
+      name: ffmpeg
+      version: "8.1.3"
+    reason: "2026-11-18 ffmpeg 8.1.3 wave (group c): no released fix, CVE ranges 'through 9.0.2', fixes master/PR only (merge state UNVERIFIED). Mitigation: scripts/ai/aq-transcribe:139 'timeout .. ffmpeg -nostdin -y -protocol_whitelist file,pipe' with PCM wav output only, so the batch's encoder/hwaccel/network paths are unreachable; test-ffmpeg-cve-mitigations.py covers it; 32-bit/big-endian-only items do not apply to x86_64-LE. Library consumers (pipewire, gst-libav, chromaprint, opencv, qtmultimedia, pydub) are desktop/media, not AI stack. WR-SEC-3 expires=2026-12-14; triage evidence .agents/delegation/outputs/cve-triage-20261118.md + docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-125175
+    package:
+      name: ffmpeg
+      version: "8.1.3"
+    reason: "2026-11-18 ffmpeg 8.1.3 wave (group c): no released fix, CVE ranges 'through 9.0.2', fixes master/PR only (merge state UNVERIFIED). Mitigation: scripts/ai/aq-transcribe:139 'timeout .. ffmpeg -nostdin -y -protocol_whitelist file,pipe' with PCM wav output only, so the batch's encoder/hwaccel/network paths are unreachable; test-ffmpeg-cve-mitigations.py covers it; 32-bit/big-endian-only items do not apply to x86_64-LE. Library consumers (pipewire, gst-libav, chromaprint, opencv, qtmultimedia, pydub) are desktop/media, not AI stack. WR-SEC-3 expires=2026-12-14; triage evidence .agents/delegation/outputs/cve-triage-20261118.md + docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-125184
+    package:
+      name: ffmpeg
+      version: "8.1.3"
+    reason: "2026-11-18 ffmpeg 8.1.3 wave (group c): no released fix, CVE ranges 'through 9.0.2', fixes master/PR only (merge state UNVERIFIED). Mitigation: scripts/ai/aq-transcribe:139 'timeout .. ffmpeg -nostdin -y -protocol_whitelist file,pipe' with PCM wav output only, so the batch's encoder/hwaccel/network paths are unreachable; test-ffmpeg-cve-mitigations.py covers it; 32-bit/big-endian-only items do not apply to x86_64-LE. Library consumers (pipewire, gst-libav, chromaprint, opencv, qtmultimedia, pydub) are desktop/media, not AI stack. WR-SEC-3 expires=2026-12-14; triage evidence .agents/delegation/outputs/cve-triage-20261118.md + docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-125177
+    package:
+      name: ffmpeg
+      version: "8.1.3"
+    reason: "2026-11-18 ffmpeg 8.1.3 wave (group c): no released fix, CVE ranges 'through 9.0.2', fixes master/PR only (merge state UNVERIFIED). Mitigation: scripts/ai/aq-transcribe:139 'timeout .. ffmpeg -nostdin -y -protocol_whitelist file,pipe' with PCM wav output only, so the batch's encoder/hwaccel/network paths are unreachable; test-ffmpeg-cve-mitigations.py covers it; 32-bit/big-endian-only items do not apply to x86_64-LE. Library consumers (pipewire, gst-libav, chromaprint, opencv, qtmultimedia, pydub) are desktop/media, not AI stack. WR-SEC-3 expires=2026-12-14; triage evidence .agents/delegation/outputs/cve-triage-20261118.md + docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-125170
+    package:
+      name: ffmpeg
+      version: "8.1.3"
+    reason: "2026-11-18 ffmpeg 8.1.3 wave (group c): no released fix, CVE ranges 'through 9.0.2', fixes master/PR only (merge state UNVERIFIED). Mitigation: scripts/ai/aq-transcribe:139 'timeout .. ffmpeg -nostdin -y -protocol_whitelist file,pipe' with PCM wav output only, so the batch's encoder/hwaccel/network paths are unreachable; test-ffmpeg-cve-mitigations.py covers it; 32-bit/big-endian-only items do not apply to x86_64-LE. Library consumers (pipewire, gst-libav, chromaprint, opencv, qtmultimedia, pydub) are desktop/media, not AI stack. WR-SEC-3 expires=2026-12-14; triage evidence .agents/delegation/outputs/cve-triage-20261118.md + docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-125097
+    package:
+      name: ffmpeg
+      version: "8.1.3"
+    reason: "2026-11-18 ffmpeg 8.1.3 wave (group c): no released fix, CVE ranges 'through 9.0.2', fixes master/PR only (merge state UNVERIFIED). Mitigation: scripts/ai/aq-transcribe:139 'timeout .. ffmpeg -nostdin -y -protocol_whitelist file,pipe' with PCM wav output only, so the batch's encoder/hwaccel/network paths are unreachable; test-ffmpeg-cve-mitigations.py covers it; 32-bit/big-endian-only items do not apply to x86_64-LE. Library consumers (pipewire, gst-libav, chromaprint, opencv, qtmultimedia, pydub) are desktop/media, not AI stack. WR-SEC-3 expires=2026-12-14; triage evidence .agents/delegation/outputs/cve-triage-20261118.md + docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-125103
+    package:
+      name: ffmpeg
+      version: "8.1.3"
+    reason: "2026-11-18 ffmpeg 8.1.3 wave (group c): no released fix, CVE ranges 'through 9.0.2', fixes master/PR only (merge state UNVERIFIED). Mitigation: scripts/ai/aq-transcribe:139 'timeout .. ffmpeg -nostdin -y -protocol_whitelist file,pipe' with PCM wav output only, so the batch's encoder/hwaccel/network paths are unreachable; test-ffmpeg-cve-mitigations.py covers it; 32-bit/big-endian-only items do not apply to x86_64-LE. Library consumers (pipewire, gst-libav, chromaprint, opencv, qtmultimedia, pydub) are desktop/media, not AI stack. WR-SEC-3 expires=2026-12-14; triage evidence .agents/delegation/outputs/cve-triage-20261118.md + docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-125101
+    package:
+      name: ffmpeg
+      version: "8.1.3"
+    reason: "2026-11-18 ffmpeg 8.1.3 wave (group c): no released fix, CVE ranges 'through 9.0.2', fixes master/PR only (merge state UNVERIFIED). Mitigation: scripts/ai/aq-transcribe:139 'timeout .. ffmpeg -nostdin -y -protocol_whitelist file,pipe' with PCM wav output only, so the batch's encoder/hwaccel/network paths are unreachable; test-ffmpeg-cve-mitigations.py covers it; 32-bit/big-endian-only items do not apply to x86_64-LE. Library consumers (pipewire, gst-libav, chromaprint, opencv, qtmultimedia, pydub) are desktop/media, not AI stack. WR-SEC-3 expires=2026-12-14; triage evidence .agents/delegation/outputs/cve-triage-20261118.md + docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-125100
+    package:
+      name: ffmpeg
+      version: "8.1.3"
+    reason: "2026-11-18 ffmpeg 8.1.3 wave (group c): no released fix, CVE ranges 'through 9.0.2', fixes master/PR only (merge state UNVERIFIED). Mitigation: scripts/ai/aq-transcribe:139 'timeout .. ffmpeg -nostdin -y -protocol_whitelist file,pipe' with PCM wav output only, so the batch's encoder/hwaccel/network paths are unreachable; test-ffmpeg-cve-mitigations.py covers it; 32-bit/big-endian-only items do not apply to x86_64-LE. Library consumers (pipewire, gst-libav, chromaprint, opencv, qtmultimedia, pydub) are desktop/media, not AI stack. WR-SEC-3 expires=2026-12-14; triage evidence .agents/delegation/outputs/cve-triage-20261118.md + docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-125096
+    package:
+      name: ffmpeg
+      version: "8.1.3"
+    reason: "2026-11-18 ffmpeg 8.1.3 wave (group c): no released fix, CVE ranges 'through 9.0.2', fixes master/PR only (merge state UNVERIFIED). Mitigation: scripts/ai/aq-transcribe:139 'timeout .. ffmpeg -nostdin -y -protocol_whitelist file,pipe' with PCM wav output only, so the batch's encoder/hwaccel/network paths are unreachable; test-ffmpeg-cve-mitigations.py covers it; 32-bit/big-endian-only items do not apply to x86_64-LE. Library consumers (pipewire, gst-libav, chromaprint, opencv, qtmultimedia, pydub) are desktop/media, not AI stack. WR-SEC-3 expires=2026-12-14; triage evidence .agents/delegation/outputs/cve-triage-20261118.md + docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-125179
+    package:
+      name: ffmpeg
+      version: "8.1.3"
+    reason: "2026-11-18 ffmpeg 8.1.3 wave (group c): no released fix, CVE ranges 'through 9.0.2', fixes master/PR only (merge state UNVERIFIED). Mitigation: scripts/ai/aq-transcribe:139 'timeout .. ffmpeg -nostdin -y -protocol_whitelist file,pipe' with PCM wav output only, so the batch's encoder/hwaccel/network paths are unreachable; test-ffmpeg-cve-mitigations.py covers it; 32-bit/big-endian-only items do not apply to x86_64-LE. Library consumers (pipewire, gst-libav, chromaprint, opencv, qtmultimedia, pydub) are desktop/media, not AI stack. WR-SEC-3 expires=2026-12-14; triage evidence .agents/delegation/outputs/cve-triage-20261118.md + docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-125102
+    package:
+      name: ffmpeg
+      version: "8.1.3"
+    reason: "2026-11-18 ffmpeg 8.1.3 wave (group c): no released fix, CVE ranges 'through 9.0.2', fixes master/PR only (merge state UNVERIFIED). Mitigation: scripts/ai/aq-transcribe:139 'timeout .. ffmpeg -nostdin -y -protocol_whitelist file,pipe' with PCM wav output only, so the batch's encoder/hwaccel/network paths are unreachable; test-ffmpeg-cve-mitigations.py covers it; 32-bit/big-endian-only items do not apply to x86_64-LE. Library consumers (pipewire, gst-libav, chromaprint, opencv, qtmultimedia, pydub) are desktop/media, not AI stack. WR-SEC-3 expires=2026-12-14; triage evidence .agents/delegation/outputs/cve-triage-20261118.md + docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-125265
+    package:
+      name: ffmpeg
+      version: "8.1.3"
+    reason: "2026-11-18 ffmpeg 8.1.3 wave (group c): no released fix, CVE ranges 'through 9.0.2', fixes master/PR only (merge state UNVERIFIED). Mitigation: scripts/ai/aq-transcribe:139 'timeout .. ffmpeg -nostdin -y -protocol_whitelist file,pipe' with PCM wav output only, so the batch's encoder/hwaccel/network paths are unreachable; test-ffmpeg-cve-mitigations.py covers it; 32-bit/big-endian-only items do not apply to x86_64-LE. Library consumers (pipewire, gst-libav, chromaprint, opencv, qtmultimedia, pydub) are desktop/media, not AI stack. WR-SEC-3 expires=2026-12-14; triage evidence .agents/delegation/outputs/cve-triage-20261118.md + docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-125255
+    package:
+      name: ffmpeg
+      version: "8.1.3"
+    reason: "2026-11-18 ffmpeg 8.1.3 wave (group c): no released fix, CVE ranges 'through 9.0.2', fixes master/PR only (merge state UNVERIFIED). Mitigation: scripts/ai/aq-transcribe:139 'timeout .. ffmpeg -nostdin -y -protocol_whitelist file,pipe' with PCM wav output only, so the batch's encoder/hwaccel/network paths are unreachable; test-ffmpeg-cve-mitigations.py covers it; 32-bit/big-endian-only items do not apply to x86_64-LE. Library consumers (pipewire, gst-libav, chromaprint, opencv, qtmultimedia, pydub) are desktop/media, not AI stack. WR-SEC-3 expires=2026-12-14; triage evidence .agents/delegation/outputs/cve-triage-20261118.md + docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-125270
+    package:
+      name: ffmpeg
+      version: "8.1.3"
+    reason: "2026-11-18 ffmpeg 8.1.3 wave (group c): no released fix, CVE ranges 'through 9.0.2', fixes master/PR only (merge state UNVERIFIED). Mitigation: scripts/ai/aq-transcribe:139 'timeout .. ffmpeg -nostdin -y -protocol_whitelist file,pipe' with PCM wav output only, so the batch's encoder/hwaccel/network paths are unreachable; test-ffmpeg-cve-mitigations.py covers it; 32-bit/big-endian-only items do not apply to x86_64-LE. Library consumers (pipewire, gst-libav, chromaprint, opencv, qtmultimedia, pydub) are desktop/media, not AI stack. WR-SEC-3 expires=2026-12-14; triage evidence .agents/delegation/outputs/cve-triage-20261118.md + docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-125253
+    package:
+      name: ffmpeg
+      version: "8.1.3"
+    reason: "2026-11-18 ffmpeg 8.1.3 wave (group c): no released fix, CVE ranges 'through 9.0.2', fixes master/PR only (merge state UNVERIFIED). Mitigation: scripts/ai/aq-transcribe:139 'timeout .. ffmpeg -nostdin -y -protocol_whitelist file,pipe' with PCM wav output only, so the batch's encoder/hwaccel/network paths are unreachable; test-ffmpeg-cve-mitigations.py covers it; 32-bit/big-endian-only items do not apply to x86_64-LE. Library consumers (pipewire, gst-libav, chromaprint, opencv, qtmultimedia, pydub) are desktop/media, not AI stack. WR-SEC-3 expires=2026-12-14; triage evidence .agents/delegation/outputs/cve-triage-20261118.md + docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-125220
+    package:
+      name: ffmpeg
+      version: "8.1.3"
+    reason: "2026-11-18 ffmpeg 8.1.3 wave (group c): no released fix, CVE ranges 'through 9.0.2', fixes master/PR only (merge state UNVERIFIED). Mitigation: scripts/ai/aq-transcribe:139 'timeout .. ffmpeg -nostdin -y -protocol_whitelist file,pipe' with PCM wav output only, so the batch's encoder/hwaccel/network paths are unreachable; test-ffmpeg-cve-mitigations.py covers it; 32-bit/big-endian-only items do not apply to x86_64-LE. Library consumers (pipewire, gst-libav, chromaprint, opencv, qtmultimedia, pydub) are desktop/media, not AI stack. WR-SEC-3 expires=2026-12-14; triage evidence .agents/delegation/outputs/cve-triage-20261118.md + docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-125099
+    package:
+      name: ffmpeg
+      version: "8.1.3"
+    reason: "2026-11-18 ffmpeg 8.1.3 wave (group c): no released fix, CVE ranges 'through 9.0.2', fixes master/PR only (merge state UNVERIFIED). Mitigation: scripts/ai/aq-transcribe:139 'timeout .. ffmpeg -nostdin -y -protocol_whitelist file,pipe' with PCM wav output only, so the batch's encoder/hwaccel/network paths are unreachable; test-ffmpeg-cve-mitigations.py covers it; 32-bit/big-endian-only items do not apply to x86_64-LE. Library consumers (pipewire, gst-libav, chromaprint, opencv, qtmultimedia, pydub) are desktop/media, not AI stack. WR-SEC-3 expires=2026-12-14; triage evidence .agents/delegation/outputs/cve-triage-20261118.md + docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-125095
+    package:
+      name: ffmpeg
+      version: "8.1.3"
+    reason: "2026-11-18 ffmpeg 8.1.3 wave (group c): no released fix, CVE ranges 'through 9.0.2', fixes master/PR only (merge state UNVERIFIED). Mitigation: scripts/ai/aq-transcribe:139 'timeout .. ffmpeg -nostdin -y -protocol_whitelist file,pipe' with PCM wav output only, so the batch's encoder/hwaccel/network paths are unreachable; test-ffmpeg-cve-mitigations.py covers it; 32-bit/big-endian-only items do not apply to x86_64-LE. Library consumers (pipewire, gst-libav, chromaprint, opencv, qtmultimedia, pydub) are desktop/media, not AI stack. WR-SEC-3 expires=2026-12-14; triage evidence .agents/delegation/outputs/cve-triage-20261118.md + docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-125178
+    package:
+      name: ffmpeg
+      version: "8.1.3"
+    reason: "2026-11-18 ffmpeg 8.1.3 wave (group c): no released fix, CVE ranges 'through 9.0.2', fixes master/PR only (merge state UNVERIFIED). Mitigation: scripts/ai/aq-transcribe:139 'timeout .. ffmpeg -nostdin -y -protocol_whitelist file,pipe' with PCM wav output only, so the batch's encoder/hwaccel/network paths are unreachable; test-ffmpeg-cve-mitigations.py covers it; 32-bit/big-endian-only items do not apply to x86_64-LE. Library consumers (pipewire, gst-libav, chromaprint, opencv, qtmultimedia, pydub) are desktop/media, not AI stack. WR-SEC-3 expires=2026-12-14; triage evidence .agents/delegation/outputs/cve-triage-20261118.md + docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-125172
+    package:
+      name: ffmpeg
+      version: "8.1.3"
+    reason: "2026-11-18 ffmpeg 8.1.3 wave (group c): no released fix, CVE ranges 'through 9.0.2', fixes master/PR only (merge state UNVERIFIED). Mitigation: scripts/ai/aq-transcribe:139 'timeout .. ffmpeg -nostdin -y -protocol_whitelist file,pipe' with PCM wav output only, so the batch's encoder/hwaccel/network paths are unreachable; test-ffmpeg-cve-mitigations.py covers it; 32-bit/big-endian-only items do not apply to x86_64-LE. Library consumers (pipewire, gst-libav, chromaprint, opencv, qtmultimedia, pydub) are desktop/media, not AI stack. WR-SEC-3 expires=2026-12-14; triage evidence .agents/delegation/outputs/cve-triage-20261118.md + docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-125261
+    package:
+      name: ffmpeg
+      version: "8.1.3"
+    reason: "2026-11-18 ffmpeg 8.1.3 wave (group c): no released fix, CVE ranges 'through 9.0.2', fixes master/PR only (merge state UNVERIFIED). Mitigation: scripts/ai/aq-transcribe:139 'timeout .. ffmpeg -nostdin -y -protocol_whitelist file,pipe' with PCM wav output only, so the batch's encoder/hwaccel/network paths are unreachable; test-ffmpeg-cve-mitigations.py covers it; 32-bit/big-endian-only items do not apply to x86_64-LE. Library consumers (pipewire, gst-libav, chromaprint, opencv, qtmultimedia, pydub) are desktop/media, not AI stack. WR-SEC-3 expires=2026-12-14; triage evidence .agents/delegation/outputs/cve-triage-20261118.md + docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-125193
+    package:
+      name: ffmpeg
+      version: "8.1.3"
+    reason: "2026-11-18 ffmpeg 8.1.3 wave (group c): no released fix, CVE ranges 'through 9.0.2', fixes master/PR only (merge state UNVERIFIED). Mitigation: scripts/ai/aq-transcribe:139 'timeout .. ffmpeg -nostdin -y -protocol_whitelist file,pipe' with PCM wav output only, so the batch's encoder/hwaccel/network paths are unreachable; test-ffmpeg-cve-mitigations.py covers it; 32-bit/big-endian-only items do not apply to x86_64-LE. Library consumers (pipewire, gst-libav, chromaprint, opencv, qtmultimedia, pydub) are desktop/media, not AI stack. WR-SEC-3 expires=2026-12-14; triage evidence .agents/delegation/outputs/cve-triage-20261118.md + docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-125171
+    package:
+      name: ffmpeg
+      version: "8.1.3"
+    reason: "2026-11-18 ffmpeg 8.1.3 wave (group c): no released fix, CVE ranges 'through 9.0.2', fixes master/PR only (merge state UNVERIFIED). Mitigation: scripts/ai/aq-transcribe:139 'timeout .. ffmpeg -nostdin -y -protocol_whitelist file,pipe' with PCM wav output only, so the batch's encoder/hwaccel/network paths are unreachable; test-ffmpeg-cve-mitigations.py covers it; 32-bit/big-endian-only items do not apply to x86_64-LE. Library consumers (pipewire, gst-libav, chromaprint, opencv, qtmultimedia, pydub) are desktop/media, not AI stack. WR-SEC-3 expires=2026-12-14; triage evidence .agents/delegation/outputs/cve-triage-20261118.md + docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-125197
+    package:
+      name: ffmpeg
+      version: "8.1.3"
+    reason: "2026-11-18 ffmpeg 8.1.3 wave (group c): no released fix, CVE ranges 'through 9.0.2', fixes master/PR only (merge state UNVERIFIED). Mitigation: scripts/ai/aq-transcribe:139 'timeout .. ffmpeg -nostdin -y -protocol_whitelist file,pipe' with PCM wav output only, so the batch's encoder/hwaccel/network paths are unreachable; test-ffmpeg-cve-mitigations.py covers it; 32-bit/big-endian-only items do not apply to x86_64-LE. Library consumers (pipewire, gst-libav, chromaprint, opencv, qtmultimedia, pydub) are desktop/media, not AI stack. WR-SEC-3 expires=2026-12-14; triage evidence .agents/delegation/outputs/cve-triage-20261118.md + docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-125252
+    package:
+      name: ffmpeg
+      version: "8.1.3"
+    reason: "2026-11-18 ffmpeg 8.1.3 wave (group c): no released fix, CVE ranges 'through 9.0.2', fixes master/PR only (merge state UNVERIFIED). Mitigation: scripts/ai/aq-transcribe:139 'timeout .. ffmpeg -nostdin -y -protocol_whitelist file,pipe' with PCM wav output only, so the batch's encoder/hwaccel/network paths are unreachable; test-ffmpeg-cve-mitigations.py covers it; 32-bit/big-endian-only items do not apply to x86_64-LE. Library consumers (pipewire, gst-libav, chromaprint, opencv, qtmultimedia, pydub) are desktop/media, not AI stack. WR-SEC-3 expires=2026-12-14; triage evidence .agents/delegation/outputs/cve-triage-20261118.md + docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-125223
+    package:
+      name: ffmpeg
+      version: "8.1.3"
+    reason: "2026-11-18 ffmpeg 8.1.3 wave (group c): no released fix, CVE ranges 'through 9.0.2', fixes master/PR only (merge state UNVERIFIED). Mitigation: scripts/ai/aq-transcribe:139 'timeout .. ffmpeg -nostdin -y -protocol_whitelist file,pipe' with PCM wav output only, so the batch's encoder/hwaccel/network paths are unreachable; test-ffmpeg-cve-mitigations.py covers it; 32-bit/big-endian-only items do not apply to x86_64-LE. Library consumers (pipewire, gst-libav, chromaprint, opencv, qtmultimedia, pydub) are desktop/media, not AI stack. WR-SEC-3 expires=2026-12-14; triage evidence .agents/delegation/outputs/cve-triage-20261118.md + docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-125215
+    package:
+      name: ffmpeg
+      version: "8.1.3"
+    reason: "2026-11-18 ffmpeg 8.1.3 wave (group c): no released fix, CVE ranges 'through 9.0.2', fixes master/PR only (merge state UNVERIFIED). Mitigation: scripts/ai/aq-transcribe:139 'timeout .. ffmpeg -nostdin -y -protocol_whitelist file,pipe' with PCM wav output only, so the batch's encoder/hwaccel/network paths are unreachable; test-ffmpeg-cve-mitigations.py covers it; 32-bit/big-endian-only items do not apply to x86_64-LE. Library consumers (pipewire, gst-libav, chromaprint, opencv, qtmultimedia, pydub) are desktop/media, not AI stack. WR-SEC-3 expires=2026-12-14; triage evidence .agents/delegation/outputs/cve-triage-20261118.md + docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-125191
+    package:
+      name: ffmpeg
+      version: "8.1.3"
+    reason: "2026-11-18 ffmpeg 8.1.3 wave (group c): no released fix, CVE ranges 'through 9.0.2', fixes master/PR only (merge state UNVERIFIED). Mitigation: scripts/ai/aq-transcribe:139 'timeout .. ffmpeg -nostdin -y -protocol_whitelist file,pipe' with PCM wav output only, so the batch's encoder/hwaccel/network paths are unreachable; test-ffmpeg-cve-mitigations.py covers it; 32-bit/big-endian-only items do not apply to x86_64-LE. Library consumers (pipewire, gst-libav, chromaprint, opencv, qtmultimedia, pydub) are desktop/media, not AI stack. WR-SEC-3 expires=2026-12-14; triage evidence .agents/delegation/outputs/cve-triage-20261118.md + docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-125189
+    package:
+      name: ffmpeg
+      version: "8.1.3"
+    reason: "2026-11-18 ffmpeg 8.1.3 wave (group c): no released fix, CVE ranges 'through 9.0.2', fixes master/PR only (merge state UNVERIFIED). Mitigation: scripts/ai/aq-transcribe:139 'timeout .. ffmpeg -nostdin -y -protocol_whitelist file,pipe' with PCM wav output only, so the batch's encoder/hwaccel/network paths are unreachable; test-ffmpeg-cve-mitigations.py covers it; 32-bit/big-endian-only items do not apply to x86_64-LE. Library consumers (pipewire, gst-libav, chromaprint, opencv, qtmultimedia, pydub) are desktop/media, not AI stack. WR-SEC-3 expires=2026-12-14; triage evidence .agents/delegation/outputs/cve-triage-20261118.md + docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-125258
+    package:
+      name: ffmpeg
+      version: "8.1.3"
+    reason: "2026-11-18 ffmpeg 8.1.3 wave (group c): no released fix, CVE ranges 'through 9.0.2', fixes master/PR only (merge state UNVERIFIED). Mitigation: scripts/ai/aq-transcribe:139 'timeout .. ffmpeg -nostdin -y -protocol_whitelist file,pipe' with PCM wav output only, so the batch's encoder/hwaccel/network paths are unreachable; test-ffmpeg-cve-mitigations.py covers it; 32-bit/big-endian-only items do not apply to x86_64-LE. Library consumers (pipewire, gst-libav, chromaprint, opencv, qtmultimedia, pydub) are desktop/media, not AI stack. WR-SEC-3 expires=2026-12-14; triage evidence .agents/delegation/outputs/cve-triage-20261118.md + docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-125186
+    package:
+      name: ffmpeg
+      version: "8.1.3"
+    reason: "2026-11-18 ffmpeg 8.1.3 wave (group c): no released fix, CVE ranges 'through 9.0.2', fixes master/PR only (merge state UNVERIFIED). Mitigation: scripts/ai/aq-transcribe:139 'timeout .. ffmpeg -nostdin -y -protocol_whitelist file,pipe' with PCM wav output only, so the batch's encoder/hwaccel/network paths are unreachable; test-ffmpeg-cve-mitigations.py covers it; 32-bit/big-endian-only items do not apply to x86_64-LE. Library consumers (pipewire, gst-libav, chromaprint, opencv, qtmultimedia, pydub) are desktop/media, not AI stack. WR-SEC-3 expires=2026-12-14; triage evidence .agents/delegation/outputs/cve-triage-20261118.md + docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-125246
+    package:
+      name: ffmpeg
+      version: "8.1.3"
+    reason: "2026-11-18 ffmpeg 8.1.3 wave (group c): no released fix, CVE ranges 'through 9.0.2', fixes master/PR only (merge state UNVERIFIED). Mitigation: scripts/ai/aq-transcribe:139 'timeout .. ffmpeg -nostdin -y -protocol_whitelist file,pipe' with PCM wav output only, so the batch's encoder/hwaccel/network paths are unreachable; test-ffmpeg-cve-mitigations.py covers it; 32-bit/big-endian-only items do not apply to x86_64-LE. Library consumers (pipewire, gst-libav, chromaprint, opencv, qtmultimedia, pydub) are desktop/media, not AI stack. WR-SEC-3 expires=2026-12-14; triage evidence .agents/delegation/outputs/cve-triage-20261118.md + docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-125245
+    package:
+      name: ffmpeg
+      version: "8.1.3"
+    reason: "2026-11-18 ffmpeg 8.1.3 wave (group c): no released fix, CVE ranges 'through 9.0.2', fixes master/PR only (merge state UNVERIFIED). Mitigation: scripts/ai/aq-transcribe:139 'timeout .. ffmpeg -nostdin -y -protocol_whitelist file,pipe' with PCM wav output only, so the batch's encoder/hwaccel/network paths are unreachable; test-ffmpeg-cve-mitigations.py covers it; 32-bit/big-endian-only items do not apply to x86_64-LE. Library consumers (pipewire, gst-libav, chromaprint, opencv, qtmultimedia, pydub) are desktop/media, not AI stack. WR-SEC-3 expires=2026-12-14; triage evidence .agents/delegation/outputs/cve-triage-20261118.md + docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-125237
+    package:
+      name: ffmpeg
+      version: "8.1.3"
+    reason: "2026-11-18 ffmpeg 8.1.3 wave (group c): no released fix, CVE ranges 'through 9.0.2', fixes master/PR only (merge state UNVERIFIED). Mitigation: scripts/ai/aq-transcribe:139 'timeout .. ffmpeg -nostdin -y -protocol_whitelist file,pipe' with PCM wav output only, so the batch's encoder/hwaccel/network paths are unreachable; test-ffmpeg-cve-mitigations.py covers it; 32-bit/big-endian-only items do not apply to x86_64-LE. Library consumers (pipewire, gst-libav, chromaprint, opencv, qtmultimedia, pydub) are desktop/media, not AI stack. WR-SEC-3 expires=2026-12-14; triage evidence .agents/delegation/outputs/cve-triage-20261118.md + docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-125242
+    package:
+      name: ffmpeg
+      version: "8.1.3"
+    reason: "2026-11-18 ffmpeg 8.1.3 wave (group c): no released fix, CVE ranges 'through 9.0.2', fixes master/PR only (merge state UNVERIFIED). Mitigation: scripts/ai/aq-transcribe:139 'timeout .. ffmpeg -nostdin -y -protocol_whitelist file,pipe' with PCM wav output only, so the batch's encoder/hwaccel/network paths are unreachable; test-ffmpeg-cve-mitigations.py covers it; 32-bit/big-endian-only items do not apply to x86_64-LE. Library consumers (pipewire, gst-libav, chromaprint, opencv, qtmultimedia, pydub) are desktop/media, not AI stack. WR-SEC-3 expires=2026-12-14; triage evidence .agents/delegation/outputs/cve-triage-20261118.md + docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-125072
+    package:
+      name: ffmpeg
+      version: "8.1.3"
+    reason: "2026-11-18 ffmpeg 8.1.3 wave (group c): no released fix, CVE ranges 'through 9.0.2', fixes master/PR only (merge state UNVERIFIED). Mitigation: scripts/ai/aq-transcribe:139 'timeout .. ffmpeg -nostdin -y -protocol_whitelist file,pipe' with PCM wav output only, so the batch's encoder/hwaccel/network paths are unreachable; test-ffmpeg-cve-mitigations.py covers it; 32-bit/big-endian-only items do not apply to x86_64-LE. Library consumers (pipewire, gst-libav, chromaprint, opencv, qtmultimedia, pydub) are desktop/media, not AI stack. WR-SEC-3 expires=2026-12-14; triage evidence .agents/delegation/outputs/cve-triage-20261118.md + docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-125071
+    package:
+      name: ffmpeg
+      version: "8.1.3"
+    reason: "2026-11-18 ffmpeg 8.1.3 wave (group c): no released fix, CVE ranges 'through 9.0.2', fixes master/PR only (merge state UNVERIFIED). Mitigation: scripts/ai/aq-transcribe:139 'timeout .. ffmpeg -nostdin -y -protocol_whitelist file,pipe' with PCM wav output only, so the batch's encoder/hwaccel/network paths are unreachable; test-ffmpeg-cve-mitigations.py covers it; 32-bit/big-endian-only items do not apply to x86_64-LE. Library consumers (pipewire, gst-libav, chromaprint, opencv, qtmultimedia, pydub) are desktop/media, not AI stack. WR-SEC-3 expires=2026-12-14; triage evidence .agents/delegation/outputs/cve-triage-20261118.md + docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-125069
+    package:
+      name: ffmpeg
+      version: "8.1.3"
+    reason: "2026-11-18 ffmpeg 8.1.3 wave (group c): no released fix, CVE ranges 'through 9.0.2', fixes master/PR only (merge state UNVERIFIED). Mitigation: scripts/ai/aq-transcribe:139 'timeout .. ffmpeg -nostdin -y -protocol_whitelist file,pipe' with PCM wav output only, so the batch's encoder/hwaccel/network paths are unreachable; test-ffmpeg-cve-mitigations.py covers it; 32-bit/big-endian-only items do not apply to x86_64-LE. Library consumers (pipewire, gst-libav, chromaprint, opencv, qtmultimedia, pydub) are desktop/media, not AI stack. WR-SEC-3 expires=2026-12-14; triage evidence .agents/delegation/outputs/cve-triage-20261118.md + docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-125251
+    package:
+      name: ffmpeg
+      version: "8.1.3"
+    reason: "2026-11-18 ffmpeg 8.1.3 wave (group c): no released fix, CVE ranges 'through 9.0.2', fixes master/PR only (merge state UNVERIFIED). Mitigation: scripts/ai/aq-transcribe:139 'timeout .. ffmpeg -nostdin -y -protocol_whitelist file,pipe' with PCM wav output only, so the batch's encoder/hwaccel/network paths are unreachable; test-ffmpeg-cve-mitigations.py covers it; 32-bit/big-endian-only items do not apply to x86_64-LE. Library consumers (pipewire, gst-libav, chromaprint, opencv, qtmultimedia, pydub) are desktop/media, not AI stack. WR-SEC-3 expires=2026-12-14; triage evidence .agents/delegation/outputs/cve-triage-20261118.md + docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-125249
+    package:
+      name: ffmpeg
+      version: "8.1.3"
+    reason: "2026-11-18 ffmpeg 8.1.3 wave (group c): no released fix, CVE ranges 'through 9.0.2', fixes master/PR only (merge state UNVERIFIED). Mitigation: scripts/ai/aq-transcribe:139 'timeout .. ffmpeg -nostdin -y -protocol_whitelist file,pipe' with PCM wav output only, so the batch's encoder/hwaccel/network paths are unreachable; test-ffmpeg-cve-mitigations.py covers it; 32-bit/big-endian-only items do not apply to x86_64-LE. Library consumers (pipewire, gst-libav, chromaprint, opencv, qtmultimedia, pydub) are desktop/media, not AI stack. WR-SEC-3 expires=2026-12-14; triage evidence .agents/delegation/outputs/cve-triage-20261118.md + docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-125226
+    package:
+      name: ffmpeg
+      version: "8.1.3"
+    reason: "2026-11-18 ffmpeg 8.1.3 wave (group c): no released fix, CVE ranges 'through 9.0.2', fixes master/PR only (merge state UNVERIFIED). Mitigation: scripts/ai/aq-transcribe:139 'timeout .. ffmpeg -nostdin -y -protocol_whitelist file,pipe' with PCM wav output only, so the batch's encoder/hwaccel/network paths are unreachable; test-ffmpeg-cve-mitigations.py covers it; 32-bit/big-endian-only items do not apply to x86_64-LE. Library consumers (pipewire, gst-libav, chromaprint, opencv, qtmultimedia, pydub) are desktop/media, not AI stack. WR-SEC-3 expires=2026-12-14; triage evidence .agents/delegation/outputs/cve-triage-20261118.md + docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-125200
+    package:
+      name: ffmpeg
+      version: "8.1.3"
+    reason: "2026-11-18 ffmpeg 8.1.3 wave (group c): no released fix, CVE ranges 'through 9.0.2', fixes master/PR only (merge state UNVERIFIED). Mitigation: scripts/ai/aq-transcribe:139 'timeout .. ffmpeg -nostdin -y -protocol_whitelist file,pipe' with PCM wav output only, so the batch's encoder/hwaccel/network paths are unreachable; test-ffmpeg-cve-mitigations.py covers it; 32-bit/big-endian-only items do not apply to x86_64-LE. Library consumers (pipewire, gst-libav, chromaprint, opencv, qtmultimedia, pydub) are desktop/media, not AI stack. WR-SEC-3 expires=2026-12-14; triage evidence .agents/delegation/outputs/cve-triage-20261118.md + docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-125194
+    package:
+      name: ffmpeg
+      version: "8.1.3"
+    reason: "2026-11-18 ffmpeg 8.1.3 wave (group c): no released fix, CVE ranges 'through 9.0.2', fixes master/PR only (merge state UNVERIFIED). Mitigation: scripts/ai/aq-transcribe:139 'timeout .. ffmpeg -nostdin -y -protocol_whitelist file,pipe' with PCM wav output only, so the batch's encoder/hwaccel/network paths are unreachable; test-ffmpeg-cve-mitigations.py covers it; 32-bit/big-endian-only items do not apply to x86_64-LE. Library consumers (pipewire, gst-libav, chromaprint, opencv, qtmultimedia, pydub) are desktop/media, not AI stack. WR-SEC-3 expires=2026-12-14; triage evidence .agents/delegation/outputs/cve-triage-20261118.md + docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-125224
+    package:
+      name: ffmpeg
+      version: "8.1.3"
+    reason: "2026-11-18 ffmpeg 8.1.3 wave (group c): no released fix, CVE ranges 'through 9.0.2', fixes master/PR only (merge state UNVERIFIED). Mitigation: scripts/ai/aq-transcribe:139 'timeout .. ffmpeg -nostdin -y -protocol_whitelist file,pipe' with PCM wav output only, so the batch's encoder/hwaccel/network paths are unreachable; test-ffmpeg-cve-mitigations.py covers it; 32-bit/big-endian-only items do not apply to x86_64-LE. Library consumers (pipewire, gst-libav, chromaprint, opencv, qtmultimedia, pydub) are desktop/media, not AI stack. WR-SEC-3 expires=2026-12-14; triage evidence .agents/delegation/outputs/cve-triage-20261118.md + docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-125221
+    package:
+      name: ffmpeg
+      version: "8.1.3"
+    reason: "2026-11-18 ffmpeg 8.1.3 wave (group c): no released fix, CVE ranges 'through 9.0.2', fixes master/PR only (merge state UNVERIFIED). Mitigation: scripts/ai/aq-transcribe:139 'timeout .. ffmpeg -nostdin -y -protocol_whitelist file,pipe' with PCM wav output only, so the batch's encoder/hwaccel/network paths are unreachable; test-ffmpeg-cve-mitigations.py covers it; 32-bit/big-endian-only items do not apply to x86_64-LE. Library consumers (pipewire, gst-libav, chromaprint, opencv, qtmultimedia, pydub) are desktop/media, not AI stack. WR-SEC-3 expires=2026-12-14; triage evidence .agents/delegation/outputs/cve-triage-20261118.md + docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-125216
+    package:
+      name: ffmpeg
+      version: "8.1.3"
+    reason: "2026-11-18 ffmpeg 8.1.3 wave (group c): no released fix, CVE ranges 'through 9.0.2', fixes master/PR only (merge state UNVERIFIED). Mitigation: scripts/ai/aq-transcribe:139 'timeout .. ffmpeg -nostdin -y -protocol_whitelist file,pipe' with PCM wav output only, so the batch's encoder/hwaccel/network paths are unreachable; test-ffmpeg-cve-mitigations.py covers it; 32-bit/big-endian-only items do not apply to x86_64-LE. Library consumers (pipewire, gst-libav, chromaprint, opencv, qtmultimedia, pydub) are desktop/media, not AI stack. WR-SEC-3 expires=2026-12-14; triage evidence .agents/delegation/outputs/cve-triage-20261118.md + docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-125180
+    package:
+      name: ffmpeg
+      version: "8.1.3"
+    reason: "2026-11-18 ffmpeg 8.1.3 wave (group c): no released fix, CVE ranges 'through 9.0.2', fixes master/PR only (merge state UNVERIFIED). Mitigation: scripts/ai/aq-transcribe:139 'timeout .. ffmpeg -nostdin -y -protocol_whitelist file,pipe' with PCM wav output only, so the batch's encoder/hwaccel/network paths are unreachable; test-ffmpeg-cve-mitigations.py covers it; 32-bit/big-endian-only items do not apply to x86_64-LE. Library consumers (pipewire, gst-libav, chromaprint, opencv, qtmultimedia, pydub) are desktop/media, not AI stack. WR-SEC-3 expires=2026-12-14; triage evidence .agents/delegation/outputs/cve-triage-20261118.md + docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-125207
+    package:
+      name: ffmpeg
+      version: "8.1.3"
+    reason: "2026-11-18 ffmpeg 8.1.3 wave (group c): no released fix, CVE ranges 'through 9.0.2', fixes master/PR only (merge state UNVERIFIED). Mitigation: scripts/ai/aq-transcribe:139 'timeout .. ffmpeg -nostdin -y -protocol_whitelist file,pipe' with PCM wav output only, so the batch's encoder/hwaccel/network paths are unreachable; test-ffmpeg-cve-mitigations.py covers it; 32-bit/big-endian-only items do not apply to x86_64-LE. Library consumers (pipewire, gst-libav, chromaprint, opencv, qtmultimedia, pydub) are desktop/media, not AI stack. WR-SEC-3 expires=2026-12-14; triage evidence .agents/delegation/outputs/cve-triage-20261118.md + docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-125205
+    package:
+      name: ffmpeg
+      version: "8.1.3"
+    reason: "2026-11-18 ffmpeg 8.1.3 wave (group c): no released fix, CVE ranges 'through 9.0.2', fixes master/PR only (merge state UNVERIFIED). Mitigation: scripts/ai/aq-transcribe:139 'timeout .. ffmpeg -nostdin -y -protocol_whitelist file,pipe' with PCM wav output only, so the batch's encoder/hwaccel/network paths are unreachable; test-ffmpeg-cve-mitigations.py covers it; 32-bit/big-endian-only items do not apply to x86_64-LE. Library consumers (pipewire, gst-libav, chromaprint, opencv, qtmultimedia, pydub) are desktop/media, not AI stack. WR-SEC-3 expires=2026-12-14; triage evidence .agents/delegation/outputs/cve-triage-20261118.md + docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-125104
+    package:
+      name: ffmpeg
+      version: "8.1.3"
+    reason: "2026-11-18 ffmpeg 8.1.3 wave (group c): no released fix, CVE ranges 'through 9.0.2', fixes master/PR only (merge state UNVERIFIED). Mitigation: scripts/ai/aq-transcribe:139 'timeout .. ffmpeg -nostdin -y -protocol_whitelist file,pipe' with PCM wav output only, so the batch's encoder/hwaccel/network paths are unreachable; test-ffmpeg-cve-mitigations.py covers it; 32-bit/big-endian-only items do not apply to x86_64-LE. Library consumers (pipewire, gst-libav, chromaprint, opencv, qtmultimedia, pydub) are desktop/media, not AI stack. WR-SEC-3 expires=2026-12-14; triage evidence .agents/delegation/outputs/cve-triage-20261118.md + docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-125199
+    package:
+      name: ffmpeg
+      version: "8.1.3"
+    reason: "2026-11-18 ffmpeg 8.1.3 wave (group c): no released fix, CVE ranges 'through 9.0.2', fixes master/PR only (merge state UNVERIFIED). Mitigation: scripts/ai/aq-transcribe:139 'timeout .. ffmpeg -nostdin -y -protocol_whitelist file,pipe' with PCM wav output only, so the batch's encoder/hwaccel/network paths are unreachable; test-ffmpeg-cve-mitigations.py covers it; 32-bit/big-endian-only items do not apply to x86_64-LE. Library consumers (pipewire, gst-libav, chromaprint, opencv, qtmultimedia, pydub) are desktop/media, not AI stack. WR-SEC-3 expires=2026-12-14; triage evidence .agents/delegation/outputs/cve-triage-20261118.md + docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-125187
+    package:
+      name: ffmpeg
+      version: "8.1.3"
+    reason: "2026-11-18 ffmpeg 8.1.3 wave (group c): no released fix, CVE ranges 'through 9.0.2', fixes master/PR only (merge state UNVERIFIED). Mitigation: scripts/ai/aq-transcribe:139 'timeout .. ffmpeg -nostdin -y -protocol_whitelist file,pipe' with PCM wav output only, so the batch's encoder/hwaccel/network paths are unreachable; test-ffmpeg-cve-mitigations.py covers it; 32-bit/big-endian-only items do not apply to x86_64-LE. Library consumers (pipewire, gst-libav, chromaprint, opencv, qtmultimedia, pydub) are desktop/media, not AI stack. WR-SEC-3 expires=2026-12-14; triage evidence .agents/delegation/outputs/cve-triage-20261118.md + docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-125185
+    package:
+      name: ffmpeg
+      version: "8.1.3"
+    reason: "2026-11-18 ffmpeg 8.1.3 wave (group c): no released fix, CVE ranges 'through 9.0.2', fixes master/PR only (merge state UNVERIFIED). Mitigation: scripts/ai/aq-transcribe:139 'timeout .. ffmpeg -nostdin -y -protocol_whitelist file,pipe' with PCM wav output only, so the batch's encoder/hwaccel/network paths are unreachable; test-ffmpeg-cve-mitigations.py covers it; 32-bit/big-endian-only items do not apply to x86_64-LE. Library consumers (pipewire, gst-libav, chromaprint, opencv, qtmultimedia, pydub) are desktop/media, not AI stack. WR-SEC-3 expires=2026-12-14; triage evidence .agents/delegation/outputs/cve-triage-20261118.md + docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-125264
+    package:
+      name: ffmpeg
+      version: "8.1.3"
+    reason: "2026-11-18 ffmpeg 8.1.3 wave (group c): no released fix, CVE ranges 'through 9.0.2', fixes master/PR only (merge state UNVERIFIED). Mitigation: scripts/ai/aq-transcribe:139 'timeout .. ffmpeg -nostdin -y -protocol_whitelist file,pipe' with PCM wav output only, so the batch's encoder/hwaccel/network paths are unreachable; test-ffmpeg-cve-mitigations.py covers it; 32-bit/big-endian-only items do not apply to x86_64-LE. Library consumers (pipewire, gst-libav, chromaprint, opencv, qtmultimedia, pydub) are desktop/media, not AI stack. WR-SEC-3 expires=2026-12-14; triage evidence .agents/delegation/outputs/cve-triage-20261118.md + docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-125254
+    package:
+      name: ffmpeg
+      version: "8.1.3"
+    reason: "2026-11-18 ffmpeg 8.1.3 wave (group c): no released fix, CVE ranges 'through 9.0.2', fixes master/PR only (merge state UNVERIFIED). Mitigation: scripts/ai/aq-transcribe:139 'timeout .. ffmpeg -nostdin -y -protocol_whitelist file,pipe' with PCM wav output only, so the batch's encoder/hwaccel/network paths are unreachable; test-ffmpeg-cve-mitigations.py covers it; 32-bit/big-endian-only items do not apply to x86_64-LE. Library consumers (pipewire, gst-libav, chromaprint, opencv, qtmultimedia, pydub) are desktop/media, not AI stack. WR-SEC-3 expires=2026-12-14; triage evidence .agents/delegation/outputs/cve-triage-20261118.md + docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-125183
+    package:
+      name: ffmpeg
+      version: "8.1.3"
+    reason: "2026-11-18 ffmpeg 8.1.3 wave (group c): no released fix, CVE ranges 'through 9.0.2', fixes master/PR only (merge state UNVERIFIED). Mitigation: scripts/ai/aq-transcribe:139 'timeout .. ffmpeg -nostdin -y -protocol_whitelist file,pipe' with PCM wav output only, so the batch's encoder/hwaccel/network paths are unreachable; test-ffmpeg-cve-mitigations.py covers it; 32-bit/big-endian-only items do not apply to x86_64-LE. Library consumers (pipewire, gst-libav, chromaprint, opencv, qtmultimedia, pydub) are desktop/media, not AI stack. WR-SEC-3 expires=2026-12-14; triage evidence .agents/delegation/outputs/cve-triage-20261118.md + docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-125173
+    package:
+      name: ffmpeg
+      version: "8.1.3"
+    reason: "2026-11-18 ffmpeg 8.1.3 wave (group c): no released fix, CVE ranges 'through 9.0.2', fixes master/PR only (merge state UNVERIFIED). Mitigation: scripts/ai/aq-transcribe:139 'timeout .. ffmpeg -nostdin -y -protocol_whitelist file,pipe' with PCM wav output only, so the batch's encoder/hwaccel/network paths are unreachable; test-ffmpeg-cve-mitigations.py covers it; 32-bit/big-endian-only items do not apply to x86_64-LE. Library consumers (pipewire, gst-libav, chromaprint, opencv, qtmultimedia, pydub) are desktop/media, not AI stack. WR-SEC-3 expires=2026-12-14; triage evidence .agents/delegation/outputs/cve-triage-20261118.md + docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-125073
+    package:
+      name: ffmpeg
+      version: "8.1.3"
+    reason: "2026-11-18 ffmpeg 8.1.3 wave (group c): no released fix, CVE ranges 'through 9.0.2', fixes master/PR only (merge state UNVERIFIED). Mitigation: scripts/ai/aq-transcribe:139 'timeout .. ffmpeg -nostdin -y -protocol_whitelist file,pipe' with PCM wav output only, so the batch's encoder/hwaccel/network paths are unreachable; test-ffmpeg-cve-mitigations.py covers it; 32-bit/big-endian-only items do not apply to x86_64-LE. Library consumers (pipewire, gst-libav, chromaprint, opencv, qtmultimedia, pydub) are desktop/media, not AI stack. WR-SEC-3 expires=2026-12-14; triage evidence .agents/delegation/outputs/cve-triage-20261118.md + docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-125232
+    package:
+      name: ffmpeg
+      version: "8.1.3"
+    reason: "2026-11-18 ffmpeg 8.1.3 wave (group c): no released fix, CVE ranges 'through 9.0.2', fixes master/PR only (merge state UNVERIFIED). Mitigation: scripts/ai/aq-transcribe:139 'timeout .. ffmpeg -nostdin -y -protocol_whitelist file,pipe' with PCM wav output only, so the batch's encoder/hwaccel/network paths are unreachable; test-ffmpeg-cve-mitigations.py covers it; 32-bit/big-endian-only items do not apply to x86_64-LE. Library consumers (pipewire, gst-libav, chromaprint, opencv, qtmultimedia, pydub) are desktop/media, not AI stack. WR-SEC-3 expires=2026-12-14; triage evidence .agents/delegation/outputs/cve-triage-20261118.md + docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-125230
+    package:
+      name: ffmpeg
+      version: "8.1.3"
+    reason: "2026-11-18 ffmpeg 8.1.3 wave (group c): no released fix, CVE ranges 'through 9.0.2', fixes master/PR only (merge state UNVERIFIED). Mitigation: scripts/ai/aq-transcribe:139 'timeout .. ffmpeg -nostdin -y -protocol_whitelist file,pipe' with PCM wav output only, so the batch's encoder/hwaccel/network paths are unreachable; test-ffmpeg-cve-mitigations.py covers it; 32-bit/big-endian-only items do not apply to x86_64-LE. Library consumers (pipewire, gst-libav, chromaprint, opencv, qtmultimedia, pydub) are desktop/media, not AI stack. WR-SEC-3 expires=2026-12-14; triage evidence .agents/delegation/outputs/cve-triage-20261118.md + docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-125240
+    package:
+      name: ffmpeg
+      version: "8.1.3"
+    reason: "2026-11-18 ffmpeg 8.1.3 wave (group c): no released fix, CVE ranges 'through 9.0.2', fixes master/PR only (merge state UNVERIFIED). Mitigation: scripts/ai/aq-transcribe:139 'timeout .. ffmpeg -nostdin -y -protocol_whitelist file,pipe' with PCM wav output only, so the batch's encoder/hwaccel/network paths are unreachable; test-ffmpeg-cve-mitigations.py covers it; 32-bit/big-endian-only items do not apply to x86_64-LE. Library consumers (pipewire, gst-libav, chromaprint, opencv, qtmultimedia, pydub) are desktop/media, not AI stack. WR-SEC-3 expires=2026-12-14; triage evidence .agents/delegation/outputs/cve-triage-20261118.md + docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-125238
+    package:
+      name: ffmpeg
+      version: "8.1.3"
+    reason: "2026-11-18 ffmpeg 8.1.3 wave (group c): no released fix, CVE ranges 'through 9.0.2', fixes master/PR only (merge state UNVERIFIED). Mitigation: scripts/ai/aq-transcribe:139 'timeout .. ffmpeg -nostdin -y -protocol_whitelist file,pipe' with PCM wav output only, so the batch's encoder/hwaccel/network paths are unreachable; test-ffmpeg-cve-mitigations.py covers it; 32-bit/big-endian-only items do not apply to x86_64-LE. Library consumers (pipewire, gst-libav, chromaprint, opencv, qtmultimedia, pydub) are desktop/media, not AI stack. WR-SEC-3 expires=2026-12-14; triage evidence .agents/delegation/outputs/cve-triage-20261118.md + docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-125234
+    package:
+      name: ffmpeg
+      version: "8.1.3"
+    reason: "2026-11-18 ffmpeg 8.1.3 wave (group c): no released fix, CVE ranges 'through 9.0.2', fixes master/PR only (merge state UNVERIFIED). Mitigation: scripts/ai/aq-transcribe:139 'timeout .. ffmpeg -nostdin -y -protocol_whitelist file,pipe' with PCM wav output only, so the batch's encoder/hwaccel/network paths are unreachable; test-ffmpeg-cve-mitigations.py covers it; 32-bit/big-endian-only items do not apply to x86_64-LE. Library consumers (pipewire, gst-libav, chromaprint, opencv, qtmultimedia, pydub) are desktop/media, not AI stack. WR-SEC-3 expires=2026-12-14; triage evidence .agents/delegation/outputs/cve-triage-20261118.md + docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-125231
+    package:
+      name: ffmpeg
+      version: "8.1.3"
+    reason: "2026-11-18 ffmpeg 8.1.3 wave (group c): no released fix, CVE ranges 'through 9.0.2', fixes master/PR only (merge state UNVERIFIED). Mitigation: scripts/ai/aq-transcribe:139 'timeout .. ffmpeg -nostdin -y -protocol_whitelist file,pipe' with PCM wav output only, so the batch's encoder/hwaccel/network paths are unreachable; test-ffmpeg-cve-mitigations.py covers it; 32-bit/big-endian-only items do not apply to x86_64-LE. Library consumers (pipewire, gst-libav, chromaprint, opencv, qtmultimedia, pydub) are desktop/media, not AI stack. WR-SEC-3 expires=2026-12-14; triage evidence .agents/delegation/outputs/cve-triage-20261118.md + docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-125269
+    package:
+      name: ffmpeg
+      version: "8.1.3"
+    reason: "2026-11-18 ffmpeg 8.1.3 wave (group c): no released fix, CVE ranges 'through 9.0.2', fixes master/PR only (merge state UNVERIFIED). Mitigation: scripts/ai/aq-transcribe:139 'timeout .. ffmpeg -nostdin -y -protocol_whitelist file,pipe' with PCM wav output only, so the batch's encoder/hwaccel/network paths are unreachable; test-ffmpeg-cve-mitigations.py covers it; 32-bit/big-endian-only items do not apply to x86_64-LE. Library consumers (pipewire, gst-libav, chromaprint, opencv, qtmultimedia, pydub) are desktop/media, not AI stack. WR-SEC-3 expires=2026-12-14; triage evidence .agents/delegation/outputs/cve-triage-20261118.md + docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-125208
+    package:
+      name: ffmpeg
+      version: "8.1.3"
+    reason: "2026-11-18 ffmpeg 8.1.3 wave (group c): no released fix, CVE ranges 'through 9.0.2', fixes master/PR only (merge state UNVERIFIED). Mitigation: scripts/ai/aq-transcribe:139 'timeout .. ffmpeg -nostdin -y -protocol_whitelist file,pipe' with PCM wav output only, so the batch's encoder/hwaccel/network paths are unreachable; test-ffmpeg-cve-mitigations.py covers it; 32-bit/big-endian-only items do not apply to x86_64-LE. Library consumers (pipewire, gst-libav, chromaprint, opencv, qtmultimedia, pydub) are desktop/media, not AI stack. WR-SEC-3 expires=2026-12-14; triage evidence .agents/delegation/outputs/cve-triage-20261118.md + docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-125181
+    package:
+      name: ffmpeg
+      version: "8.1.3"
+    reason: "2026-11-18 ffmpeg 8.1.3 wave (group c): no released fix, CVE ranges 'through 9.0.2', fixes master/PR only (merge state UNVERIFIED). Mitigation: scripts/ai/aq-transcribe:139 'timeout .. ffmpeg -nostdin -y -protocol_whitelist file,pipe' with PCM wav output only, so the batch's encoder/hwaccel/network paths are unreachable; test-ffmpeg-cve-mitigations.py covers it; 32-bit/big-endian-only items do not apply to x86_64-LE. Library consumers (pipewire, gst-libav, chromaprint, opencv, qtmultimedia, pydub) are desktop/media, not AI stack. WR-SEC-3 expires=2026-12-14; triage evidence .agents/delegation/outputs/cve-triage-20261118.md + docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-125211
+    package:
+      name: ffmpeg
+      version: "8.1.3"
+    reason: "2026-11-18 ffmpeg 8.1.3 wave (group c): no released fix, CVE ranges 'through 9.0.2', fixes master/PR only (merge state UNVERIFIED). Mitigation: scripts/ai/aq-transcribe:139 'timeout .. ffmpeg -nostdin -y -protocol_whitelist file,pipe' with PCM wav output only, so the batch's encoder/hwaccel/network paths are unreachable; test-ffmpeg-cve-mitigations.py covers it; 32-bit/big-endian-only items do not apply to x86_64-LE. Library consumers (pipewire, gst-libav, chromaprint, opencv, qtmultimedia, pydub) are desktop/media, not AI stack. WR-SEC-3 expires=2026-12-14; triage evidence .agents/delegation/outputs/cve-triage-20261118.md + docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-125239
+    package:
+      name: ffmpeg
+      version: "8.1.3"
+    reason: "2026-11-18 ffmpeg 8.1.3 wave (group c): no released fix, CVE ranges 'through 9.0.2', fixes master/PR only (merge state UNVERIFIED). Mitigation: scripts/ai/aq-transcribe:139 'timeout .. ffmpeg -nostdin -y -protocol_whitelist file,pipe' with PCM wav output only, so the batch's encoder/hwaccel/network paths are unreachable; test-ffmpeg-cve-mitigations.py covers it; 32-bit/big-endian-only items do not apply to x86_64-LE. Library consumers (pipewire, gst-libav, chromaprint, opencv, qtmultimedia, pydub) are desktop/media, not AI stack. WR-SEC-3 expires=2026-12-14; triage evidence .agents/delegation/outputs/cve-triage-20261118.md + docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-125235
+    package:
+      name: ffmpeg
+      version: "8.1.3"
+    reason: "2026-11-18 ffmpeg 8.1.3 wave (group c): no released fix, CVE ranges 'through 9.0.2', fixes master/PR only (merge state UNVERIFIED). Mitigation: scripts/ai/aq-transcribe:139 'timeout .. ffmpeg -nostdin -y -protocol_whitelist file,pipe' with PCM wav output only, so the batch's encoder/hwaccel/network paths are unreachable; test-ffmpeg-cve-mitigations.py covers it; 32-bit/big-endian-only items do not apply to x86_64-LE. Library consumers (pipewire, gst-libav, chromaprint, opencv, qtmultimedia, pydub) are desktop/media, not AI stack. WR-SEC-3 expires=2026-12-14; triage evidence .agents/delegation/outputs/cve-triage-20261118.md + docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-125259
+    package:
+      name: ffmpeg
+      version: "8.1.3"
+    reason: "2026-11-18 ffmpeg 8.1.3 wave (group c): no released fix, CVE ranges 'through 9.0.2', fixes master/PR only (merge state UNVERIFIED). Mitigation: scripts/ai/aq-transcribe:139 'timeout .. ffmpeg -nostdin -y -protocol_whitelist file,pipe' with PCM wav output only, so the batch's encoder/hwaccel/network paths are unreachable; test-ffmpeg-cve-mitigations.py covers it; 32-bit/big-endian-only items do not apply to x86_64-LE. Library consumers (pipewire, gst-libav, chromaprint, opencv, qtmultimedia, pydub) are desktop/media, not AI stack. WR-SEC-3 expires=2026-12-14; triage evidence .agents/delegation/outputs/cve-triage-20261118.md + docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-125229
+    package:
+      name: ffmpeg
+      version: "8.1.3"
+    reason: "2026-11-18 ffmpeg 8.1.3 wave (group c): no released fix, CVE ranges 'through 9.0.2', fixes master/PR only (merge state UNVERIFIED). Mitigation: scripts/ai/aq-transcribe:139 'timeout .. ffmpeg -nostdin -y -protocol_whitelist file,pipe' with PCM wav output only, so the batch's encoder/hwaccel/network paths are unreachable; test-ffmpeg-cve-mitigations.py covers it; 32-bit/big-endian-only items do not apply to x86_64-LE. Library consumers (pipewire, gst-libav, chromaprint, opencv, qtmultimedia, pydub) are desktop/media, not AI stack. WR-SEC-3 expires=2026-12-14; triage evidence .agents/delegation/outputs/cve-triage-20261118.md + docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-125064
+    package:
+      name: ffmpeg
+      version: "8.1.3"
+    reason: "2026-11-18 ffmpeg 8.1.3 wave (group c): no released fix, CVE ranges 'through 9.0.2', fixes master/PR only (merge state UNVERIFIED). Mitigation: scripts/ai/aq-transcribe:139 'timeout .. ffmpeg -nostdin -y -protocol_whitelist file,pipe' with PCM wav output only, so the batch's encoder/hwaccel/network paths are unreachable; test-ffmpeg-cve-mitigations.py covers it; 32-bit/big-endian-only items do not apply to x86_64-LE. Library consumers (pipewire, gst-libav, chromaprint, opencv, qtmultimedia, pydub) are desktop/media, not AI stack. WR-SEC-3 expires=2026-12-14; triage evidence .agents/delegation/outputs/cve-triage-20261118.md + docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-125225
+    package:
+      name: ffmpeg
+      version: "8.1.3"
+    reason: "2026-11-18 ffmpeg 8.1.3 wave (group c): no released fix, CVE ranges 'through 9.0.2', fixes master/PR only (merge state UNVERIFIED). Mitigation: scripts/ai/aq-transcribe:139 'timeout .. ffmpeg -nostdin -y -protocol_whitelist file,pipe' with PCM wav output only, so the batch's encoder/hwaccel/network paths are unreachable; test-ffmpeg-cve-mitigations.py covers it; 32-bit/big-endian-only items do not apply to x86_64-LE. Library consumers (pipewire, gst-libav, chromaprint, opencv, qtmultimedia, pydub) are desktop/media, not AI stack. WR-SEC-3 expires=2026-12-14; triage evidence .agents/delegation/outputs/cve-triage-20261118.md + docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-125067
+    package:
+      name: ffmpeg
+      version: "8.1.3"
+    reason: "2026-11-18 ffmpeg 8.1.3 wave (group c): no released fix, CVE ranges 'through 9.0.2', fixes master/PR only (merge state UNVERIFIED). Mitigation: scripts/ai/aq-transcribe:139 'timeout .. ffmpeg -nostdin -y -protocol_whitelist file,pipe' with PCM wav output only, so the batch's encoder/hwaccel/network paths are unreachable; test-ffmpeg-cve-mitigations.py covers it; 32-bit/big-endian-only items do not apply to x86_64-LE. Library consumers (pipewire, gst-libav, chromaprint, opencv, qtmultimedia, pydub) are desktop/media, not AI stack. WR-SEC-3 expires=2026-12-14; triage evidence .agents/delegation/outputs/cve-triage-20261118.md + docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-125066
+    package:
+      name: ffmpeg
+      version: "8.1.3"
+    reason: "2026-11-18 ffmpeg 8.1.3 wave (group c): no released fix, CVE ranges 'through 9.0.2', fixes master/PR only (merge state UNVERIFIED). Mitigation: scripts/ai/aq-transcribe:139 'timeout .. ffmpeg -nostdin -y -protocol_whitelist file,pipe' with PCM wav output only, so the batch's encoder/hwaccel/network paths are unreachable; test-ffmpeg-cve-mitigations.py covers it; 32-bit/big-endian-only items do not apply to x86_64-LE. Library consumers (pipewire, gst-libav, chromaprint, opencv, qtmultimedia, pydub) are desktop/media, not AI stack. WR-SEC-3 expires=2026-12-14; triage evidence .agents/delegation/outputs/cve-triage-20261118.md + docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-125070
+    package:
+      name: ffmpeg
+      version: "8.1.3"
+    reason: "2026-11-18 ffmpeg 8.1.3 wave (group c): no released fix, CVE ranges 'through 9.0.2', fixes master/PR only (merge state UNVERIFIED). Mitigation: scripts/ai/aq-transcribe:139 'timeout .. ffmpeg -nostdin -y -protocol_whitelist file,pipe' with PCM wav output only, so the batch's encoder/hwaccel/network paths are unreachable; test-ffmpeg-cve-mitigations.py covers it; 32-bit/big-endian-only items do not apply to x86_64-LE. Library consumers (pipewire, gst-libav, chromaprint, opencv, qtmultimedia, pydub) are desktop/media, not AI stack. WR-SEC-3 expires=2026-12-14; triage evidence .agents/delegation/outputs/cve-triage-20261118.md + docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-125068
+    package:
+      name: ffmpeg
+      version: "8.1.3"
+    reason: "2026-11-18 ffmpeg 8.1.3 wave (group c): no released fix, CVE ranges 'through 9.0.2', fixes master/PR only (merge state UNVERIFIED). Mitigation: scripts/ai/aq-transcribe:139 'timeout .. ffmpeg -nostdin -y -protocol_whitelist file,pipe' with PCM wav output only, so the batch's encoder/hwaccel/network paths are unreachable; test-ffmpeg-cve-mitigations.py covers it; 32-bit/big-endian-only items do not apply to x86_64-LE. Library consumers (pipewire, gst-libav, chromaprint, opencv, qtmultimedia, pydub) are desktop/media, not AI stack. WR-SEC-3 expires=2026-12-14; triage evidence .agents/delegation/outputs/cve-triage-20261118.md + docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-125065
+    package:
+      name: ffmpeg
+      version: "8.1.3"
+    reason: "2026-11-18 ffmpeg 8.1.3 wave (group c): no released fix, CVE ranges 'through 9.0.2', fixes master/PR only (merge state UNVERIFIED). Mitigation: scripts/ai/aq-transcribe:139 'timeout .. ffmpeg -nostdin -y -protocol_whitelist file,pipe' with PCM wav output only, so the batch's encoder/hwaccel/network paths are unreachable; test-ffmpeg-cve-mitigations.py covers it; 32-bit/big-endian-only items do not apply to x86_64-LE. Library consumers (pipewire, gst-libav, chromaprint, opencv, qtmultimedia, pydub) are desktop/media, not AI stack. WR-SEC-3 expires=2026-12-14; triage evidence .agents/delegation/outputs/cve-triage-20261118.md + docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-125241
+    package:
+      name: ffmpeg
+      version: "8.1.3"
+    reason: "2026-11-18 ffmpeg 8.1.3 wave (group c): no released fix, CVE ranges 'through 9.0.2', fixes master/PR only (merge state UNVERIFIED). Mitigation: scripts/ai/aq-transcribe:139 'timeout .. ffmpeg -nostdin -y -protocol_whitelist file,pipe' with PCM wav output only, so the batch's encoder/hwaccel/network paths are unreachable; test-ffmpeg-cve-mitigations.py covers it; 32-bit/big-endian-only items do not apply to x86_64-LE. Library consumers (pipewire, gst-libav, chromaprint, opencv, qtmultimedia, pydub) are desktop/media, not AI stack. WR-SEC-3 expires=2026-12-14; triage evidence .agents/delegation/outputs/cve-triage-20261118.md + docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-125219
+    package:
+      name: ffmpeg
+      version: "8.1.3"
+    reason: "2026-11-18 ffmpeg 8.1.3 wave (group c): no released fix, CVE ranges 'through 9.0.2', fixes master/PR only (merge state UNVERIFIED). Mitigation: scripts/ai/aq-transcribe:139 'timeout .. ffmpeg -nostdin -y -protocol_whitelist file,pipe' with PCM wav output only, so the batch's encoder/hwaccel/network paths are unreachable; test-ffmpeg-cve-mitigations.py covers it; 32-bit/big-endian-only items do not apply to x86_64-LE. Library consumers (pipewire, gst-libav, chromaprint, opencv, qtmultimedia, pydub) are desktop/media, not AI stack. WR-SEC-3 expires=2026-12-14; triage evidence .agents/delegation/outputs/cve-triage-20261118.md + docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-125212
+    package:
+      name: ffmpeg
+      version: "8.1.3"
+    reason: "2026-11-18 ffmpeg 8.1.3 wave (group c): no released fix, CVE ranges 'through 9.0.2', fixes master/PR only (merge state UNVERIFIED). Mitigation: scripts/ai/aq-transcribe:139 'timeout .. ffmpeg -nostdin -y -protocol_whitelist file,pipe' with PCM wav output only, so the batch's encoder/hwaccel/network paths are unreachable; test-ffmpeg-cve-mitigations.py covers it; 32-bit/big-endian-only items do not apply to x86_64-LE. Library consumers (pipewire, gst-libav, chromaprint, opencv, qtmultimedia, pydub) are desktop/media, not AI stack. WR-SEC-3 expires=2026-12-14; triage evidence .agents/delegation/outputs/cve-triage-20261118.md + docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-125256
+    package:
+      name: ffmpeg
+      version: "8.1.3"
+    reason: "2026-11-18 ffmpeg 8.1.3 wave (group c): no released fix, CVE ranges 'through 9.0.2', fixes master/PR only (merge state UNVERIFIED). Mitigation: scripts/ai/aq-transcribe:139 'timeout .. ffmpeg -nostdin -y -protocol_whitelist file,pipe' with PCM wav output only, so the batch's encoder/hwaccel/network paths are unreachable; test-ffmpeg-cve-mitigations.py covers it; 32-bit/big-endian-only items do not apply to x86_64-LE. Library consumers (pipewire, gst-libav, chromaprint, opencv, qtmultimedia, pydub) are desktop/media, not AI stack. WR-SEC-3 expires=2026-12-14; triage evidence .agents/delegation/outputs/cve-triage-20261118.md + docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-125214
+    package:
+      name: ffmpeg
+      version: "8.1.3"
+    reason: "2026-11-18 ffmpeg 8.1.3 wave (group c): no released fix, CVE ranges 'through 9.0.2', fixes master/PR only (merge state UNVERIFIED). Mitigation: scripts/ai/aq-transcribe:139 'timeout .. ffmpeg -nostdin -y -protocol_whitelist file,pipe' with PCM wav output only, so the batch's encoder/hwaccel/network paths are unreachable; test-ffmpeg-cve-mitigations.py covers it; 32-bit/big-endian-only items do not apply to x86_64-LE. Library consumers (pipewire, gst-libav, chromaprint, opencv, qtmultimedia, pydub) are desktop/media, not AI stack. WR-SEC-3 expires=2026-12-14; triage evidence .agents/delegation/outputs/cve-triage-20261118.md + docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-125210
+    package:
+      name: ffmpeg
+      version: "8.1.3"
+    reason: "2026-11-18 ffmpeg 8.1.3 wave (group c): no released fix, CVE ranges 'through 9.0.2', fixes master/PR only (merge state UNVERIFIED). Mitigation: scripts/ai/aq-transcribe:139 'timeout .. ffmpeg -nostdin -y -protocol_whitelist file,pipe' with PCM wav output only, so the batch's encoder/hwaccel/network paths are unreachable; test-ffmpeg-cve-mitigations.py covers it; 32-bit/big-endian-only items do not apply to x86_64-LE. Library consumers (pipewire, gst-libav, chromaprint, opencv, qtmultimedia, pydub) are desktop/media, not AI stack. WR-SEC-3 expires=2026-12-14; triage evidence .agents/delegation/outputs/cve-triage-20261118.md + docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-125204
+    package:
+      name: ffmpeg
+      version: "8.1.3"
+    reason: "2026-11-18 ffmpeg 8.1.3 wave (group c): no released fix, CVE ranges 'through 9.0.2', fixes master/PR only (merge state UNVERIFIED). Mitigation: scripts/ai/aq-transcribe:139 'timeout .. ffmpeg -nostdin -y -protocol_whitelist file,pipe' with PCM wav output only, so the batch's encoder/hwaccel/network paths are unreachable; test-ffmpeg-cve-mitigations.py covers it; 32-bit/big-endian-only items do not apply to x86_64-LE. Library consumers (pipewire, gst-libav, chromaprint, opencv, qtmultimedia, pydub) are desktop/media, not AI stack. WR-SEC-3 expires=2026-12-14; triage evidence .agents/delegation/outputs/cve-triage-20261118.md + docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-125260
+    package:
+      name: ffmpeg
+      version: "8.1.3"
+    reason: "2026-11-18 ffmpeg 8.1.3 wave (group c): no released fix, CVE ranges 'through 9.0.2', fixes master/PR only (merge state UNVERIFIED). Mitigation: scripts/ai/aq-transcribe:139 'timeout .. ffmpeg -nostdin -y -protocol_whitelist file,pipe' with PCM wav output only, so the batch's encoder/hwaccel/network paths are unreachable; test-ffmpeg-cve-mitigations.py covers it; 32-bit/big-endian-only items do not apply to x86_64-LE. Library consumers (pipewire, gst-libav, chromaprint, opencv, qtmultimedia, pydub) are desktop/media, not AI stack. WR-SEC-3 expires=2026-12-14; triage evidence .agents/delegation/outputs/cve-triage-20261118.md + docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-125227
+    package:
+      name: ffmpeg
+      version: "8.1.3"
+    reason: "2026-11-18 ffmpeg 8.1.3 wave (group c): no released fix, CVE ranges 'through 9.0.2', fixes master/PR only (merge state UNVERIFIED). Mitigation: scripts/ai/aq-transcribe:139 'timeout .. ffmpeg -nostdin -y -protocol_whitelist file,pipe' with PCM wav output only, so the batch's encoder/hwaccel/network paths are unreachable; test-ffmpeg-cve-mitigations.py covers it; 32-bit/big-endian-only items do not apply to x86_64-LE. Library consumers (pipewire, gst-libav, chromaprint, opencv, qtmultimedia, pydub) are desktop/media, not AI stack. WR-SEC-3 expires=2026-12-14; triage evidence .agents/delegation/outputs/cve-triage-20261118.md + docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-125218
+    package:
+      name: ffmpeg
+      version: "8.1.3"
+    reason: "2026-11-18 ffmpeg 8.1.3 wave (group c): no released fix, CVE ranges 'through 9.0.2', fixes master/PR only (merge state UNVERIFIED). Mitigation: scripts/ai/aq-transcribe:139 'timeout .. ffmpeg -nostdin -y -protocol_whitelist file,pipe' with PCM wav output only, so the batch's encoder/hwaccel/network paths are unreachable; test-ffmpeg-cve-mitigations.py covers it; 32-bit/big-endian-only items do not apply to x86_64-LE. Library consumers (pipewire, gst-libav, chromaprint, opencv, qtmultimedia, pydub) are desktop/media, not AI stack. WR-SEC-3 expires=2026-12-14; triage evidence .agents/delegation/outputs/cve-triage-20261118.md + docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-125202
+    package:
+      name: ffmpeg
+      version: "8.1.3"
+    reason: "2026-11-18 ffmpeg 8.1.3 wave (group c): no released fix, CVE ranges 'through 9.0.2', fixes master/PR only (merge state UNVERIFIED). Mitigation: scripts/ai/aq-transcribe:139 'timeout .. ffmpeg -nostdin -y -protocol_whitelist file,pipe' with PCM wav output only, so the batch's encoder/hwaccel/network paths are unreachable; test-ffmpeg-cve-mitigations.py covers it; 32-bit/big-endian-only items do not apply to x86_64-LE. Library consumers (pipewire, gst-libav, chromaprint, opencv, qtmultimedia, pydub) are desktop/media, not AI stack. WR-SEC-3 expires=2026-12-14; triage evidence .agents/delegation/outputs/cve-triage-20261118.md + docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-125257
+    package:
+      name: ffmpeg
+      version: "8.1.3"
+    reason: "2026-11-18 ffmpeg 8.1.3 wave (group c): no released fix, CVE ranges 'through 9.0.2', fixes master/PR only (merge state UNVERIFIED). Mitigation: scripts/ai/aq-transcribe:139 'timeout .. ffmpeg -nostdin -y -protocol_whitelist file,pipe' with PCM wav output only, so the batch's encoder/hwaccel/network paths are unreachable; test-ffmpeg-cve-mitigations.py covers it; 32-bit/big-endian-only items do not apply to x86_64-LE. Library consumers (pipewire, gst-libav, chromaprint, opencv, qtmultimedia, pydub) are desktop/media, not AI stack. WR-SEC-3 expires=2026-12-14; triage evidence .agents/delegation/outputs/cve-triage-20261118.md + docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-125196
+    package:
+      name: ffmpeg
+      version: "8.1.3"
+    reason: "2026-11-18 ffmpeg 8.1.3 wave (group c): no released fix, CVE ranges 'through 9.0.2', fixes master/PR only (merge state UNVERIFIED). Mitigation: scripts/ai/aq-transcribe:139 'timeout .. ffmpeg -nostdin -y -protocol_whitelist file,pipe' with PCM wav output only, so the batch's encoder/hwaccel/network paths are unreachable; test-ffmpeg-cve-mitigations.py covers it; 32-bit/big-endian-only items do not apply to x86_64-LE. Library consumers (pipewire, gst-libav, chromaprint, opencv, qtmultimedia, pydub) are desktop/media, not AI stack. WR-SEC-3 expires=2026-12-14; triage evidence .agents/delegation/outputs/cve-triage-20261118.md + docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-125233
+    package:
+      name: ffmpeg
+      version: "8.1.3"
+    reason: "2026-11-18 ffmpeg 8.1.3 wave (group c): no released fix, CVE ranges 'through 9.0.2', fixes master/PR only (merge state UNVERIFIED). Mitigation: scripts/ai/aq-transcribe:139 'timeout .. ffmpeg -nostdin -y -protocol_whitelist file,pipe' with PCM wav output only, so the batch's encoder/hwaccel/network paths are unreachable; test-ffmpeg-cve-mitigations.py covers it; 32-bit/big-endian-only items do not apply to x86_64-LE. Library consumers (pipewire, gst-libav, chromaprint, opencv, qtmultimedia, pydub) are desktop/media, not AI stack. WR-SEC-3 expires=2026-12-14; triage evidence .agents/delegation/outputs/cve-triage-20261118.md + docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-125222
+    package:
+      name: ffmpeg
+      version: "8.1.3"
+    reason: "2026-11-18 ffmpeg 8.1.3 wave (group c): no released fix, CVE ranges 'through 9.0.2', fixes master/PR only (merge state UNVERIFIED). Mitigation: scripts/ai/aq-transcribe:139 'timeout .. ffmpeg -nostdin -y -protocol_whitelist file,pipe' with PCM wav output only, so the batch's encoder/hwaccel/network paths are unreachable; test-ffmpeg-cve-mitigations.py covers it; 32-bit/big-endian-only items do not apply to x86_64-LE. Library consumers (pipewire, gst-libav, chromaprint, opencv, qtmultimedia, pydub) are desktop/media, not AI stack. WR-SEC-3 expires=2026-12-14; triage evidence .agents/delegation/outputs/cve-triage-20261118.md + docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-125213
+    package:
+      name: ffmpeg
+      version: "8.1.3"
+    reason: "2026-11-18 ffmpeg 8.1.3 wave (group c): no released fix, CVE ranges 'through 9.0.2', fixes master/PR only (merge state UNVERIFIED). Mitigation: scripts/ai/aq-transcribe:139 'timeout .. ffmpeg -nostdin -y -protocol_whitelist file,pipe' with PCM wav output only, so the batch's encoder/hwaccel/network paths are unreachable; test-ffmpeg-cve-mitigations.py covers it; 32-bit/big-endian-only items do not apply to x86_64-LE. Library consumers (pipewire, gst-libav, chromaprint, opencv, qtmultimedia, pydub) are desktop/media, not AI stack. WR-SEC-3 expires=2026-12-14; triage evidence .agents/delegation/outputs/cve-triage-20261118.md + docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-125262
+    package:
+      name: ffmpeg
+      version: "8.1.3"
+    reason: "2026-11-18 ffmpeg 8.1.3 wave (group c): no released fix, CVE ranges 'through 9.0.2', fixes master/PR only (merge state UNVERIFIED). Mitigation: scripts/ai/aq-transcribe:139 'timeout .. ffmpeg -nostdin -y -protocol_whitelist file,pipe' with PCM wav output only, so the batch's encoder/hwaccel/network paths are unreachable; test-ffmpeg-cve-mitigations.py covers it; 32-bit/big-endian-only items do not apply to x86_64-LE. Library consumers (pipewire, gst-libav, chromaprint, opencv, qtmultimedia, pydub) are desktop/media, not AI stack. WR-SEC-3 expires=2026-12-14; triage evidence .agents/delegation/outputs/cve-triage-20261118.md + docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-125250
+    package:
+      name: ffmpeg
+      version: "8.1.3"
+    reason: "2026-11-18 ffmpeg 8.1.3 wave (group c): no released fix, CVE ranges 'through 9.0.2', fixes master/PR only (merge state UNVERIFIED). Mitigation: scripts/ai/aq-transcribe:139 'timeout .. ffmpeg -nostdin -y -protocol_whitelist file,pipe' with PCM wav output only, so the batch's encoder/hwaccel/network paths are unreachable; test-ffmpeg-cve-mitigations.py covers it; 32-bit/big-endian-only items do not apply to x86_64-LE. Library consumers (pipewire, gst-libav, chromaprint, opencv, qtmultimedia, pydub) are desktop/media, not AI stack. WR-SEC-3 expires=2026-12-14; triage evidence .agents/delegation/outputs/cve-triage-20261118.md + docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-120246
+    package:
+      name: ffmpeg
+      version: "8.1.3"
+    reason: "2026-11-18 ffmpeg 8.1.3 wave (group c): no released fix, CVE ranges 'through 9.0.2', fixes master/PR only (merge state UNVERIFIED). Mitigation: scripts/ai/aq-transcribe:139 'timeout .. ffmpeg -nostdin -y -protocol_whitelist file,pipe' with PCM wav output only, so the batch's encoder/hwaccel/network paths are unreachable; test-ffmpeg-cve-mitigations.py covers it; 32-bit/big-endian-only items do not apply to x86_64-LE. Library consumers (pipewire, gst-libav, chromaprint, opencv, qtmultimedia, pydub) are desktop/media, not AI stack. WR-SEC-3 expires=2026-12-14; triage evidence .agents/delegation/outputs/cve-triage-20261118.md + docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-120245
+    package:
+      name: ffmpeg
+      version: "8.1.3"
+    reason: "2026-11-18 ffmpeg 8.1.3 wave (group c): no released fix, CVE ranges 'through 9.0.2', fixes master/PR only (merge state UNVERIFIED). Mitigation: scripts/ai/aq-transcribe:139 'timeout .. ffmpeg -nostdin -y -protocol_whitelist file,pipe' with PCM wav output only, so the batch's encoder/hwaccel/network paths are unreachable; test-ffmpeg-cve-mitigations.py covers it; 32-bit/big-endian-only items do not apply to x86_64-LE. Library consumers (pipewire, gst-libav, chromaprint, opencv, qtmultimedia, pydub) are desktop/media, not AI stack. WR-SEC-3 expires=2026-12-14; triage evidence .agents/delegation/outputs/cve-triage-20261118.md + docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-120247
+    package:
+      name: ffmpeg
+      version: "8.1.3"
+    reason: "2026-11-18 ffmpeg 8.1.3 wave (group c): no released fix, CVE ranges 'through 9.0.2', fixes master/PR only (merge state UNVERIFIED). Mitigation: scripts/ai/aq-transcribe:139 'timeout .. ffmpeg -nostdin -y -protocol_whitelist file,pipe' with PCM wav output only, so the batch's encoder/hwaccel/network paths are unreachable; test-ffmpeg-cve-mitigations.py covers it; 32-bit/big-endian-only items do not apply to x86_64-LE. Library consumers (pipewire, gst-libav, chromaprint, opencv, qtmultimedia, pydub) are desktop/media, not AI stack. WR-SEC-3 expires=2026-12-14; triage evidence .agents/delegation/outputs/cve-triage-20261118.md + docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-120244
+    package:
+      name: ffmpeg
+      version: "8.1.3"
+    reason: "2026-11-18 ffmpeg 8.1.3 wave (group c): no released fix, CVE ranges 'through 9.0.2', fixes master/PR only (merge state UNVERIFIED). Mitigation: scripts/ai/aq-transcribe:139 'timeout .. ffmpeg -nostdin -y -protocol_whitelist file,pipe' with PCM wav output only, so the batch's encoder/hwaccel/network paths are unreachable; test-ffmpeg-cve-mitigations.py covers it; 32-bit/big-endian-only items do not apply to x86_64-LE. Library consumers (pipewire, gst-libav, chromaprint, opencv, qtmultimedia, pydub) are desktop/media, not AI stack. WR-SEC-3 expires=2026-12-14; triage evidence .agents/delegation/outputs/cve-triage-20261118.md + docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-120243
+    package:
+      name: ffmpeg
+      version: "8.1.3"
+    reason: "2026-11-18 ffmpeg 8.1.3 wave (group c): no released fix, CVE ranges 'through 9.0.2', fixes master/PR only (merge state UNVERIFIED). Mitigation: scripts/ai/aq-transcribe:139 'timeout .. ffmpeg -nostdin -y -protocol_whitelist file,pipe' with PCM wav output only, so the batch's encoder/hwaccel/network paths are unreachable; test-ffmpeg-cve-mitigations.py covers it; 32-bit/big-endian-only items do not apply to x86_64-LE. Library consumers (pipewire, gst-libav, chromaprint, opencv, qtmultimedia, pydub) are desktop/media, not AI stack. WR-SEC-3 expires=2026-12-14; triage evidence .agents/delegation/outputs/cve-triage-20261118.md + docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-120210
+    package:
+      name: ffmpeg
+      version: "8.1.3"
+    reason: "2026-11-18 ffmpeg 8.1.3 wave (group c): no released fix, CVE ranges 'through 9.0.2', fixes master/PR only (merge state UNVERIFIED). Mitigation: scripts/ai/aq-transcribe:139 'timeout .. ffmpeg -nostdin -y -protocol_whitelist file,pipe' with PCM wav output only, so the batch's encoder/hwaccel/network paths are unreachable; test-ffmpeg-cve-mitigations.py covers it; 32-bit/big-endian-only items do not apply to x86_64-LE. Library consumers (pipewire, gst-libav, chromaprint, opencv, qtmultimedia, pydub) are desktop/media, not AI stack. WR-SEC-3 expires=2026-12-14; triage evidence .agents/delegation/outputs/cve-triage-20261118.md + docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-119566
+    package:
+      name: prometheus
+      version: "3.12.0"
+    reason: "fixed in >3.15.1 (unstable 3.16.0, 26.05 has 3.12.0). Flaw needs Azure AD / Google IAM auth on a redirectable remote_write; only remote_write in repo is monitoring.nix:49 to local 127.0.0.1 Tempo with no cloud auth (config fact, 90-day window justified in triage). WR-SEC-9 expires=2027-02-16; triage evidence .agents/delegation/outputs/cve-triage-20261118.md + docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-119377
+    package:
+      name: sqlite
+      version: "3.53.3"
+    reason: "sqlite 3.53.3 (fixed 3.53.4/3.54.0; nixos-26.05 head still 3.53.3; 3.54.0 already in closure for unstable consumers). Repo never builds FTS5 detail=none tables (rg over .py/.sql/.rs = 0 hits, covers CVE-2026-119373); other highs not individually read, UNVERIFIED. WR-SEC-5 expires=2026-12-18; triage evidence .agents/delegation/outputs/cve-triage-20261118.md + docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-119591
+    package:
+      name: sqlite
+      version: "3.53.3"
+    reason: "sqlite 3.53.3 (fixed 3.53.4/3.54.0; nixos-26.05 head still 3.53.3; 3.54.0 already in closure for unstable consumers). Repo never builds FTS5 detail=none tables (rg over .py/.sql/.rs = 0 hits, covers CVE-2026-119373); other highs not individually read, UNVERIFIED. WR-SEC-5 expires=2026-12-18; triage evidence .agents/delegation/outputs/cve-triage-20261118.md + docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-119372
+    package:
+      name: sqlite
+      version: "3.53.3"
+    reason: "sqlite 3.53.3 (fixed 3.53.4/3.54.0; nixos-26.05 head still 3.53.3; 3.54.0 already in closure for unstable consumers). Repo never builds FTS5 detail=none tables (rg over .py/.sql/.rs = 0 hits, covers CVE-2026-119373); other highs not individually read, UNVERIFIED. WR-SEC-5 expires=2026-12-18; triage evidence .agents/delegation/outputs/cve-triage-20261118.md + docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-119378
+    package:
+      name: sqlite
+      version: "3.53.3"
+    reason: "sqlite 3.53.3 (fixed 3.53.4/3.54.0; nixos-26.05 head still 3.53.3; 3.54.0 already in closure for unstable consumers). Repo never builds FTS5 detail=none tables (rg over .py/.sql/.rs = 0 hits, covers CVE-2026-119373); other highs not individually read, UNVERIFIED. WR-SEC-5 expires=2026-12-18; triage evidence .agents/delegation/outputs/cve-triage-20261118.md + docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-119375
+    package:
+      name: sqlite
+      version: "3.53.3"
+    reason: "sqlite 3.53.3 (fixed 3.53.4/3.54.0; nixos-26.05 head still 3.53.3; 3.54.0 already in closure for unstable consumers). Repo never builds FTS5 detail=none tables (rg over .py/.sql/.rs = 0 hits, covers CVE-2026-119373); other highs not individually read, UNVERIFIED. WR-SEC-5 expires=2026-12-18; triage evidence .agents/delegation/outputs/cve-triage-20261118.md + docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-119371
+    package:
+      name: sqlite
+      version: "3.53.3"
+    reason: "sqlite 3.53.3 (fixed 3.53.4/3.54.0; nixos-26.05 head still 3.53.3; 3.54.0 already in closure for unstable consumers). Repo never builds FTS5 detail=none tables (rg over .py/.sql/.rs = 0 hits, covers CVE-2026-119373); other highs not individually read, UNVERIFIED. WR-SEC-5 expires=2026-12-18; triage evidence .agents/delegation/outputs/cve-triage-20261118.md + docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-119373
+    package:
+      name: sqlite
+      version: "3.53.3"
+    reason: "sqlite 3.53.3 (fixed 3.53.4/3.54.0; nixos-26.05 head still 3.53.3; 3.54.0 already in closure for unstable consumers). Repo never builds FTS5 detail=none tables (rg over .py/.sql/.rs = 0 hits, covers CVE-2026-119373); other highs not individually read, UNVERIFIED. WR-SEC-5 expires=2026-12-18; triage evidence .agents/delegation/outputs/cve-triage-20261118.md + docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-119379
+    package:
+      name: sqlite
+      version: "3.53.3"
+    reason: "sqlite 3.53.3 (fixed 3.53.4/3.54.0; nixos-26.05 head still 3.53.3; 3.54.0 already in closure for unstable consumers). Repo never builds FTS5 detail=none tables (rg over .py/.sql/.rs = 0 hits, covers CVE-2026-119373); other highs not individually read, UNVERIFIED. WR-SEC-5 expires=2026-12-18; triage evidence .agents/delegation/outputs/cve-triage-20261118.md + docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-119374
+    package:
+      name: sqlite
+      version: "3.53.3"
+    reason: "sqlite 3.53.3 (fixed 3.53.4/3.54.0; nixos-26.05 head still 3.53.3; 3.54.0 already in closure for unstable consumers). Repo never builds FTS5 detail=none tables (rg over .py/.sql/.rs = 0 hits, covers CVE-2026-119373); other highs not individually read, UNVERIFIED. WR-SEC-5 expires=2026-12-18; triage evidence .agents/delegation/outputs/cve-triage-20261118.md + docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-119586
+    package:
+      name: sqlite
+      version: "3.53.3"
+    reason: "sqlite 3.53.3 (fixed 3.53.4/3.54.0; nixos-26.05 head still 3.53.3; 3.54.0 already in closure for unstable consumers). Repo never builds FTS5 detail=none tables (rg over .py/.sql/.rs = 0 hits, covers CVE-2026-119373); other highs not individually read, UNVERIFIED. WR-SEC-5 expires=2026-12-18; triage evidence .agents/delegation/outputs/cve-triage-20261118.md + docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-119376
+    package:
+      name: sqlite
+      version: "3.53.3"
+    reason: "sqlite 3.53.3 (fixed 3.53.4/3.54.0; nixos-26.05 head still 3.53.3; 3.54.0 already in closure for unstable consumers). Repo never builds FTS5 detail=none tables (rg over .py/.sql/.rs = 0 hits, covers CVE-2026-119373); other highs not individually read, UNVERIFIED. WR-SEC-5 expires=2026-12-18; triage evidence .agents/delegation/outputs/cve-triage-20261118.md + docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-116741
+    package:
+      name: speex
+      version: "1.2.1"
+    reason: "speex 1.2.1 is the last release (2022; upstream xiph/speex#42 open, abandoned); OOB write needs a caller using speex_bits_init_buffer; only reachable via ffmpeg libspeex/gst-plugins-good/libshout, ffmpeg wrapper use of that API UNVERIFIED; Opus supersedes it. WR-SEC-8 expires=2026-12-18; triage evidence .agents/delegation/outputs/cve-triage-20261118.md + docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-58016
+    package:
+      name: glib
+      version: "2.88.3"
+    reason: "glib 2.88.3 CRITICAL (fixed in 2.89.0+; nixos-26.05 head still 2.88.3, unstable 2.90.0 needs a global glib override = mass rebuild). Needs g_dbus_node_info_new_for_xml() on attacker-supplied introspection XML; reachable only via local-bus desktop daemons (gstreamer/dconf/bluez/avahi), not llama/AIDB/coordinator. 2.88.x backport and absence of untrusted introspection producers UNVERIFIED. WR-SEC-4 expires=2026-12-18; triage evidence .agents/delegation/outputs/cve-triage-20261118.md + docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2000-0006
+    package:
+      name: strace
+      version: "7.3"
+    reason: "false positive: CPE for this 1999 bug (Paul Kranenburg's strace '<=-') has no version bound; fixed 26 years before strace 7.3 (nixpkgs strace is the Linux strace project, not that code). Dismissed per triage evidence .agents/delegation/outputs/cve-triage-20261118.md + docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-96611
+    package:
+      name: ffmpeg
+      version: "8.1.3"
+    reason: "2026-11-18 ffmpeg 8.1.3 wave (group c): no released fix, CVE ranges 'through 9.0.2', fixes master/PR only (merge state UNVERIFIED). Mitigation: scripts/ai/aq-transcribe:139 'timeout .. ffmpeg -nostdin -y -protocol_whitelist file,pipe' with PCM wav output only, so the batch's encoder/hwaccel/network paths are unreachable; test-ffmpeg-cve-mitigations.py covers it; 32-bit/big-endian-only items do not apply to x86_64-LE. Library consumers (pipewire, gst-libav, chromaprint, opencv, qtmultimedia, pydub) are desktop/media, not AI stack. WR-SEC-3 expires=2026-12-14; triage evidence .agents/delegation/outputs/cve-triage-20261118.md + docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-113680
+    package:
+      name: harfbuzz
+      version: "14.5.1"
+    reason: "flaw is in the experimental WebAssembly shaper (NVD 8.0.0 through 14.6.0, no fixed release; commit 5e821de8 unreleased). nix eval of nixpkgs harfbuzz mesonFlags (13.2.1 stable and 14.5.1 unstable) shows no -Dwasm option and buildInputs only glib+freetype (no wasm runtime), so the shaper is not compiled; upstream default-off assumption UNVERIFIED against meson_options.txt. WR-SEC-6 expires=2026-12-18; triage evidence .agents/delegation/outputs/cve-triage-20261118.md + docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-113679
+    package:
+      name: harfbuzz
+      version: "14.5.1"
+    reason: "flaw is in the experimental WebAssembly shaper (NVD 8.0.0 through 14.6.0, no fixed release; commit 5e821de8 unreleased). nix eval of nixpkgs harfbuzz mesonFlags (13.2.1 stable and 14.5.1 unstable) shows no -Dwasm option and buildInputs only glib+freetype (no wasm runtime), so the shaper is not compiled; upstream default-off assumption UNVERIFIED against meson_options.txt. WR-SEC-6 expires=2026-12-18; triage evidence .agents/delegation/outputs/cve-triage-20261118.md + docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-113680
+    package:
+      name: harfbuzz
+      version: "13.2.1"
+    reason: "flaw is in the experimental WebAssembly shaper (NVD 8.0.0 through 14.6.0, no fixed release; commit 5e821de8 unreleased). nix eval of nixpkgs harfbuzz mesonFlags (13.2.1 stable and 14.5.1 unstable) shows no -Dwasm option and buildInputs only glib+freetype (no wasm runtime), so the shaper is not compiled; upstream default-off assumption UNVERIFIED against meson_options.txt. WR-SEC-6 expires=2026-12-18; triage evidence .agents/delegation/outputs/cve-triage-20261118.md + docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-113679
+    package:
+      name: harfbuzz
+      version: "13.2.1"
+    reason: "flaw is in the experimental WebAssembly shaper (NVD 8.0.0 through 14.6.0, no fixed release; commit 5e821de8 unreleased). nix eval of nixpkgs harfbuzz mesonFlags (13.2.1 stable and 14.5.1 unstable) shows no -Dwasm option and buildInputs only glib+freetype (no wasm runtime), so the shaper is not compiled; upstream default-off assumption UNVERIFIED against meson_options.txt. WR-SEC-6 expires=2026-12-18; triage evidence .agents/delegation/outputs/cve-triage-20261118.md + docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-111152
+    package:
+      name: game-music-emu
+      version: "0.6.4"
+    reason: "legacy chiptune decoder (no fix; 'through 0.6.5'); pulled via gst-plugins-bad/ffmpeg-full/SDL2_mixer desktop paths, not AI stack; removal is a later slice. WR-SEC-7 expires=2026-12-18; triage evidence .agents/delegation/outputs/cve-triage-20261118.md + docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-111271
+    package:
+      name: libmodplug
+      version: "0.8.9.0"
+    reason: "legacy audio decoder (no fix; NVD 'through 0.8.9.1'); pulled only via gst-plugins-bad/ffmpeg-full desktop media paths, not AI stack; removal is a later slice. WR-SEC-7 expires=2026-12-18; triage evidence .agents/delegation/outputs/cve-triage-20261118.md + docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-111153
+    package:
+      name: game-music-emu
+      version: "0.6.4"
+    reason: "legacy chiptune decoder (no fix; 'through 0.6.5'); pulled via gst-plugins-bad/ffmpeg-full/SDL2_mixer desktop paths, not AI stack; removal is a later slice. WR-SEC-7 expires=2026-12-18; triage evidence .agents/delegation/outputs/cve-triage-20261118.md + docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-111162
+    package:
+      name: wildmidi
+      version: "0.5.0"
+    reason: "legacy audio decoder (no fix; 'through 0.5.0', 0.5.0 already in closure and still hit); pulled only via gst-plugins-bad desktop media paths; removal is a later slice. WR-SEC-7 expires=2026-12-18; triage evidence .agents/delegation/outputs/cve-triage-20261118.md + docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-111162
+    package:
+      name: wildmidi
+      version: "0.4.6"
+    reason: "legacy audio decoder (no fix; 'through 0.5.0', 0.5.0 already in closure and still hit); pulled only via gst-plugins-bad desktop media paths; removal is a later slice. WR-SEC-7 expires=2026-12-18; triage evidence .agents/delegation/outputs/cve-triage-20261118.md + docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-111269
+    package:
+      name: libical
+      version: "3.0.20"
+    reason: "no released fix ('through 4.0.6'; fix commit d753885c unreleased); only consumer bluez 5.86/5.87, not AI stack. WR-SEC-8 expires=2026-12-18; triage evidence .agents/delegation/outputs/cve-triage-20261118.md + docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-111270
+    package:
+      name: libmodplug
+      version: "0.8.9.0"
+    reason: "legacy audio decoder (no fix; NVD 'through 0.8.9.1'); pulled only via gst-plugins-bad/ffmpeg-full desktop media paths, not AI stack; removal is a later slice. WR-SEC-7 expires=2026-12-18; triage evidence .agents/delegation/outputs/cve-triage-20261118.md + docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-111163
+    package:
+      name: wildmidi
+      version: "0.5.0"
+    reason: "legacy audio decoder (no fix; 'through 0.5.0', 0.5.0 already in closure and still hit); pulled only via gst-plugins-bad desktop media paths; removal is a later slice. WR-SEC-7 expires=2026-12-18; triage evidence .agents/delegation/outputs/cve-triage-20261118.md + docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-111163
+    package:
+      name: wildmidi
+      version: "0.4.6"
+    reason: "legacy audio decoder (no fix; 'through 0.5.0', 0.5.0 already in closure and still hit); pulled only via gst-plugins-bad desktop media paths; removal is a later slice. WR-SEC-7 expires=2026-12-18; triage evidence .agents/delegation/outputs/cve-triage-20261118.md + docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-111123
+    package:
+      name: fluidsynth
+      version: "2.5.6"
+    reason: "MIDI synth (no fix; 'through 2.6.1'); pulled via gst-plugins-bad/SDL2_mixer desktop paths, not AI stack; removal is a later slice. WR-SEC-7 expires=2026-12-18; triage evidence .agents/delegation/outputs/cve-triage-20261118.md + docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
