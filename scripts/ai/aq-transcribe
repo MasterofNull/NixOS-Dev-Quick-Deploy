@@ -9,10 +9,11 @@
 #   ffmpeg   extracts + normalizes the audio (16 kHz mono wav) for the recognizer
 #   whisper  offline speech-to-text (CPU on this APU; no CUDA needed)
 #
-# It prefers a creator-authored subtitle track when one exists (most accurate)
-# and otherwise runs Whisper ASR, and it always records WHICH source produced the
-# text so downstream agents know how much to trust it. Visual-only content
-# (slides, on-screen code) is NOT captured — this is audio -> text only.
+# Transcript priority: creator subtitles > auto captions > Whisper (last resort,
+# only when no captions exist or with --force-whisper). It always records WHICH
+# source produced the text so downstream agents know how much to trust it.
+# Visual-only content (slides, on-screen code) is NOT captured — audio -> text only.
+# Public videos only: no cookies, no credentials, no private override.
 #
 # Usage:
 #   aq-transcribe <youtube-url | local-file> [options]
@@ -21,148 +22,320 @@
 #     --lang <code>     force language (e.g. en); default: auto-detect
 #     --force-whisper   ignore caption tracks, always run Whisper ASR
 #     --keep-audio      do not delete the downloaded/extracted audio
+#     --subs <file.vtt> use a local WebVTT file as the creator-subtitle track
+#     --allow-whisper-on-error  permit Whisper after a NON-429 caption error
+#                       (a 429 is terminal and never falls through to Whisper)
+#
+# Exit codes: 0 ok; 1 failure; 2 not public / policy reject; 3 missing tools;
+# 4 rate-limited (terminal); 5 power gate deferred or unavailable (fail closed);
+# 6 Whisper time budget exceeded (no transcript written); 7 cache-full.
 #
 # Outputs (in the out dir): metadata.json, transcript.txt, transcript.json
-# (segments+timestamps when Whisper is used), plus .srt/.vtt when available, and
-# SOURCE.txt naming the transcript source (creator-subtitles | whisper-asr).
+# (aq-segments/1: seconds-based timed segments for every source), transcript.vtt
+# when captions were used, run.json, and SOURCE.txt naming the transcript source
+# (creator-subtitles | auto-captions | whisper-asr). Stage cache + .done records:
+# ${AQ_TRANSCRIBE_CACHE:-$XDG_CACHE_HOME/aq-transcribe}/<id>/ (cap AQ_TRANSCRIBE_CACHE_MAX_GB, default 10).
 
 set -euo pipefail
 
+HERE="${BASH_SOURCE[0]%/*}"
+HELPER="$HERE/lib/video_frames.py"
 MODEL="small"
 OUT=""
 LANG=""
 FORCE_WHISPER=0
 KEEP_AUDIO=0
+ALLOW_ON_ERROR=0
+SUBS=""
 INPUT=""
 
 die() { printf 'aq-transcribe: %s\n' "$*" >&2; exit 1; }
+fail() { local c="$1"; shift; printf 'aq-transcribe: %s\n' "$*" >&2; exit "$c"; }
+hp() { python3 -I "$HELPER" "$@"; }
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --model) MODEL="${2:?}"; shift 2 ;;
     --out) OUT="${2:?}"; shift 2 ;;
     --lang) LANG="${2:?}"; shift 2 ;;
+    --subs) SUBS="${2:?}"; shift 2 ;;
     --force-whisper) FORCE_WHISPER=1; shift ;;
     --keep-audio) KEEP_AUDIO=1; shift ;;
-    -h|--help) sed -n '2,30p' "$0"; exit 0 ;;
+    --allow-whisper-on-error) ALLOW_ON_ERROR=1; shift ;;
+    --cookies*|--cookies-from-browser*) fail 2 "cookies are not accepted: public videos only" ;;
+    -h|--help) sed -n '2,36p' "$0"; exit 0 ;;
     -*) die "unknown option: $1" ;;
     *) [[ -z "$INPUT" ]] && INPUT="$1" || die "unexpected extra argument: $1"; shift ;;
   esac
 done
 
 [[ -n "$INPUT" ]] || die "need a YouTube URL or a local audio/video file (see --help)"
+[[ -z "$SUBS" || -f "$SUBS" ]] || die "--subs file not found: $SUBS"
 
-# Preflight: the tools are declared in nix/data/profile-system-packages.nix
-# (ai-dev profile). If this host has not rebuilt yet, hand the caller a working
-# offline command instead of failing opaquely.
-need_whisper_bin=""
-if command -v whisper >/dev/null 2>&1; then need_whisper_bin="whisper"
-elif command -v whisper-cli >/dev/null 2>&1; then need_whisper_bin="whisper-cli"; fi
+is_url=0
+[[ "$INPUT" =~ ^https?:// ]] && is_url=1
+if [[ $is_url -eq 1 && "$INPUT" =~ ^https?://[^/]*@ ]]; then
+  fail 2 "URL with embedded credentials rejected: public videos only"
+fi
 
-missing=()
-command -v yt-dlp  >/dev/null 2>&1 || missing+=("yt-dlp")
-command -v ffmpeg  >/dev/null 2>&1 || missing+=("ffmpeg")
-command -v timeout >/dev/null 2>&1 || missing+=("timeout (coreutils)")
-[[ -n "$need_whisper_bin" ]]      || missing+=("openai-whisper (whisper)")
-if [[ ${#missing[@]} -gt 0 ]]; then
+# Tools are checked lazily: caption-only and local-VTT runs never need Whisper.
+need_tool() { # <binary>
+  command -v "$1" >/dev/null 2>&1 && return 0
   cat >&2 <<EOF
-aq-transcribe: missing local tools: ${missing[*]}
+aq-transcribe: missing local tool: $1
 
 These are declared for the ai-dev profile; run a rebuild to install them
 permanently:  sudo nixos-rebuild switch --flake .#hyperd-ai-dev
 
-To transcribe RIGHT NOW without a rebuild, drop into an ad-hoc shell that has
-them and re-run this script inside it:
+To run RIGHT NOW without a rebuild, re-run this script inside an ad-hoc shell:
 
   nix shell nixpkgs#yt-dlp nixpkgs#ffmpeg nixpkgs#openai-whisper \\
     -c scripts/ai/aq-transcribe "$INPUT" --model $MODEL
 EOF
   exit 3
-fi
+}
+need_tool python3
+need_tool timeout
+[[ -f "$HELPER" ]] || die "missing helper: $HELPER"
+[[ $is_url -eq 0 ]] || need_tool yt-dlp
 
-is_url=0
-[[ "$INPUT" =~ ^https?:// ]] && is_url=1
+# Admission: the power gate must exit 0 exactly; a missing/unrunnable gate or missing
+# systemd-run (quota support) fails closed with exit 5 -- never skipped.
+DEFER_LOG="${AQ_TRANSCRIBE_DEFER_LOG:-${XDG_STATE_HOME:-$HOME/.local/state}/aq-transcribe/defer.jsonl}"
+admit() { # <stage>
+  local gate=("${AQ_TRANSCRIBE_POWER_GATE:-}") rc=0
+  if [[ -z "${gate[0]}" ]]; then
+    [[ -f "$HERE/lib/power_gate.py" ]] || fail 5 "gate unavailable: $HERE/lib/power_gate.py missing (fail closed)"
+    gate=(python3 "$HERE/lib/power_gate.py")
+  elif [[ ! -x "${gate[0]}" ]]; then
+    fail 5 "gate unavailable: ${gate[0]} not executable (fail closed)"
+  fi
+  command -v systemd-run >/dev/null 2>&1 || fail 5 "gate unavailable: systemd-run (quota support) missing (fail closed)"
+  "${gate[@]}" --task "aq-transcribe-$1" --defer-log "$DEFER_LOG" >&2 || rc=$?
+  case "$rc" in
+    0) return 0 ;;
+    5) fail 5 "deferred by power gate; retry later" ;;
+    *) fail 5 "gate unavailable: gate exited $rc (fail closed)" ;;
+  esac
+}
+quota() { # <cpu%> cmd... : nice/idle priority under a systemd scope quota
+  local cpu="$1"; shift
+  local pri=(nice -n 19)
+  command -v ionice >/dev/null 2>&1 && pri+=(ionice -c3)
+  systemd-run --user --scope --quiet -p "CPUQuota=$cpu" -p TasksMax=64 -- "${pri[@]}" "$@"
+}
 
-# Resolve an id + output dir.
-if [[ $is_url -eq 1 ]]; then
-  vid="$(yt-dlp --no-warnings --get-id "$INPUT" 2>/dev/null || true)"
-  [[ -n "$vid" ]] || vid="video"
-else
-  [[ -f "$INPUT" ]] || die "local file not found: $INPUT"
-  vid="$(basename "${INPUT%.*}")"
-fi
-OUT="${OUT:-transcripts/${vid}}"
-mkdir -p "$OUT"
-work="$(mktemp -d)"
-cleanup() { [[ $KEEP_AUDIO -eq 0 ]] && rm -rf "$work" 2>/dev/null || true; }
+scratch="$(mktemp -d)"
+CACHE_ROOT="${AQ_TRANSCRIBE_CACHE:-${XDG_CACHE_HOME:-$HOME/.cache}/aq-transcribe}"
+MAX_BYTES="$(awk -v g="${AQ_TRANSCRIBE_CACHE_MAX_GB:-10}" 'BEGIN{printf "%d", g*1073741824}')"
+ent=""
+cleanup() {
+  local rc=$?
+  if [[ -n "$ent" ]]; then
+    rm -f "$ent/.lock" 2>/dev/null || true
+    [[ $KEEP_AUDIO -eq 0 ]] && { rm -rf "$ent/work" 2>/dev/null || true; }
+  fi
+  rm -rf "$scratch" 2>/dev/null || true
+  exit "$rc"
+}
 trap cleanup EXIT
 
-audio=""
-source_kind=""
-
-if [[ $is_url -eq 1 ]]; then
-  echo "[aq-transcribe] fetching metadata + captions: $INPUT"
-  yt-dlp --no-warnings --dump-json "$INPUT" > "$OUT/metadata.json" 2>/dev/null \
-    || echo '{}' > "$OUT/metadata.json"
-
-  # Prefer a creator/auto caption track unless --force-whisper.
-  if [[ $FORCE_WHISPER -eq 0 ]]; then
-    yt-dlp --no-warnings --skip-download \
-      --write-subs --write-auto-subs --sub-langs "${LANG:-en}.*,en" \
-      --sub-format vtt --convert-subs vtt \
-      -o "$work/%(id)s.%(ext)s" "$INPUT" >/dev/null 2>&1 || true
-    sub="$(find "$work" -name '*.vtt' 2>/dev/null | sort | head -n1 || true)"
-    if [[ -n "$sub" ]]; then
-      # Strip WEBVTT header, cue timings, and de-duplicate rolling caption lines.
-      awk '
-        /-->/ {next} /^WEBVTT/ {next} /^NOTE/ {next} /^[0-9]+$/ {next}
-        { gsub(/<[^>]*>/,""); sub(/\r$/,""); if ($0 != "" && $0 != prev) { print; prev=$0 } }
-      ' "$sub" > "$OUT/transcript.txt"
-      cp "$sub" "$OUT/transcript.vtt" 2>/dev/null || true
-      source_kind="creator-or-auto-subtitles"
+# ---- yt-dlp wrapper: one shared retry budget, 429 is terminal -------------------------
+YT_RETRIES_USED=0
+YT_BACKOFF=(30 90 270)
+SLEEP_CMD="${AQ_TRANSCRIBE_SLEEP:-sleep}"
+YT_ENV_STRIP=()
+for v in $(compgen -e); do
+  case "$v" in
+    YT_DLP_*) YT_ENV_STRIP+=(-u "$v") ;;
+    http_proxy|https_proxy|all_proxy|HTTP_PROXY|HTTPS_PROXY|ALL_PROXY)
+      [[ "${!v}" == *@* ]] && YT_ENV_STRIP+=(-u "$v") ;;
+  esac
+done
+YT_OUT="$scratch/yt.out"; YT_ERR="$scratch/yt.err"
+# Returns 0 ok, 1 non-429 error; a 429 that exhausts the budget exits 4 here.
+ytdlp_run() { # <label> yt-dlp args...
+  local label="$1" rc; shift
+  while :; do
+    rc=0
+    env ${YT_ENV_STRIP[@]+"${YT_ENV_STRIP[@]}"} yt-dlp --ignore-config --no-cookies --no-cookies-from-browser \
+      --no-playlist --retries 0 --fragment-retries 2 --sleep-requests 1 --no-warnings "$@" \
+      >"$YT_OUT" 2>"$YT_ERR" || rc=$?
+    [[ $rc -eq 0 ]] && return 0
+    if grep -qiE 'HTTP Error 429|Too Many Requests' "$YT_ERR"; then
+      if (( YT_RETRIES_USED < ${#YT_BACKOFF[@]} )); then
+        echo "[aq-transcribe] rate limited during $label; backoff ${YT_BACKOFF[$YT_RETRIES_USED]}s (retry $((YT_RETRIES_USED+1))/${#YT_BACKOFF[@]})" >&2
+        "$SLEEP_CMD" "${YT_BACKOFF[$YT_RETRIES_USED]}"
+        YT_RETRIES_USED=$((YT_RETRIES_USED+1))
+        continue
+      fi
+      tail -n 5 "$YT_ERR" >&2
+      fail 4 "rate-limited (HTTP 429) during $label after ${#YT_BACKOFF[@]} retries; terminal, Whisper fallback refused"
     fi
-  fi
+    return 1
+  done
+}
 
-  if [[ -z "$source_kind" ]]; then
-    echo "[aq-transcribe] no caption track used; downloading audio for Whisper ASR"
-    yt-dlp --no-warnings --hls-prefer-native -f bestaudio -x --audio-format wav \
-      -o "$work/audio.%(ext)s" "$INPUT" >/dev/null 2>&1 \
-      || die "yt-dlp failed to download audio (network? geo-block?)"
-    audio="$(find "$work" -name 'audio.*' | head -n1)"
-  fi
+# ---- resolve identity -----------------------------------------------------------------
+est_bytes=0; dur_s=-1
+if [[ $is_url -eq 1 ]]; then
+  ytdlp_run "id lookup" --get-id "$INPUT" || die "yt-dlp could not resolve the video id"
+  vid="$(head -n1 "$YT_OUT")"
+  [[ "$vid" =~ ^[A-Za-z0-9_-]{1,64}$ ]] || die "unexpected video id from yt-dlp"
+  echo "[aq-transcribe] fetching metadata: $INPUT"
+  ytdlp_run "metadata" --dump-json "$INPUT" || die "yt-dlp could not fetch metadata"
+  cp "$YT_OUT" "$scratch/meta.json"
+  mi="$(hp meta-check "$scratch/meta.json")" || exit 2
+  est_bytes="$(python3 -I -c 'import json,sys;print(json.loads(sys.argv[1])["est_bytes"])' "$mi")"
+  dur_s="$(python3 -I -c 'import json,sys;print(json.loads(sys.argv[1])["duration_s"])' "$mi")"
+  src_id="$vid"
 else
-  printf '{"local_file":"%s"}\n' "$INPUT" > "$OUT/metadata.json"
-  echo "[aq-transcribe] extracting audio from local file"
-  # Hardening (WR-SEC-3): a local file can be a playlist/manifest that makes ffmpeg open
-  # network protocols (HLS/DASH/RTSP/sftp CVEs, no fix released). Restrict to file+pipe,
-  # never read stdin, and bound the runtime (override: AQ_TRANSCRIBE_FFMPEG_TIMEOUT seconds).
-  timeout "${AQ_TRANSCRIBE_FFMPEG_TIMEOUT:-600}" ffmpeg -nostdin -y -protocol_whitelist file,pipe \
-    -i "$INPUT" -ar 16000 -ac 1 "$work/audio.wav" >/dev/null 2>&1 \
-    || die "ffmpeg failed (or timed out after ${AQ_TRANSCRIBE_FFMPEG_TIMEOUT:-600}s) extracting audio from $INPUT"
-  audio="$work/audio.wav"
+  [[ -f "$INPUT" ]] || die "local file not found: $INPUT"
+  src_id="$(hp sha256 "$INPUT")"
+  vid="$src_id"
+  if [[ -z "$SUBS" && -f "${INPUT%.*}.vtt" ]]; then SUBS="${INPUT%.*}.vtt"; fi
 fi
+if [[ -z "$OUT" ]]; then
+  if [[ $is_url -eq 1 ]]; then OUT="transcripts/$vid"; else OUT="transcripts/$(basename "${INPUT%.*}")"; fi
+fi
+mkdir -p "$OUT"
+if [[ $is_url -eq 1 ]]; then cp "$scratch/meta.json" "$OUT/metadata.json"
+else python3 -I -c 'import json,sys;print(json.dumps({"local_file":sys.argv[1]}))' "$INPUT" > "$OUT/metadata.json"; fi
 
-if [[ -n "$audio" ]]; then
-  echo "[aq-transcribe] running Whisper ($MODEL) — first run downloads the model weights"
-  lang_args=(); [[ -n "$LANG" ]] && lang_args=(--language "$LANG")
-  if [[ "$need_whisper_bin" == "whisper" ]]; then
-    whisper "$audio" --model "$MODEL" --output_dir "$OUT" \
-      --output_format all "${lang_args[@]}" >/dev/null 2>&1 \
-      || die "whisper transcription failed"
-    base="$OUT/$(basename "${audio%.*}")"
-    [[ -f "$base.txt" ]]  && cp "$base.txt"  "$OUT/transcript.txt"
-    [[ -f "$base.json" ]] && cp "$base.json" "$OUT/transcript.json"
+# ---- cache entry: admission, lock, stale-state quarantine -----------------------------
+hp cache-admit "$CACHE_ROOT" "$vid" 5242880 "$MAX_BYTES" || exit 7
+ent="$CACHE_ROOT/$vid"
+mkdir -p "$ent/stages" "$ent/work"
+echo $$ > "$ent/.lock"
+quar() { # move a path into the cache quarantine (never reused)
+  [[ -e "$1" ]] || return 0
+  mkdir -p "$ent/quarantine"; mv "$1" "$ent/quarantine/$(date +%s)-$$-${1##*/}"
+}
+quar "$ent/transcript.tmp"
+work="$ent/work"
+cache_hit=0
+
+# ---- subtitle selection ----------------------------------------------------------------
+mode=""; sub_file=""
+if [[ -n "$SUBS" && $FORCE_WHISPER -eq 0 ]]; then
+  mode="local-subs"; sub_file="$SUBS"
+elif [[ $is_url -eq 1 && $FORCE_WHISPER -eq 0 ]]; then
+  echo "[aq-transcribe] fetching captions (creator, then auto)"
+  for m in creator auto; do
+    flag="--write-subs"; [[ $m == auto ]] && flag="--write-auto-subs"
+    rc=0
+    ytdlp_run "caption fetch ($m)" --skip-download "$flag" --sub-langs "${LANG:-en}.*,en" \
+      --sub-format vtt --convert-subs vtt -o "$work/%(id)s.%(ext)s" "$INPUT" || rc=$?
+    if [[ $rc -ne 0 ]]; then
+      [[ $ALLOW_ON_ERROR -eq 1 ]] || die "caption fetch failed (non-429 error); rerun with --allow-whisper-on-error to permit Whisper"
+      echo "[aq-transcribe] caption error tolerated (--allow-whisper-on-error)" >&2
+      break
+    fi
+    f="$(find "$work" -name '*.vtt' 2>/dev/null | sort | head -n1 || true)"
+    if [[ -n "$f" ]]; then mode="$m"; sub_file="$f"; break; fi
+  done
+fi
+[[ -n "$mode" ]] || mode="whisper"
+
+sub_sha=""; [[ -n "$sub_file" ]] && sub_sha="$(hp sha256 "$sub_file")"
+whisper_bin=""
+if [[ $mode == whisper ]]; then
+  if command -v whisper >/dev/null 2>&1; then whisper_bin=whisper
+  elif command -v whisper-cli >/dev/null 2>&1; then whisper_bin=whisper-cli; fi
+fi
+case "$mode" in
+  creator|local-subs) source_kind="creator-subtitles" ;;
+  auto) source_kind="auto-captions" ;;
+  *) source_kind="whisper-asr(model=$MODEL)" ;;
+esac
+fp_model=""; [[ $mode == whisper ]] && fp_model="$MODEL"
+fp="$(hp fingerprint "source=$src_id" "lang=$LANG" "mode=$mode" "subs_sha256=$sub_sha" \
+  "model=$fp_model" "backend=$whisper_bin")"
+stage="$ent/transcript"; done_f="$ent/stages/transcript.done"
+
+if [[ -d "$stage" ]] && hp done-check "$stage" "$done_f" "$fp"; then
+  cache_hit=1
+  echo "[aq-transcribe] cache hit (transcript stage, fingerprint ${fp:0:12})"
+else
+  quar "$stage"
+  rm -f "$done_f"
+  hp cache-check-write "$CACHE_ROOT" 5242880 "$MAX_BYTES" || exit 7
+  tmp="$ent/transcript.tmp"
+  if [[ $mode != whisper ]]; then
+    mkdir -p "$tmp"
+    hp vtt2seg "$sub_file" "$tmp" "$source_kind" "${LANG:-auto}" || die "subtitle parse failed"
+    cp "$sub_file" "$tmp/transcript.vtt"
   else
-    "$need_whisper_bin" -f "$audio" -otxt -oj -of "$OUT/transcript" >/dev/null 2>&1 \
-      || die "whisper-cli transcription failed"
+    # Whisper is the last resort: lazy preflight, gate, quota, time budget.
+    [[ -n "$whisper_bin" ]] || need_tool whisper
+    if [[ $is_url -eq 1 ]]; then
+      cap="${AQ_TRANSCRIBE_MAX_MIN:-120}"
+      if awk -v d="$dur_s" -v c="$cap" 'BEGIN{exit !(d>c*60)}'; then fail 2 "video longer than ${cap} min cap"; fi
+      need=$(( est_bytes > 0 ? est_bytes : 800*1024*1024 ))
+      hp cache-admit "$CACHE_ROOT" "$vid" "$need" "$MAX_BYTES" || exit 7
+      admit whisper
+      echo "[aq-transcribe] no caption track used; downloading audio for Whisper ASR"
+      ytdlp_run "media download" --hls-prefer-native -f bestaudio -x --audio-format wav \
+        --max-filesize 800M -o "$work/audio.%(ext)s" "$INPUT" \
+        || die "yt-dlp failed to download audio (network? geo-block?)"
+      audio="$(find "$work" -name 'audio.*' -not -name '*.part' | head -n1)"
+      [[ -n "$audio" ]] || die "yt-dlp produced no audio file"
+    else
+      need_tool ffmpeg
+      hp cache-admit "$CACHE_ROOT" "$vid" $(( 1024*1024*1024 )) "$MAX_BYTES" || exit 7
+      admit whisper
+      echo "[aq-transcribe] extracting audio from local file"
+      # Hardening (WR-SEC-3): a local file can be a playlist/manifest that makes ffmpeg open
+      # network protocols (HLS/DASH/RTSP/sftp CVEs, no fix released). Restrict to file+pipe,
+      # never read stdin, and bound the runtime (override: AQ_TRANSCRIBE_FFMPEG_TIMEOUT seconds).
+      quota 200% timeout "${AQ_TRANSCRIBE_FFMPEG_TIMEOUT:-600}" ffmpeg -nostdin -y -protocol_whitelist file,pipe \
+        -i "$INPUT" -ar 16000 -ac 1 "$work/audio.wav" >/dev/null 2>&1 \
+        || die "ffmpeg failed (or timed out after ${AQ_TRANSCRIBE_FFMPEG_TIMEOUT:-600}s) extracting audio from $INPUT"
+      audio="$work/audio.wav"
+    fi
+    budget="${AQ_TRANSCRIBE_WHISPER_BUDGET:-3600}"
+    wh="$work/wh"; mkdir -p "$wh"
+    echo "[aq-transcribe] running Whisper ($MODEL, budget ${budget}s) — first run downloads the model weights"
+    lang_args=(); [[ -n "$LANG" ]] && lang_args=(--language "$LANG")
+    rc=0
+    if [[ "$whisper_bin" == "whisper" ]]; then
+      quota 400% timeout "$budget" whisper "$audio" --model "$MODEL" --output_dir "$wh" \
+        --output_format json --threads 4 ${lang_args[@]+"${lang_args[@]}"} >/dev/null 2>&1 || rc=$?
+    else
+      cpp_lang=(); [[ -n "$LANG" ]] && cpp_lang=(-l "$LANG")
+      quota 400% timeout "$budget" whisper-cli -f "$audio" -oj -of "$wh/transcript" -t 4 \
+        ${cpp_lang[@]+"${cpp_lang[@]}"} >/dev/null 2>&1 || rc=$?
+    fi
+    # Both backends emit final files only at the end: a timeout leaves no truthful partial.
+    [[ $rc -ne 124 ]] || fail 6 "Whisper exceeded its ${budget}s budget; no transcript written"
+    [[ $rc -eq 0 ]] || die "$whisper_bin transcription failed (exit $rc)"
+    raw="$(find "$wh" -name '*.json' | sort | head -n1)"
+    [[ -n "$raw" ]] || die "$whisper_bin produced no json output"
+    mkdir -p "$tmp"
+    be="$(hp whisper2seg "$raw" "$tmp" "$source_kind" "${LANG:-auto}")" || die "whisper output not parseable"
+    cp "$raw" "$tmp/transcript.raw.$be.json"
   fi
-  source_kind="whisper-asr(model=$MODEL)"
+  mv "$tmp" "$stage"
+  hp done-write transcript "$stage" "$done_f" "$fp"
 fi
 
+# ---- publish to the out dir ------------------------------------------------------------
+cp "$stage/transcript.json" "$stage/transcript.txt" "$OUT/"
+[[ -f "$stage/transcript.vtt" ]] && cp "$stage/transcript.vtt" "$OUT/"
 printf '%s\n' "$source_kind" > "$OUT/SOURCE.txt"
+kind=local; [[ $is_url -eq 1 ]] && kind=url
+python3 -I -c 'import json,sys,time
+a=sys.argv
+json.dump({"input_kind":a[1],"id":a[2],"selection_mode":a[3],"fingerprint":a[4],"cache_hit":a[5]=="1",
+ "yt_dlp_retries_used":int(a[6]),"finished_at":time.strftime("%Y-%m-%dT%H:%M:%SZ",time.gmtime())},
+ open(a[7]+"/run.json","w"),indent=1)' "$kind" "$vid" "$mode" "$fp" "$cache_hit" "$YT_RETRIES_USED" "$OUT"
+
+touch "$ent"
+[[ $KEEP_AUDIO -eq 0 ]] && rm -rf "$work"
+hp cache-measure "$CACHE_ROOT" "$MAX_BYTES" || exit 7
 chars=$(wc -m < "$OUT/transcript.txt" 2>/dev/null || echo 0)
 echo "[aq-transcribe] done."
 echo "  source:  $source_kind"
-echo "  output:  $OUT/ (transcript.txt, metadata.json$( [[ -f "$OUT/transcript.json" ]] && echo ', transcript.json'))"
+echo "  output:  $OUT/ (transcript.txt, transcript.json, metadata.json, run.json)"
 echo "  length:  ${chars} characters"
 echo "  preview: $(head -c 300 "$OUT/transcript.txt" 2>/dev/null | tr '\n' ' ')"
