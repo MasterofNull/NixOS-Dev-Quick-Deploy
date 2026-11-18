@@ -11,6 +11,10 @@
       "name": "MVP - S1-S4 (frozen 2026-11-13)"
     },
     {
+      "id": "f3-mvp",
+      "name": "F3 MVP - S4b, S5 (frozen 2026-11-14)"
+    },
+    {
       "id": "deferred",
       "name": "Deferred (post-MVP)"
     }
@@ -83,6 +87,58 @@
       ],
       "detection": {
         "freeze_record": ".agents/plans/frugal-sota-leadership-20261113/FREEZE.md"
+      },
+      "acceptance": {
+        "status": "pending",
+        "by": null,
+        "date": null,
+        "note": "Pending independent review."
+      }
+    },
+    {
+      "id": "f3-s4b-test-pollution",
+      "name": "S4b - tests cannot write live delegation telemetry",
+      "phase": "f3-mvp",
+      "goal": "Trace and fix the producer of the fixture rows in live outcome-receipts / power-gate files; defer log created 0600.",
+      "validation_goal": "test-aq-land asserts the receipt lands in the isolated dir; test-local-power-gate asserts 0600.",
+      "deps": [
+        "s4-receipts-scoreboard"
+      ],
+      "detection": {
+        "freeze_record": ".agents/plans/frugal-sota-leadership-20261113/F3-FREEZE.md",
+        "commit_match": [
+          "fix(telemetry): tests can no longer write live delegation telemetry"
+        ],
+        "tests": [
+          "scripts/testing/test-aq-land.py",
+          "scripts/testing/test-local-power-gate.py"
+        ]
+      },
+      "acceptance": {
+        "status": "pending",
+        "by": null,
+        "date": null,
+        "note": "Pending independent review."
+      }
+    },
+    {
+      "id": "f3-s5-trajectory-collector",
+      "name": "S5 - offline verified-trajectory collector",
+      "phase": "f3-mvp",
+      "goal": "Offline CLI turns independently reviewed, CI-passing receipts into redacted trajectory rows; quarantine on any finding; counters in aq-scoreboard.",
+      "validation_goal": "test-collect-trajectories acceptance (a)-(i) plus scoreboard counters.",
+      "deps": [
+        "s4-receipts-scoreboard",
+        "f3-s4b-test-pollution"
+      ],
+      "detection": {
+        "freeze_record": ".agents/plans/frugal-sota-leadership-20261113/F3-FREEZE.md",
+        "commit_match": [
+          "feat(factory): F3 S5 offline verified-trajectory collector"
+        ],
+        "tests": [
+          "scripts/testing/test-collect-trajectories.py"
+        ]
       },
       "acceptance": {
         "status": "pending",

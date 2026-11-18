@@ -8,28 +8,42 @@
   "last_scan": "2026-10-19T16:00:52Z"
  },
  "arxiv-cs-ai": {
-  "last_error": "PermissionError: frontier_scan: host 'arxiv.org' resolves to private/local network space",
-  "last_scan": "2026-10-19T16:00:52Z"
+  "etag": null,
+  "fingerprint": "8ff36dfac1952a5cd01b15bd61fd1e3a48bc18ab821246dc1dbb8d4ee752afac",
+  "last_error": null,
+  "last_scan": "2026-11-02T20:08:46Z"
  },
  "arxiv-cs-cl": {
-  "last_error": "PermissionError: frontier_scan: host 'arxiv.org' resolves to private/local network space",
-  "last_scan": "2026-10-19T16:00:52Z"
+  "etag": null,
+  "fingerprint": "67be50466c4d16775edd4853234d5b33756d9b94533b706df1216fbd69290729",
+  "last_error": null,
+  "last_scan": "2026-11-02T20:08:46Z"
  },
  "arxiv-cs-lg": {
-  "last_error": "PermissionError: frontier_scan: host 'arxiv.org' resolves to private/local network space",
-  "last_scan": "2026-10-19T16:00:52Z"
+  "etag": null,
+  "fingerprint": "dbcbc0ef66c49b38b0639fe8409263857a1e4825c3d993492633d588d238e8af",
+  "last_error": null,
+  "last_scan": "2026-11-02T20:08:46Z"
  },
  "arxiv-cs-ma": {
-  "last_error": "PermissionError: frontier_scan: host 'arxiv.org' resolves to private/local network space",
-  "last_scan": "2026-10-19T16:00:52Z"
+  "etag": null,
+  "fingerprint": "725e5bd04f813105d500804a2084f0c1a32f0d2f06d9184c3dc052b1234df632",
+  "last_error": null,
+  "last_scan": "2026-11-02T20:08:46Z"
  },
  "bitnet": {
   "last_error": "PermissionError: frontier_scan: host 'github.com' resolves to private/local network space",
   "last_scan": "2026-10-19T16:00:52Z"
  },
  "claude-code-changelog": {
-  "last_error": "PermissionError: frontier_scan: host 'code.claude.com' resolves to private/local network space",
-  "last_scan": "2026-10-19T16:00:52Z"
+  "etag": null,
+  "fingerprint": "5287c5e3fe304ef02430461251896ceff853211af4814ba1790a593831924b12",
+  "last_error": null,
+  "last_scan": "2026-11-02T20:08:46Z"
+ },
+ "deepmind-research": {
+  "last_error": "PermissionError: frontier_scan: host 'deepmind.google' resolves to private/local network space",
+  "last_scan": "2026-11-02T19:33:59Z"
  },
  "disko": {
   "last_error": "PermissionError: frontier_scan: host 'github.com' resolves to private/local network space",
@@ -49,13 +63,17 @@
  },
  "hf-trending": {
   "last_error": "PermissionError: frontier_scan: unsupported URL scheme 'hf'",
-  "last_scan": "2026-10-22T07:30:42Z"
+  "last_scan": "2026-11-02T20:08:46Z"
  },
  "impermanence": {
   "etag": "W/\"06bd379f39c1e21b70979d8e488af6a6\"",
   "fingerprint": "335c29f2848126fe7a6568fe46815e7a17b2c3720a93af6d4d46d32f60a6ee07",
   "last_error": null,
   "last_scan": "2026-10-22T07:30:42Z"
+ },
+ "indydevdan-pi": {
+  "last_error": "PermissionError: frontier_scan: host 'github.com' resolves to private/local network space",
+  "last_scan": "2026-11-02T19:33:59Z"
  },
  "landlock": {
   "etag": null,
@@ -74,9 +92,79 @@
   "last_scan": "2026-10-22T07:30:42Z"
  },
  "llama-cpp": {
-  "etag": "W/\"c65e3889544eed3b1cc4d224bbd30744\"",
-  "fingerprint": "6347e50909742f9114fac36117fa9bd957ffe778da19004ef77aed9191c40d39",
+  "etag": "W/\"f283413149c12ee724adc316874cd4d9\"",
+  "fingerprint": "4f8f9b68cb05df65f4f0d5a9930638f27e99bc9ac2fcf2b13096ef77e1abda02",
   "last_error": null,
-  "last_scan": "2026-10-22T07:30:42Z"
+  "last_scan": "2026-11-02T20:08:46Z"
+ },
+ "llama-grammars": {
+  "last_error": "PermissionError: frontier_scan: host 'github.com' resolves to private/local network space",
+  "last_scan": "2026-11-02T19:33:59Z"
+ },
+ "mcp-spec": {
+  "last_error": "PermissionError: frontier_scan: host 'modelcontextprotocol.io' resolves to private/local network space",
+  "last_scan": "2026-11-02T19:33:59Z"
+ },
+ "mcp-spec-changelog": {
+  "last_error": "PermissionError: frontier_scan: host 'modelcontextprotocol.io' resolves to private/local network space",
+  "last_scan": "2026-11-02T19:33:59Z"
+ },
+ "nixpkgs": {
+  "last_error": "PermissionError: frontier_scan: host 'github.com' resolves to private/local network space",
+  "last_scan": "2026-11-02T19:33:59Z"
+ },
+ "openai-research": {
+  "last_error": "PermissionError: frontier_scan: host 'openai.com' resolves to private/local network space",
+  "last_scan": "2026-11-02T19:33:59Z"
+ },
+ "otel-genai": {
+  "last_error": "PermissionError: frontier_scan: host 'opentelemetry.io' resolves to private/local network space",
+  "last_scan": "2026-11-02T19:33:59Z"
+ },
+ "outlines": {
+  "last_error": "PermissionError: frontier_scan: host 'github.com' resolves to private/local network space",
+  "last_scan": "2026-11-02T19:33:59Z"
+ },
+ "owasp-llm": {
+  "last_error": "PermissionError: frontier_scan: host 'genai.owasp.org' resolves to private/local network space",
+  "last_scan": "2026-11-02T19:33:59Z"
+ },
+ "sandlock-releases": {
+  "last_error": "PermissionError: frontier_scan: host 'github.com' resolves to private/local network space",
+  "last_scan": "2026-11-02T19:33:59Z"
+ },
+ "sglang": {
+  "last_error": "PermissionError: frontier_scan: host 'github.com' resolves to private/local network space",
+  "last_scan": "2026-11-02T19:33:59Z"
+ },
+ "swebench": {
+  "etag": "W/\"7ad0ad146abdec32472e6201f4035e6e\"",
+  "fingerprint": "7e2abff9cfbd6a9cc9cd54b1a972b0c2c219459fe587b3fa0f5dd5031826fc2d",
+  "last_error": null,
+  "last_scan": "2026-11-02T20:08:46Z"
+ },
+ "terminal-bench": {
+  "etag": "\"2s6yt4mthr344d\"",
+  "fingerprint": "0788bb713e58e1d65f3d0958a4c78509b9b5bae95b1392f0b45a0489a3f98cce",
+  "last_error": null,
+  "last_scan": "2026-11-02T20:08:46Z"
+ },
+ "unsloth": {
+  "etag": "W/\"81674f3fed926c36792d3286a5aa7a43\"",
+  "fingerprint": "e5dfd68b67e65375c0d4acdf0a2246844875c1fd56bcf625bb480a6daae4e25c",
+  "last_error": null,
+  "last_scan": "2026-11-02T20:08:46Z"
+ },
+ "vllm": {
+  "etag": "W/\"74fd41d6fff93e239781d930fd069a75\"",
+  "fingerprint": "2cc792162247021142ea028bddc1c6a37595edc7634d1edb1e24d1b63bf44466",
+  "last_error": null,
+  "last_scan": "2026-11-02T20:08:46Z"
+ },
+ "xgrammar": {
+  "etag": "W/\"ac91e1e0207d819c6621b7b0831f0235\"",
+  "fingerprint": "9c0621cfec79f4450a89a0f2a4a25fe3110f1856811a5501e562eb01ce15658d",
+  "last_error": null,
+  "last_scan": "2026-11-02T20:08:46Z"
  }
 }

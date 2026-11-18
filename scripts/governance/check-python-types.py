@@ -31,6 +31,8 @@ def run(cmd, cwd, **kw):
 
 def excluded(path):
     parts = path.split("/")
+    if path.startswith(".agents/plans/") and "prototypes" in parts[:-1]:  # reference prototypes in plan dirs are not live code
+        return True
     return (path.startswith(EXCLUDE_PREFIXES) or fnmatch.fnmatch(parts[0], "result*")
             or any(p in EXCLUDE_PARTS for p in parts[:-1]))
 

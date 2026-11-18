@@ -40,6 +40,12 @@ def scan(text: str) -> list[str]:
     return hits
 
 
+def is_eligible(rec: dict) -> bool:
+    """Independently reviewed (PASS, author not a reviewer) and CI-passing: eligible as a verified trajectory."""
+    return ("PASS" in (rec.get("review_verdicts") or []) and rec.get("ci") == "pass"
+            and rec.get("author_lane") not in (rec.get("reviewer_lanes") or []))
+
+
 def _redact(text: str) -> tuple[str, list[str]]:
     sys.path.insert(0, str(_PRIVACY))
     try:

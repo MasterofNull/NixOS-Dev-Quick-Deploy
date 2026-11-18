@@ -394,13 +394,14 @@ Codex lane absent).
 - fix-path: add a nixos-docs cache test, then replace with sqlite3/shelve-based cache; or raise floor on fix.
 - class: T5 · severity: low-medium (local cache dir, same-user) · owner hyperd, approved 2026-10-14 chat · expires 2026-11-13.
 
-## WR-SEC-3 — ffmpeg 8.1.2 library-linkage CVEs ignored in .grype.yaml — OPEN (MAINT-DUE 2026-10-22 for the 8.1.3 group, 2026-11-14 for the rest)
+## WR-SEC-3 — ffmpeg 8.1.2 library-linkage CVEs ignored in .grype.yaml — OPEN (re-verified 2026-11-14; MAINT-DUE 2026-12-14)
 - symptom: Grype closure scan (alerts #2919-#2929) flags ffmpeg 8.1.2 (4 HIGH, 7 MEDIUM) from library consumers (pipewire, gst-libav, chromaprint, opencv, qtmultimedia, torchcodec, python av, pydub via ffmpeg-full); the ffmpeg CLI is already unstable 9.0.1 (fast-lane leaf).
 - band-aid in place? yes: 11 `ignore` entries in `.grype.yaml`, each with a machine token `expires=YYYY-MM-DD`; enforced by `scripts/governance/tier0.d/check-grype-ignore-expiry.sh` (WARN pre-commit, FAIL maintenance and the CI step in security.yml). Mitigation in `scripts/ai/aq-transcribe` (`timeout`, `-nostdin -protocol_whitelist file,pipe`, yt-dlp `--hls-prefer-native`).
 - root cause: (a) CVE-2026-52295/6/7 are CPE range false positives: 8.1.2 source already has the fixes (mov_read_iacb uses ff_alloc_extradata; iamf_writer.c pads extradata with INT_MAX guards; wmaenc.c av_mallocz(size+AV_INPUT_BUFFER_PADDING_SIZE)); (b) CVE-2026-107695/97 and 107660 are fixed in ffmpeg 8.1.3, which nixos-26.05 does not ship yet (backport nixpkgs#571601 targets staging-26.05); (c) CVE-2026-107696 (RTSP redirect infinite loop), 107675 (sftp missing host-key verification), 107676, 107677 (DASH loop), 107678 have no released fix ("through 9.0.2", master only), so the 9.0.1 CLI is affected too.
 - producer to fix: nixpkgs channel (b); upstream ffmpeg release (c).
 - fix-path: `nix flake update nixpkgs` once nixos-26.05 ffmpeg_8 >= 8.1.3, then drop the (a)+(b) ignores; drop (c) on a fixed release. Group (b) expires 2026-10-22 and is renewed weekly only while the channel lacks 8.1.3. No local overlay: ffmpeg_8 override rebuilds large referrer closures (measured by reviewer: 455/192/132 referrers for the three variants; see fast-lane-manifest.nix).
 - class: T5 · severity: HIGH (DoS/OOB-read in demux paths on untrusted media) · owner hyperd.
+- re-check 2026-11-14: nixpkgs pin (flake.lock 1dd30c29) now ships ffmpeg 8.1.3 (`nix eval` ffmpeg/-headless/-full = 8.1.3), so group (b) is fixed by the channel and its ignores are gone; the (a) range-FP ignores were re-scoped from 8.1.2 to 8.1.3 (the 8.1.2 scope matched nothing; grype on the live closure SBOM flagged 52295/6/7 on 8.1.3 until re-scoped). Group (c) re-verified: latest upstream tags are n9.0.2 and n8.1.3 and neither carries the fixes (n8.1.3/n9.0.2 libssh.c has no host-key check; CVEs say 'through 9.0.2'), mitigation intact (`scripts/ai/aq-transcribe` line 139 `-protocol_whitelist file,pipe`; aq-transcribe is still the only repo ffmpeg consumer). New expiry 2026-12-14 for all 8 entries. Evidence `docs/harness-first/evidence/2026-11-14-wr-sec-3-recheck.md`. Unregistered new ffmpeg 8.1.3 findings (CVE-2026-96611, 120210, 120243-7) are not covered by this entry; see the evidence file.
 
 ## WR-REVIEW-1 — review claims are receipt-backed but not cryptographically attributable — OPEN
 - symptom: ~85 merged PRs carry `Reviewed-by: codex|claude-sonnet|...` with no matching reviewer run (fabricated/self-asserted reviewer claims).
@@ -472,3 +473,9 @@ Codex lane absent).
 - fix-path: when upstream locks the flag differently (or drops it), run a plain `nix flake update` and close this entry. Until then, every flake refresh must re-apply the override for nixified-ai only.
 - class: T3 dependency-hold · severity: low · status: CLOSED · opened: 2026-11-05 · review-by: 2026-12-05.
 - closed 2026-11-05: flake.nix overrides nixified-ai's enable-container-tests input with the lockable github:nixified-ai/flake?dir=flags/container-tests/disabled, so nixified-ai tracks its latest revision again. The upstream issue is still worth filing: other consumers hit the same error.
+
+## 2026-11-14 — Codex headless cap raised to 1.5M for orchestrator review queues (owner-approved, temporary)
+- What: `DELEGATE_CODEX_DAILY_TOKEN_BUDGET=1500000`, set ONLY in the orchestrator's review/land queue processes (Simurg@claude/opus-5.5#da0ef470). The global default (1000000) and config/agent-dispatch-budget.json are unchanged.
+- Why: Gemini is quota-exhausted until ~2026-11-20 17:21 PST, which leaves Codex as the only non-Claude reviewer for gate and large diffs; the 1M cap admitted about 1 review per hour. The owner chose a "temp raise" in the CLI on 2026-11-14.
+- Root cause / proper fix: a single non-Claude reviewer is a single point of failure. The proper fix is a second reviewer lane (opencode or continue-cli), which is backlog.
+- Expiry: 2026-11-20 (Gemini reset) or when the second lane lands, whichever comes first. Do not carry it into new sessions.

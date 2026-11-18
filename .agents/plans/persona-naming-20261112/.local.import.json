@@ -1,0 +1,9 @@
+{
+  "agent": "local",
+  "dispatch_id": "local-20261112-182049-j9xxhn",
+  "imported_at": "2026-11-13T04:34:30Z",
+  "patch_sha256": "faa6a471548e55546ee37604907019692b00f740834c4a8a1c25edd0f661dc37",
+  "schema_version": "1.0",
+  "sha256": "ff8baedbfbb3b3c2a050617ca8702b6d469f86edc9bdde8c73cbda28fbba16eb",
+  "source_kind": "isolated-worktree-owned-file"
+}

@@ -28,6 +28,7 @@
     ".agent/archive",
     ".agents/archive",
     ".agents/delegation",
+    ".agents/plans/*/prototypes",
     "result*"
   ],
   "reportMissingImports": "none",
