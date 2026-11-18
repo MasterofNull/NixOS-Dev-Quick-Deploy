@@ -106,6 +106,7 @@ echo "$*" >> "$STUB_DIR/deploy-args.log"
 [ "$DEPLOY_KILL" = before ] && { kill -9 "$PPID"; exit 1; }
 git rev-parse HEAD > "$STUB_DIR/running_rev"
 [ "$DEPLOY_KILL" = after ] && kill -9 "$PPID"
+[ -n "$DEPLOY_QA_FAIL" ] && exit 1
 exit 0
 """,
     "baseline": """#!/bin/sh
@@ -160,10 +161,16 @@ class Fx:
                  ".agent/collaboration/AGENT-CATCHUP-QUEUE.md": "q\n", "ai-stack/mcp-servers/x.py": "x=1\n",
                  ".agents/plans/frontier-evidence-intake/BACKLOG.jsonl": "b\n",
                  ".agents/plans/frontier-evidence-intake/scan-state.json": "{}\n",
+                 "scripts/ai/aq-qa": '#!/bin/sh\necho qa >> "$STUB_DIR/calls.log"\n'
+                    '[ "$AQ_CONFINE_REQUIRE_CONTEXT" = 1 ] && [ "$*" = "0 --machine" ] || exit 1\n'
+        '[ "${QA_MALFORMED:-0}" = 1 ] && { echo malformed; exit 0; }\n'
+        'echo "SUMMARY phase=0 10 passed · ${QA_FAILED:-0} failed · 0 skipped · 1s"\n'
+        'exit "${QA_EXIT:-0}"\n',
                  "scripts/governance/pre-push-nix-eval.sh": PREPUSH.read_text()}
         for f, c in files.items():
             (seed / f).parent.mkdir(parents=True, exist_ok=True)
             (seed / f).write_text(c)
+        (seed / "scripts/ai/aq-qa").chmod(0o755)
         for a in (["config", "user.name", "t"], ["config", "user.email", "t@t"]):
             git(seed, *a)
         git(seed, "add", "-A")
@@ -612,10 +619,26 @@ def t_aq_land_call_matches_real_cli(fx):
 
 
 @with_fx
+def t_deploy_qa_failure_retries_qa_without_rebuild(fx):
+    fx.advance("nix/mod.nix", "2\n")
+    fx.prepare()
+    one_line_fail(fx.run("--deploy", DEPLOY_QA_FAIL="1"), "deploy", "aq-deploy-current failed")
+    one_line_fail(fx.run("--deploy", QA_FAILED="1"), "validate", "aq-qa")
+    one_line_fail(fx.run("--deploy", QA_MALFORMED="1"), "validate", "aq-qa")
+    one_line_fail(fx.run("--deploy", QA_EXIT="1"), "validate", "aq-qa")
+    check(not any(e["event"] == "finished" for e in fx.ledger()), fx.ledger())
+    p = fx.run("--deploy")
+    check(p.returncode == 0, p.stderr + p.stdout)
+    check(fx.calls().count("deploy") == 1 and fx.calls().count("qa") == 4, fx.calls())
+    check(fx.ledger()[-1]["event"] == "finished", fx.ledger())
+
+
+@with_fx
 def t_baseline_runs_through_sudo(fx):
     fx.advance("nix/mod.nix", "2\n")
     fx.prepare()
     check(fx.run("--deploy").returncode == 0, "run failed")
+    check("qa" not in fx.calls(), fx.calls())
     check(f"sudo {fx.stub / 'baseline'}" in fx.sudo_log(), fx.sudo_log())
 
 

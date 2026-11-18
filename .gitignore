@@ -207,6 +207,21 @@ nix/hosts/*/.sops.yaml
 .agents/delegation/streams/
 .agents/delegation/training-loop-checkpoint.json
 .agents/delegation/training-loop-results.jsonl
+.agent/oncall/oncall.db
+.agent/triage/triage_state.sqlite
+.lean-ctx/graph.db
+.agents/attention/notify-slot-0.lock
+.agents/attention/notify-state.json
+.agents/attention/notify-state.lock
+.agents/delegation/.agent/collaboration/HANDOFF.md
+.agents/delegation/.agent/collaboration/HANDOFF.md.lock
+.agents/delegation/.agent/collaboration/PENDING.json
+.agents/delegation/.agent/collaboration/PENDING.json.lock
+.agents/delegation/outcome-receipts.jsonl
+.agents/delegation/power-gate-deferred.jsonl
+.agents/delegation/power-gate.state
+.agents/durable/ledger.json
+.agents/durable/ledger.lock
 .agents/events/*.jsonl
 .agents/telemetry/*.jsonl
 .agents/observability/
@@ -388,3 +403,7 @@ config/aqos/approval-signer-credentials.json
 ai-stack/prompts/eval-state.json
 ai-stack/prompts/eval-state.json.tmp
 config/frontier-radar-state.json
+
+# F3 S5 verified-trajectory collector output (raw, per-user, local); archive with mv, never rm
+.agents/delegation/trajectories.jsonl
+.agents/delegation/trajectories.quarantine.jsonl

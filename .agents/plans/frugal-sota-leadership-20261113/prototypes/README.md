@@ -1,0 +1,1 @@
+Reference prototypes from Gemini (2026-11-13), not wired into any live path and not run by any gate. Live code: `scripts/data/collect-verified-trajectories.py` (S5), `scripts/ai/lib/power_gate.py` (S3).
