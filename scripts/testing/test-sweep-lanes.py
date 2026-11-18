@@ -34,6 +34,12 @@ def spawn():
     # grandchild in its own session: only the env marker can find it
     p = subprocess.Popen(["sleep", "300"], start_new_session=True)
     open(pidfile, "a").write(str(p.pid) + "\n")
+def close_stdout(delay):
+    with open(pidfile, "w") as f:
+        f.write(str(os.getpid()) + "\n")
+    os.close(sys.stdout.fileno())
+    time.sleep(delay)
+    sys.exit(7)
 if mode == "crash":
     sys.stderr.write("boom: cannot start\n"); sys.exit(1)
 if mode in ("hang", "daemon"):
@@ -43,10 +49,16 @@ if mode == "hang":
 for line in sys.stdin:
     m = json.loads(line)
     if m.get("method") == "initialize":
+        if mode == "delayedexit":
+            close_stdout(0.2)
+        if mode == "closedalive":
+            close_stdout(8)
         print(json.dumps({"jsonrpc": "2.0", "id": m["id"], "result": {"protocolVersion": "2025-03-26", "serverInfo": {"name": "fake"}, "capabilities": {}}}), flush=True)
     elif m.get("method") == "tools/list" and mode == "stalltools":
         time.sleep(300)
     elif m.get("method") == "tools/list":
+        if mode == "delayedtoolsexit":
+            close_stdout(0.2)
         tools = [] if mode == "empty" else [{"name": "t1"}, {"name": "t2"}]
         print(json.dumps({"jsonrpc": "2.0", "id": m["id"], "result": {"tools": tools}}), flush=True)
 '''
@@ -98,6 +110,18 @@ for mode, want_state in (("good", "ok"), ("empty", "ok"), ("crash", "closed"), (
         check("boom" in h["stderr"] and h["exit"] == 1, f"crash: stderr/exit not captured: {h['stderr']!r} {h['exit']}")
     if mode in ("hang", "daemon"):
         check(h["leftover"], f"{mode}: sweep should report the escaped grandchild as leftover, got {h['leftover']}")
+for mode, want_state, want_exit in (
+    ("delayedexit", "closed", 7),
+    ("delayedtoolsexit", "closed_after_init", 7),
+    ("closedalive", "closed", None),
+):
+    pf = tmp / f"pids-{mode}"
+    all_pidfiles.append(pf)
+    h = sw.handshake_stdio(sys.executable, [str(fake), mode, str(pf)], {}, timeout=6)
+    check(h["state"] == want_state, f"{mode}: state {h['state']!r}, wanted {want_state!r}")
+    check(h["exit"] == want_exit, f"{mode}: exit {h['exit']!r}, wanted {want_exit!r}")
+    check(h["elapsed"] < 4, f"{mode}: exit collection took {h['elapsed']}s")
+    check(pids_of(pf), f"{mode}: fixture did not record its PID")
 time.sleep(0.5)
 for pf in all_pidfiles:
     for pid in pids_of(pf):

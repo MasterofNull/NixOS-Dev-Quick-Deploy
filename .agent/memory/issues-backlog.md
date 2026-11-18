@@ -9818,3 +9818,6 @@ File: scripts/ai/lib/worktree-isolation.sh; scripts/automation/prsi-orchestrator
 [FIX IN VALIDATION] deploy-sudo-prompts-20261115 — Single-prompt wording contradicted intentional timestamp_timeout=0 policy. Severity: low. Action: correct wording, preserve policy. File: scripts/maintenance/aq-update:6.
 
 [DEFERRED] deploy-extension-timeouts-20261115 — Optional Qwen, debugpy and Jupyter extension installation timed out during successful Home Manager activation. Root cause unisolated. Severity: low. Action: separate extension maintenance investigation. File: nix/modules/home (activation output).
+
+- [FIXED-PENDING-INTEGRATION] sweep-lanes EOF exit race — stdout closure preceded child termination, single poll lost natural exit code; Severity: medium (main QA flake); Action: bounded pre-cleanup wait and deterministic regression; scripts/governance/sweep-lanes.py ~247; evidence docs/harness-first/evidence/2026-11-18-sweep-lanes-exit.md.
+- [OPEN] maintenance coordination shell allowlist — Gemini diagnostic relaunch and aq-pm-tracker command permanently rejected by PreToolUse; Severity: medium; Action: preserve rejection, use independent available review, let tier0 validate editorial tracker; no allowlist bypass.

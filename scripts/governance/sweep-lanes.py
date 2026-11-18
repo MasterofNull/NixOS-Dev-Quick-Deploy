@@ -244,8 +244,14 @@ def handshake_stdio(command, args, env_extra, timeout=MCP_TIMEOUT_S, cwd=None):
                 names = [t.get("name") for t in (msg2.get("result") or {}).get("tools", []) if isinstance(t, dict)]
                 res["tools"] = len(names)
                 res["state"] = "ok"
-        if p.poll() is not None:
-            res["exit"] = p.returncode
+        if res["state"] in ("closed", "closed_after_init"):
+            # Stdout EOF can arrive before the child exits on its own.
+            try:
+                res["exit"] = p.wait(timeout=max(0, min(0.5, deadline - time.time())))
+            except subprocess.TimeoutExpired:
+                pass
+        else:
+            res["exit"] = p.poll()
     finally:
         pgid = p.pid
         try:
