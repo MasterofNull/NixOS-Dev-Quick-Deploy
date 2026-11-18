@@ -65,6 +65,20 @@ def _read_key(path_env: str, key_env: str) -> str:
 HYBRID_KEY = _read_key("HYBRID_API_KEY_FILE", "HYBRID_API_KEY")
 AIDB_KEY   = _read_key("AIDB_API_KEY_FILE",   "AIDB_API_KEY")
 
+def _recall_memory_default() -> int:
+    """Broker read budget (AI_MEMORY_BROKER_RW_TIMEOUT_S, default 10s) plus a margin.
+
+    The bridge must outlast the broker's own timeout or the caller sees a
+    transport timeout instead of the broker's structured error.
+    """
+    try:
+        broker = float(os.getenv("AI_MEMORY_BROKER_RW_TIMEOUT_S", "") or 10.0)
+        margin = float(os.getenv("AQ_MCP_RECALL_MARGIN_S", "") or 10.0)
+    except ValueError:
+        broker, margin = 10.0, 10.0
+    return max(1, int(broker + margin))
+
+
 # Per-tool HTTP timeouts (seconds). Fast endpoints get short timeouts so
 # VSCodium / Continue.dev don't hang when hybrid-coordinator is under load.
 _TOOL_TIMEOUTS: dict[str, int] = {
@@ -76,7 +90,7 @@ _TOOL_TIMEOUTS: dict[str, int] = {
     "hints_feedback":     5,
     "workflow_blueprints":8,
     "hybrid_search":      15,
-    "recall_memory":      20,  # > memory_broker read budget (AI_MEMORY_BROKER_RW_TIMEOUT_S, 10s)
+    "recall_memory":      _recall_memory_default(),  # broker read budget + margin
     "store_memory":       10,
     "query_aidb":         15,
     "augment_query":      15,

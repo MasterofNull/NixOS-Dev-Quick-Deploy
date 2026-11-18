@@ -2,12 +2,15 @@
 """Assert every ai-*/aq-* systemd timer in the host config is staggered.
 
 Evaluates systemd.timers (no build, no switch) and requires, per matching
-timer: RandomizedDelaySec > 0, AccuracySec set, Persistent not true
-(catch-up stampede), plus distinct heavy-unit boot slots. See
+timer: RandomizedDelaySec > 0, AccuracySec set, plus distinct heavy-unit boot
+slots. Persistent=true is no longer forced off (mySystem.timerStagger.persistent
+is a mkDefault option, so per-timer values win); any Persistent=true seen is an
+explicit per-timer or host choice and is reported as WARN, or as FAIL with
+--strict-persistent (boot catch-up stampede risk). See
 nix/modules/core/timer-stagger.nix and
 docs/harness-first/evidence/2026-11-18-timer-stagger.md.
 
-Usage: check-timer-stagger.py [--host hyperd-ai-dev] [--json-file timers.json]
+Usage: check-timer-stagger.py [--host hyperd-ai-dev] [--json-file timers.json] [--strict-persistent]
 """
 
 from __future__ import annotations
@@ -49,8 +52,9 @@ def load(host: str, json_file: str | None) -> dict:
     return json.loads(res.stdout)
 
 
-def check(timers: dict) -> list[str]:
+def check(timers: dict, strict_persistent: bool = False) -> list[str]:
     errs: list[str] = []
+    warned = 0
     scoped = {n: c for n, c in timers.items() if n.startswith(PREFIXES)}
     if not scoped:
         return ["no ai-*/aq-* timers found (wrong host or eval shape?)"]
@@ -60,7 +64,11 @@ def check(timers: dict) -> list[str]:
         if not cfg.get("AccuracySec"):
             errs.append(f"{name}: AccuracySec unset")
         if cfg.get("Persistent") is True:
-            errs.append(f"{name}: Persistent=true (boot catch-up stampede)")
+            if strict_persistent:
+                errs.append(f"{name}: Persistent=true (boot catch-up stampede)")
+            else:
+                warned += 1
+                print(f"WARN: {name}: Persistent=true (explicit; catch-up stampede risk)")
     slots: dict[float, str] = {}
     for name in HEAVY:
         boot = timers.get(name, {}).get("OnBootSec")
@@ -70,7 +78,8 @@ def check(timers: dict) -> list[str]:
         if sec in slots:
             errs.append(f"{name}: OnBootSec {boot} collides with {slots[sec]}")
         slots[sec] = name
-    print(f"checked {len(scoped)} ai-*/aq-* timers; {len(slots)} heavy boot slots")
+    print(f"checked {len(scoped)} ai-*/aq-* timers; {len(slots)} heavy boot slots; "
+          f"{warned} explicit Persistent=true")
     return errs
 
 
@@ -78,8 +87,10 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--host", default="hyperd-ai-dev")
     ap.add_argument("--json-file")
+    ap.add_argument("--strict-persistent", action="store_true",
+                    help="treat any Persistent=true as a failure")
     args = ap.parse_args()
-    errs = check(load(args.host, args.json_file))
+    errs = check(load(args.host, args.json_file), args.strict_persistent)
     for e in errs:
         print(f"FAIL: {e}", file=sys.stderr)
     print("PASS" if not errs else f"FAIL ({len(errs)} issues)")

@@ -7,7 +7,9 @@
 # Fix: every matched timer gets RandomizedDelaySec + FixedRandomDelay (stable
 # per-timer offset) + AccuracySec, Persistent catch-up is replaced by a
 # per-timer OnBootSec offset (hash-derived, heavy units pinned to distinct
-# slots). Explicit per-timer values still win (mkDefault).
+# slots). Every default is a mkDefault option, so explicit per-timer values
+# (including Persistent = true) win and a host can opt back into catch-up with
+# mySystem.timerStagger.persistent = true.
 # Evidence: docs/harness-first/evidence/2026-11-18-timer-stagger.md
 {
   lib,
@@ -28,9 +30,14 @@
 
   isShort = name: lib.elem name cfg.shortPeriodNames;
 
-  # Boot offset in minutes: pinned slot for heavy units, else 3..30 min by hash.
+  # Boot window width scales with the number of staggered timers so slot
+  # collisions do not grow as modules add timers (>= 2 slots per timer).
+  matchedCount = lib.length (lib.filter matches (lib.attrNames config.systemd.timers));
+  bootWidth = lib.max (cfg.bootWindowMinutes - 2) (2 * matchedCount);
+
+  # Boot offset in minutes: pinned slot for heavy units, else 3.. by hash.
   bootMinutes = name:
-    cfg.heavyBootSlotMinutes.${name} or (3 + lib.mod (hashNum name) 28);
+    cfg.heavyBootSlotMinutes.${name} or (3 + lib.mod (hashNum name) bootWidth);
 in {
   options.mySystem.timerStagger = {
     enable = lib.mkOption {
@@ -77,7 +84,7 @@ in {
         "agent-reap"
         "fast-lane-staleness-check"
       ];
-      description = "Timers with a period of 15 min or less: small delay (1-2 min) and 1 min accuracy.";
+      description = "Timers with a period of 15 min or less: small delay and short accuracy window.";
     };
     shortDelay = lib.mkOption {
       type = lib.types.str;
@@ -88,6 +95,31 @@ in {
       type = lib.types.str;
       default = "30min";
       description = "RandomizedDelaySec for hourly-or-longer timers without an explicit value.";
+    };
+    shortAccuracy = lib.mkOption {
+      type = lib.types.str;
+      default = "1min";
+      description = "AccuracySec for short-period timers.";
+    };
+    longAccuracy = lib.mkOption {
+      type = lib.types.str;
+      default = "5min";
+      description = "AccuracySec for hourly-or-longer timers without an explicit value.";
+    };
+    bootWindowMinutes = lib.mkOption {
+      type = lib.types.ints.between 4 1440;
+      default = 30;
+      description = "Minimum upper bound (minutes after boot) of the hash-derived boot offset window; widened to 2 slots per matched timer when there are many.";
+    };
+    persistent = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = ''
+        Default Persistent= for matching timers. false avoids a past-due catch-up
+        stampede (the OnBootSec offset is used instead); set true on hosts that
+        are often off at the scheduled time so missed runs still catch up.
+        Applied as a mkDefault: per-timer values always win.
+      '';
     };
     heavyBootSlotMinutes = lib.mkOption {
       type = lib.types.attrsOf lib.types.int;
@@ -118,11 +150,11 @@ in {
           FixedRandomDelay = lib.mkDefault true;
           AccuracySec = lib.mkDefault (
             if isShort name
-            then "1min"
-            else "5min"
+            then cfg.shortAccuracy
+            else cfg.longAccuracy
           );
           OnBootSec = lib.mkDefault "${toString (bootMinutes name)}min";
-          Persistent = lib.mkForce false;
+          Persistent = lib.mkDefault cfg.persistent;
         };
       };
     }));

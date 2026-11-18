@@ -8,9 +8,10 @@ Task ID: HF-TIMER-STAGGER-20261118
 - Root cause 1: timers on `OnUnitActiveSec`/`OnBootSec` had no `RandomizedDelaySec`, and the short ones (30s-2min) spread nothing.
 - Root cause 2: with `Persistent=true`, a catch-up elapse lies in the past; `RandomizedDelaySec` is added to that past time, so catch-up still fires at once. The before-eval shows 27 of 31 ai-*/aq-* timers with `Persistent=true`.
 - Root cause 3 (timeouts): `scripts/ai/mcp-bridge-hybrid.py` had hardcoded per-tool HTTP budgets: `harness_health` 5s (it runs an aq-qa phase) and `recall_memory` 10s (equal to the broker's own 10s read budget, so no headroom).
-- Fix (Rule 13, declarative, one shared default): new `nix/modules/core/timer-stagger.nix` extends the `systemd.timers` option type so every matching timer (ai-/aq-/aqos- prefixes plus 7 named service timers) gets `RandomizedDelaySec`, `FixedRandomDelay=true`, `AccuracySec`, `Persistent=false` and a hash-derived `OnBootSec` (3-30 min), with heavy units pinned to distinct slots. Per-timer explicit values still win (`mkDefault`), except `Persistent`, which is forced off.
+- Fix (Rule 13, declarative, one shared default): new `nix/modules/core/timer-stagger.nix` extends the `systemd.timers` option type so every matching timer (ai-/aq-/aqos- prefixes plus 7 named service timers) gets `RandomizedDelaySec`, `FixedRandomDelay=true`, `AccuracySec`, `Persistent` and a hash-derived `OnBootSec`, with heavy units pinned to distinct slots. Every default is an option applied as `mkDefault`, so per-timer values always win (no `mkForce`).
+- Portability (owner directive 2026-11-18, no hardwired limits; audit `.agents/delegation/outputs/hardwired-limits-audit-20261118.md`): `mySystem.timerStagger.persistent` (default false, was `mkForce false`; set true on hosts that are often off so missed runs still catch up), `shortAccuracy`/`longAccuracy` (1min/5min), `bootWindowMinutes` (default 30) with the hash window widened to `max(bootWindowMinutes-2, 2 x matched timers)` slots so collisions do not grow with timer count. New `mySystem.aiStack.mcpTimeoutScale` (default 2 on nano/micro tiers, else 1) feeds `AQ_MCP_TIMEOUT_SCALE` into all four bridge launch configs in `nix/home/base.nix`. The `recall_memory` default is now `AI_MEMORY_BROKER_RW_TIMEOUT_S` (default 10) + `AQ_MCP_RECALL_MARGIN_S` (default 10) instead of the literal 20.
 - Four `daily`/`hourly` timers that all landed at 00:00/:00 got distinct clock times.
-- Bridge timeouts: `harness_health`/`qa_check` 5s -> 30s, `recall_memory` 10s -> 20s, each overridable with `AQ_MCP_TIMEOUT_<TOOL>_S`, all scaled by `AQ_MCP_TIMEOUT_SCALE`.
+- Bridge timeouts: `harness_health`/`qa_check` 5s -> 30s, `recall_memory` 10s -> broker budget + margin (20s by default), each overridable with `AQ_MCP_TIMEOUT_<TOOL>_S`, all scaled by `AQ_MCP_TIMEOUT_SCALE`.
 
 ## Workflow/Session IDs
 - Workflow ID: none (bounded slice from the orchestrator)
@@ -48,7 +49,7 @@ Spread chosen (heavy units never share a boot slot or a clock window). Delay = `
 
 Before (activation audit + eval of the pre-change tree): 26 timers fired within one minute at 07:29, load5 ~32 on 16 CPUs, 80C, recall_memory/harness_health timed out. `check-timer-stagger.py` on the pre-change eval: FAIL (67 issues: 8+ ai-/aq- timers with no RandomizedDelaySec, 31 without AccuracySec, 27 with Persistent=true). Full before JSON: `.agents/delegation/outputs/timers-before.json`.
 
-After: `check-timer-stagger.py` on the post-change eval prints `checked 31 ai-*/aq-* timers; 7 heavy boot slots` then `PASS` (`.agents/delegation/outputs/timer-stagger-after-check.txt`).
+After (portability revision): `check-timer-stagger.py` prints `checked 31 ai-*/aq-* timers; 7 heavy boot slots; 26 explicit Persistent=true` then `PASS`, with one WARN line per explicit Persistent=true timer; `--strict-persistent` restores the old FAIL. `nix eval ...config.mySystem.aiStack.mcpTimeoutScale` on hyperd-ai-dev returns 1. Earlier revision printed `checked 31 ai-*/aq-* timers; 7 heavy boot slots` then `PASS` (`.agents/delegation/outputs/timer-stagger-after-check.txt`).
 
 Timeouts (item 3): the cause is partly the bridge budget (5s/10s) and partly host load. The coordinator-side broker read budget already reads `AI_MEMORY_BROKER_RW_TIMEOUT_S`. Local `python3 -m py_compile scripts/ai/mcp-bridge-hybrid.py` passes.
 
@@ -58,6 +59,7 @@ Success metric for VERIFY.md: after the next boot or timer restart, no more than
 - `git revert` of the commit; nixos-rebuild switch restores the previous timers. Faster: `mySystem.timerStagger.enable = false;` in deploy-options.local.nix disables the shared defaults. Bridge timeouts: set `AQ_MCP_TIMEOUT_<TOOL>_S`.
 
 ## Residual Risk
+- Because `Persistent` is now a `mkDefault`, the 26 modules that explicitly set `Persistent = true` keep it on this host, so the past-due catch-up stampede (root cause 2) is NOT removed for them; only the OnBootSec spread, RandomizedDelaySec and AccuracySec apply. This is the deliberate trade of the owner directive (per-timer values win). Follow-up needed to restore full protection: drop the explicit `Persistent = true` from those timers (or set a per-timer `Persistent = false`) where catch-up is not wanted; the check reports each as WARN.
 - `Persistent=false` plus an `OnBootSec` slot means each boot re-runs daily/weekly jobs once (instead of only when missed), including the heavy weekly ones; nothing re-runs on a plain `nixos-rebuild switch`.
 - Per-name hash slots can still collide in a 5-minute window (about 25 timers over 28 minutes); `RandomizedDelaySec` + `FixedRandomDelay` widen it. The live check is the VERIFY metric above.
 - `ai-crystallize-sessions` (no explicit Persistent, from the audit stale-stamp finding) is unchanged apart from the defaults.
