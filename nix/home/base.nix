@@ -26,6 +26,8 @@ let
     else config;
   repoPath = lib.attrByPath ["mySystem" "mcpServers" "repoPath"] "${config.home.homeDirectory}/Documents/NixOS-Dev-Quick-Deploy" systemConfig;
   sharedSkillsDir = "${repoPath}/.agent/skills";
+  # Codex CLI default model: openai.balanced tier of the version SSOT (no literal id here).
+  codexDefaultModel = (builtins.fromJSON (builtins.readFile ../../config/model-coordinator.json)).tiers.openai.balanced;
   defaultPortRegistry = {
     llamaCpp = 8080;
     embedding = 8081;
@@ -2028,7 +2030,7 @@ if changed:
           | .sandbox_workspace_write.exclude_tmpdir_env_var = false
         )
       | .features.hooks = true
-      | .model = "gpt-6.2-sol"
+      | .model = "${codexDefaultModel}"
       | .model_auto_compact_token_limit = 50000
       | .model_auto_compact_token_limit_scope = "total"
       | .mcp_servers."hybrid-coordinator" = {
