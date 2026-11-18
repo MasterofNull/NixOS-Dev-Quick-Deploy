@@ -15,6 +15,12 @@ Brief format (see .agent/skills/slice-authoring/SKILL.md section 9):
 
 Legacy flat fields (check_command, token_budget, turn_cap) are accepted as aliases.
 
+Configuration (no hardwired limits): the tier table comes from config/brief-caps-tiers.json
+(override the path with AQ_BRIEF_TIERS_FILE; built-in defaults apply if unreadable); caps are
+clamped to the lane context size when known (AQ_BRIEF_LANE_CTX, or AQ_BRIEF_LANE_MODEL naming a
+model in config/model-coordinator.json); the checks FAIL date is overridable with
+AQ_BRIEF_CHECKS_FAIL_FROM (ISO date, or "never").
+
 Enforcement: validation only (WARN now, FAIL from CHECKS_FAIL_FROM). Token caps are enforced
 by a delegate only where it has a hook (delegate-to-local passes output_tokens as max_tokens);
 everywhere else they are recorded for measurement in <delegation-dir>/brief-caps.jsonl.
@@ -30,16 +36,86 @@ import sys
 from pathlib import Path
 from typing import Optional
 
-CHECKS_FAIL_FROM = _dt.date(2026, 12, 2)  # missing `checks` is WARN before, FAIL on/after
-TIERS = {
-    "small": {"input_tokens": 2000, "output_tokens": 500},
-    "medium": {"input_tokens": 12000, "output_tokens": 4000},
-    "large": {"input_tokens": 24000, "output_tokens": 8000},
+# Built-in fallbacks; config/brief-caps-tiers.json (or AQ_BRIEF_TIERS_FILE) overrides them.
+_BUILTIN_TIERS = {
+    "small": {"input_tokens": 2000, "output_tokens": 500, "max_turns": 4},
+    "medium": {"input_tokens": 12000, "output_tokens": 4000, "max_turns": 8},
+    "large": {"input_tokens": 24000, "output_tokens": 8000, "max_turns": 12},
 }
 DEFAULT_TIER = "medium"
-DEFAULT_MAX_TURNS = {"small": 4, "medium": 8, "large": 12}
+_BUILTIN_CLAMP = {"input_fraction": 0.5, "output_fraction": 0.25}
+_REPO = Path(__file__).resolve().parents[3]
+TIERS_FILE = _REPO / "config" / "brief-caps-tiers.json"
+COORDINATOR_FILE = _REPO / "config" / "model-coordinator.json"
+# Policy default (missing `checks` is WARN before, FAIL on/after); AQ_BRIEF_CHECKS_FAIL_FROM overrides.
+_DEFAULT_CHECKS_FAIL_FROM = _dt.date(2026, 12, 2)
+CHECKS_FAIL_FROM = _DEFAULT_CHECKS_FAIL_FROM
 DEFAULT_STOP = "stop and report to the orchestrator when any cap is hit"
 LOG = "brief-caps.jsonl"
+
+def _read_json(path: Path) -> dict:
+    try:
+        v = json.loads(path.read_text(encoding="utf-8"))
+        return v if isinstance(v, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def load_config() -> dict:
+    """Tier table, default tier and lane clamp fractions; invalid entries fall back to built-ins."""
+    raw = _read_json(Path(os.environ.get("AQ_BRIEF_TIERS_FILE") or TIERS_FILE))
+    tiers: dict = {}
+    for name, vals in (raw.get("tiers") or {}).items():
+        try:
+            tiers[str(name).lower()] = {k: int(vals[k]) for k in ("input_tokens", "output_tokens", "max_turns")
+                                        if int(vals[k]) > 0}
+        except (KeyError, TypeError, ValueError, AttributeError):
+            continue
+        if len(tiers[str(name).lower()]) != 3:
+            del tiers[str(name).lower()]
+    if not tiers:
+        tiers = {k: dict(v) for k, v in _BUILTIN_TIERS.items()}
+    clamp = dict(_BUILTIN_CLAMP)
+    for k, v in (raw.get("lane_clamp") or {}).items():
+        try:
+            if k in clamp and 0 < float(v) <= 1:
+                clamp[k] = float(v)
+        except (TypeError, ValueError):
+            pass
+    default = str(raw.get("default_tier") or "").lower()
+    if default not in tiers:
+        default = DEFAULT_TIER if DEFAULT_TIER in tiers else sorted(tiers)[0]
+    return {"tiers": tiers, "default_tier": default, "lane_clamp": clamp}
+
+
+def lane_context() -> Optional[int]:
+    """Lane context size in tokens, or None when unknown (then caps are not clamped)."""
+    env = os.environ.get("AQ_BRIEF_LANE_CTX", "").strip()
+    if env:
+        try:
+            n = int(env.replace("_", ""))
+            return n if n > 0 else None
+        except ValueError:
+            return None
+    model = os.environ.get("AQ_BRIEF_LANE_MODEL", "").strip()
+    if model:
+        n = ((_read_json(COORDINATOR_FILE).get("models") or {}).get(model) or {}).get("max_context_tokens")
+        return n if isinstance(n, int) and n > 0 else None
+    return None
+
+
+def checks_fail_from() -> Optional[_dt.date]:
+    """Date from which missing `checks` is an error; None means never. Env wins over the default."""
+    env = os.environ.get("AQ_BRIEF_CHECKS_FAIL_FROM", "").strip()
+    if not env:
+        return CHECKS_FAIL_FROM
+    if env.lower() in ("never", "off", "none"):
+        return None
+    try:
+        return _dt.date.fromisoformat(env)
+    except ValueError:
+        return CHECKS_FAIL_FROM
+
 
 _KV = re.compile(r"^(\s*)(?:-\s+)?([A-Za-z_][\w-]*):\s*(.*?)\s*$")
 
@@ -77,13 +153,26 @@ def parse_brief(text: str) -> dict:
     return out
 
 
-def resolve_caps(caps: dict) -> dict:
-    """Apply tier defaults; explicit values win. Raises ValueError on a bad tier or number."""
-    tier = (caps.get("tier") or DEFAULT_TIER).lower()
-    if tier not in TIERS:
-        raise ValueError(f"unknown tier {tier!r}; use one of {sorted(TIERS)}")
-    res: dict = dict(TIERS[tier])
-    res["max_turns"] = DEFAULT_MAX_TURNS[tier]
+def resolve_caps(caps: dict, lane_ctx: Optional[int] = None) -> dict:
+    """Apply tier defaults; explicit values win. Raises ValueError on a bad tier or number.
+
+    Tier-derived token caps are clamped to the lane context (lane_ctx, else lane_context());
+    explicit brief values are the author's choice and are only flagged via `clamped_to_lane`
+    when they exceed the lane budget, never silently changed.
+    """
+    cfg = load_config()
+    tiers = cfg["tiers"]
+    tier = (caps.get("tier") or cfg["default_tier"]).lower()
+    if tier not in tiers:
+        raise ValueError(f"unknown tier {tier!r}; use one of {sorted(tiers)}")
+    res: dict = dict(tiers[tier])
+    ctx = lane_ctx if lane_ctx is not None else lane_context()
+    limits: dict = {}
+    if ctx:
+        limits = {"input_tokens": max(1, int(ctx * cfg["lane_clamp"]["input_fraction"])),
+                  "output_tokens": max(1, int(ctx * cfg["lane_clamp"]["output_fraction"]))}
+        for k, lim in limits.items():
+            res[k] = min(res[k], lim)
     for k in ("input_tokens", "output_tokens", "max_turns"):
         if caps.get(k) not in (None, ""):
             try:
@@ -97,6 +186,9 @@ def resolve_caps(caps: dict) -> dict:
         # Legacy single budget: treat as the input cap; output stays at the tier default.
         res["input_tokens"] = int(str(caps["token_budget"]).replace("_", ""))
     res["tier"] = tier
+    if limits:
+        res["lane_ctx"] = ctx
+        res["over_lane_budget"] = sorted(k for k, lim in limits.items() if res[k] > lim)
     res["stop_condition"] = caps.get("stop_condition") or DEFAULT_STOP
     return res
 
@@ -109,14 +201,17 @@ def validate(text: str, today: Optional[_dt.date] = None) -> dict:
     warnings: list[str] = []
     if not b["checks"].get("command"):
         msg = "missing required 'checks.command' (deterministic command plus checks.end_state)"
-        if today >= CHECKS_FAIL_FROM:
+        fail_from = checks_fail_from()
+        if fail_from is not None and today >= fail_from:
             errors.append(msg)
+        elif fail_from is not None:
+            warnings.append(msg + f"; becomes FAIL on {fail_from.isoformat()}")
         else:
-            warnings.append(msg + f"; becomes FAIL on {CHECKS_FAIL_FROM.isoformat()}")
+            warnings.append(msg)
     elif not b["checks"].get("end_state"):
         warnings.append("checks.end_state not stated: say what a pass looks like")
     if not b["caps"]:
-        warnings.append(f"no 'caps' block; tier defaults ({DEFAULT_TIER}) will be recorded")
+        warnings.append(f"no 'caps' block; tier defaults ({load_config()['default_tier']}) will be recorded")
     resolved = None
     try:
         resolved = resolve_caps(b["caps"])

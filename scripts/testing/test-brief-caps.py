@@ -2,6 +2,7 @@
 """Tests for brief_caps: parser, validator (WARN->FAIL schedule), cap tiers, measurement record."""
 import datetime as dt
 import json
+import os
 import sys
 import tempfile
 import unittest
@@ -71,6 +72,60 @@ class Tiers(unittest.TestCase):
         self.assertEqual(bc.resolve_caps({})["tier"], "medium")
         self.assertEqual(bc.resolve_caps({"tier": "small", "output_tokens": "900"})["output_tokens"], 900)
         self.assertEqual(bc.resolve_caps({})["stop_condition"], bc.DEFAULT_STOP)
+
+
+class Configurable(unittest.TestCase):
+    ENV = ("AQ_BRIEF_TIERS_FILE", "AQ_BRIEF_LANE_CTX", "AQ_BRIEF_LANE_MODEL", "AQ_BRIEF_CHECKS_FAIL_FROM")
+
+    def setUp(self):
+        self._saved = {k: os.environ.pop(k, None) for k in self.ENV}
+
+    def tearDown(self):
+        for k, v in self._saved.items():
+            os.environ.pop(k, None)
+            if v is not None:
+                os.environ[k] = v
+
+    def test_tiers_file_override(self):
+        with tempfile.TemporaryDirectory(dir=str(ROOT / ".agents")) as td:
+            f = Path(td) / "tiers.json"
+            f.write_text(json.dumps({"default_tier": "tiny", "tiers": {
+                "tiny": {"input_tokens": 300, "output_tokens": 100, "max_turns": 2}}}))
+            os.environ["AQ_BRIEF_TIERS_FILE"] = str(f)
+            r = bc.resolve_caps({})
+            self.assertEqual((r["tier"], r["input_tokens"], r["output_tokens"], r["max_turns"]),
+                             ("tiny", 300, 100, 2))
+            self.assertTrue(bc.validate("caps:\n  tier: small\n", BEFORE)["errors"])  # not in this file
+
+    def test_unreadable_tiers_file_falls_back_to_builtin(self):
+        os.environ["AQ_BRIEF_TIERS_FILE"] = "/nonexistent/tiers.json"
+        self.assertEqual(bc.resolve_caps({"tier": "large"})["input_tokens"], 24000)
+
+    def test_lane_ctx_clamps_tier_caps_not_explicit_values(self):
+        os.environ["AQ_BRIEF_LANE_CTX"] = "8192"
+        r = bc.resolve_caps({"tier": "large"})
+        self.assertEqual((r["input_tokens"], r["output_tokens"]), (4096, 2048))
+        self.assertEqual(r["over_lane_budget"], [])
+        r = bc.resolve_caps({"tier": "large", "output_tokens": "6000"})
+        self.assertEqual(r["output_tokens"], 6000)
+        self.assertEqual(r["over_lane_budget"], ["output_tokens"])
+
+    def test_lane_model_from_coordinator_config(self):
+        os.environ["AQ_BRIEF_LANE_MODEL"] = "llama-cpp-local"
+        n = bc.lane_context()
+        self.assertIsInstance(n, int)
+        self.assertLessEqual(bc.resolve_caps({"tier": "large"})["input_tokens"], n // 2)
+        os.environ["AQ_BRIEF_LANE_MODEL"] = "no-such-model"
+        self.assertIsNone(bc.lane_context())
+
+    def test_checks_fail_from_env(self):
+        os.environ["AQ_BRIEF_CHECKS_FAIL_FROM"] = "2027-06-01"
+        self.assertEqual(bc.validate("caps:\n  tier: small\n", AFTER)["errors"], [])
+        self.assertTrue(bc.validate("caps:\n  tier: small\n", dt.date(2027, 6, 1))["errors"])
+        os.environ["AQ_BRIEF_CHECKS_FAIL_FROM"] = "never"
+        r = bc.validate("caps:\n  tier: small\n", dt.date(2099, 1, 1))
+        self.assertEqual(r["errors"], [])
+        self.assertTrue(r["warnings"])
 
 
 class Measure(unittest.TestCase):

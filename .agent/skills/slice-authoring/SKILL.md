@@ -194,6 +194,8 @@ caps:
   stop_condition: stop and report to the orchestrator when any cap is hit
 ```
 
+Defaults below ship in `config/brief-caps-tiers.json` (override the file with `AQ_BRIEF_TIERS_FILE`). When the lane context size is known (`AQ_BRIEF_LANE_CTX`, or `AQ_BRIEF_LANE_MODEL` naming a `config/model-coordinator.json` model), tier caps are clamped to 50% (input) and 25% (output) of it; explicit values in the brief are kept and flagged.
+
 | Tier | input_tokens | output_tokens | default max_turns |
 |------|-------------|---------------|-------------------|
 | small | 2000 | 500 | 4 |
@@ -202,6 +204,6 @@ caps:
 
 The flat fields `check_command`, `token_budget`, `turn_cap` (section 2) remain accepted as aliases.
 
-Enforcement schedule: a missing `checks.command` is a WARN until the 2026-12-02 checkpoint and a FAIL from that date. A bad tier or non-positive cap is always a FAIL. Parser and validator: `scripts/ai/lib/brief_caps.py` (`validate FILE`), tests `scripts/testing/test-brief-caps.py`.
+Enforcement schedule: a missing `checks.command` is a WARN until the 2026-12-02 checkpoint and a FAIL from that date (`AQ_BRIEF_CHECKS_FAIL_FROM=YYYY-MM-DD|never` overrides it). A bad tier or non-positive cap is always a FAIL. Parser and validator: `scripts/ai/lib/brief_caps.py` (`validate FILE`), tests `scripts/testing/test-brief-caps.py`.
 
 What is enforced vs measured: `delegate-to-local --prompt-file BRIEF` passes `caps.output_tokens` as `--max-tokens` when `--max-tokens` is not given (enforced). Input tokens, turns and the other lanes (codex, gemini, claude) are measured only: actuals go to `<delegation-dir>/brief-caps.jsonl` and `aq-scoreboard` prints over-cap and unknown counts. The savings claim from the source (lanes) is unvalidated until that log has data.
