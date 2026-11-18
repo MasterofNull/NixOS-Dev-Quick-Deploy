@@ -421,6 +421,8 @@ ${prompt}"
     esac
     local cmd=(env NO_COLOR=1 TERM=dumb "PATH=${_augmented_path}" "$GEMINI_BIN" "-p" "$full_prompt" "--mode" "$cli_mode")
     [[ -n "$model_flag" ]] && cmd+=("--model" "$model_flag")
+    # One logged retry on gemini-4-hydrogen when Argon (the CLI default) is quota-exhausted.
+    cmd=(bash "$SCRIPT_DIR/lib/gemini-quota-fallback.sh" "${cmd[@]}")
 
     # Register before launching so the task is findable even if we die
     registry_append "$id" "$prompt" "$rel_output" "" "$role"

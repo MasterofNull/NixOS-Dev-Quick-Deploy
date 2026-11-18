@@ -2028,6 +2028,7 @@ if changed:
           | .sandbox_workspace_write.exclude_tmpdir_env_var = false
         )
       | .features.hooks = true
+      | .model = "gpt-6.2-sol"
       | .model_auto_compact_token_limit = 50000
       | .model_auto_compact_token_limit_scope = "total"
       | .mcp_servers."hybrid-coordinator" = {

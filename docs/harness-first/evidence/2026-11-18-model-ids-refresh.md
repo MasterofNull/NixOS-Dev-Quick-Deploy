@@ -119,3 +119,11 @@ Gemini CLI valid names: Gemini 4 Argon/Hydrogen (Low..XHigh), Orchestrator (Argo
 
 ## Hint Feedback
 - No aq-hints used for this slice.
+
+## Owner decisions applied (2026-11-18, second commit)
+- Fable IDs stay as they are (no usage credits).
+- Codex CLI default: nix/home/base.nix yq merge now sets `.model = "gpt-6.2-sol"` in ~/.codex/config.toml on activation (takes effect at the next home-manager activation; the file still says gpt-6.1-sol until then). Probe: gpt-6.2-sol OK.
+- Gemini keeps Argon (the CLI default in ~/.gemini/antigravity-cli/settings.json). New scripts/ai/lib/gemini-quota-fallback.sh wraps the CLI command built by delegate-to-gemini, so both the blocking and background paths get it: on exit != 0 plus "Individual quota reached" or "RESOURCE_EXHAUSTED" from the default/Argon model it retries once with `--model gemini-4-hydrogen`, logging `[gemini-fallback] ...`; any other error, or any explicitly pinned non-Argon model, does not retry. If Hydrogen is also exhausted it prints `GEMINI_LANE_UNAVAILABLE` and exits non-zero.
+- aq-land check: its gemini lane calls delegate-to-gemini with an explicit `--model gemini-3.8-flash-high` and has its own quota retry (aq-land lines 384-391), so it passes through the wrapper unchanged and never triggers the Argon fallback.
+- Tests: scripts/testing/test-gemini-quota-fallback.py (stub CLI, 5 cases: Argon quota -> Hydrogen OK, explicit Argon, non-quota no retry, non-Argon pinned model no retry, both exhausted -> lane unavailable): 5/5 OK.
+- Live check: with Argon actually quota-exhausted (resets in ~147h), `delegate-to-gemini --wait --prompt "Reply with the single word OK"` logged the fallback and completed on Hydrogen.
