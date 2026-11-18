@@ -250,7 +250,7 @@ class Conflicts(Base):
         p = self._main_fact_path()
         p.unlink()
         self.stage()
-        git(self.repo, "commit", "-qm", "drop")
+        git(self.repo, "commit", "-qm", "drop", "-m", "Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>")
         self._restore()
         self._approved_delete(p)
         with mock.patch.dict(os.environ, {"AQ_INSTANCE_LANE": "claude"}):
@@ -299,6 +299,9 @@ class Conflicts(Base):
 
     def test_delete_blank_owner_reply_fails(self) -> None:
         self.assertTrue(self._delete_with_msg("drop\n\nowner_reply:   \nx"))
+
+    def test_delete_blank_owner_reply_before_trailer_fails(self) -> None:
+        self.assertTrue(self._delete_with_msg("drop\n\nowner_reply:\nCo-Authored-By: Codex <noreply@openai.com>"))
 
     def test_delete_prose_mention_of_owner_reply_fails(self) -> None:
         self.assertTrue(self._delete_with_msg("drop\n\nno owner_reply: given here"))
@@ -367,6 +370,17 @@ class Conflicts(Base):
         with mock.patch.dict(os.environ, {"AQ_INSTANCE_LANE": ""}):
             self.assertTrue(any("deletes or renames" in e and "lane unknown" not in e for e in self.check()))
 
+    def test_unrelated_added_fact_label_does_not_override_delete_actor(self) -> None:
+        p = fact(self.repo, "a.b", instance=CLAUDE)
+        self.stage()
+        git(self.repo, "commit", "-qm", "add")
+        p.unlink()
+        fact(self.repo, "other.fact", instance=CLAUDE)
+        self.stage()
+        git(self.repo, "commit", "-qm", "drop and add", "-m", "Co-Authored-By: Codex <noreply@openai.com>")
+        with mock.patch.dict(os.environ, {"AQ_INSTANCE_LANE": ""}):
+            self.assertTrue(any("a.b.md: deletes or renames" in e for e in self.check()))
+
     def test_committed_same_lane_delete_via_trailer_passes_and_unknown_trailer_fails_closed(self) -> None:
         p = fact(self.repo, "a.b", instance=CLAUDE)
         self.stage()
@@ -379,6 +393,32 @@ class Conflicts(Base):
         git(self.repo, "commit", "-qm", "drop", "-m", "Co-Authored-By: Mystery <x@example.invalid>")
         with mock.patch.dict(os.environ, {"AQ_INSTANCE_LANE": ""}):
             self.assertTrue(any("lane unknown" in e for e in self.check()))
+
+    def test_committed_unattributed_edit_and_delete_ignore_validator_aq_instance_lane(self) -> None:
+        self.land("a.b", claim="one", instance=CLAUDE)
+        fact(self.repo, "a.b", claim="two", instance=CLAUDE)
+        self.stage()
+        git(self.repo, "commit", "-qm", "unattributed edit")
+        with mock.patch.dict(os.environ, {"AQ_INSTANCE_LANE": "claude"}):
+            errs_claude = self.check()
+        with mock.patch.dict(os.environ, {"AQ_INSTANCE_LANE": "codex"}):
+            errs_codex = self.check()
+        self.assertEqual(errs_claude, errs_codex)
+        self.assertTrue(any("claim edited by lane unknown" in e for e in errs_claude), errs_claude)
+
+        git(self.repo, "reset", "-q", "--hard", "origin/main")
+        p = fact(self.repo, "branch.only", claim="one", instance=CLAUDE)
+        self.stage()
+        git(self.repo, "commit", "-qm", "add branch fact", "-m", "Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>")
+        p.unlink()
+        self.stage()
+        git(self.repo, "commit", "-qm", "unattributed delete")
+        with mock.patch.dict(os.environ, {"AQ_INSTANCE_LANE": "claude"}):
+            del_claude = self.check()
+        with mock.patch.dict(os.environ, {"AQ_INSTANCE_LANE": "codex"}):
+            del_codex = self.check()
+        self.assertEqual(del_claude, del_codex)
+        self.assertTrue(any("lane unknown" in e for e in del_claude), del_claude)
 
     def test_cross_lane_split_of_branch_only_fact_with_reply_passes(self) -> None:
         p = fact(self.repo, "a.b", instance=CLAUDE)
@@ -455,6 +495,27 @@ class SessionStart(unittest.TestCase):
         src = (ROOT / "scripts/ai/aq-session-start").read_text()
         self.assertIn("fact_subjects.py", src)
         self.assertIn("## Shared Facts", src)
+
+    def test_delegate_scripts_export_aq_instance_lane(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            t = Path(td)
+            probe = t / "probe-lane.sh"
+            probe.write_text('#!/usr/bin/env bash\nprintf "%s" "$AQ_INSTANCE_LANE"\n', encoding="utf-8")
+            probe.chmod(0o755)
+            for lane in ("claude", "codex", "gemini", "local"):
+                src = (ROOT / f"scripts/ai/delegate-to-{lane}").read_text(encoding="utf-8")
+                self.assertIn(f'export AQ_INSTANCE_LANE="{lane}"', src)
+                self.assertNotIn(f"AQ_INSTANCE_LANE:-{lane}", src)
+                wrapper = t / f"test-{lane}.sh"
+                head = "\n".join(src.splitlines()[:78])
+                wrapper.write_text(
+                    head + f'\nexec "{probe}"\n',
+                    encoding="utf-8",
+                )
+                wrapper.chmod(0o755)
+                env = {**os.environ, "AQ_INSTANCE_LANE": "conflicting-parent-lane", "AQ_DELEGATION_DIR": str(t / "deleg")}
+                got = subprocess.run(["bash", str(wrapper)], env=env, capture_output=True, text=True, check=True).stdout
+                self.assertEqual(got, lane, f"delegate-to-{lane} inherited parent lane: {got!r}")
 
 
 if __name__ == "__main__":
