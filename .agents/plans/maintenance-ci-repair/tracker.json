@@ -1,0 +1,26 @@
+{
+  "plan": {
+    "id": "maintenance-ci-repair",
+    "title": "Restore maintenance CI exit evidence",
+    "prd_ref": ".agent/PROJECT-MAINTENANCE-CI-REPAIR-PRD.md",
+    "owner": "hyperd",
+    "goal": "Restore reliable MCP probe natural exit evidence without weakening cleanup",
+    "success_criteria": ["Delayed natural exits are captured before cleanup", "Closed stdout with a live process remains bounded and cleaned up", "Main CI validates the landed repair"]
+  },
+  "phases": [{"id": "repair", "name": "Repair and validate", "goal": "Repair the demonstrated race", "order": 1}],
+  "items": [{
+    "id": "repair-exit",
+    "name": "Capture natural exit after stdout EOF",
+    "phase": "repair",
+    "kind": "slice",
+    "goal": "Keep exit evidence independent of cleanup signals",
+    "validation_goal": "Original regression fails and repaired full sweep suite passes",
+    "deps": [],
+    "detection": {
+      "commit_match": ["fix\\(sweep-lanes\\): capture natural exit after stdout closes"],
+      "wired_caller": {"file": "scripts/governance/sweep-lanes.py", "pattern": "p\\.wait\\(timeout=max"},
+      "tests": ["scripts/testing/test-sweep-lanes.py"]
+    },
+    "acceptance": {"status": "pending", "by": null, "date": null, "note": "Independent review and landed CI required"}
+  }]
+}
