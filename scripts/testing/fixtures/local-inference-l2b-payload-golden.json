@@ -9,8 +9,8 @@
   },
   "live_source_manifest": {
     "scripts/ai/aq-chat": "b0181653b767757cc3b5954ccb1ee256b25af52a7c5f3abf7ed3960fdafe8fae",
-    "scripts/ai/lib/dispatch.py": "cd1f18bc524bfe766616d9453a6efa528b657462c452b3f44a3ddc3e06517fdd",
-    "ai-stack/mcp-servers/shared/llm_config.py": "31143716252e778180d0cbc86bb895d8bebbac0ae438a0c8835671627962743e",
+    "scripts/ai/lib/dispatch.py": "bcf2306915623c2e713c4ccddde99bef5d3efe8f4b00e370df42114395eba652",
+    "ai-stack/mcp-servers/shared/llm_config.py": "5545dd3a73166e9ae00cb28825920d721b9ec3e379f6d41ee40548d146f55de3",
     "ai-stack/mcp-servers/hybrid-coordinator/core/route_handler.py": "a3cca7f05220c9db64158a660f7b80f384e133e7a6843e82dacc25c49106a444",
     "ai-stack/mcp-servers/hybrid-coordinator/core/llm_client.py": "e4b4d6999a1ec34f9589827fd9386147d140127c3688adcf8f79c4969afbac8e",
     "ai-stack/mcp-servers/hybrid-coordinator/extensions/ai_coordinator_handlers.py": "ea7f235f36e8464e7b30ad54dbee00a6b166b04f315ff4fd6ec175214c0ac5ee",

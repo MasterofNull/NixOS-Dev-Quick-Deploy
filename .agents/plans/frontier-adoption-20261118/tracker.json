@@ -1,0 +1,229 @@
+{
+  "plan": {
+    "id": "frontier-adoption-20261118",
+    "title": "Frontier adoption 2026-11-18: goals, metrics and follow-up verification",
+    "prd_ref": ".agents/plans/frontier-adoption-20261118/VERIFY.md",
+    "owner": "hyperd",
+    "goal": "Adopt the owner-approved frontier recommendations and verify each against its measured baseline 14 days after it is ON."
+  },
+  "phases": [
+    {
+      "id": "adoption",
+      "name": "Adoption and 14-day verification",
+      "order": 1
+    }
+  ],
+  "items": [
+    {
+      "id": "constrained-decoding",
+      "name": "1 - Constrained decoding (fe-2ab16cb00ee3)",
+      "phase": "adoption",
+      "kind": "slice",
+      "goal": "Machine-read local outputs are always well formed.",
+      "validation_goal": "Share of machine-read local runs with a format failure or TRUNCATED is at most 1%; no new TRUNCATED on schema runs. Review 14 days after ON (VERIFY.md); global checkpoint 2026-12-02.",
+      "deps": [],
+      "detection": {
+        "commit_match": [
+          "^feat\\(local\\): json_schema-constrained decoding"
+        ],
+        "wired_caller": {
+          "file": "scripts/ai/lib/dispatch.py",
+          "pattern": "attach_json_schema"
+        },
+        "tests": [
+          "scripts/testing/test-constrained-decoding.py"
+        ]
+      }
+    },
+    {
+      "id": "ignore-eos-guard",
+      "name": "1a - grammar + ignore_eos guard (llama.cpp b12489)",
+      "phase": "adoption",
+      "kind": "slice",
+      "goal": "No caller sends grammar/json_schema together with ignore_eos.",
+      "validation_goal": "scripts/testing/test-constrained-decoding.py passes; rg finds 0 combined callers. Review 14 days after ON (VERIFY.md); global checkpoint 2026-12-02.",
+      "deps": [],
+      "detection": {
+        "commit_match": [
+          "^feat\\(local\\): json_schema-constrained decoding"
+        ],
+        "wired_caller": {
+          "file": "scripts/ai/lib/dispatch.py",
+          "pattern": "attach_json_schema"
+        },
+        "tests": [
+          "scripts/testing/test-constrained-decoding.py"
+        ]
+      }
+    },
+    {
+      "id": "owned-path-merge-gate",
+      "name": "2 - Owned-path merge gate (lanes-owned-scope-gate)",
+      "phase": "adoption",
+      "kind": "slice",
+      "goal": "No cross-lane overlap ever merges.",
+      "validation_goal": "0 out-of-scope merges; at most 1 false refusal per 20 lands. Review 14 days after ON (VERIFY.md); global checkpoint 2026-12-02.",
+      "deps": [],
+      "detection": {
+        "commit_match": [
+          "owned[- ]path"
+        ]
+      }
+    },
+    {
+      "id": "brief-checks-command",
+      "name": "3 - Checks command in the brief (yt-checks-over-plans-goal)",
+      "phase": "adoption",
+      "kind": "slice",
+      "goal": "Done is test-proven; fewer review rounds.",
+      "validation_goal": "100% of briefs carry a checks field; mean aq-land review rounds at most 1.5. Review 14 days after ON (VERIFY.md); global checkpoint 2026-12-02.",
+      "deps": [],
+      "detection": {
+        "commit_match": [
+          "checks (field|command)"
+        ]
+      }
+    },
+    {
+      "id": "brief-token-caps",
+      "name": "4 - Token caps + stop condition (lanes-token-caps-in-brief)",
+      "phase": "adoption",
+      "kind": "slice",
+      "goal": "Same throughput for fewer tokens.",
+      "validation_goal": "At least 20% fewer codex tokens per landed PR with no rise in review rounds. Review 14 days after ON (VERIFY.md); global checkpoint 2026-12-02.",
+      "deps": [],
+      "detection": {
+        "commit_match": [
+          "token caps?"
+        ]
+      }
+    },
+    {
+      "id": "skill-eval-prune",
+      "name": "5 - Skill eval + prune (yt-skill-eval-prune)",
+      "phase": "adoption",
+      "kind": "slice",
+      "goal": "Load only skills that help.",
+      "validation_goal": "At least 30% fewer skills with no eval regression. Review 14 days after ON (VERIFY.md); global checkpoint 2026-12-02.",
+      "deps": [],
+      "detection": {
+        "commit_match": [
+          "skill (eval|prune)"
+        ]
+      }
+    },
+    {
+      "id": "llm01-boundary-audit",
+      "name": "6 - LLM01 boundary audit (fe-a2a4a2caa18a)",
+      "phase": "adoption",
+      "kind": "slice",
+      "goal": "Every LLM-output to shell/Nix/disk boundary is validated.",
+      "validation_goal": "100% of boundaries enumerated; 0 open findings. Review 14 days after ON (VERIFY.md); global checkpoint 2026-12-02.",
+      "deps": [],
+      "detection": {
+        "commit_match": [
+          "LLM01"
+        ]
+      }
+    },
+    {
+      "id": "systemd-egress-limits",
+      "name": "7 - systemd egress limits (FE-8)",
+      "phase": "adoption",
+      "kind": "slice",
+      "goal": "Untrusted units are pinned to the network they need.",
+      "validation_goal": "All MCP/untrusted units restricted; 0 unexpected denials; 0 health regressions. Review 14 days after ON (VERIFY.md); global checkpoint 2026-12-02.",
+      "deps": [],
+      "detection": {
+        "commit_match": [
+          "egress"
+        ]
+      }
+    },
+    {
+      "id": "functional-eval-metric",
+      "name": "8 - Functional eval metric (FE-2a)",
+      "phase": "adoption",
+      "kind": "slice",
+      "goal": "A non-saturated, reproducible quality metric exists before any prompt optimizer.",
+      "validation_goal": "Baseline below 90%, repeat-run variance at most 3 points. Review 14 days after ON (VERIFY.md); global checkpoint 2026-12-02.",
+      "deps": [],
+      "detection": {
+        "commit_match": [
+          "functional eval"
+        ]
+      }
+    },
+    {
+      "id": "hook-smoke-test",
+      "name": "9 - Hook smoke test (Claude Code 2.1.326 hook semantics)",
+      "phase": "adoption",
+      "kind": "slice",
+      "goal": "PreToolUse hooks still block and rewrite correctly.",
+      "validation_goal": "Smoke test PASS recorded. Review 14 days after ON (VERIFY.md); global checkpoint 2026-12-02.",
+      "deps": [],
+      "detection": {
+        "commit_match": [
+          "hook smoke"
+        ]
+      }
+    },
+    {
+      "id": "llama-b12498-slot-fix",
+      "name": "10 - llama.cpp b12498 slot fix",
+      "phase": "adoption",
+      "kind": "slice",
+      "goal": "Pin includes the slot fix if our architecture needs it.",
+      "validation_goal": "flake.lock rev compared with b12498; decision recorded at the next scheduled rebuild. Review 14 days after ON (VERIFY.md); global checkpoint 2026-12-02.",
+      "deps": [],
+      "detection": {
+        "commit_match": [
+          "b12498"
+        ]
+      }
+    },
+    {
+      "id": "arxiv-memory-verifier",
+      "name": "11 - arXiv memory/verifier papers (local slice)",
+      "phase": "adoption",
+      "kind": "slice",
+      "goal": "One-line takeaways inform P3/F3.",
+      "validation_goal": "Takeaways file written; at most 1 adopted follow-up. Review 14 days after ON (VERIFY.md); global checkpoint 2026-12-02.",
+      "deps": [],
+      "detection": {
+        "commit_match": [
+          "arxiv|arXiv"
+        ]
+      }
+    },
+    {
+      "id": "lean-ctx-shell-security",
+      "name": "12 - lean-ctx shell_security",
+      "phase": "adoption",
+      "kind": "slice",
+      "goal": "Agent harness tools are never blocked.",
+      "validation_goal": "0 BLOCKED lines for harness tools in hook output and agent logs. Review 14 days after ON (VERIFY.md); global checkpoint 2026-12-02.",
+      "deps": [],
+      "detection": {
+        "commit_match": [
+          "lean-ctx .*shell[_-]security"
+        ]
+      }
+    },
+    {
+      "id": "activation-of-features",
+      "name": "13 - Activation of developed features",
+      "phase": "adoption",
+      "kind": "slice",
+      "goal": "Every merged feature is ON or carries a dated deferral.",
+      "validation_goal": "The activation audit table shows 100% ON or deferred. Review 14 days after ON (VERIFY.md); global checkpoint 2026-12-02.",
+      "deps": [],
+      "detection": {
+        "commit_match": [
+          "activation audit"
+        ]
+      }
+    }
+  ],
+  "issues": []
+}
