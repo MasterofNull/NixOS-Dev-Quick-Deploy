@@ -129,7 +129,7 @@ class Land:
     def __init__(self, a):
         self.a = a
         self.W = str(Path(a.worktree).resolve())
-        for attr in ("body_file", "commit_msg_file", "criteria_file"):  # relative to the caller's cwd, not the worktree
+        for attr in ("body_file", "commit_msg_file", "criteria_file", "owned"):  # relative to the caller's cwd, not the worktree
             if getattr(a, attr):
                 setattr(a, attr, str(Path(getattr(a, attr)).resolve()))
         os.chdir(self.W)
@@ -240,8 +240,8 @@ class Land:
 
     # ---- preflight
     def changed_paths(self):
-        names = self.git("diff", "--name-only", "refs/remotes/origin/main...HEAD").split("\n")
-        names += self.git("diff", "--name-only", "--cached").split("\n")
+        names = self.git("diff", "--name-only", "--no-renames", "refs/remotes/origin/main...HEAD").split("\n")
+        names += self.git("diff", "--name-only", "--no-renames", "--cached").split("\n")
         return sorted({n for n in names if n})
 
     def is_code(self, p):

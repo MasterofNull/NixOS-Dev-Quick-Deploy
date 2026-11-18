@@ -764,6 +764,34 @@ class OwnedPaths(Base):
         r = self.land("--owned", str(self.S / "nope.txt"), expect=1)
         self.assertIn("--owned file not found", self.stop_line(r))
 
+    def test_committed_rename_from_an_unowned_path_stops(self):
+        self.g("checkout", "-q", "main")
+        self.change("config/example.json", "{\"a\": 1, \"b\": 2, \"c\": 3}\n")
+        self.g("push", "-q", "origin", "main")
+        self.g("checkout", "-q", "feat/x")
+        self.g("merge", "-q", "--no-edit", "main")
+        self.g("mv", "config/example.json", "scripts/example.json")
+        self.g("commit", "-qm", "move")
+        r = self.land("--owned", self.owned("scripts/"), expect=1)
+        self.assertIn("config/example.json", self.stop_line(r))
+
+    def test_staged_rename_from_an_unowned_path_stops(self):
+        self.g("checkout", "-q", "main")
+        self.change("config/example.json", "{\"a\": 1, \"b\": 2, \"c\": 3}\n")
+        self.g("push", "-q", "origin", "main")
+        self.g("checkout", "-q", "feat/x")
+        self.g("merge", "-q", "--no-edit", "main")
+        self.g("mv", "config/example.json", "scripts/example.json")
+        r = self.land("--owned", self.owned("scripts/"), expect=1)
+        self.assertIn("config/example.json", self.stop_line(r))
+
+    def test_relative_owned_path_resolves_against_the_callers_cwd(self):
+        self.owned("scripts/*.py")
+        args = [sys.executable, str(TOOL), "--worktree", str(self.wd), "--title", "t", "--body-file", str(self.S / "body.md"),
+                "--owned", "owned.txt"]
+        r = subprocess.run(args, capture_output=True, text=True, env=self.env, cwd=self.S, timeout=120)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+
     def test_merging_main_into_the_branch_does_not_count_mains_files(self):
         c2 = self.S / "c2"
         sh(self.S, "git", "clone", "-q", str(self.origin), str(c2))

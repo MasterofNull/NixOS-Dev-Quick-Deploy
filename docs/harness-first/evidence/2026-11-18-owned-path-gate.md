@@ -25,3 +25,6 @@ Declarations are hand-written; a too-narrow glob causes a false refusal (visible
 
 ## Hint Feedback
 No aq-hints were consulted for this slice; none to rate.
+
+## Follow-up: Codex review fixes
+Renames: changed_paths() now uses `git diff --name-only --no-renames` (committed and staged), so a rename lists both the removed unowned source and the added destination; it has no other caller. `--owned` is normalized to an absolute path before the chdir into --worktree. Tests added: committed rename, staged rename, relative --owned from another cwd (OwnedPaths, 9 tests; full suite 70 tests OK).
