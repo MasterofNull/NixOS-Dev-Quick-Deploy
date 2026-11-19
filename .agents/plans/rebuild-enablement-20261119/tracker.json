@@ -1,0 +1,48 @@
+{
+  "plan": {
+    "id": "rebuild-enablement-20261119",
+    "title": "Enable pending changes in the next rebuild",
+    "prd_ref": ".agents/plans/rebuild-enablement-20261119/DECISIONS.md",
+    "owner": "hyperd",
+    "goal": "Every non-secret toggle that was invisible to a pure flake build, plus the Batch C defaults, is tracked in host config and evaluates ON.",
+    "success_criteria": [
+      "nix eval shows activationAutoRevert, aiOncalld and audit true on hyperd-ai-dev",
+      "dry-build of the toplevel succeeds",
+      "owner runs the rebuild and confirms units active"
+    ]
+  },
+  "phases": [
+    {"id": "p1", "name": "Config", "goal": "Track toggles in host config", "order": 1},
+    {"id": "p2", "name": "Activation", "goal": "Owner rebuild and live validation", "order": 2}
+  ],
+  "items": [
+    {
+      "id": "host-toggles",
+      "name": "Track host feature toggles in git",
+      "phase": "p1",
+      "kind": "slice",
+      "goal": "activationAutoRevert, aiOncalld, auditd and agenticToolchain set in nix/hosts/hyperd/default.nix",
+      "validation_goal": "nix eval of each option returns true; toplevel dry-build succeeds",
+      "deps": [],
+      "editorial_note": "Local file keeps secrets only; secrets.enable was already true from the host class.",
+      "detection": {
+        "commit_match": ["rebuild-enablement"],
+        "wired_caller": {"file": "nix/hosts/hyperd/default.nix", "pattern": "services\\.aiOncalld\\.enable"}
+      }
+    },
+    {
+      "id": "owner-rebuild",
+      "name": "Owner rebuild and live validation",
+      "phase": "p2",
+      "kind": "milestone",
+      "goal": "activation-auto-revert timer, ai-oncalld and auditd are active after switch",
+      "validation_goal": "systemctl is-active on the three units; aq-oncalld --status shows a fresh heartbeat",
+      "deps": ["host-toggles"],
+      "editorial_note": "Owner act: nixos-rebuild switch.",
+      "detection": {"blocker_note": "awaiting owner rebuild"}
+    }
+  ],
+  "issues": [
+    {"title": "aq-oncalld worktree creation likely blocked by ProtectHome=read-only", "sev": "medium", "note": "Fails closed; widen ReadWritePaths only on owner decision."}
+  ]
+}

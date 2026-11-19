@@ -86,6 +86,21 @@ def _registry_row(delegation_dir: Path, run_id: str) -> dict:
     return row
 
 
+_USED = re.compile(r"^tokens used\s*\n\s*([\d,]+)\s*$", re.M)
+
+
+def _logged_total(delegation_dir: Path, row: dict) -> int | None:
+    """Codex logs end with 'tokens used' and a total (no in/out split); the registry row never carries it."""
+    name = Path(str(row.get("output_file") or "")).name
+    if not name:
+        return None
+    try:
+        hits = _USED.findall((delegation_dir / "outputs" / name).read_text(encoding="utf-8", errors="replace"))
+    except OSError:
+        return None
+    return int(hits[-1].replace(",", "")) if hits else None
+
+
 def record_landing(delegation_dir: Path, *, pr: int, head: str, author_lane: str, reviews: list[dict],
                    request_changes_rounds: int = 0, tier0: str | None = None, ci: str | None = None,
                    tier0_failures: int = 0, ci_failures: int = 0, now: str | None = None) -> str:
@@ -97,6 +112,9 @@ def record_landing(delegation_dir: Path, *, pr: int, head: str, author_lane: str
         row = _registry_row(d, rv.get("run_id", ""))
         tin, tout = row.get("tokens_in"), row.get("tokens_out")
         tokens[rv["lane"]] = {"in": tin if isinstance(tin, int) else None, "out": tout if isinstance(tout, int) else None}
+        total = _logged_total(d, row) if tokens[rv["lane"]] == {"in": None, "out": None} else None
+        if total is not None:
+            tokens[rv["lane"]]["total"] = total
     rec = {
         "schema": 1, "pr": pr, "head_sha": head, "author_lane": author_lane,
         "reviewer_lanes": sorted({r["lane"] for r in reviews}),
