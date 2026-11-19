@@ -666,6 +666,7 @@ class Land:
         required = (self.required_checks(repo, deadline) or set()) | {REVIEW_CHECK}
         optional = set(self.a.optional_check)
         poll = float(os.environ.get("AQ_LAND_POLL_S", "30"))
+        fresh = {"was_behind": False, "updates": 0, "t0": None}
         while True:
             v = self.ghjson_poll(deadline, "pr", "view", str(n), "--json", "headRefOid,state,statusCheckRollup")
             if v["state"] == "MERGED":
@@ -693,7 +694,11 @@ class Land:
                 self.save(ci_failures=self.cp.get("ci_failures", 0) + 1)
                 raise Stop("checks", "failed: " + ", ".join(failed))
             if not pending and seen.get(REVIEW_CHECK, ("pending",))[0] == "pass":
-                break
+                new = self.update_if_behind(n, head, fresh, deadline)
+                if new is None:
+                    break
+                head = new  # checks above ran on the old head; wait again for the updated one
+                continue
             if not pending:
                 pending = [REVIEW_CHECK]
             if time.time() > deadline:
@@ -703,7 +708,59 @@ class Land:
         v = self.ghjson_poll(deadline, "pr", "view", str(n), "--json", "state")
         if v["state"] != "MERGED":
             raise Stop("merge", f"PR #{n} is {v['state']} after gh pr merge")
+        self.log_freshness(n, fresh, True)
         say(f"PR #{n} merged")
+
+    def log_freshness(self, n, fresh, merged):
+        """One line per merge: what main-freshness cost, for comparing against strict branch protection. Never fails a landing."""
+        try:
+            sys.path.insert(0, str(HERE / "lib"))
+            from delegation_dir import resolve_delegation_dir
+            d = resolve_delegation_dir(HERE) / "outputs" / "aq-land"
+            d.mkdir(parents=True, exist_ok=True)
+            row = {"pr": n, "at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), "was_behind": fresh["was_behind"],
+                   "updates": fresh["updates"], "extra_ci_wait_s": round(time.time() - fresh["t0"], 1) if fresh["t0"] else 0, "merged": merged}
+            with open(d / "merge-freshness.jsonl", "a") as fh:
+                fh.write(json.dumps(row) + "\n")
+        except Exception as e:  # noqa: BLE001
+            print(f"aq-land: WARN merge-freshness not logged: {e.__class__.__name__}: {str(e)[:120]}", file=sys.stderr)
+
+    def update_if_behind(self, n, head, fresh, deadline):
+        """Checks passed for head. If main moved past it (the CI ran on an older main), update the PR branch through
+        GitHub and return the new head so the caller re-waits CI; None when head already contains origin/main.
+        The review stays bound exactly as for a local merge of main: valid only if the new head is a clean merge of main."""
+        branch = self.branch
+        run(["git", "-C", self.W, "fetch", "-q", "origin", "main", branch], timeout=180, stage="merge")
+        v = self.ghjson_poll(deadline, "pr", "view", str(n), "--json", "mergeStateStatus,baseRefOid,headRefOid")
+        main = self.git("rev-parse", "refs/remotes/origin/main")
+        behind = (v.get("mergeStateStatus") == "BEHIND" or v.get("baseRefOid", main) != main
+                  or self.gitrc("merge-base", "--is-ancestor", main, head) != 0)
+        if not behind:
+            return None
+        fresh["was_behind"] = True
+        if fresh["updates"] >= self.a.max_updates:
+            self.log_freshness(n, fresh, False)
+            raise Stop("merge", f"PR #{n} is still behind origin/main after {fresh['updates']} update(s) (--max-updates/AQ_LAND_MAX_UPDATES); not merging on checks from an older main")
+        fresh["updates"] += 1
+        fresh["t0"] = fresh["t0"] or time.time()
+        say(f"PR #{n} is behind origin/main; updating the branch (update {fresh['updates']}/{self.a.max_updates})")
+        self.gh("pr", "update-branch", str(n))
+        poll = float(os.environ.get("AQ_LAND_POLL_S", "30"))
+        while True:
+            new = self.ghjson_poll(deadline, "pr", "view", str(n), "--json", "headRefOid")["headRefOid"]
+            if new != head:
+                break
+            if time.time() > deadline:
+                raise Stop("merge", f"PR #{n} head did not change after update-branch; re-run aq-land to resume")
+            time.sleep(poll)
+        run(["git", "-C", self.W, "fetch", "-q", "origin", branch], timeout=180, stage="merge")
+        if self.git("rev-parse", f"refs/remotes/origin/{branch}") != new:
+            raise Stop("merge", f"origin/{branch} is not the PR head {new[:12]} after update-branch")
+        if not self.review_valid(self.cp.get("review"), new):
+            raise Stop("merge", f"updated head {new[:12]} is not a clean merge of main onto the reviewed head; it needs a fresh review (re-run aq-land)")
+        if self.gitrc("merge", "--ff-only", f"refs/remotes/origin/{branch}") != 0:
+            raise Stop("merge", f"local branch cannot fast-forward to the updated PR head {new[:12]}")
+        return new
 
     # ---- orchestration
     def settled(self, pr):
@@ -809,6 +866,8 @@ def main():
     ap.add_argument("--author-lane", default="claude")
     ap.add_argument("--lanes", default=os.environ.get("AQ_LAND_LANES", "gemini,codex,local"))
     ap.add_argument("--allow-docs-only", action="store_true")
+    ap.add_argument("--max-updates", type=int, default=env_int("AQ_LAND_MAX_UPDATES", 3),
+                    help="max gh pr update-branch rounds when main moves past the PR before merge (env AQ_LAND_MAX_UPDATES)")
     ap.add_argument("--optional-check", action="append", default=[])
     ap.add_argument("--owned", default="")
     a = ap.parse_args()

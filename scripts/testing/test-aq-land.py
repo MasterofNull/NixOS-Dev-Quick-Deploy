@@ -107,6 +107,15 @@ fl = st.get("flaky")
 if fl and cmd == fl["cmd"] and bump("n_flaky") <= fl["times"]:
     sys.stderr.write(fl["msg"] + "\n")
     sys.exit(1)
+def move_main(msg):
+    c = f"{S}/cm-{st.get('n_moves', 0)}"
+    st["n_moves"] = st.get("n_moves", 0) + 1
+    save()
+    subprocess.run(["git", "clone", "-q", f"{S}/origin.git", c], check=True)
+    open(f"{c}/moved{st['n_moves']}.txt", "w").write("m\n")
+    subprocess.run(["git", "-C", c, "add", "."], check=True)
+    subprocess.run(["git", "-C", c, "-c", "user.name=x", "-c", "user.email=x@x", "commit", "-q", "-m", msg], check=True)
+    subprocess.run(["git", "-C", c, "push", "-q", "origin", "HEAD:main"], check=True)
 branch_head = lambda b: subprocess.run(["git", "--git-dir", f"{S}/origin.git", "rev-parse", f"refs/heads/{b}"], capture_output=True, text=True).stdout.strip()
 if cmd == "pr list":
     if bump("n_list") == 2:
@@ -124,7 +133,24 @@ elif cmd == "pr view":
     seq = st.get("rollups", [[]])
     roll = seq.pop(0) if len(seq) > 1 else seq[0]
     save()
+    if "mergeStateStatus" in flag("--json"):
+        print(json.dumps({"headRefOid": branch_head(pr["branch"]), "mergeStateStatus": st.get("merge_state", "CLEAN"), "baseRefOid": branch_head("main")}))
+        sys.exit(0)
+    if st.get("main_moves_at_wait") and "statusCheckRollup" in flag("--json") and bump("n_wait") == 1:
+        move_main("main moved after CI")
     print(json.dumps({"headRefOid": st.get("head_override") or branch_head(pr["branch"]), "state": pr["state"], "body": pr["body"], "statusCheckRollup": roll}))
+elif cmd == "pr update-branch":
+    bump("updates")
+    pr = [p for p in st["prs"] if p["number"] == int(a[2])][0]
+    c = f"{S}/c3-{st['updates']}"
+    subprocess.run(["git", "clone", "-q", "-b", pr["branch"], f"{S}/origin.git", c], check=True)
+    subprocess.run(["git", "-C", c, "-c", "user.name=x", "-c", "user.email=x@x", "merge", "-q", "--no-ff", "-m", "Merge main", "origin/main"], check=True)
+    subprocess.run(["git", "-C", c, "push", "-q", "origin", "HEAD"], check=True)
+    if st.get("after_update_rollups"):
+        st["rollups"] = st.pop("after_update_rollups")
+        save()
+    if st.get("keep_moving"):
+        move_main("main moved again")
 elif cmd == "pr edit":
     [p for p in st["prs"] if p["number"] == int(a[2])][0]["body"] = open(flag("--body-file")).read()
     save()
@@ -912,6 +938,57 @@ class Checks(Base):
         self.run_checks([[bad], [ok]], required=["review-disposition"])
         self.assertEqual(self.ghs()["reruns"], ["12"])
         self.assertEqual(self.ghs()["merges"], 1)
+
+
+class MergeFreshness(Base):
+    """G0: a PR whose CI ran on an older main is updated and re-checked, never merged on stale results."""
+    OK = [{"name": "test", "status": "COMPLETED", "conclusion": "SUCCESS"}, RD_OK]
+
+    def jsonl(self):
+        p = self.S / "deleg/outputs/aq-land/merge-freshness.jsonl"
+        return [json.loads(l) for l in p.read_text().splitlines()] if p.exists() else []
+
+    def test_up_to_date_pr_merges_without_update(self):
+        self.gh_state({})
+        self.land(expect=0)
+        st = self.ghs()
+        self.assertEqual((st["merges"], st.get("updates", 0)), (1, 0))
+        row = self.jsonl()[0]
+        self.assertEqual((row["pr"], row["was_behind"], row["updates"], row["extra_ci_wait_s"], row["merged"]), (77, False, 0, 0, True))
+
+    def test_behind_pr_is_updated_rechecked_then_merged(self):
+        self.gh_state({"main_moves_at_wait": True, "after_update_rollups": [[{"name": "test", "status": "IN_PROGRESS", "detailsUrl": "https://x/nojob"}, RD_OK], self.OK]})
+        r = self.land(expect=0)
+        st = self.ghs()
+        self.assertEqual((st["updates"], st["merges"]), (1, 1))
+        self.assertIn("is behind origin/main; updating", r.stdout)
+        calls = st["calls"]
+        self.assertLess(calls.index("pr update-branch 77"), len(calls) - 1 - calls[::-1].index("pr merge 77"))
+        row = self.jsonl()[0]
+        self.assertEqual((row["was_behind"], row["updates"], row["merged"]), (True, 1, True))
+        self.assertGreater(row["extra_ci_wait_s"], 0)
+
+    def test_resumed_settled_path_also_updates_when_behind(self):
+        self.gh_state({"required": ["never-reported"]})
+        self.land(expect=1)  # PR pushed, reviewed, receipted; stops at checks
+        g = self.ghs()
+        g.update({"required": ["test"], "main_moves_at_wait": True, "after_update_rollups": [self.OK]})
+        (self.S / "gh.json").write_text(json.dumps(g))
+        r = self.land(expect=0)
+        self.assertIn("resuming PR #77", r.stdout)
+        st = self.ghs()
+        self.assertEqual((st["updates"], st["merges"], st["creates"]), (1, 1, 1))
+        self.assertEqual(len(self.calls("gemini")), 1)  # the update kept the review; no second one
+
+    def test_update_bound_exhausted_stops_without_merging(self):
+        self.gh_state({"main_moves_at_wait": True, "keep_moving": True, "after_update_rollups": [self.OK]})
+        r = self.land("--max-updates", "1", expect=1)
+        self.assertIn("still behind origin/main after 1 update(s)", self.stop_line(r))
+        st = self.ghs()
+        self.assertEqual(st["updates"], 1)
+        self.assertNotIn("merges", st)
+        row = self.jsonl()[0]
+        self.assertEqual((row["was_behind"], row["merged"]), (True, False))
 
 
 class Friction(Base):
