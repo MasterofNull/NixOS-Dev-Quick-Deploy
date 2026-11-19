@@ -1,0 +1,77 @@
+# Owner directive 2026-11-19. Weekly, grouped minor/patch, small PR cap to protect shared CI.
+# Dependabot keeps the SHA pins used in workflows (it updates the SHA and the trailing version comment).
+# Complements, not replaces, the Grype closure scan.
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 3
+    groups:
+      github_actions_minor_patch:
+        update-types: ["minor", "patch"]
+  - package-ecosystem: "pip"
+    directory: "/config"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 3
+    groups:
+      pip_minor_patch:
+        update-types: ["minor", "patch"]
+  - package-ecosystem: "pip"
+    directory: "/ai-stack/autonomous-improvement"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 3
+    groups:
+      pip_minor_patch:
+        update-types: ["minor", "patch"]
+  - package-ecosystem: "pip"
+    directory: "/ai-stack/mcp-servers/aidb"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 3
+    groups:
+      pip_minor_patch:
+        update-types: ["minor", "patch"]
+  - package-ecosystem: "pip"
+    directory: "/ai-stack/mcp-servers/hybrid-coordinator"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 3
+    groups:
+      pip_minor_patch:
+        update-types: ["minor", "patch"]
+  - package-ecosystem: "pip"
+    directory: "/ai-stack/mcp-servers/nixos-docs"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 3
+    groups:
+      pip_minor_patch:
+        update-types: ["minor", "patch"]
+  - package-ecosystem: "pip"
+    directory: "/dashboard/backend"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 3
+    groups:
+      pip_minor_patch:
+        update-types: ["minor", "patch"]
+  - package-ecosystem: "npm"
+    directory: "/ai-stack/mcp-servers/hybrid-coordinator"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 3
+    groups:
+      npm_minor_patch:
+        update-types: ["minor", "patch"]
+  - package-ecosystem: "cargo"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 3
+    groups:
+      cargo_minor_patch:
+        update-types: ["minor", "patch"]
