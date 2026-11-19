@@ -1,0 +1,106 @@
+"""Bounded, partial-result check scheduler for QA phases.
+
+A phase is a list of independent check functions. Each runs on a daemon thread under a per-check deadline and
+a whole-phase budget, so one slow or hung check (or a busy dependency) cannot turn the phase into an
+all-or-nothing outer timeout. A check that does not finish is reported as SKIP with a "DEGRADED:" reason
+(never PASS), so monitors can tell "busy" from "healthy" and from "failed"."""
+from __future__ import annotations
+
+import os
+import threading
+import time
+from typing import Callable
+
+from .result import CheckResult, failed, skipped
+
+DEGRADED = "DEGRADED"
+
+
+def _env_float(name: str) -> float | None:
+    try:
+        v = float(os.environ.get(name, "").strip())
+        return v if v > 0 else None
+    except ValueError:
+        return None
+
+
+def resolve_limits(n_checks: int) -> tuple[int, float, float]:
+    """(workers, per_check_s, budget_s). Env overrides: AQ_QA_PHASE0_WORKERS / _CHECK_TIMEOUT_S / _BUDGET_S.
+    Defaults derive from the host and the plan: budget = 85% of the caller's outer deadline (HARNESS_TIMEOUT_S)
+    when known, else 5 s per check; per-check = budget/4; workers = a quarter of the CPUs, 1..4."""
+    w = _env_float("AQ_QA_PHASE0_WORKERS")
+    workers = int(w) if w else max(1, min(4, (os.cpu_count() or 2) // 4))
+    budget = _env_float("AQ_QA_PHASE0_BUDGET_S")
+    if budget is None:
+        outer = _env_float("HARNESS_TIMEOUT_S")
+        budget = outer * 0.85 if outer else 5.0 * n_checks
+    per_check = _env_float("AQ_QA_PHASE0_CHECK_TIMEOUT_S") or budget / 4
+    return max(1, workers), per_check, budget
+
+
+def degraded_result(name: str, reason: str) -> CheckResult:
+    return skipped(4, f"0.degraded.{name.removeprefix('_check_')}", f"{name.removeprefix('_check_')} check", f"{DEGRADED}: {reason}")
+
+
+def run_checks(
+    ctx,
+    checks: list[Callable],
+    *,
+    workers: int,
+    per_check_s: float,
+    budget_s: float,
+    busy_hint: Callable[[], str] | None = None,
+    clock: Callable[[], float] = time.monotonic,
+) -> list[CheckResult]:
+    """Run checks (each `fn(ctx) -> list[CheckResult]`), preserving plan order in the returned list."""
+    n = len(checks)
+    slots: list[list[CheckResult] | None] = [None] * n
+    pending = list(range(n))
+    running: dict[int, tuple[threading.Thread, float, dict]] = {}
+    start = clock()
+
+    def hint() -> str:
+        try:
+            return busy_hint() if busy_hint else ""
+        except Exception:
+            return ""
+
+    def launch(i: int) -> None:
+        box: dict = {}
+
+        def target() -> None:
+            try:
+                box["r"] = list(checks[i](ctx))
+            except BaseException as exc:  # a crashing check is a real defect, never a pass
+                box["r"] = [failed(4, f"0.error.{checks[i].__name__.removeprefix('_check_')}",
+                                   f"{checks[i].__name__.removeprefix('_check_')} check", f"raised {type(exc).__name__}: {str(exc)[:160]}")]
+
+        t = threading.Thread(target=target, name=checks[i].__name__, daemon=True)
+        running[i] = (t, clock(), box)
+        t.start()
+
+    while pending or running:
+        now = clock()
+        if now - start >= budget_s:
+            why = f"phase budget {budget_s:.0f}s exhausted{hint()}"
+            for i in list(running):
+                slots[i] = [degraded_result(checks[i].__name__, f"still running at {why}")]
+            for i in pending:
+                slots[i] = [degraded_result(checks[i].__name__, f"not started, {why}")]
+            break
+        for i in list(running):
+            t, t0, box = running[i]
+            if not t.is_alive():
+                slots[i] = box["r"]
+                del running[i]
+            elif now - t0 >= per_check_s:
+                slots[i] = [degraded_result(checks[i].__name__, f"exceeded {per_check_s:.0f}s per-check budget{hint()}")]
+                del running[i]
+        while pending and len(running) < workers:
+            launch(pending.pop(0))
+        if running:
+            next(iter(running.values()))[0].join(0.05)
+    out: list[CheckResult] = []
+    for s in slots:
+        out.extend(s or [])
+    return out
