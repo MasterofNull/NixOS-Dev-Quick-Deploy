@@ -1195,6 +1195,20 @@
         description = "Enable declarative AI stack runtime services when the aiStack role is active.";
       };
 
+      mcpTimeoutScale = lib.mkOption {
+        type = lib.types.numbers.positive;
+        default =
+          if lib.elem config.mySystem.hardwareTier ["nano" "micro"]
+          then 2
+          else 1;
+        defaultText = lib.literalMD "2 on nano/micro hardware tiers, else 1";
+        description = ''
+          Multiplier on every MCP bridge per-tool HTTP timeout
+          (AQ_MCP_TIMEOUT_SCALE read by scripts/ai/mcp-bridge-hybrid.py).
+          Defaults derive from the hardware tier; raise it on slow hosts.
+        '';
+      };
+
       # agent-auth AUTH-S2 (DESIGN 6.1): shadow authorization lifecycle.
       agentAuth = {
         mode = lib.mkOption {

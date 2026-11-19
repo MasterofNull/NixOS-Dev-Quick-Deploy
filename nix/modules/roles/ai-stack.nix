@@ -2483,7 +2483,7 @@ in {
         wantedBy = ["timers.target"];
         timerConfig =
           {
-            OnCalendar = "daily";
+            OnCalendar = "*-*-* 01:10:00";
             Persistent = true;
             RandomizedDelaySec = "15min";
           }
@@ -2716,7 +2716,7 @@ in {
       systemd.timers.ai-capability-audit = {
         description = "Daily capability audit";
         wantedBy = ["timers.target"];
-        timerConfig = {OnCalendar = "daily"; Persistent = true; RandomizedDelaySec = "30min";};
+        timerConfig = {OnCalendar = "*-*-* 05:20:00"; Persistent = true; RandomizedDelaySec = "30min";};
       };
 
       # Weekly bounded, review-gated frontier scan (owner-approved 2026-10-14 amendment to
@@ -2762,7 +2762,7 @@ in {
         wantedBy = ["timers.target"];
         timerConfig =
           {
-            OnCalendar = "hourly";
+            OnCalendar = "*-*-* *:35:00";
             Persistent = true;
             RandomizedDelaySec = "10min";
           }
