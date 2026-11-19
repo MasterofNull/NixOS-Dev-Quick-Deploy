@@ -55,6 +55,12 @@ _human_printf() {
 
 _human_printf '=== aq-session-start: %s ===\n' "$task"
 
+# Self-heal core.hooksPath drift (absolute/foreign value pins every worktree to the primary checkout's hooks).
+_hp="$(git -C "${REPO_ROOT}" config --local --get core.hooksPath 2>/dev/null || true)"
+if [[ "$_hp" != ".githooks" && -d "${REPO_ROOT}/.githooks" ]]; then
+    bash "${REPO_ROOT}/scripts/deploy/install-git-hooks.sh" --quiet >&2 || true
+fi
+
 # Primary checkout off main => deploys from it are blocked; surface it (stderr in --machine mode).
 _pcw="$(bash "${REPO_ROOT}/scripts/governance/primary-checkout-warn.sh" "${REPO_ROOT}" 2>/dev/null || true)"
 if [[ -n "$_pcw" ]]; then
