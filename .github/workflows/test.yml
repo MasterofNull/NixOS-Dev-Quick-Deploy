@@ -587,6 +587,7 @@ jobs:
             --only tier0-gate-placement-tests \
             --only gate-lane-findings-tests \
             --only timer-stagger-regression-tests \
+            --only llama-post-switch-validate-tests \
             --only activation-manifest-tests \
             --only lean-ctx-shell-security \
             --only rea-sandbox-tests \
