@@ -23,8 +23,9 @@ if [[ "$(git -C "${REPO_ROOT}" rev-parse --is-bare-repository 2>/dev/null)" != "
   exit 1
 fi
 
-current="$(git -C "${REPO_ROOT}" config --local --get core.hooksPath 2>/dev/null || true)"
-if [[ "${current}" != ".githooks" ]]; then
+# Effective value (any scope, worktree config included): a per-worktree override shadows the shared one.
+current="$(git -C "${REPO_ROOT}" config --get core.hooksPath 2>/dev/null || true)"
+if [[ "$(git -C "${REPO_ROOT}" config --local --get core.hooksPath 2>/dev/null || true)" != ".githooks" ]]; then
   find "${HOOKS_DIR}" -maxdepth 1 -type f ! -name README.md -exec chmod +x {} +
   git -C "${REPO_ROOT}" config --local core.hooksPath .githooks  # RELATIVE: each worktree uses its own tree's hooks
 fi
