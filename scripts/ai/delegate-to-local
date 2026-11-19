@@ -327,6 +327,33 @@ case "${SUBCMD:-}" in
         ID="$(task_id)"
         OUTPUT_FILE="$DELEGATION_DIR/outputs/${ID}.log"
 
+        # Frugal-SOTA S1: attach a deterministic context packet for repo files the prompt names, so the
+        # small local window gets signatures and target bodies instead of whole files. Fail-open: any
+        # error, empty result or oversize prompt leaves the prompt untouched. Kill switch AQ_CONTEXT_PACKET=0.
+        if [[ "${AQ_CONTEXT_PACKET:-1}" != "0" && "${#PROMPT}" -lt 8000 ]]; then
+            _CP_FILES="$(python3 -c '
+import re, sys
+from pathlib import Path
+root = Path(sys.argv[2])
+seen = []
+for tok in re.findall(r"[A-Za-z0-9_./-]+", sys.argv[1]):
+    if "/" not in tok or tok in seen:
+        continue
+    f = (root / tok).resolve()
+    if f.is_file() and root in f.parents and f.stat().st_size < 400000:
+        seen.append(tok)
+print("\n".join(seen[:3]))
+' "$PROMPT" "$REPO_ROOT" 2>/dev/null || true)"
+            if [[ -n "$_CP_FILES" ]]; then
+                mapfile -t _CP_ARR <<<"$_CP_FILES"
+                _CP_OUT="$(cd "$REPO_ROOT" && timeout 10 python3 "$SCRIPT_DIR/aq-context-packet" "${_CP_ARR[@]}" 2>/dev/null)" || _CP_OUT=""
+                if [[ -n "$_CP_OUT" ]]; then
+                    PROMPT="${PROMPT}"$'\n\n'"--- context packet (aq-context-packet) ---"$'\n'"${_CP_OUT}"
+                    info "Context packet attached: ${#_CP_ARR[@]} file(s)"
+                fi
+            fi
+        fi
+
         info "Delegating task: $ID"
         info "Routing mode:    $MODE"
         info "Role:            $ROLE"
