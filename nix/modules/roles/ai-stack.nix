@@ -2220,6 +2220,8 @@ in {
           ExecStart = let
             script = "${cfg.mcpServers.repoPath}/scripts/ai/aq-report";
           in "${pkgs.python3}/bin/python3 ${script} --since=7d --format=md --aidb-import";
+          # Weekly skill utility/prune-candidate report to the journal (read-only; "-" = never fails the report).
+          ExecStartPost = "-${pkgs.python3}/bin/python3 ${cfg.mcpServers.repoPath}/scripts/ai/aq-skill-eval";
           StandardOutput = "journal";
           StandardError = "journal";
           NoNewPrivileges = true;
@@ -2265,6 +2267,9 @@ in {
           # Allow up to 1h total; Qwen 35B on CPU can take 3-5 min per test case.
           TimeoutStartSec = "3600";
           MemoryMax = "512M";
+          # 75 = EX_TEMPFAIL: aq-prompt-eval defers (writes no scores) after consecutive LLM timeouts on a busy
+          # single slot; the next timer run retries, so a deferral must not leave the unit failed (QA phase-0).
+          SuccessExitStatus = "75";
           # Each LLM call allowed 5 min; 64-token cap keeps prompts short.
           Environment = [
             "AQ_PROMPT_EVAL_TIMEOUT_S=300"

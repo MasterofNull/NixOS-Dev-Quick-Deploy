@@ -35,6 +35,7 @@ def main() -> int:
         original_text = source_registry.read_text(encoding="utf-8")
         tmp_registry.write_text(original_text, encoding="utf-8")
 
+        ns = vars(aq_prompt_eval)  # module globals: avoids attribute-assignment lint/type noise
         original_wait = aq_prompt_eval.wait_for_llama_ready
         original_llm_call = aq_prompt_eval.llm_call
         try:
@@ -43,15 +44,26 @@ def main() -> int:
             def failing_llm_call(*_args, **_kwargs):
                 raise TimeoutError("simulated timeout")
 
-            aq_prompt_eval.llm_call = failing_llm_call
-            exit_code = aq_prompt_eval.run_eval(
-                registry_path=tmp_registry,
-                target_id="route_search_synthesis",
-                dry_run=False,
-                verbose=False,
-                model="local",
-            )
+            calls = []
+
+            def counting_failing_call(*_args, **_kwargs):
+                calls.append(1)
+                raise TimeoutError("simulated timeout")
+
+            kw = dict(registry_path=tmp_registry, target_id=None, dry_run=False, verbose=False, model="local")
+            # Busy slot: the run defers after N consecutive failures instead of burning one timeout per case.
+            ns["llm_call"] = counting_failing_call
+            deferred = aq_prompt_eval.run_eval(**kw)
+            assert_true(deferred == aq_prompt_eval.EXIT_DEFERRED == 75, f"expected deferral exit 75, got {deferred}")
+            assert_true(len(calls) == aq_prompt_eval.DEFER_AFTER, f"expected {aq_prompt_eval.DEFER_AFTER} calls, got {len(calls)}")
+            assert_true(tmp_registry.read_text(encoding="utf-8") == original_text, "deferred run must not write scores")
+
+            # Deferral disabled: the original transport-failure behaviour (exit 1, registry untouched).
+            ns["DEFER_AFTER"] = 0
+            ns["llm_call"] = failing_llm_call
+            exit_code = aq_prompt_eval.run_eval(**{**kw, "target_id": "route_search_synthesis"})
         finally:
+            ns["DEFER_AFTER"] = 3
             aq_prompt_eval.wait_for_llama_ready = original_wait
             aq_prompt_eval.llm_call = original_llm_call
 

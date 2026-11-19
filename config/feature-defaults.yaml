@@ -291,18 +291,6 @@ conditional_features:
 # or specific resource requirements. Clear documentation for opt-in.
 
 experimental_features:
-  # Query Expansion (Synonym-based)
-  query_expansion:
-    enabled: false  # Experimental - manual opt-in
-    description: "Expand queries with semantic synonyms"
-    opt_in_instructions: "Set QUERY_EXPANSION_ENABLED=true"
-    limitations:
-      - "Can amplify noise in specific queries"
-      - "Best for short/ambiguous queries only"
-      - "Limited test coverage"
-    performance_impact:
-      latency_overhead_ms: 250
-
   # Remote LLM Feedback
   remote_llm_feedback:
     enabled: false  # Requires API key + budget
@@ -394,7 +382,6 @@ overrides:
     - "CONTINUOUS_LEARNING_ENABLED - Disable for ephemeral (default: true)"
 
     # Opt-in for experimental
-    - "QUERY_EXPANSION_ENABLED - Enable experimental query expansion (default: false)"
     - "REMOTE_LLM_FEEDBACK_ENABLED - Enable remote feedback (default: false)"
 
     # Conditional auto-enable

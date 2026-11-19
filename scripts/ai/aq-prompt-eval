@@ -63,6 +63,13 @@ LLAMA_URL = os.getenv(
 LLAMA_READY_TIMEOUT = float(os.getenv("AQ_PROMPT_EVAL_READY_TIMEOUT_S", "180"))
 LLM_CALL_TIMEOUT = float(os.getenv("AQ_PROMPT_EVAL_TIMEOUT_S", "300"))
 LLM_CALL_MAX_TOKENS = int(os.getenv("AQ_PROMPT_EVAL_MAX_TOKENS", "128"))
+# Consecutive transport failures before the run is deferred (the single local slot is busy or down); 0 disables.
+DEFER_AFTER = int(os.getenv("AQ_PROMPT_EVAL_DEFER_AFTER", "3"))
+EXIT_DEFERRED = 75  # EX_TEMPFAIL: nothing written, next timer run retries; the unit treats it as success
+
+
+class _Defer(Exception):
+    pass
 
 REGISTRY_PATH = Path(
     os.getenv(
@@ -553,10 +560,28 @@ def run_eval(
     today = date.today().isoformat()
     state_path = eval_state_path(registry_path)
     eval_state = load_eval_state(state_path)
-    state_dirty = False
     results_summary: List[dict] = []
-    exit_code = 0
+    consecutive_transport = 0
 
+    def _note_transport(failed: bool) -> None:
+        nonlocal consecutive_transport
+        consecutive_transport = consecutive_transport + 1 if failed else 0
+        if DEFER_AFTER and consecutive_transport >= DEFER_AFTER:
+            raise _Defer(f"{consecutive_transport} consecutive transport failures")
+
+    try:
+        return _run_prompts(prompts, target_id, verbose, functional, dry_run, model, fe, today, state_path,
+                            eval_state, results_summary, _note_transport)
+    except _Defer as exc:
+        print(f"  DEFER eval deferred, no scores written: {exc}; llama slot busy or down (retry next timer run)",
+              file=sys.stderr)
+        return EXIT_DEFERRED
+
+
+def _run_prompts(prompts, target_id, verbose, functional, dry_run, model, fe, today, state_path,
+                 eval_state, results_summary, note_transport) -> int:
+    state_dirty = False
+    exit_code = 0
     for entry in prompts:
         pid = entry.get("id", "")
         if target_id and pid != target_id:
@@ -591,7 +616,9 @@ def run_eval(
                 except Exception as exc:
                     print(f"  ERROR {pid} / {ft.name}: {exc}", file=sys.stderr)
                     transport_error = True
+                    note_transport(True)
                     continue
+                note_transport(False)
 
                 extracted = fe.extract_code_block(response)
                 passed, failures = fe.execute_functional_check(extracted, ft.check_script)
@@ -620,7 +647,9 @@ def run_eval(
                 except Exception as exc:
                     print(f"  ERROR {pid} / {tc.description}: {exc}", file=sys.stderr)
                     transport_error = True
+                    note_transport(True)
                     continue
+                note_transport(False)
 
                 passed, failures = score_response(tc, response)
                 case_results.append(passed)
