@@ -1,0 +1,90 @@
+{
+  "plan": {
+    "id": "greenlight-gating-20261119",
+    "title": "Greenlight gating decoupled from commits; series and flood landing",
+    "prd_ref": ".agents/plans/greenlight-gating-20261119/DESIGN.md",
+    "owner": "hyperd",
+    "goal": "Gate slices before commit/push on the merged-with-main tree; commits trust an exact-tree greenlight; landing modes series/flood admit only greenlit slices.",
+    "success_criteria": [
+      "J1-J5 in DESIGN.md pass",
+      "local greenlight result predicts CI static/test groups on the same tree"
+    ]
+  },
+  "phases": [
+    {
+      "id": "g",
+      "name": "G: greenlight MVP",
+      "goal": "G1-G4",
+      "order": 1
+    },
+    {
+      "id": "g2",
+      "name": "G2: flood mode",
+      "goal": "after MVP phase proves out",
+      "order": 2
+    }
+  ],
+  "items": [
+    {
+      "id": "g1-greenlight",
+      "name": "aq-greenlight on merged-with-main tree",
+      "phase": "g",
+      "kind": "slice",
+      "goal": "catch preflight/semantic-conflict failures before commit",
+      "validation_goal": "J1,J2",
+      "deps": [],
+      "detection": {
+        "commit_match": [
+          "G1-GREENLIGHT "
+        ]
+      }
+    },
+    {
+      "id": "g2-hook-trust",
+      "name": "pre-commit accepts exact-tree greenlight",
+      "phase": "g",
+      "kind": "slice",
+      "goal": "no tier0 re-run for greenlit content",
+      "validation_goal": "J3",
+      "deps": [
+        "g1-greenlight"
+      ],
+      "detection": {
+        "commit_match": [
+          "G2-HOOK-TRUST "
+        ]
+      }
+    },
+    {
+      "id": "g3-land-modes",
+      "name": "land runner --mode series|flood",
+      "phase": "g2",
+      "kind": "slice",
+      "goal": "explicit flood with reason",
+      "validation_goal": "J4",
+      "deps": [
+        "g1-greenlight"
+      ],
+      "detection": {
+        "commit_match": [
+          "G3-LAND-MODES "
+        ]
+      }
+    },
+    {
+      "id": "g4-local-ci-parity",
+      "name": "local gates in CI env, load-tolerant timeouts",
+      "phase": "g",
+      "kind": "slice",
+      "goal": "local predicts CI",
+      "validation_goal": "J5",
+      "deps": [],
+      "detection": {
+        "commit_match": [
+          "G4-LOCAL-CI-PARITY "
+        ]
+      }
+    }
+  ],
+  "issues": []
+}
