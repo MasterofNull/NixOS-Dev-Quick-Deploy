@@ -53,6 +53,7 @@ No renamed or removed flag among those used. API fields: `chat_template_kwargs.e
 - MTP accepted-token rate: no counter exists in `/metrics` and the journal has no accept line at the current verbosity; baseline UNKNOWN. Capture it from the first post-reboot run on the new binary and from the old generation if rolled back.
 
 ## 7. Post-reboot full-model validation (resume notes)
+Automated by `scripts/testing/llama-post-switch-validate.sh` (health, thinking-off chat, json_schema, MTP acceptance, tok/s vs the section 6 baseline; prints the rollback command on failure), see `docs/harness-first/evidence/2026-11-19-retro-review-800-806.md`. Steps 1-6 below remain the manual equivalent. The iGPU offload patch is now gated by `mySystem.aiStack.llamaCpp.vulkanAllowIgpuOffload` (true on this APU host, false on dGPU hosts).
 1. Check the service came up on the new binary: `systemctl status llama-cpp`, ExecStart path contains `llama-cpp-12503`, `curl :8080/health`.
 2. Speed: with AC power, performance profile, nothing else heavy, run `aq-llm-speed-probe` (or wait for its timer) 3 times; compare gen/prompt tok/s with section 6 (regression if gen median is below about 3.5 tok/s in a non-slow state).
 3. MTP: run one 256-token completion with `chat_template_kwargs:{"enable_thinking":false}`; read `draft acceptance` from the journal at `--log-verbosity 2` (or `/slots`); record the rate. A drop to zero acceptance means the draft-mtp path broke.
