@@ -190,12 +190,21 @@ class PowerGate(unittest.TestCase):
         self._env(AQ_POWER_GATE_TEMP_MARGIN_C="25")
         self.assertEqual(power_gate.max_temp_c(s), 70.0)
 
-    def test_derived_temp_is_clamped(self) -> None:
+    def test_derived_temp_has_ceiling_but_no_floor(self) -> None:
         s = make_sys(self.tmp / "s")
         w(s / "class/hwmon/hwmon5/temp1_crit", "60000")
-        self.assertEqual(power_gate.max_temp_c(s), 50.0)  # floor
+        self.assertEqual(power_gate.max_temp_c(s), 45.0)  # trip - default margin, not raised
         w(s / "class/hwmon/hwmon5/temp1_crit", "130000")
         self.assertEqual(power_gate.max_temp_c(s), 100.0)  # ceiling
+
+    def test_derived_limit_below_old_floor_defers(self) -> None:
+        # Retro review of #801: trip 85, margin 40 -> ceiling 45; a 48 C CPU must defer.
+        s = make_sys(self.tmp / "s", temp_mc="48000")
+        w(s / "class/hwmon/hwmon5/temp1_crit", "85000")
+        self._env(AQ_POWER_GATE_TEMP_MARGIN_C="40")
+        r = self.run_gate(s)
+        self.assertFalse(r["ok"], r)
+        self.assertEqual(r["readings"]["max_temp_c"], 45.0)
 
     def test_non_cpu_trip_points_ignored(self) -> None:
         s = make_sys(self.tmp / "s")
