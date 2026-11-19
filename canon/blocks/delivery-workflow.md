@@ -80,6 +80,9 @@ tested. A slice is finished only after these four steps, in this order:
 - No derelict capabilities: every tool/script/service is wired into a live path, discoverable, and used,
   or carries a written reason.
 - Archive only when a parity equivalent exists; unused-but-intended work gets wired, not discarded.
+- Dormant features found during work (implemented but never enabled; owner directive 2026-11-19): enable,
+  validate end to end, test, and fix what enabling breaks, as an activation slice (Rule 15). Owner acts
+  (rebuild/sudo/repo settings) are asked for; risky or contested enables are presented with a recommendation.
 
 ### 8. Discover before building
 - `docs/agent-guides/CAPABILITY-INDEX.md` / `scripts/ai/aq-capability-index` (what exists, by tag),

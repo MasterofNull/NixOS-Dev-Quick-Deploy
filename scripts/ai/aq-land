@@ -9,7 +9,13 @@ scripts/ai/lib/merge_manifests.py and re-reviewed; any other conflict stops and 
 Replaces .agents/delegation/outputs/landing/land.sh (design: delivery-loop-simplification, S3).
 
   aq-land --title T --body-file F [--commit-msg-file M] [--criteria-file C] [--author-lane claude]
-          [--allow-docs-only] [--lanes gemini,codex,local] [--optional-check NAME]...
+          [--allow-docs-only] [--lanes gemini,codex,local] [--optional-check NAME]... [--owned PATHFILE]
+
+--owned PATHFILE (default: .agents/delegation/owned/<branch-slug>.txt in the worktree) lists the globs
+the slice owns, one per line ('#' comments; a trailing '/' means a whole directory; '*' also crosses '/').
+A changed file outside them stops the landing in preflight, before any review, and is logged to
+<state>/owned-path-refusals.jsonl. Always allowed: the declaration file itself and docs/harness-first/evidence/
+(every slice must ship its evidence file, whose name is not known in advance). No declaration: WARN, no block.
 
 The body file holds `## Details` (without a review record), `## What`, `## How`, `## Why`; aq-land
 inserts the `### Review record` (and any lane substitution) before `## What`.
@@ -24,6 +30,7 @@ except Exception:
 
 import argparse
 import fcntl
+import fnmatch
 import hashlib
 import importlib.util
 import json
@@ -41,6 +48,8 @@ ROOT = HERE.parents[1]
 REVIEW_CHECK = "review-disposition"
 TRUST_CRITICAL = (".github/workflows/review-disposition.yml", "scripts/governance/", ".githooks/",
                   "scripts/ai/aq-review-receipt", "scripts/ai/aq-land")
+OWNED_DIR = ".agents/delegation/owned"
+EVIDENCE_DIR = "docs/harness-first/evidence/"
 DOC_PREFIXES = ("docs/", ".agent/", ".agents/")
 CODE_SUFFIXES = (".py", ".sh", ".nix", ".yml", ".yaml")
 # lane key -> (registry agent name, hard limit s, stall limit s). A stall limit assumes the lane writes
@@ -120,7 +129,7 @@ class Land:
     def __init__(self, a):
         self.a = a
         self.W = str(Path(a.worktree).resolve())
-        for attr in ("body_file", "commit_msg_file", "criteria_file"):  # relative to the caller's cwd, not the worktree
+        for attr in ("body_file", "commit_msg_file", "criteria_file", "owned"):  # relative to the caller's cwd, not the worktree
             if getattr(a, attr):
                 setattr(a, attr, str(Path(getattr(a, attr)).resolve()))
         os.chdir(self.W)
@@ -230,9 +239,14 @@ class Land:
         return (open_ or merged or [None])[0]
 
     # ---- preflight
+    def nul_names(self, *rev):
+        """NUL-delimited, so non-ASCII and tab/newline names arrive unquoted and unsplit."""
+        out = run(["git", "-C", self.W, "diff", "--name-only", "-z", "--no-renames", *rev], timeout=180).stdout
+        return out.split("\0")
+
     def changed_paths(self):
-        names = self.git("diff", "--name-only", "refs/remotes/origin/main...HEAD").split("\n")
-        names += self.git("diff", "--name-only", "--cached").split("\n")
+        names = self.nul_names("refs/remotes/origin/main...HEAD")
+        names += self.nul_names("--cached")
         return sorted({n for n in names if n})
 
     def is_code(self, p):
@@ -253,8 +267,45 @@ class Land:
         if not self.a.allow_docs_only and not any(self.is_code(p) for p in paths):
             raise Stop("preflight", "documentation-only change refused: documentation ships inside the code PR it describes "
                                     "(owner 2026-11-06); pass --allow-docs-only to override")
+        self.check_owned(paths)
         self.trust_critical = any(p.startswith(TRUST_CRITICAL) for p in paths)
         self.local_ci_gates()
+
+    def owned_file(self):
+        if self.a.owned:
+            f = Path(self.a.owned).resolve()
+            if not f.is_file():
+                raise Stop("preflight", f"--owned file not found: {f}")
+            return f
+        f = Path(self.W) / OWNED_DIR / f"{self.slug}.txt"
+        return f if f.is_file() else None
+
+    def check_owned(self, paths, recheck=False):
+        f = self.owned_file()
+        if f is None:
+            if not recheck:
+                say(f"WARN no owned-path declaration (--owned or {OWNED_DIR}/{self.slug}.txt): scope not checked")
+            self.save(owned_paths="undeclared")
+            return
+        globs = [g.strip() for g in f.read_text().splitlines() if g.strip() and not g.strip().startswith("#")]
+        if not globs:
+            raise Stop("preflight", f"owned-path file {f} lists no paths")
+        try:
+            rel_decl = str(f.relative_to(self.W))
+        except ValueError:
+            rel_decl = ""
+        allowed = globs + [EVIDENCE_DIR]
+        out = [p for p in paths if p != rel_decl and not any(
+            p.startswith(g) if g.endswith("/") else fnmatch.fnmatchcase(p, g) for g in allowed)]
+        self.save(owned_paths="declared")
+        if out:
+            try:
+                with open(self.state_root / "owned-path-refusals.jsonl", "a") as fh:
+                    fh.write(json.dumps({"ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), "branch": self.branch, "files": out}) + "\n")
+            except OSError:
+                pass
+            raise Stop("preflight", f"{len(out)} changed file(s) outside the slice's owned paths ({f}): " + ", ".join(out[:20])
+                                    + " -- move them to their own slice or add them to the declaration")
 
     def local_ci_gates(self):
         """The two gates that otherwise fail only in CI, after the push, the PR and a spent review. Both reuse the CI scripts."""
@@ -408,7 +459,7 @@ class Land:
         with open(out, "w") as fh:
             try:
                 proc = subprocess.Popen([tool, *cmd, "--prompt-file", str(pfile)], cwd=self.W, stdout=fh, stderr=subprocess.STDOUT,
-                                        start_new_session=True, env={**os.environ, "AQ_DELEGATE_CWD": str(self.W)})
+                                        start_new_session=True, env={**os.environ, "AQ_DELEGATE_CWD": str(self.W), "AQ_LOCAL_VERDICT_SCHEMA": "1"})
             except OSError as e:
                 return "unavailable", f"cannot start {tool}: {e.strerror}", "", ""
             t0 = last = time.time()
@@ -669,6 +720,7 @@ class Land:
         for _ in range(4):  # main or the branch can move during a review; re-judge the evidence each round
             self.sync_main()
             head = self.head()
+            self.check_owned(self.changed_paths(), recheck=True)  # HEAD may have moved since preflight; before each review and the push
             rec = self.cp.get("review")
             if not self.review_valid(rec, head):
                 if not gated:
@@ -682,6 +734,7 @@ class Land:
             break
         else:
             raise Stop("merge", "origin/main or the branch kept moving; re-run aq-land")
+        self.check_owned(self.changed_paths(), recheck=True)
         self.stage_push(head, rec)
         n = self.stage_pr(rec, edit=False)
         self.stage_receipt(n, rec)  # a body edit triggers review-disposition, which needs the receipt already published
@@ -755,6 +808,7 @@ def main():
     ap.add_argument("--lanes", default=os.environ.get("AQ_LAND_LANES", "gemini,codex,local"))
     ap.add_argument("--allow-docs-only", action="store_true")
     ap.add_argument("--optional-check", action="append", default=[])
+    ap.add_argument("--owned", default="")
     a = ap.parse_args()
     stage = "start"
     try:

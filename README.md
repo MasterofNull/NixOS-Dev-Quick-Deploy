@@ -106,23 +106,23 @@ aq-hints "how do I configure NixOS services"      # Get workflow hints
 
 ## 📡 System Pulse
 
-### Current Status: 🟢 OPERATIONAL
-- **Last Validated:** 2026-09-08
-- **Health Gate:** all Tier 0 validation gates passing (`tier0-validation-gate.sh`, 51 checks green as of 2026-09-08).
-- **AQ-OS Refactor Status:** Phase P0 (Contract Foundation, Hardware Detector, Resolver, Schema `aqos-install-plan-v1`) and Phase P1 (Golden Path Profile, Guided TUI, adapter parity suite) Complete; Phase P2 (optional local AI-assist) Active.
-- **Inference Engine:** Local Qwen3.6-35B model active on llama.cpp (`:8080`, ROCm/Vulkan on the AMD Renoir APU).
-- **Context Efficiency:** `lean-ctx` MCP layer active system-wide (46 tools, 10 read modes, 90+ shell patterns).
+### Current Status
+- **Last validated:** 2026-11-15 (live phase-0 QA on the running system: 208 passed, 0 failed, 9 skipped; Tier 0 passed all 70 gates). Evidence: [deploy validation](./docs/harness-first/evidence/2026-11-15-deploy-validation.md).
+- **AQ-OS installer:** Phase P0 (contract, hardware detector, resolver, schema `aqos-install-plan-v1`) and P1 (golden-path profile, guided TUI, adapter parity suite) complete; P2 (optional local AI-assist) active.
+- **Inference engine:** local Qwen3.6-35B on llama.cpp (`:8080`, AMD Renoir APU).
+- **Context efficiency:** `lean-ctx` MCP layer (3.12.4 since #778) with 10 read modes and shell-output compression.
 
-### 🏆 Recent Achievements
-- **Phase P0 Execution Verifier:** Completed contract schema validation, hardware-adaptive RAM/VRAM detection, and module catalog resolution.
-- **`lean-ctx` MCP Integration:** Integrated native context compression server providing AST parsing and 90%+ token reduction for agentic loops.
-- **Adapter Parity Suite:** Proved byte-identical resolved-plan + projection across guided, AI-adapter, manual, and legacy inputs through one resolver (the local-AI proposal path and Nix-derivation parity remain in progress).
-- **Multi-Agent Collaboration Protocols:** Hardened state synchronization (`RESUME.json`, `PENDING.json`, `PULSE.log`) across Codex, Gemini, Claude, and local model lanes.
+### Recently merged (2026-11-12 to 2026-11-18)
+- **Persona:** every lane runs as an instance of one persona, Simurg, labelled `Simurg@<lane>/<model>#<session>` in PULSE, A2A events, review receipts and memory facts (#765, #767, #769). See [persona](./canon/blocks/persona.md).
+- **Multi-lane delivery:** `aq-land` lands a branch through gates, independent review (never the author lane), PR and merge. It runs Tier 0 before review (#774), writes an outcome receipt per landing (#775), and resumes after a kill without a second PR or review (#783). Quota cooldowns come only from real CLI errors (#757, #768, #777). Roles and lanes: [role matrix](./docs/architecture/role-matrix.md), [delivery workflow](./canon/blocks/delivery-workflow.md).
+- **Frugal SOTA MVP (S1-S5):** `aq-context-packet` (#773), Tier 0 before review (#774), receipts and `aq-scoreboard` (#775), power/thermal gate for local llama.cpp work (#776), telemetry isolation so tests cannot write live delegation telemetry (#782), offline verified-trajectory collector (#785). Plan: `.agents/plans/frugal-sota-leadership-20261113/`.
+- **Ops:** the health monitor retires its own `qa-phase-0` alert after a clean phase-0 run (#781); `nix/pkgs` pins are watched and a daily notify-only update check runs when `mySystem.autoUpdate.enable` is set (#779); package bumps (#778, #780, #787); WR-SEC-3 ffmpeg CVE exceptions re-verified (#784); reviewed backlog reconciled (#786); a reconciled deploy now requires a clean live phase-0 QA (#788).
+- **Governance:** AGPL-3.0-or-later relicense (#762), language follows role (#760), basedpyright + ruff held to a shrinking baseline (#763).
 
-### 🗺️ Future Roadmap
-- **P1 Golden Path TUI:** Launching guided terminal UI experience for the curated pro dev + gaming profile.
-- **PRSI Anomaly Remediation:** Deepening autonomous telemetry-driven self-healing (`RemediatorAgent`).
-- **Understand-Anything Knowledge Overlay:** Expanding interactive codebase graph visualizer for real-time impact analysis.
+### Roadmap
+- **Landing in the next wave (not merged yet):** constrained decoding, owned-path gate, brief checks and caps, lean-ctx `shell_security`, timer stagger, knowledge-sync degraded mode, further package refresh, model ID updates, a llama.cpp bump.
+- **PRSI anomaly remediation:** deeper telemetry-driven self-healing (`RemediatorAgent`).
+- **Understand-Anything knowledge overlay:** interactive codebase graph for impact analysis.
 
 ---
 
@@ -321,7 +321,29 @@ aqd parity chaos-smoke                          # Chaos injection
 | `aq-autoresearch` | Self-directed autonomous research |
 | `aq-patterns` | Extract reusable patterns |
 | `aq-collaborate` | Multi-agent task delegation |
+| `aq-context-packet` | Deterministic context packet (<= 2,500 est. tokens) for a local model |
+| `aq-land` | Land a branch: gate, independent review, PR, receipt, merge |
+| `aq-scoreboard` | Raw counts from the per-landing outcome receipt log |
+| `aq-frontier` | Frontier-evidence backlog (add, review, verdict, accept, scan) |
 | `aq-meta-optimize` | Autonomous parameter tuning |
+
+### Update and deploy
+
+Updates are two-phase (`scripts/maintenance/aq-update`):
+
+```bash
+scripts/maintenance/aq-update --daily     # phase 1: refresh flake inputs (even if nothing else changed), verify, land the lock; no sudo
+scripts/maintenance/aq-update --deploy    # phase 2: owner-attended; sudo, aq-deploy-current, baseline refresh, QA
+scripts/maintenance/aq-deploy-current --dry-run   # build only; a real run switches NixOS + home-manager to origin/main
+```
+
+Phase 1 ends by printing one READY line with the phase-2 command. If nothing Nix-affecting changed, the checkout is fast-forwarded and no rebuild happens. `--refresh-inputs` is an alias of `--daily`; `--resume` continues an interrupted phase 1; `--dry-run` previews.
+
+### Data tooling
+
+```bash
+scripts/data/collect-verified-trajectories.py   # offline: receipts -> trajectories.jsonl (kill switch AQ_TRAJECTORY_COLLECT=0)
+```
 
 ### System PATH vs Repo-Local
 
@@ -355,6 +377,8 @@ ls /opt/nixos-quick-deploy/scripts/ai/aq-*
 ### Multi-Agent Workflow
 
 The system supports orchestrator/sub-agent patterns:
+
+All lanes run as instances of one persona, Simurg; the reviewer lane always differs from the author lane (see [persona](./canon/blocks/persona.md)).
 
 1. **Orchestrator** (Claude Opus, Codex):
    - Plan: decompose into discrete slices
@@ -614,6 +638,8 @@ repo/
 - [CLI Tool Inventory](./docs/operations/AI-AGENT-SURFACE-MATRIX.md)
 
 ### Agent Guides
+- [Agent Tool Contract](./docs/agent-guides/47-AGENT-TOOL-CONTRACT.md)
+- [Role Matrix](./docs/architecture/role-matrix.md)
 - [Agent Quick Start](./docs/agent-guides/01-QUICK-START.md)
 - [Progressive Disclosure Guide](./docs/agent-guides/45-PROGRESSIVE-DISCLOSURE.md)
 - [Hybrid Workflow Model](./docs/agent-guides/40-HYBRID-WORKFLOW.md)
