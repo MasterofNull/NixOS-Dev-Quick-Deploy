@@ -395,4 +395,67 @@ def build_llama_payload(
     # Extra fields (stop sequences, tool schemas, cache flags, model name, etc.)
     # are forwarded without modification. frequency_penalty was already popped above.
     payload.update(extra)
+    # llama.cpp b12489+: grammar/json_schema together with ignore_eos is a 400.
+    _rf = payload.get("response_format")
+    if payload.get("grammar") or payload.get("json_schema") or (
+        isinstance(_rf, dict) and _rf.get("type") == "json_schema"
+    ):
+        payload.pop("ignore_eos", None)
     return payload
+
+
+# ── json_schema-constrained decoding for machine-read outputs ────────────────
+# llama.cpp compiles the schema to a grammar, so the model cannot emit tokens
+# outside it (no prose wrapper, no half-closed object). Wire form is the same
+# `response_format` already used by scripts/ai/lib/aqos_ai_propose.py.
+# Opt-out: AQ_LOCAL_JSON_SCHEMA=0. Free-text callers never pass a schema.
+
+# notes first so the model reasons before it commits to a disposition; maxLength
+# keeps the object closable inside the reviewer's 900-token budget.
+REVIEW_VERDICT_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "notes": {"type": "string", "maxLength": 1500},
+        "reviewed_head_sha": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+        "disposition": {"type": "string", "enum": ["PASS", "PASS_WITH_FOLLOWUPS", "REQUEST_CHANGES"]},
+    },
+    "required": ["notes", "reviewed_head_sha", "disposition"],
+    "additionalProperties": False,
+}
+
+
+def json_schema_enabled() -> bool:
+    return os.environ.get("AQ_LOCAL_JSON_SCHEMA", "1") != "0"
+
+
+def attach_json_schema(payload: dict, schema: dict | None, name: str = "output") -> dict:
+    """Constrain `payload` to `schema`. No-op when schema is None or the kill switch is 0.
+
+    llama.cpp b12489+ answers 400 to grammar/json_schema together with ignore_eos,
+    so ignore_eos is dropped whenever a schema is attached.
+    """
+    if schema is None or not json_schema_enabled():
+        return payload
+    payload["response_format"] = {
+        "type": "json_schema",
+        "json_schema": {"name": name, "schema": schema, "strict": True},
+    }
+    payload.pop("ignore_eos", None)
+    return payload
+
+
+def render_review_verdict(text: str) -> str | None:
+    """Render schema-constrained verdict JSON as the text contract aq-land reads.
+
+    Returns None when `text` is not a valid verdict object, so callers keep the raw output.
+    """
+    import json
+
+    try:
+        obj = json.loads(text)
+        notes, sha, disp = obj["notes"], obj["reviewed_head_sha"], obj["disposition"]
+    except (ValueError, KeyError, TypeError):
+        return None
+    if disp not in REVIEW_VERDICT_SCHEMA["properties"]["disposition"]["enum"]:
+        return None
+    return f"{notes}\n\nReviewed-head-sha: {sha}\nReview-Disposition: {disp}\n"
