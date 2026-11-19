@@ -75,7 +75,24 @@ print("OK")
         r, calls = self.run_cli(self.stub("quota", "quota"))
         self.assertEqual(r.returncode, 1)
         self.assertEqual(calls, ["", "gemini-4-hydrogen"])
-        self.assertIn("GEMINI_LANE_UNAVAILABLE", r.stderr)
+        self.assertIn("GEMINI_LANE_UNAVAILABLE", r.stdout + r.stderr)
+        self.assertNotIn("RESOURCE_EXHAUSTED", r.stdout + r.stderr)
+
+    def test_delegate_blocking_exhausted_lane_is_failure_not_partial_success(self):
+        """Both models exhausted with large (>500B) error text must fail the delegation."""
+        stub = self.dir / "gemini-big"
+        big = "error: Individual quota reached. RESOURCE_EXHAUSTED " + "x" * 400
+        stub.write_text(f"#!/usr/bin/env bash\necho '{big}'\nexit 1\n")
+        stub.chmod(stub.stat().st_mode | stat.S_IEXEC)
+        deleg = self.dir / "deleg"
+        deleg.mkdir()
+        env = dict(os.environ, GEMINI_BIN=str(stub), AQ_DELEGATION_DIR=str(deleg))
+        r = subprocess.run([str(ROOT / "scripts/ai/delegate-to-gemini"), "--prompt", "hi", "--wait"],
+                           capture_output=True, text=True, timeout=60, env=env, cwd=self.dir)
+        out = r.stdout + r.stderr
+        self.assertNotEqual(r.returncode, 0, out)
+        self.assertNotIn("partial-success", out)
+        self.assertIn("GEMINI_LANE_UNAVAILABLE", out)
 
 
 if __name__ == "__main__":

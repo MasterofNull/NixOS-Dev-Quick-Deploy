@@ -17,16 +17,18 @@ done
 tmp="$(mktemp)"
 trap 'rm -f "$tmp"' EXIT
 
-"${cmd[@]}" 2>&1 | tee "$tmp"
-rc="${PIPESTATUS[0]}"
-[[ "$rc" -eq 0 ]] && exit 0
+# Buffer attempt 1: its quota error must not reach the caller's output when a retry follows,
+# otherwise two quota errors together look like "meaningful content" to the caller.
+"${cmd[@]}" > "$tmp" 2>&1
+rc=$?
+if [[ "$rc" -eq 0 ]]; then cat "$tmp"; exit 0; fi
 
 # Only the default (Argon via CLI settings) or an explicit Argon model falls back.
 case "${model,,}" in
     ""|gemini-4-argon*|"gemini 4 argon"*) ;;
-    *) exit "$rc" ;;
+    *) cat "$tmp"; exit "$rc" ;;
 esac
-grep -qE 'Individual quota reached|RESOURCE_EXHAUSTED' "$tmp" || exit "$rc"
+grep -qE 'Individual quota reached|RESOURCE_EXHAUSTED' "$tmp" || { cat "$tmp"; exit "$rc"; }
 
 echo "[gemini-fallback] quota exhausted on ${model:-default (Argon)}; retrying once with ${fallback}" >&2
 retry=()
@@ -38,10 +40,13 @@ for ((i = 0; i < ${#cmd[@]}; i++)); do
 done
 retry+=("--model" "$fallback")
 
-"${retry[@]}" 2>&1 | tee "$tmp"
-rc2="${PIPESTATUS[0]}"
-[[ "$rc2" -eq 0 ]] && exit 0
+"${retry[@]}" > "$tmp" 2>&1
+rc2=$?
+if [[ "$rc2" -eq 0 ]]; then cat "$tmp"; exit 0; fi
 if grep -qE 'Individual quota reached|RESOURCE_EXHAUSTED' "$tmp"; then
-    echo "GEMINI_LANE_UNAVAILABLE: Argon and ${fallback} both quota-exhausted" >&2
+    # Exhausted lane: emit only the marker (both attempts' error text is dropped) and always exit non-zero.
+    echo "GEMINI_LANE_UNAVAILABLE: Argon and ${fallback} both quota-exhausted"
+    exit "${rc2:-1}"
 fi
+cat "$tmp"
 exit "$rc2"

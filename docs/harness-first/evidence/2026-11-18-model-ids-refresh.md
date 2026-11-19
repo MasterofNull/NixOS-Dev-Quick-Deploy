@@ -128,3 +128,6 @@ Gemini CLI valid names: Gemini 4 Argon/Hydrogen (Low..XHigh), Orchestrator (Argo
 - aq-land check: its gemini lane calls delegate-to-gemini with an explicit `--model gemini-3.8-flash-high` and has its own quota retry (aq-land lines 384-391), so it passes through the wrapper unchanged and never triggers the Argon fallback.
 - Tests: scripts/testing/test-gemini-quota-fallback.py (stub CLI, 5 cases: Argon quota -> Hydrogen OK, explicit Argon, non-quota no retry, non-Argon pinned model no retry, both exhausted -> lane unavailable): 5/5 OK.
 - Live check: with Argon actually quota-exhausted (resets in ~147h), `delegate-to-gemini --wait --prompt "Reply with the single word OK"` logged the fallback and completed on Hydrogen.
+
+## Review fix (Codex REQUEST_CHANGES 783744a8)
+- The quota wrapper now buffers each attempt. When both Argon and Hydrogen are exhausted it emits only `GEMINI_LANE_UNAVAILABLE: ...` and exits non-zero; neither attempt's error text reaches the caller. `delegate-to-gemini` also refuses partial-success when that marker is present. Regression: `test_delegate_blocking_exhausted_lane_is_failure_not_partial_success` (two >500B quota errors, expects non-zero exit, no partial-success).
