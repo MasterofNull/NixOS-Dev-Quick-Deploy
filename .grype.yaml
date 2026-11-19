@@ -658,7 +658,7 @@ ignore:
     package:
       name: strace
       version: "7.3"
-    reason: "false positive (applies to this CVE only): NVD CVE-2000-0006 is a 1999-2000 flaw in another strace codebase (memory-mapped file names); its CPE has no version bound; strace 7.3 postdates it by 26 years and is the Linux strace project. No WR-SEC token; triage evidence docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+    reason: "false positive (applies to this CVE only): NVD CVE-2000-0006 is a 1999-2000 flaw in another strace codebase (memory-mapped file names); its CPE has no version bound; strace 7.3 postdates it by 26 years and is the Linux strace project. No WR-SEC token (not a time-boxed risk acceptance); re-review expires=2027-02-15; triage evidence docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
 
   - vulnerability: CVE-2026-113680
     package:
