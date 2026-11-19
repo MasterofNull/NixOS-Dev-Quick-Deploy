@@ -134,6 +134,18 @@
       "note": "slow (90-180s): path-triggered in --changed"
     },
     {
+      "id": "lean-ctx-shell-security",
+      "cmd": "scripts/testing/test-lean-ctx-shell-security.py",
+      "paths": [
+        "scripts/deploy/lean-ctx-set-shell-security.py",
+        "scripts/testing/test-lean-ctx-shell-security.py"
+      ],
+      "needs": [
+        "python3"
+      ],
+      "ci_workflow": ".github/workflows/test.yml#syntax"
+    },
+    {
       "id": "pm-tracker-untrusted-hold",
       "cmd": "scripts/testing/test-pm-tracker-untrusted-hold.py",
       "paths": [
@@ -1792,6 +1804,8 @@
         "scripts/testing/test-persona-instance-labels.py",
         "scripts/testing/test-outcome-receipt.py",
         "scripts/testing/test-aq-land-outcome.py",
+        "scripts/testing/test-delegate-local-context-packet.py",
+        "scripts/testing/test-training-loop-pulse-label.py",
         "scripts/testing/test-collect-trajectories.py",
         "scripts/testing/test-postflight-health-policy.py",
         "scripts/testing/test-pr-body-format-check.py",
@@ -1914,6 +1928,8 @@
         "scripts/testing/test-persona-instance-labels.py",
         "scripts/testing/test-outcome-receipt.py",
         "scripts/testing/test-aq-land-outcome.py",
+        "scripts/testing/test-delegate-local-context-packet.py",
+        "scripts/testing/test-training-loop-pulse-label.py",
         "scripts/testing/test-collect-trajectories.py",
         "scripts/testing/test-postflight-health-policy.py",
         "scripts/testing/test-pr-body-format-check.py",
@@ -2350,6 +2366,16 @@
       "paths": [],
       "needs": [
         "python3"
+      ],
+      "ci_workflow": ".github/workflows/test.yml#manifest-tests"
+    },
+    {
+      "id": "llama-post-switch-validate-tests",
+      "cmd": "scripts/testing/test-llama-post-switch-validate.py",
+      "paths": [],
+      "needs": [
+        "python3",
+        "curl"
       ],
       "ci_workflow": ".github/workflows/test.yml#manifest-tests"
     }
