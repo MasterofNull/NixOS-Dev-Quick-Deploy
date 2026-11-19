@@ -4,7 +4,7 @@
 # not touch); the hard check is CI's review-disposition plus aq-land's pre-merge verify.
 set -uo pipefail
 REPO_ROOT="$(git rev-parse --show-toplevel)"
-cd "${REPO_ROOT}"
+cd "${REPO_ROOT}" || exit 1
 TOOL="scripts/ai/aq-review-receipt"
 [[ -f "${TOOL}" ]] || { echo "[tier0.d/check-review-receipt-integrity] FAIL: ${TOOL} missing"; exit 1; }
 since="${AQ_RECEIPT_AUDIT_SINCE:-$(date -u -d '3 days ago' +%F)}"

@@ -3,6 +3,7 @@
 import json
 import os
 import pathlib
+import shutil
 import subprocess
 import sys
 import hashlib
@@ -411,6 +412,33 @@ class T(unittest.TestCase):
         self.assertEqual(self._publish(f).returncode, 0)
         who = subprocess.run(["git", "-C", str(self.bare), "log", "-1", "--format=%ae %ce", "review-receipts"], capture_output=True, text=True).stdout.split()
         self.assertEqual(who, ["aq-review-receipt@noreply.invalid"] * 2)
+
+    def test_tier0d_gate_check_review_receipt_integrity_warns_never_fails(self):
+        """check-review-receipt-integrity.sh runs in a sandbox repo: burst -> WARN, rc 0; clean -> OK."""
+        sb = self.d / "sb"
+        (sb / "scripts/governance/tier0.d").mkdir(parents=True)
+        shutil.copytree(ROOT / "scripts/ai/lib", sb / "scripts/ai/lib")
+        shutil.copy(TOOL, sb / "scripts/ai/aq-review-receipt")
+        gate = sb / "scripts/governance/tier0.d/check-review-receipt-integrity.sh"
+        shutil.copy(ROOT / "scripts/governance/tier0.d/check-review-receipt-integrity.sh", gate)
+        subprocess.run(["git", "-C", str(sb), "init", "-q"], check=True)
+        subprocess.run(["git", "init", "-q", "--bare", str(self.d / "sb.git")], check=True)  # no origin -> audit WARNs
+        subprocess.run(["git", "-C", str(sb), "remote", "add", "origin", str(self.d / "sb.git")], check=True)
+        env = {**os.environ, "AQ_RECEIPT_AUDIT_SINCE": "2000-01-01", "AQ_REVIEW_REVOCATIONS_DIR": str(self.rev_dir),
+               "AQ_DELEGATION_DIR": str(self.d / "deleg")}
+        clean = subprocess.run(["bash", str(gate)], cwd=sb, capture_output=True, text=True, env=env)
+        self.assertEqual(clean.returncode, 0, clean.stdout + clean.stderr)
+        self.assertIn("OK", clean.stdout)
+        rd = sb / ".agent/reviews/receipts"
+        rd.mkdir(parents=True)
+        base = time.time() - 3600
+        for i in range(5):
+            ts = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(base + i * 20))
+            (rd / f"p{i}.json").write_text(json.dumps({"schema": 1, "pr": i, "run_id": f"x{i}", "reviewer_lane": "gemini",
+                                                       "author_lane": "claude", "verdict": "PASS", "created_at": ts}))
+        bad = subprocess.run(["bash", str(gate)], cwd=sb, capture_output=True, text=True, env=env)
+        self.assertEqual(bad.returncode, 0, bad.stdout + bad.stderr)
+        self.assertIn("WARN", bad.stdout)
 
 
 if __name__ == "__main__":

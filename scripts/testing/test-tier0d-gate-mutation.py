@@ -41,6 +41,7 @@ COVERED_ELSEWHERE = {
     "check-lane-hook-parity.sh": "scripts/testing/test-lane-hook-parity.py",
     "check-payload-audit.sh": "scripts/testing/test-payload-audit-routine.py",
     "check-plan-paths.py": "scripts/testing/test-check-plan-paths.py",
+    "check-review-receipt-integrity.sh": "scripts/testing/test-aq-review-receipt.py",
 }
 
 
