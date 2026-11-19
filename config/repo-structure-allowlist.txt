@@ -298,6 +298,9 @@ scripts/testing/check-harness-first-evidence-template.sh
 scripts/testing/check-harness-first-platform-owner-approval.py
 scripts/testing/check-harness-first-pr-evidence-gate.sh
 scripts/testing/check-harness-first-runbook.sh
+scripts/testing/check-timer-stagger.py
+scripts/testing/llama-post-switch-validate.sh
+scripts/testing/test-llama-post-switch-validate.py
 scripts/testing/check-harness-first-static-gates.sh
 scripts/testing/check-mcp-health.sh
 scripts/testing/check-mcp-integrity.sh

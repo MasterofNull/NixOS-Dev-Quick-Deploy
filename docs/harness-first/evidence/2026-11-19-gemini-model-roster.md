@@ -59,6 +59,29 @@ Stale ids: `gemini-3.5-flash-lite` and `gemini-3.1-pro-preview` are not served b
 ## Independence guard
 `scripts/ai/lib/gemini-model-guard.sh` (sourced by `delegate-to-gemini` and `gemini-quota-fallback.sh`) rejects any `--model` not starting with `gemini_lane.required_id_prefix` (case-insensitive) with `GEMINI_LANE_NON_GEMINI_MODEL`, exit 2, before any CLI call. The fallback id is now read from the coordinator (env `GEMINI_FALLBACK_MODEL` still overrides). Test: `scripts/testing/test-gemini-model-guard.py` (claude-opus/sonnet, gpt-oss, mixed-case refused with the CLI never invoked; gemini ids pass; roster/default/fallback consistency).
 
-## Validation
+## Validation Evidence
 - `python3 scripts/testing/test-gemini-model-guard.py` (3 tests) and `test-gemini-quota-fallback.py` (6 tests) pass.
 - tier0: see the PR/commit body.
+
+## Workflow/Session IDs
+- Implementer: Simurg@claude/sonnet (sub-agent of orchestrator Simurg@claude/opus-5.5#da0ef470), branch chore/model-ids-refresh, PR #799.
+- Probe runs: `scripts/ai/delegate-to-gemini` recorded runs, one per model id in the Probe table.
+
+## Delegation Decision
+Bounded config + guard slice routed to a Sonnet implementer (Rule 17). Review goes to a lane other than the author (aq-land; the earlier script-minted Gemini review on this PR was voided on 2026-11-19).
+
+## Commands Executed
+- `gemini models` (live roster, CLI 1.5.12, OAuth).
+- `scripts/ai/delegate-to-gemini --role review --mode plan --wait --model <id> --prompt-file <synthetic.md>` per model id (see Probe).
+- `python3 scripts/testing/test-gemini-model-guard.py`; `python3 scripts/testing/test-gemini-quota-fallback.py`.
+- `scripts/governance/tier0-validation-gate.sh --pre-commit`.
+
+## Rollback Plan
+Revert the PR squash commit. The roster lives in `config/model-coordinator.json` and the guard in `scripts/ai/lib/gemini-model-guard.sh`; reverting restores the previous ids and removes the guard. The Nix change (`codexDefaultModel` read from the coordinator) reverts with it and needs a home-manager switch.
+
+## Residual Risk
+- Argon quota was exhausted during probing, so Argon medium/high are unprobed; their roles rest on the vendor listing until a probe succeeds (after the Argon reset, about 137 h).
+- Latencies are single wall-clock samples, not benchmarks.
+
+## Hint Feedback
+None: no aq-hints were used for this slice.

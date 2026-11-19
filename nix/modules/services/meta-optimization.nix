@@ -220,7 +220,7 @@ in {
       wantedBy = ["timers.target"];
       timerConfig =
         {
-          OnCalendar = "daily";
+          OnCalendar = "*-*-* 05:50:00";
           Persistent = true;
           RandomizedDelaySec = "15m";
         }

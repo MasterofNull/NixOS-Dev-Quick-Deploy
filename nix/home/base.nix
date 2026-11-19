@@ -28,6 +28,8 @@ let
   sharedSkillsDir = "${repoPath}/.agent/skills";
   # Codex CLI default model: openai.balanced tier of the version SSOT (no literal id here).
   codexDefaultModel = (builtins.fromJSON (builtins.readFile ../../config/model-coordinator.json)).tiers.openai.balanced;
+  # SSOT: mySystem.aiStack.mcpTimeoutScale (options.nix); read by mcp-bridge-hybrid.py.
+  mcpTimeoutScale = toString (lib.attrByPath ["mySystem" "aiStack" "mcpTimeoutScale"] 1 systemConfig);
   defaultPortRegistry = {
     llamaCpp = 8080;
     embedding = 8081;
@@ -1836,7 +1838,8 @@ if changed:
             "HYBRID_URL": "http://127.0.0.1:8003",
             "AIDB_URL": "http://127.0.0.1:8002",
             "AIDB_API_KEY_FILE": "/run/secrets/aidb_api_key",
-            "HYBRID_API_KEY_FILE": "/run/secrets/hybrid_coordinator_api_key"
+            "HYBRID_API_KEY_FILE": "/run/secrets/hybrid_coordinator_api_key",
+            "AQ_MCP_TIMEOUT_SCALE": "${mcpTimeoutScale}"
           }
         },
         {
@@ -1906,7 +1909,8 @@ if changed:
              "HYBRID_URL": "http://127.0.0.1:${toString aiHybridPort}",
              "AIDB_URL": "http://127.0.0.1:${toString aiAidbPort}",
              "HYBRID_API_KEY_FILE": "/run/secrets/hybrid_coordinator_api_key",
-             "AIDB_API_KEY_FILE": "/run/secrets/aidb_api_key"
+             "AIDB_API_KEY_FILE": "/run/secrets/aidb_api_key",
+             "AQ_MCP_TIMEOUT_SCALE": "${mcpTimeoutScale}"
            }
          },
          "osint-tools": {
@@ -1979,6 +1983,7 @@ if changed:
     ${pkgs.jq}/bin/jq \
       --arg repo "${repoPath}" \
       --arg hybrid_url "http://127.0.0.1:${toString aiHybridPort}" \
+      --arg mcp_timeout_scale "${mcpTimeoutScale}" \
       --arg aidb_url "http://127.0.0.1:${toString aiAidbPort}" '
         .mcpServers = (.mcpServers // {})
         | .mcpServers["hybrid-coordinator"] = {
@@ -1989,7 +1994,8 @@ if changed:
               HYBRID_URL: $hybrid_url,
               AIDB_URL: $aidb_url,
               HYBRID_API_KEY_FILE: "/run/secrets/hybrid_coordinator_api_key",
-              AIDB_API_KEY_FILE: "/run/secrets/aidb_api_key"
+              AIDB_API_KEY_FILE: "/run/secrets/aidb_api_key",
+              AQ_MCP_TIMEOUT_SCALE: $mcp_timeout_scale
             }
           }
         | .mcpServers["osint-tools"] = {
@@ -2041,7 +2047,8 @@ if changed:
             "HYBRID_URL": "http://127.0.0.1:${toString aiHybridPort}",
             "AIDB_URL": "http://127.0.0.1:${toString aiAidbPort}",
             "HYBRID_API_KEY_FILE": "/run/secrets/hybrid_coordinator_api_key",
-            "AIDB_API_KEY_FILE": "/run/secrets/aidb_api_key"
+            "AIDB_API_KEY_FILE": "/run/secrets/aidb_api_key",
+            "AQ_MCP_TIMEOUT_SCALE": "${mcpTimeoutScale}"
           }
         }
       | .mcp_servers."osint-tools" = {

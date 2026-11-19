@@ -18,7 +18,7 @@ import urllib.request
 class UDSHTTPConnection(http.client.HTTPConnection):
     """HTTP Connection targeting a Unix Domain Socket."""
 
-    def __init__(self, socket_path: str, timeout: int = 30):
+    def __init__(self, socket_path: str, timeout: float = 30):
         super().__init__("localhost", timeout=timeout)
         self.socket_path = socket_path
 
@@ -61,7 +61,7 @@ def request_http_or_uds(
     method: str = "GET",
     data: Optional[bytes] = None,
     headers: Optional[Dict[str, str]] = None,
-    timeout: int = 30,
+    timeout: float = 30,
     tcp_fallback_url: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
