@@ -724,6 +724,107 @@ class Preflight(Base):
         self.assertNotIn("force-budget", src.replace("never --force", ""))
 
 
+class OwnedPaths(Base):
+    def owned(self, *globs):
+        p = self.S / "owned.txt"
+        p.write_text("# slice scope\n" + "\n".join(globs) + "\n")
+        return str(p)
+
+    def refusals(self):
+        p = self.S / "state" / "owned-path-refusals.jsonl"
+        return [json.loads(l) for l in p.read_text().splitlines()] if p.exists() else []
+
+    def test_in_scope_change_passes_and_is_recorded_as_declared(self):
+        self.land("--owned", self.owned("scripts/*.py"), expect=0)
+        self.assertEqual(self.refusals(), [])
+
+    def test_out_of_scope_stops_before_any_review_and_lists_files(self):
+        self.change("config/other.json", "{}\n")
+        r = self.land("--owned", self.owned("scripts/"), expect=1)
+        line = self.stop_line(r)
+        self.assertIn("outside the slice's owned paths", line)
+        self.assertIn("config/other.json", line)
+        self.assertNotIn("scripts/foo.py", line)
+        self.assertEqual(self.calls("gemini"), [])
+        rows = self.refusals()
+        self.assertEqual([(x["branch"], x["files"]) for x in rows], [("feat/x", ["config/other.json"])])
+
+    def test_declaration_file_in_the_branch_and_evidence_are_always_allowed(self):
+        self.change(".agents/delegation/owned/feat_x.txt", "scripts/*.py\n")
+        self.change("docs/harness-first/evidence/2026-11-18-x.md", "e\n")
+        self.land(expect=0)
+
+    def test_undeclared_warns_and_does_not_block(self):
+        r = self.land(expect=0)
+        self.assertIn("WARN no owned-path declaration", r.stdout + r.stderr)
+        cp = json.loads(next((self.S / "state").glob("*/checkpoint.json")).read_text())
+        self.assertEqual(cp["owned_paths"], "undeclared")
+
+    def test_missing_owned_file_stops(self):
+        r = self.land("--owned", str(self.S / "nope.txt"), expect=1)
+        self.assertIn("--owned file not found", self.stop_line(r))
+
+    def test_committed_rename_from_an_unowned_path_stops(self):
+        self.g("checkout", "-q", "main")
+        self.change("config/example.json", "{\"a\": 1, \"b\": 2, \"c\": 3}\n")
+        self.g("push", "-q", "origin", "main")
+        self.g("checkout", "-q", "feat/x")
+        self.g("merge", "-q", "--no-edit", "main")
+        self.g("mv", "config/example.json", "scripts/example.json")
+        self.g("commit", "-qm", "move")
+        r = self.land("--owned", self.owned("scripts/"), expect=1)
+        self.assertIn("config/example.json", self.stop_line(r))
+
+    def test_staged_rename_from_an_unowned_path_stops(self):
+        self.g("checkout", "-q", "main")
+        self.change("config/example.json", "{\"a\": 1, \"b\": 2, \"c\": 3}\n")
+        self.g("push", "-q", "origin", "main")
+        self.g("checkout", "-q", "feat/x")
+        self.g("merge", "-q", "--no-edit", "main")
+        self.g("mv", "config/example.json", "scripts/example.json")
+        r = self.land("--owned", self.owned("scripts/"), expect=1)
+        self.assertIn("config/example.json", self.stop_line(r))
+
+    def test_relative_owned_path_resolves_against_the_callers_cwd(self):
+        self.owned("scripts/*.py")
+        args = [sys.executable, str(TOOL), "--worktree", str(self.wd), "--title", "t", "--body-file", str(self.S / "body.md"),
+                "--owned", "owned.txt"]
+        r = subprocess.run(args, capture_output=True, text=True, env=self.env, cwd=self.S, timeout=120)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+
+    def test_commit_added_during_review_outside_the_scope_stops_before_a_second_review_and_push(self):
+        self.cfg({"gemini": {"mode": "ok", "side": "local_commit"}})  # adds extra.txt after the first review
+        r = self.land("--owned", self.owned("scripts/"), expect=1)
+        self.assertIn("extra.txt", self.stop_line(r))
+        self.assertEqual(len(self.calls("gemini")), 1)
+        self.assertEqual(self.published(), [])
+        self.assertEqual(self.refusals()[-1]["files"], ["extra.txt"])
+
+    def test_non_ascii_and_tab_filenames_match_their_real_paths(self):
+        names = ["café ü.py", "a\tb.py"]
+        for n in names:
+            self.change("scripts/" + n, "x\n")
+        self.land("--owned", self.owned("scripts/"), expect=0)
+        self.tearDown_state()
+        for n in names:
+            self.change("config/" + n, "x\n")
+        r = self.land("--owned", self.owned("scripts/"), expect=1)
+        line = self.stop_line(r)
+        self.assertIn("config/café ü.py", line)
+        self.assertIn("config/a\tb.py", line)
+
+    def test_merging_main_into_the_branch_does_not_count_mains_files(self):
+        c2 = self.S / "c2"
+        sh(self.S, "git", "clone", "-q", str(self.origin), str(c2))
+        (c2 / "other.txt").write_text("o\n")
+        sh(c2, "git", "add", ".")
+        sh(c2, "git", "-c", "user.name=x", "-c", "user.email=x@x", "commit", "-qm", "main moves")
+        sh(c2, "git", "push", "-q", "origin", "HEAD:main")
+        self.g("fetch", "-q", "origin")
+        self.g("merge", "-q", "--no-edit", "origin/main")
+        self.land("--owned", self.owned("scripts/*.py"), expect=0)
+
+
 class Checks(Base):
     def run_checks(self, rollups, required=("test",), jobs=None, expect=0, review=True, **extra):
         if review:
