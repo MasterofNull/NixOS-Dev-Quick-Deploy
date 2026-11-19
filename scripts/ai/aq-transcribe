@@ -144,7 +144,7 @@ limited
 load_limits() { # <duration_s>
   local k v
   hp limits "$CACHE_ROOT" "${OUT:-.}" "$1" > "$scratch/limits.json" || exit 2
-  while IFS== read -r k v; do L[$k]="$v"; done < <(hp limits-kv "$CACHE_ROOT" "${OUT:-.}" "$1")
+  while IFS='=' read -r k v; do L[$k]="$v"; done < <(hp limits-kv "$CACHE_ROOT" "${OUT:-.}" "$1")
 }
 refresh_remaining() { # recompute the remaining cap and the per-process ulimit before a stage
   local rem
