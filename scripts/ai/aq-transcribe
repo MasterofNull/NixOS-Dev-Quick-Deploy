@@ -67,7 +67,7 @@ while [[ $# -gt 0 ]]; do
     --force-whisper) FORCE_WHISPER=1; shift ;;
     --keep-audio) KEEP_AUDIO=1; shift ;;
     --allow-whisper-on-error) ALLOW_ON_ERROR=1; shift ;;
-    --cookies*|--cookies-from-browser*) fail 2 "cookies are not accepted: public videos only" ;;
+    --cookies-from-browser*|--cookies*) fail 2 "cookies are not accepted: public videos only" ;;
     -h|--help) sed -n '2,38p' "$0"; exit 0 ;;
     -*) die "unknown option: $1" ;;
     *) [[ -z "$INPUT" ]] && INPUT="$1" || die "unexpected extra argument: $1"; shift ;;
@@ -147,8 +147,7 @@ load_limits() { # <duration_s>
   while IFS='=' read -r k v; do L[$k]="$v"; done < <(hp limits-kv "$CACHE_ROOT" "${OUT:-.}" "$1")
 }
 refresh_remaining() { # recompute the remaining cap and the per-process ulimit before a stage
-  local rem
-  read -r rem ULIM_KB < <(hp remaining "$CACHE_ROOT" "${L[cache_max_bytes]}" "${L[ulimit_fraction]}")
+  read -r _ ULIM_KB < <(hp remaining "$CACHE_ROOT" "${L[cache_max_bytes]}" "${L[ulimit_fraction]}")
   hp cache-check-write "$CACHE_ROOT" "$((ULIM_KB * 1024))" || exit 7
   limited
 }
