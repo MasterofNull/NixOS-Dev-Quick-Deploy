@@ -24,6 +24,9 @@ scripts/governance/tier0-validation-gate.sh --pre-commit
 - `test-local-power-gate.py`: 18/18 OK. The 10 existing tests pass unchanged (defaults preserved: 50% battery, 80 C with no trip points). 8 new tests: battery override, temp override, invalid env falls back, derivation from hwmon crit (fanless crit 85 gives 70 C and defers at 72 C), server-class crit 105 gives 90 C and runs at 85 C, derivation from thermal_zone trips (passive trip ignored, margin env), floor/ceiling clamps, non-CPU trip points ignored.
 - Tier0 output is in the commit hand-off.
 
+## Review fix (Codex REQUEST_CHANGES cf3258ab)
+- `_env_float` rejects non-finite values (`nan`, `inf`, `-inf`): `AQ_POWER_GATE_MAX_TEMP_C=nan` made `temp >= max` always false (gate open on a hot CPU), and a nan battery floor or margin clamped to 0. They now fall back to the derived default with a `power-gate: WARN` line on stderr (invalid non-numeric strings warn too). Regression: `test_non_finite_env_values_fail_closed_to_default`.
+
 ## Rollback Plan
 - Revert the commit, or set `AQ_POWER_GATE_MAX_TEMP_C=80` and `AQ_POWER_GATE_MIN_BATTERY_PCT=50` to pin the old behaviour without reverting.
 

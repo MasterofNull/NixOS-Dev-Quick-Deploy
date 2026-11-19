@@ -139,6 +139,31 @@ class PowerGate(unittest.TestCase):
         self.assertEqual(power_gate.max_temp_c(self.tmp), 80.0)
         self.assertEqual(power_gate.min_battery_pct(), 50)
 
+    def test_non_finite_env_values_fail_closed_to_default(self) -> None:
+        import contextlib
+        import io
+
+        for bad in ("nan", "NaN", "inf", "-inf", "Infinity"):
+            self._env(
+                AQ_POWER_GATE_MAX_TEMP_C=bad,
+                AQ_POWER_GATE_MIN_BATTERY_PCT=bad,
+                AQ_POWER_GATE_TEMP_MARGIN_C=bad,
+            )
+            err = io.StringIO()
+            with contextlib.redirect_stderr(err):
+                self.assertEqual(power_gate.max_temp_c(self.tmp), 80.0, bad)
+                self.assertEqual(power_gate.min_battery_pct(), 50, bad)
+            self.assertIn("non-finite", err.getvalue())
+        # A hot CPU must still defer (nan used to disable the ceiling).
+        self._env(AQ_POWER_GATE_MAX_TEMP_C="nan")
+        self.assertFalse(self.run_gate(make_sys(self.tmp / "hot", temp_mc="95000"))["ok"])
+        # nan margin must not poison the derived ceiling.
+        self._env(AQ_POWER_GATE_TEMP_MARGIN_C="nan")
+        s = self.tmp / "d"
+        w(s / "class/hwmon/hwmon0/name", "k10temp")
+        w(s / "class/hwmon/hwmon0/temp1_crit", "95000")
+        self.assertEqual(power_gate.max_temp_c(s), 80.0)
+
     def test_temp_derived_from_hwmon_crit(self) -> None:
         s = make_sys(self.tmp / "s", temp_mc="72000")
         w(s / "class/hwmon/hwmon5/temp1_crit", "85000")  # fanless: crit 85 -> limit 70

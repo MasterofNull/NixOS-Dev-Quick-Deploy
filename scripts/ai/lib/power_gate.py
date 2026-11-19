@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import os
 import sys
 import time
@@ -47,11 +48,23 @@ def _read(p: Path) -> str | None:
 
 
 def _env_float(name: str) -> float | None:
+    """Finite float override, else None (caller uses its derived default).
+
+    float() accepts "nan"/"inf"; nan makes `temp >= max` always false and nan floors clamp
+    to 0, both silently disabling the gate, so non-finite values are rejected with a warning.
+    """
     raw = os.environ.get(name, "").strip()
-    try:
-        return float(raw) if raw else None
-    except ValueError:
+    if not raw:
         return None
+    try:
+        v = float(raw)
+    except ValueError:
+        print(f"power-gate: WARN ignoring invalid {name}={raw!r}; using derived default", file=sys.stderr)
+        return None
+    if not math.isfinite(v):
+        print(f"power-gate: WARN ignoring non-finite {name}={raw!r}; using derived default", file=sys.stderr)
+        return None
+    return v
 
 
 def min_battery_pct() -> int:
