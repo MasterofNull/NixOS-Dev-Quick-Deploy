@@ -8,10 +8,11 @@ import os
 import re
 import stat
 import sys
+import tomllib
 from pathlib import Path
 
 VALID = ("enforce", "warn", "off")
-_KEY = re.compile(rb"^\s*shell_security\s*=")
+_KEY = re.compile(rb"^\s*(?:shell_security|\"shell_security\"|'shell_security')\s*=")
 _TABLE = re.compile(rb"^\s*\[")
 
 
@@ -23,6 +24,8 @@ def _check_owner(st: os.stat_result, uid: int, what: str) -> None:
 def set_shell_security(path: Path, value: str, uid: int | None = None) -> bool:
     """Return True when the file was changed.
 
+    The target is opened O_NONBLOCK so a FIFO cannot stall activation, and the
+    rendered text must parse as TOML before it replaces the original.
     Refuses symlinked or foreign-owned parent/target (`uid` defaults to the
     effective uid; injectable for tests) and replaces atomically via a temp
     file in the same directory.
@@ -37,7 +40,8 @@ def set_shell_security(path: Path, value: str, uid: int | None = None) -> bool:
         data = None
         mode = 0o600
         try:
-            fd = os.open(name, os.O_RDONLY | os.O_NOFOLLOW, dir_fd=dfd)
+            fd = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK,
+                         dir_fd=dfd)
         except FileNotFoundError:
             pass
         else:
@@ -49,6 +53,12 @@ def set_shell_security(path: Path, value: str, uid: int | None = None) -> bool:
                 mode = stat.S_IMODE(st.st_mode)
                 data = f.read()
         out = _render(data, value)
+        try:
+            parsed = tomllib.loads(out.decode("utf-8"))
+        except (tomllib.TOMLDecodeError, UnicodeDecodeError) as e:
+            raise ValueError(f"refusing to write invalid TOML: {e}") from e
+        if parsed.get("shell_security") != value:
+            raise ValueError("rendered config does not carry the requested shell_security")
         if out == data:
             return False
         tmp = f".{name}.{os.getpid()}.tmp"

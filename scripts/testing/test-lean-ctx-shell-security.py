@@ -2,6 +2,7 @@
 """Tests for scripts/deploy/lean-ctx-set-shell-security.py."""
 import importlib.util
 import os
+import signal
 import stat
 import sys
 import tempfile
@@ -94,6 +95,41 @@ def main() -> int:
         assert setter(f, "warn") is True
         assert f.stat().st_ino != ino and stat.S_IMODE(f.stat().st_mode) == 0o600
         assert sorted(x.name for x in sub.iterdir()) == ["config.toml", "own.toml"]
+    with tempfile.TemporaryDirectory() as d:
+        dd = Path(d)
+        # quoted / literal keys are the same key: replaced in place, never duplicated
+        import tomllib
+        for src in (b'"shell_security" = "enforce"\n', b"'shell_security' = 'enforce'\n"):
+            q = dd / "q.toml"
+            q.write_bytes(src)
+            assert setter(q, "warn") is True
+            assert tomllib.loads(q.read_text()) == {"shell_security": "warn"}, q.read_bytes()
+        # malformed config is refused, original untouched
+        bad = dd / "bad.toml"
+        bad.write_bytes(b'a = [\n')
+        try:
+            setter(bad, "warn")
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("invalid TOML accepted")
+        assert bad.read_bytes() == b'a = [\n'
+        # FIFO target is rejected promptly instead of blocking activation
+        fifo = dd / "fifo.toml"
+        os.mkfifo(fifo)
+        def _hang(*_a):
+            raise AssertionError("FIFO target blocked")
+        signal.signal(signal.SIGALRM, _hang)
+        signal.alarm(5)
+        try:
+            try:
+                setter(fifo, "warn")
+            except PermissionError:
+                pass
+            else:
+                raise AssertionError("FIFO target accepted")
+        finally:
+            signal.alarm(0)
     print("lean-ctx shell_security editor: all checks passed")
     return 0
 
