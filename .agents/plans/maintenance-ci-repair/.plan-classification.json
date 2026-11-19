@@ -1,0 +1,5 @@
+{
+  "classification": "durable_plan",
+  "tracking_route": "tracker.json",
+  "evidence": "tracker.json declares plan.id=maintenance-ci-repair, an owner, a goal, prd_ref=.agent/PROJECT-MAINTENANCE-CI-REPAIR-PRD.md and one bounded repair slice; durable goals and acceptance are authored there."
+}

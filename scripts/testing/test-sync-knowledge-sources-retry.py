@@ -3,13 +3,16 @@
 import ast
 import contextlib
 import io
+import json
 import os
 from pathlib import Path
 import sys
+import tempfile
 import types
 import unittest
 from unittest.mock import MagicMock, mock_open, patch
 import urllib.error
+from email.message import Message
 import urllib.request
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -64,7 +67,7 @@ class FetchTests(unittest.TestCase):
 
 
 class SourceIsolationTests(unittest.TestCase):
-    def run_sources(self, source_types, fetch_effects, import_ok=True, dry_run=False):
+    def run_sources(self, source_types, fetch_effects, import_ok=True, dry_run=False, env=None):
         sources = [{"id": f"source-{i}", "type": kind, "url": f"source-{i}"}
                    for i, kind in enumerate(source_types)]
         yaml = types.ModuleType("yaml")
@@ -86,21 +89,32 @@ class SourceIsolationTests(unittest.TestCase):
             return response
 
         output = io.StringIO()
+        errors = io.StringIO()
+        status_dir = tempfile.TemporaryDirectory(prefix="sync-status-")
+        self.addCleanup(status_dir.cleanup)
+        self.status_path = Path(status_dir.name) / "status.json"
         args = [str(SCRIPT), "sources", "", str(dry_run).lower(), "", "", "", "."]
         with patch.dict(sys.modules, {"yaml": yaml}), patch.object(sys, "argv", args), \
                 patch.dict(os.environ, {"KNOWLEDGE_FETCH_MAX_RETRIES": "0",
                                         "AIDB_IMPORT_MAX_RETRIES": "0",
-                                        "AIDB_IMPORT_DELAY_MS": "0"}), \
+                                        "AIDB_IMPORT_DELAY_MS": "0",
+                                        "KNOWLEDGE_SYNC_STATUS_FILE": str(self.status_path),
+                                        **(env or {})}), \
                 patch("builtins.open", mock_open()), patch("urllib.request.Request"), \
                 patch("urllib.request.urlopen", side_effect=urlopen), \
-                contextlib.redirect_stdout(output), contextlib.redirect_stderr(io.StringIO()):
+                contextlib.redirect_stdout(output), contextlib.redirect_stderr(errors):
             with self.assertRaises(SystemExit) as exited:
                 exec(compile(PROGRAM, str(SCRIPT), "exec"), {})
+        self.stderr = errors.getvalue()
         return exited.exception.code, output.getvalue()
+
+    def load_status(self):
+        return json.loads(self.status_path.read_text())
 
     def test_mixed_sources_continue(self):
         code, output = self.run_sources(["github_repo", "url"],
-                                        [urllib.error.URLError("DNS"), b"content"])
+                                        [urllib.error.URLError("DNS"), b"content"],
+                                        env={"KNOWLEDGE_SYNC_DEGRADED_MAX_PCT": "60"})
         self.assertEqual(code, 0)
         self.assertIn("synced=1 skipped=0 fetch_failed=1", output)
 
@@ -120,6 +134,79 @@ class SourceIsolationTests(unittest.TestCase):
         code, output = self.run_sources(["github_repo", "url"], [], dry_run=True)
         self.assertEqual(code, 0)
         self.assertIn("synced=0 skipped=0 fetch_failed=0", output)
+
+
+def NOT_FOUND():
+    return urllib.error.HTTPError("u", 404, "missing", Message(), None)
+
+
+class DegradedTests(SourceIsolationTests):
+    """DEGRADED (minority of upstream failures) exits 0; FAILED exits 1. No network, stubbed fetch/import."""
+
+    def many(self, total, failing):
+        kinds = ["url"] * total
+        effects = [NOT_FOUND() if i < failing else b"content"
+                   for i in range(total)]
+        return self.run_sources(kinds, effects)
+
+    def test_all_ok_exits_zero_status_ok(self):
+        code, _ = self.many(4, 0)
+        self.assertEqual(code, 0)
+        status = self.load_status()
+        self.assertEqual((status["status"], status["failed_sources"]), ("ok", []))
+
+    def test_minority_failure_is_degraded_exit_zero(self):
+        code, output = self.many(513, 8)
+        self.assertEqual(code, 0)
+        self.assertIn("DEGRADED: 8 of 513", output)
+        status = self.load_status()
+        self.assertEqual((status["status"], status["failed_count"], status["synced"]), ("degraded", 8, 505))
+        self.assertEqual(len(status["failed_sources"]), 8)
+        self.assertEqual(status["failed_sources"][0]["reason"], "HTTP 404")
+        self.assertEqual(self.stderr.count("WARN: source failed:"), 8)
+
+    def test_above_threshold_fails(self):
+        code, _ = self.many(4, 2)
+        self.assertEqual(code, 1)
+        self.assertEqual(self.load_status()["status"], "failed")
+
+    def test_threshold_env_override(self):
+        kinds = ["url"] * 4
+        effects = [NOT_FOUND(), b"c", b"c", b"c"]
+        self.assertEqual(self.run_sources(kinds, effects, env={"KNOWLEDGE_SYNC_DEGRADED_MAX_PCT": "10"})[0], 1)
+
+    def test_zero_synced_fails(self):
+        code, _ = self.many(2, 2)
+        self.assertEqual(code, 1)
+        self.assertEqual(self.load_status()["reason"], "no source synced")
+
+    def test_import_connectivity_error_fails_even_when_minority(self):
+        code, _ = self.run_sources(["url"], [b"content"], import_ok=False)
+        self.assertEqual(code, 1)
+        self.assertIn("AIDB", self.load_status()["failed_sources"][0]["reason"])
+
+    def test_silent_github_source_reports_reason(self):
+        # An empty 200 response used to be skipped with no reason; it must now be named.
+        code, _ = self.run_sources(["github_repo", "url", "url", "url", "url"],
+                                   [b"", b"c", b"c", b"c", b"c"])
+        self.assertEqual(code, 0)
+        failed = self.load_status()["failed_sources"]
+        self.assertEqual(len(failed), 1)
+        self.assertEqual(failed[0]["type"], "github_repo")
+        self.assertIn("empty response", failed[0]["reason"])
+        self.assertIn("source failed: source-0", self.stderr)
+
+    def test_dry_run_writes_no_status(self):
+        self.run_sources(["url"], [], dry_run=True)
+        self.assertFalse(self.status_path.exists())
+
+    def test_github_raw_uses_default_branch(self):
+        urls = []
+        namespace: dict = {"fetch_url": lambda url: urls.append(url) or "x"}
+        gh = [n for n in ast.parse(PROGRAM).body if isinstance(n, ast.FunctionDef) and n.name == "gh_raw"]
+        exec(ast.unparse(gh[0]), namespace)
+        namespace["gh_raw"]("mitre-attack/attack-stix-data", "README.md")
+        self.assertIn("/HEAD/README.md", urls[0])
 
 
 if __name__ == "__main__":
