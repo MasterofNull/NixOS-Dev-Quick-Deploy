@@ -1432,6 +1432,19 @@
           '';
         };
 
+        vulkanAllowIgpuOffload = lib.mkOption {
+          type = lib.types.bool;
+          description = ''
+            Apply nix/patches/llama-cpp/allow-vulkan-igpu-offload*.patch, which makes
+            the Vulkan backend always include integrated GPUs in the automatic device
+            list (upstream skips an iGPU when a discrete GPU exists). Defaulted in
+            nix/modules/roles/ai-stack.nix from host facts: true only for APU /
+            iGPU-only hosts, false when a discrete GPU is present, so a dGPU+iGPU host
+            does not spill layers onto shared system memory. Set explicitly to opt in
+            to mixed-GPU offload. Only effective for Vulkan builds with trackLatest.
+          '';
+        };
+
         # ── Phase 20.2: Model catalog for easy swapping ─────────────────────
         modelCatalog = lib.mkOption {
           type = lib.types.attrsOf (lib.types.submodule {
