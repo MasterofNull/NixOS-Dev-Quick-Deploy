@@ -37,7 +37,7 @@ scripts/governance/tier0-validation-gate.sh --pre-commit
 
 ## Residual Risk
 - "warn" removes lean-ctx's blocking layer: commands outside its allowlist now run and are only logged. Claude Code permissions and the auto-mode classifier still gate commands, so the blocking layer is not gone overall, but lean-ctx is no longer a second independent gate.
-- The activation script runs as root and writes into the user's home; it only touches `~/.lean-ctx/config.toml` and chowns the directory and file to the primary user. Failures are non-fatal (`|| true`).
+- The activation script drops to the primary user (`runuser -u`) for both mkdir and the edit, with no chown, so root never writes a user-controlled path. The editor also refuses a symlinked or foreign-owned directory/target (O_NOFOLLOW + uid check) and replaces atomically via a same-directory temp file preserving the mode. Failures are non-fatal (`|| true`).
 - The key is edited line-wise, not with a TOML parser; an unusual file (multi-line strings containing a `[` at line start before any table) could mislead the table detection. Not expected for lean-ctx-written configs.
 
 ## Hint Feedback

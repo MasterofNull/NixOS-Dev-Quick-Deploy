@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Tests for scripts/deploy/lean-ctx-set-shell-security.py."""
 import importlib.util
+import os
 import stat
 import sys
 import tempfile
@@ -53,6 +54,46 @@ def main() -> int:
             pass
         else:
             raise AssertionError("invalid value accepted")
+    with tempfile.TemporaryDirectory() as d:
+        dd = Path(d)
+        victim = dd / "victim"
+        victim.write_bytes(b"root secret\n")
+        # symlinked target refused, victim untouched
+        sub = dd / "h"
+        sub.mkdir()
+        (sub / "config.toml").symlink_to(victim)
+        try:
+            setter(sub / "config.toml", "warn")
+        except OSError:
+            pass
+        else:
+            raise AssertionError("symlinked target accepted")
+        assert victim.read_bytes() == b"root secret\n"
+        # symlinked parent dir refused
+        (dd / "link").symlink_to(sub, target_is_directory=True)
+        try:
+            setter(dd / "link" / "x.toml", "warn")
+        except OSError:
+            pass
+        else:
+            raise AssertionError("symlinked parent accepted")
+        # foreign-owned target / directory refused (injected uid)
+        f = sub / "own.toml"
+        f.write_bytes(b"a = 1\n")
+        for bad in (os.geteuid() + 1,):
+            try:
+                setter(f, "warn", uid=bad)
+            except PermissionError:
+                pass
+            else:
+                raise AssertionError("foreign uid accepted")
+        assert f.read_bytes() == b"a = 1\n"
+        # atomic replace: new inode, 0600 preserved, no temp left
+        f.chmod(0o600)
+        ino = f.stat().st_ino
+        assert setter(f, "warn") is True
+        assert f.stat().st_ino != ino and stat.S_IMODE(f.stat().st_mode) == 0o600
+        assert sorted(x.name for x in sub.iterdir()) == ["config.toml", "own.toml"]
     print("lean-ctx shell_security editor: all checks passed")
     return 0
 

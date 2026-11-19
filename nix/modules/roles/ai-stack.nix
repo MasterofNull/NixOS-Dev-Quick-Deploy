@@ -894,10 +894,13 @@ in {
           LCX_USER_HOME=${lib.escapeShellArg config.users.users.${cfg.primaryUser}.home}
           LCX_HOME="$LCX_USER_HOME/.lean-ctx"
           if [ -d "$LCX_USER_HOME" ]; then
-            mkdir -p "$LCX_HOME"
-            ${pkgs.python3}/bin/python3 ${../../../scripts/deploy/lean-ctx-set-shell-security.py} \
+            # Runs as the user: root must never touch a user-controlled path
+            # (symlink -> privileged file). Editor also refuses symlinks/foreign uid.
+            ${pkgs.util-linux}/bin/runuser -u ${lib.escapeShellArg cfg.primaryUser} -- \
+              ${pkgs.coreutils}/bin/mkdir -p "$LCX_HOME" || true
+            ${pkgs.util-linux}/bin/runuser -u ${lib.escapeShellArg cfg.primaryUser} -- \
+              ${pkgs.python3}/bin/python3 ${../../../scripts/deploy/lean-ctx-set-shell-security.py} \
               "$LCX_HOME/config.toml" ${cfg.leanCtx.shellSecurity} || true
-            chown ${lib.escapeShellArg cfg.primaryUser}:${lib.escapeShellArg config.users.users.${cfg.primaryUser}.group} "$LCX_HOME" "$LCX_HOME/config.toml" 2>/dev/null || true
           fi
         '';
       };
