@@ -118,7 +118,8 @@ def main():
         print(f"prompt: {pf} ({len(prompt.encode())} bytes)")
         print("command: " + " ".join(cmd))
         return 0
-    r = subprocess.run(cmd, capture_output=True, text=True, cwd=REPO_ROOT)
+    r = subprocess.run(cmd, capture_output=True, text=True, cwd=REPO_ROOT,
+                       env={**os.environ, "AQ_LOCAL_VERDICT_SCHEMA": "1"})
     sys.stdout.write(r.stdout)
     sys.stderr.write(r.stderr)
     if r.returncode == 0:
