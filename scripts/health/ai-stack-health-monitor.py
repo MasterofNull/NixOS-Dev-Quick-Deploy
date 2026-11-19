@@ -60,6 +60,9 @@ def run_aq_qa(phase: str) -> dict:
         env = os.environ.copy()
         env.update({"TMPDIR": str(_TMPDIR), "TEMP": str(_TMPDIR), "TMP": str(_TMPDIR)})
         env["PYTHONDONTWRITEBYTECODE"] = "1"
+        # Phase 0 must finish with a partial result before this process's own deadline (never an all-or-nothing
+        # timeout): give it 85% of the harness timeout, leaving room to serialize and exit.
+        env.setdefault("AQ_QA_PHASE0_BUDGET_S", str(int(_HARNESS_TIMEOUT_S * 0.85)))
         # Scheduled monitoring must not read "cannot run here" as healthy: an unreachable systemd user manager
         # fails 0.10.66 instead of skipping it (phase0._confine_context_gap). No unit change needed.
         env["AQ_CONFINE_REQUIRE_CONTEXT"] = "1"
@@ -119,6 +122,15 @@ def is_complete_clean_phase0_result(data: object) -> bool:
         if not (isinstance(t, dict) and isinstance(t.get("id"), str) and t["id"] and t.get("status") == "PASS"):
             return False
     return passed == len(tests) and failed == 0 and skipped == 0
+
+
+def degraded_checks(data: dict) -> list[dict]:
+    """Checks the harness could not complete (busy host/dependency): SKIP rows whose description carries DEGRADED."""
+    tests = data.get("tests")
+    if not isinstance(tests, list):
+        return []
+    return [t for t in tests if isinstance(t, dict) and t.get("status") == "SKIP"
+            and "DEGRADED:" in str(t.get("description", ""))]
 
 
 def run_payload_audit() -> dict:
@@ -246,6 +258,23 @@ def main() -> int:
                 next_step="Run the model profile refresh when convenient.",
                 command=f"aq-qa {phase} --machine",
             )
+        degraded = degraded_checks(data)
+        if degraded:
+            # Busy is reported as busy: lower severity than a failure, but never silent and never a pass.
+            push_alert(
+                source=_SOURCE,
+                severity="medium",
+                autonomy_boundary="human_gate",
+                title=f"QA phase {phase} degraded: {len(degraded)} check(s) did not complete (host/dependency busy)",
+                detail="These checks were cut at their time budget and have NO verdict (not passed):\n"
+                + "\n".join(f"  [{c.get('id', '?')}] {c.get('description', '')}" for c in degraded),
+                proposed_action="Check host load / local llama slot; re-run `aq-qa 0 --machine` when idle.",
+                ttl_s=_ALERT_TTL_S,
+                dedup_key=f"qa-phase-{phase}-degraded",
+                why="Coverage was reduced by contention; a pass here would be a false assurance.",
+                next_step="Look at load average and the llama slot queue.",
+                command=f"aq-qa {phase} --machine",
+            )
         failure_summaries = [
             {
                 "id": c.get("id", "?"),
@@ -261,6 +290,7 @@ def main() -> int:
             "failures": failure_summaries,
             "total": len(data.get("tests") or data.get("checks") or []),
             "summary": data.get("summary", {}),
+            "degraded": len(degraded),
             "returncode": data.get("_monitor_returncode"),
             "stderr": data.get("_monitor_stderr", ""),
         })

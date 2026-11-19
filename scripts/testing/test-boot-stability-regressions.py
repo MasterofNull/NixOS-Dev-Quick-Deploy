@@ -249,7 +249,7 @@ def main() -> int:
     assert_true(
         'if ctx.dashboard_safe:' in phase0_text
         and 's.connect_ex(("127.0.0.1", 3000))' in phase0_text
-        and 'results.extend(_check_local_payload_discipline(ctx))' in phase0_text,
+        and 'plan.append(_check_local_payload_discipline)' in phase0_text,
         "dashboard-safe OSI should avoid ss/coreutils denials from Grafana and shell gate probes",
     )
     assert_true(

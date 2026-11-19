@@ -2352,6 +2352,15 @@
         "python3"
       ],
       "ci_workflow": ".github/workflows/test.yml#manifest-tests"
+    },
+    {
+      "id": "qa-phase0-bounded-tests",
+      "cmd": "scripts/testing/test-qa-phase0-bounded.py",
+      "paths": [],
+      "needs": [
+        "python3"
+      ],
+      "ci_workflow": ".github/workflows/test.yml#manifest-tests"
     }
   ],
   "ci_exempt": [
