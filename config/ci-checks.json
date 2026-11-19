@@ -134,6 +134,18 @@
       "note": "slow (90-180s): path-triggered in --changed"
     },
     {
+      "id": "lean-ctx-shell-security",
+      "cmd": "scripts/testing/test-lean-ctx-shell-security.py",
+      "paths": [
+        "scripts/deploy/lean-ctx-set-shell-security.py",
+        "scripts/testing/test-lean-ctx-shell-security.py"
+      ],
+      "needs": [
+        "python3"
+      ],
+      "ci_workflow": ".github/workflows/test.yml#syntax"
+    },
+    {
       "id": "pm-tracker-untrusted-hold",
       "cmd": "scripts/testing/test-pm-tracker-untrusted-hold.py",
       "paths": [
@@ -2359,6 +2371,16 @@
       "paths": [],
       "needs": [
         "python3"
+      ],
+      "ci_workflow": ".github/workflows/test.yml#manifest-tests"
+    },
+    {
+      "id": "llama-post-switch-validate-tests",
+      "cmd": "scripts/testing/test-llama-post-switch-validate.py",
+      "paths": [],
+      "needs": [
+        "python3",
+        "curl"
       ],
       "ci_workflow": ".github/workflows/test.yml#manifest-tests"
     }

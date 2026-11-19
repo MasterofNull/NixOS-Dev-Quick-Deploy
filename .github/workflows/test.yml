@@ -588,7 +588,9 @@ jobs:
             --only gate-lane-findings-tests \
             --only timer-stagger-regression-tests \
             --only qa-phase0-bounded-tests \
+            --only llama-post-switch-validate-tests \
             --only activation-manifest-tests \
+            --only lean-ctx-shell-security \
             --only rea-sandbox-tests \
             --only intelligence-classifier-tests \
             --only delegate-headless-budget-tests \
