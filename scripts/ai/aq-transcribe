@@ -28,13 +28,17 @@
 #
 # Exit codes: 0 ok; 1 failure; 2 not public / policy reject; 3 missing tools;
 # 4 rate-limited (terminal); 5 power gate deferred or unavailable (fail closed);
-# 6 Whisper time budget exceeded (no transcript written); 7 cache-full.
+# 6 Whisper time budget exceeded (no transcript written); 7 cache-full / bundle-full;
+# 9 busy (another run holds the cache lock).
+# Every resource number (CPU/memory/tasks quota, threads, Whisper budget, cache and bundle caps,
+# ulimit fraction, backoff, resolution) is host-derived by lib/video_frames.py resource_limits()
+# and overridable by one AQ_TRANSCRIBE_* env var each; the chosen values land in run.json.
 #
 # Outputs (in the out dir): metadata.json, transcript.txt, transcript.json
 # (aq-segments/1: seconds-based timed segments for every source), transcript.vtt
 # when captions were used, run.json, and SOURCE.txt naming the transcript source
 # (creator-subtitles | auto-captions | whisper-asr). Stage cache + .done records:
-# ${AQ_TRANSCRIBE_CACHE:-$XDG_CACHE_HOME/aq-transcribe}/<id>/ (cap AQ_TRANSCRIBE_CACHE_MAX_GB, default 10).
+# ${AQ_TRANSCRIBE_CACHE:-$XDG_CACHE_HOME/aq-transcribe}/<id>/ (cap AQ_TRANSCRIBE_CACHE_MAX_GB; default derived from the cache filesystem).
 
 set -euo pipefail
 
@@ -96,6 +100,7 @@ EOF
 }
 need_tool python3
 need_tool timeout
+need_tool flock
 [[ -f "$HELPER" ]] || die "missing helper: $HELPER"
 [[ $is_url -eq 0 ]] || need_tool yt-dlp
 
@@ -118,31 +123,56 @@ admit() { # <stage>
     *) fail 5 "gate unavailable: gate exited $rc (fail closed)" ;;
   esac
 }
-quota() { # <cpu%> cmd... : nice/idle priority under a systemd scope quota
-  local cpu="$1"; shift
+quota() { # cmd... : nice/idle priority under a systemd scope quota (all numbers from resource_limits)
   local pri=(nice -n 19)
   command -v ionice >/dev/null 2>&1 && pri+=(ionice -c3)
-  systemd-run --user --scope --quiet -p "CPUQuota=$cpu" -p TasksMax=64 -- "${pri[@]}" "$@"
+  systemd-run --user --scope --quiet -p "CPUQuota=${L[cpu_quota_pct]}%" -p "MemoryMax=${L[memory_max_bytes]}" \
+    -p "TasksMax=${L[tasks_max]}" -- "${pri[@]}" "$@"
+}
+# Hard per-process write limit: a runaway writer gets SIGXFSZ instead of filling the disk.
+# An argv prefix (not a shell function): quota/timeout exec their command, which cannot see functions.
+limited() { LIM=(bash -c 'ulimit -f "$1"; shift; exec "$@"' _ "$ULIM_KB"); }
+declare -A L=()
+ULIM_KB=1048576
+limited
+load_limits() { # <duration_s>
+  local k v
+  hp limits "$CACHE_ROOT" "${OUT:-.}" "$1" > "$scratch/limits.json" || exit 2
+  while IFS== read -r k v; do L[$k]="$v"; done < <(hp limits-kv "$CACHE_ROOT" "${OUT:-.}" "$1")
+}
+refresh_remaining() { # recompute the remaining cap and the per-process ulimit before a stage
+  local rem
+  read -r rem ULIM_KB < <(hp remaining "$CACHE_ROOT" "${L[cache_max_bytes]}" "${L[ulimit_fraction]}")
+  hp cache-check-write "$CACHE_ROOT" "$((ULIM_KB * 1024))" || exit 7
+  limited
+}
+overrun_guard() { # <paths to delete on overrun...>: du after a stage; over the cap deletes that stage and exits 7
+  if ! hp cache-measure "$CACHE_ROOT" "${L[cache_max_bytes]}"; then
+    rm -rf "$@" 2>/dev/null || true
+    fail 7 "cache-full: stage output exceeded the cache cap; stage outputs deleted"
+  fi
 }
 
 scratch="$(mktemp -d)"
 CACHE_ROOT="${AQ_TRANSCRIBE_CACHE:-${XDG_CACHE_HOME:-$HOME/.cache}/aq-transcribe}"
-MAX_BYTES="$(awk -v g="${AQ_TRANSCRIBE_CACHE_MAX_GB:-10}" 'BEGIN{printf "%d", g*1073741824}')"
+mkdir -p "$CACHE_ROOT"
+# One global lock serializes every run for the whole run; a second run exits 9 (busy).
+exec 9>"$CACHE_ROOT/.lock"
+flock -n 9 || fail 9 "busy: another aq-transcribe run holds $CACHE_ROOT/.lock"
 ent=""
 cleanup() {
   local rc=$?
-  if [[ -n "$ent" ]]; then
-    rm -f "$ent/.lock" 2>/dev/null || true
-    [[ $KEEP_AUDIO -eq 0 ]] && { rm -rf "$ent/work" 2>/dev/null || true; }
-  fi
+  [[ -n "$ent" && $KEEP_AUDIO -eq 0 ]] && { rm -rf "$ent/work" 2>/dev/null || true; }
   rm -rf "$scratch" 2>/dev/null || true
   exit "$rc"
 }
 trap cleanup EXIT
+load_limits -1
+MAX_BYTES="${L[cache_max_bytes]}"
 
 # ---- yt-dlp wrapper: one shared retry budget, 429 is terminal -------------------------
 YT_RETRIES_USED=0
-YT_BACKOFF=(30 90 270)
+read -r -a YT_BACKOFF <<< "${L[backoff_schedule_s]}"
 SLEEP_CMD="${AQ_TRANSCRIBE_SLEEP:-sleep}"
 YT_ENV_STRIP=()
 for v in $(compgen -e); do
@@ -158,7 +188,7 @@ ytdlp_run() { # <label> yt-dlp args...
   local label="$1" rc; shift
   while :; do
     rc=0
-    env ${YT_ENV_STRIP[@]+"${YT_ENV_STRIP[@]}"} yt-dlp --ignore-config --no-cookies --no-cookies-from-browser \
+    env ${YT_ENV_STRIP[@]+"${YT_ENV_STRIP[@]}"} bash -c 'ulimit -f "$1"; shift; exec "$@"' _ "$ULIM_KB" yt-dlp --ignore-config --no-cookies --no-cookies-from-browser \
       --no-playlist --retries 0 --fragment-retries 2 --sleep-requests 1 --no-warnings "$@" \
       >"$YT_OUT" 2>"$YT_ERR" || rc=$?
     [[ $rc -eq 0 ]] && return 0
@@ -177,16 +207,14 @@ ytdlp_run() { # <label> yt-dlp args...
 }
 
 # ---- resolve identity -----------------------------------------------------------------
-est_bytes=0; dur_s=-1
+dur_s=-1
 if [[ $is_url -eq 1 ]]; then
-  ytdlp_run "id lookup" --get-id "$INPUT" || die "yt-dlp could not resolve the video id"
-  vid="$(head -n1 "$YT_OUT")"
-  [[ "$vid" =~ ^[A-Za-z0-9_-]{1,64}$ ]] || die "unexpected video id from yt-dlp"
+  # Exactly one metadata call per URL run (id, availability, duration); never cached.
   echo "[aq-transcribe] fetching metadata: $INPUT"
   ytdlp_run "metadata" --dump-json "$INPUT" || die "yt-dlp could not fetch metadata"
   cp "$YT_OUT" "$scratch/meta.json"
   mi="$(hp meta-check "$scratch/meta.json")" || exit 2
-  est_bytes="$(python3 -I -c 'import json,sys;print(json.loads(sys.argv[1])["est_bytes"])' "$mi")"
+  vid="$(python3 -I -c 'import json,sys;print(json.loads(sys.argv[1])["id"])' "$mi")"
   dur_s="$(python3 -I -c 'import json,sys;print(json.loads(sys.argv[1])["duration_s"])' "$mi")"
   src_id="$vid"
 else
@@ -202,16 +230,12 @@ mkdir -p "$OUT"
 if [[ $is_url -eq 1 ]]; then cp "$scratch/meta.json" "$OUT/metadata.json"
 else python3 -I -c 'import json,sys;print(json.dumps({"local_file":sys.argv[1]}))' "$INPUT" > "$OUT/metadata.json"; fi
 
-# ---- cache entry: admission, lock, stale-state quarantine -----------------------------
-hp cache-admit "$CACHE_ROOT" "$vid" 5242880 "$MAX_BYTES" || exit 7
+# ---- cache entry: admission under the global lock ----------------------------------------
+load_limits "$dur_s"
+MAX_BYTES="${L[cache_max_bytes]}"
+hp cache-admit "$CACHE_ROOT" $(( L[run_budget_mb] * 1048576 )) "$MAX_BYTES" "${L[expiry_days]}" || exit 7
 ent="$CACHE_ROOT/$vid"
 mkdir -p "$ent/stages" "$ent/work"
-echo $$ > "$ent/.lock"
-quar() { # move a path into the cache quarantine (never reused)
-  [[ -e "$1" ]] || return 0
-  mkdir -p "$ent/quarantine"; mv "$1" "$ent/quarantine/$(date +%s)-$$-${1##*/}"
-}
-quar "$ent/transcript.tmp"
 work="$ent/work"
 cache_hit=0
 
@@ -220,20 +244,35 @@ mode=""; sub_file=""
 if [[ -n "$SUBS" && $FORCE_WHISPER -eq 0 ]]; then
   mode="local-subs"; sub_file="$SUBS"
 elif [[ $is_url -eq 1 && $FORCE_WHISPER -eq 0 ]]; then
-  echo "[aq-transcribe] fetching captions (creator, then auto)"
-  for m in creator auto; do
-    flag="--write-subs"; [[ $m == auto ]] && flag="--write-auto-subs"
-    rc=0
-    ytdlp_run "caption fetch ($m)" --skip-download "$flag" --sub-langs "${LANG:-en}.*,en" \
-      --sub-format vtt --convert-subs vtt -o "$work/%(id)s.%(ext)s" "$INPUT" || rc=$?
-    if [[ $rc -ne 0 ]]; then
-      [[ $ALLOW_ON_ERROR -eq 1 ]] || die "caption fetch failed (non-429 error); rerun with --allow-whisper-on-error to permit Whisper"
-      echo "[aq-transcribe] caption error tolerated (--allow-whisper-on-error)" >&2
-      break
+  capdir="$ent/captions/${LANG:-auto}"
+  if [[ -f "$capdir/mode" && ( "$(cat "$capdir/mode")" == none || -f "$capdir/subs.vtt" ) ]]; then
+    m="$(cat "$capdir/mode")"; echo "[aq-transcribe] captions from cache ($m)"
+    if [[ $m != none ]]; then mode="$m"; sub_file="$capdir/subs.vtt"; fi
+  else
+    echo "[aq-transcribe] fetching captions (creator, then auto)"
+    refresh_remaining
+    found=none
+    for m in creator auto; do
+      flag="--write-subs"; [[ $m == auto ]] && flag="--write-auto-subs"
+      rc=0
+      ytdlp_run "caption fetch ($m)" --skip-download "$flag" --sub-langs "${LANG:-en}.*,en" \
+        --sub-format vtt --convert-subs vtt -o "$work/%(id)s.%(ext)s" "$INPUT" || rc=$?
+      if [[ $rc -ne 0 ]]; then
+        [[ $ALLOW_ON_ERROR -eq 1 ]] || die "caption fetch failed (non-429 error); rerun with --allow-whisper-on-error to permit Whisper"
+        echo "[aq-transcribe] caption error tolerated (--allow-whisper-on-error)" >&2
+        found=error; break
+      fi
+      f="$(find "$work" -name '*.vtt' 2>/dev/null | sort | head -n1 || true)"
+      if [[ -n "$f" ]]; then found="$m"; sub_src="$f"; break; fi
+    done
+    overrun_guard "$work" "$ent/captions"
+    if [[ $found == creator || $found == auto ]]; then
+      mkdir -p "$capdir"; mv "$sub_src" "$capdir/subs.vtt"; echo "$found" > "$capdir/mode"
+      mode="$found"; sub_file="$capdir/subs.vtt"
+    elif [[ $found == none ]]; then
+      mkdir -p "$capdir"; echo none > "$capdir/mode"
     fi
-    f="$(find "$work" -name '*.vtt' 2>/dev/null | sort | head -n1 || true)"
-    if [[ -n "$f" ]]; then mode="$m"; sub_file="$f"; break; fi
-  done
+  fi
 fi
 [[ -n "$mode" ]] || mode="whisper"
 
@@ -257,9 +296,9 @@ if [[ -d "$stage" ]] && hp done-check "$stage" "$done_f" "$fp"; then
   cache_hit=1
   echo "[aq-transcribe] cache hit (transcript stage, fingerprint ${fp:0:12})"
 else
-  quar "$stage"
+  rm -rf "$stage" "$ent/transcript.tmp"
   rm -f "$done_f"
-  hp cache-check-write "$CACHE_ROOT" 5242880 "$MAX_BYTES" || exit 7
+  refresh_remaining
   tmp="$ent/transcript.tmp"
   if [[ $mode != whisper ]]; then
     mkdir -p "$tmp"
@@ -269,44 +308,51 @@ else
     # Whisper is the last resort: lazy preflight, gate, quota, time budget.
     [[ -n "$whisper_bin" ]] || need_tool whisper
     if [[ $is_url -eq 1 ]]; then
-      cap="${AQ_TRANSCRIBE_MAX_MIN:-120}"
+      cap="${L[max_media_min]}"
       if awk -v d="$dur_s" -v c="$cap" 'BEGIN{exit !(d>c*60)}'; then fail 2 "video longer than ${cap} min cap"; fi
-      need=$(( est_bytes > 0 ? est_bytes : 800*1024*1024 ))
-      hp cache-admit "$CACHE_ROOT" "$vid" "$need" "$MAX_BYTES" || exit 7
       admit whisper
+      refresh_remaining
       echo "[aq-transcribe] no caption track used; downloading audio for Whisper ASR"
       ytdlp_run "media download" --hls-prefer-native -f bestaudio -x --audio-format wav \
-        --max-filesize 800M -o "$work/audio.%(ext)s" "$INPUT" \
-        || die "yt-dlp failed to download audio (network? geo-block?)"
+        --max-filesize "$((ULIM_KB * 1024))" -o "$work/audio.%(ext)s" "$INPUT" \
+        || { [[ -n "$(find "$work" -size +0 2>/dev/null | head -n1)" ]] && overrun_guard "$work"; die "yt-dlp failed to download audio (network? geo-block?)"; }
+      overrun_guard "$work"
       audio="$(find "$work" -name 'audio.*' -not -name '*.part' | head -n1)"
       [[ -n "$audio" ]] || die "yt-dlp produced no audio file"
     else
       need_tool ffmpeg
-      hp cache-admit "$CACHE_ROOT" "$vid" $(( 1024*1024*1024 )) "$MAX_BYTES" || exit 7
       admit whisper
+      refresh_remaining
       echo "[aq-transcribe] extracting audio from local file"
       # Hardening (WR-SEC-3): a local file can be a playlist/manifest that makes ffmpeg open
       # network protocols (HLS/DASH/RTSP/sftp CVEs, no fix released). Restrict to file+pipe,
       # never read stdin, and bound the runtime (override: AQ_TRANSCRIBE_FFMPEG_TIMEOUT seconds).
-      quota 200% timeout "${AQ_TRANSCRIBE_FFMPEG_TIMEOUT:-600}" ffmpeg -nostdin -y -protocol_whitelist file,pipe \
-        -i "$INPUT" -ar 16000 -ac 1 "$work/audio.wav" >/dev/null 2>&1 \
-        || die "ffmpeg failed (or timed out after ${AQ_TRANSCRIBE_FFMPEG_TIMEOUT:-600}s) extracting audio from $INPUT"
+      quota timeout "${AQ_TRANSCRIBE_FFMPEG_TIMEOUT:-600}" "${LIM[@]}" ffmpeg -nostdin -y -protocol_whitelist file,pipe \
+        -threads "${L[ffmpeg_threads]}" -i "$INPUT" -ar 16000 -ac 1 "$work/audio.wav" >/dev/null 2>&1 \
+        || { overrun_guard "$work"; die "ffmpeg failed (or timed out after ${AQ_TRANSCRIBE_FFMPEG_TIMEOUT:-600}s) extracting audio from $INPUT"; }
+      overrun_guard "$work"
       audio="$work/audio.wav"
     fi
-    budget="${AQ_TRANSCRIBE_WHISPER_BUDGET:-3600}"
+    # Budget scales with media duration; wav is 16 kHz mono s16 = 32000 B/s when the metadata has none.
+    wdur="$dur_s"
+    if awk -v d="$dur_s" 'BEGIN{exit !(d<=0)}'; then wdur=$(( $(stat -c %s "$audio") / 32000 )); fi
+    load_limits "$wdur"
+    budget="${L[whisper_budget_s]}"
     wh="$work/wh"; mkdir -p "$wh"
     echo "[aq-transcribe] running Whisper ($MODEL, budget ${budget}s) — first run downloads the model weights"
     lang_args=(); [[ -n "$LANG" ]] && lang_args=(--language "$LANG")
     rc=0
     if [[ "$whisper_bin" == "whisper" ]]; then
-      quota 400% timeout "$budget" whisper "$audio" --model "$MODEL" --output_dir "$wh" \
-        --output_format json --threads 4 ${lang_args[@]+"${lang_args[@]}"} >/dev/null 2>&1 || rc=$?
+      quota timeout "$budget" "${LIM[@]}" whisper "$audio" --model "$MODEL" --output_dir "$wh" \
+        --output_format json --threads "${L[whisper_threads]}" ${lang_args[@]+"${lang_args[@]}"} >/dev/null 2>&1 || rc=$?
     else
       cpp_lang=(); [[ -n "$LANG" ]] && cpp_lang=(-l "$LANG")
-      quota 400% timeout "$budget" whisper-cli -f "$audio" -oj -of "$wh/transcript" -t 4 \
+      quota timeout "$budget" "${LIM[@]}" whisper-cli -f "$audio" -oj -of "$wh/transcript" -t "${L[whisper_threads]}" \
         ${cpp_lang[@]+"${cpp_lang[@]}"} >/dev/null 2>&1 || rc=$?
     fi
     # Both backends emit final files only at the end: a timeout leaves no truthful partial.
+    [[ $rc -ne 153 ]] || { rm -rf "$work/wh"; fail 7 "cache-full: Whisper output exceeded the per-process write limit; stage outputs deleted"; }
+    overrun_guard "$wh"
     [[ $rc -ne 124 ]] || fail 6 "Whisper exceeded its ${budget}s budget; no transcript written"
     [[ $rc -eq 0 ]] || die "$whisper_bin transcription failed (exit $rc)"
     raw="$(find "$wh" -name '*.json' | sort | head -n1)"
@@ -315,11 +361,13 @@ else
     be="$(hp whisper2seg "$raw" "$tmp" "$source_kind" "${LANG:-auto}")" || die "whisper output not parseable"
     cp "$raw" "$tmp/transcript.raw.$be.json"
   fi
+  overrun_guard "$tmp"
   mv "$tmp" "$stage"
   hp done-write transcript "$stage" "$done_f" "$fp"
 fi
 
 # ---- publish to the out dir ------------------------------------------------------------
+hp bundle-check "$OUT" "$stage" "${L[bundle_max_mb]}" || exit 7
 cp "$stage/transcript.json" "$stage/transcript.txt" "$OUT/"
 [[ -f "$stage/transcript.vtt" ]] && cp "$stage/transcript.vtt" "$OUT/"
 printf '%s\n' "$source_kind" > "$OUT/SOURCE.txt"
@@ -327,8 +375,8 @@ kind=local; [[ $is_url -eq 1 ]] && kind=url
 python3 -I -c 'import json,sys,time
 a=sys.argv
 json.dump({"input_kind":a[1],"id":a[2],"selection_mode":a[3],"fingerprint":a[4],"cache_hit":a[5]=="1",
- "yt_dlp_retries_used":int(a[6]),"finished_at":time.strftime("%Y-%m-%dT%H:%M:%SZ",time.gmtime())},
- open(a[7]+"/run.json","w"),indent=1)' "$kind" "$vid" "$mode" "$fp" "$cache_hit" "$YT_RETRIES_USED" "$OUT"
+ "yt_dlp_retries_used":int(a[6]),"limits":json.load(open(a[8])),"finished_at":time.strftime("%Y-%m-%dT%H:%M:%SZ",time.gmtime())},
+ open(a[7]+"/run.json","w"),indent=1)' "$kind" "$vid" "$mode" "$fp" "$cache_hit" "$YT_RETRIES_USED" "$OUT" "$scratch/limits.json"
 
 touch "$ent"
 [[ $KEEP_AUDIO -eq 0 ]] && rm -rf "$work"

@@ -24,7 +24,7 @@ TAG = re.compile(r"<[^>]*>")
 CUE = re.compile(
     r"^\s*(?:(\d+):)?(\d{1,2}):(\d{2})[.,](\d{1,3})\s+-->\s+(?:(\d+):)?(\d{1,2}):(\d{2})[.,](\d{1,3})"
 )
-EXPIRY_S = 7 * 86400
+EXPIRY_S = 7 * 86400  # policy default; resource_limits() "expiry_days" (AQ_TRANSCRIBE_EXPIRY_DAYS) overrides
 
 
 def clean(s: str) -> str:
@@ -154,9 +154,13 @@ def meta_check(p: Path) -> int:
     if m.get("availability") != "public":
         print(f"not public (availability={m.get('availability')!r}); public videos only", file=sys.stderr)
         return 2
+    vid = m.get("id")
+    if not isinstance(vid, str) or not re.fullmatch(r"[A-Za-z0-9_-]{1,64}", vid):
+        print("metadata has no usable id", file=sys.stderr)
+        return 2
     dur = m.get("duration")
     est = m.get("filesize_approx") or m.get("filesize") or 0
-    print(json.dumps({"duration_s": dur if isinstance(dur, (int, float)) else -1, "est_bytes": int(est) if isinstance(est, (int, float)) else 0}))
+    print(json.dumps({"id": vid, "duration_s": dur if isinstance(dur, (int, float)) else -1, "est_bytes": int(est) if isinstance(est, (int, float)) else 0}))
     return 0
 
 
@@ -168,54 +172,59 @@ def _size(p: Path) -> int:
     return sum(f.stat().st_size for f in p.rglob("*") if f.is_file() and not f.is_symlink())
 
 
-def _locked(entry: Path) -> bool:
-    lk = entry / ".lock"
-    try:
-        pid = int(lk.read_text().strip())
-        os.kill(pid, 0)
-        return True
-    except (OSError, ValueError):
-        return False
-
-
 def cache_usage(root: Path) -> int:
     return sum(_size(e) for e in root.iterdir()) if root.is_dir() else 0
 
 
-def cache_admit(root: Path, current: str, need: int, max_bytes: int) -> int:
+def _rm(e: Path) -> None:
+    shutil.rmtree(e, ignore_errors=True) if e.is_dir() else e.unlink(missing_ok=True)
+
+
+def sweep_orphans(root: Path) -> None:
+    """Under the global lock no other run is live: tmp dirs, work dirs and .part files are orphans."""
+    for e in root.iterdir():
+        if e.is_dir():
+            for sub in e.iterdir():
+                if sub.name == "work" or sub.name.endswith((".tmp", ".part")):
+                    _rm(sub)
+
+
+def cache_admit(root: Path, run_budget: int, max_bytes: int, expiry_s: float = EXPIRY_S) -> int:
+    """Called while holding the global flock. Prune expired, then oldest-first, until
+    usage <= cap - run_budget. Everything under the cache is prunable (no live entries exist)."""
     root.mkdir(parents=True, exist_ok=True)
-    if need > max_bytes:
-        print(f"cache-full: need {need} B exceeds the cap {max_bytes} B outright", file=sys.stderr)
+    if run_budget > max_bytes:
+        print(f"cache-full: run budget {run_budget} B exceeds the cap {max_bytes} B", file=sys.stderr)
         return 7
-    entries = sorted((e for e in root.iterdir()), key=lambda e: e.stat().st_mtime)
-    prot = [e for e in entries if e.name == current or (e.is_dir() and _locked(e))]
-    cand = [e for e in entries if e not in prot]
-    usage = cache_usage(root)
+    sweep_orphans(root)
+    entries = sorted((e for e in root.iterdir() if e.name != ".lock"), key=lambda e: e.stat().st_mtime)
     now = time.time()
-    # 7-day-expired first, then LRU; both are oldest-first by mtime.
-    cand.sort(key=lambda e: (now - e.stat().st_mtime <= EXPIRY_S, e.stat().st_mtime))
-    while usage + need > max_bytes and cand:
-        e = cand.pop(0)
+    entries.sort(key=lambda e: (now - e.stat().st_mtime <= expiry_s, e.stat().st_mtime))
+    usage = cache_usage(root)
+    while usage > max_bytes - run_budget and entries:
+        e = entries.pop(0)
         sz = _size(e)
-        shutil.rmtree(e, ignore_errors=True) if e.is_dir() else e.unlink(missing_ok=True)
+        _rm(e)
         usage -= sz
         print(f"cache-prune: {e} ({sz} B)", file=sys.stderr)
-    if usage + need > max_bytes:
-        print(f"cache-full: {usage}+{need} B exceeds cap {max_bytes} B; protected entries block reclamation:", file=sys.stderr)
-        for e in prot:
-            print(f"  {e} {_size(e)} B", file=sys.stderr)
+    if usage > max_bytes - run_budget:
+        print(f"cache-full: usage {usage} B leaves less than the run budget {run_budget} B under cap {max_bytes} B", file=sys.stderr)
         return 7
     return 0
 
 
-def cache_check_write(root: Path, need: int, max_bytes: int) -> int:
+def remaining(root: Path, max_bytes: int, fraction: float) -> tuple[int, int]:
+    """(remaining bytes under the cap, per-process `ulimit -f` in KiB blocks)."""
+    rem = max(0, max_bytes - cache_usage(root))
+    return rem, max(1, int(rem * fraction) // 1024)
+
+
+def cache_check_write(root: Path, need: int) -> int:
+    """df before a stage: the filesystem must have room for the largest single write."""
     root.mkdir(parents=True, exist_ok=True)
     free = shutil.disk_usage(root).free
-    if free < need * 2:
-        print(f"cache-full: free space {free} B < 2x write need {need} B", file=sys.stderr)
-        return 7
-    if cache_usage(root) + need > max_bytes:
-        print(f"cache-full: write of {need} B would exceed cap {max_bytes} B", file=sys.stderr)
+    if free < need:
+        print(f"cache-full: free space {free} B < per-process write limit {need} B", file=sys.stderr)
         return 7
     return 0
 
@@ -228,6 +237,147 @@ def cache_measure(root: Path, max_bytes: int) -> int:
             print(f"  {e} {_size(e)} B", file=sys.stderr)
         return 7
     return 0
+
+
+# ---- host-derived, overridable resource limits ------------------------------------------------
+# One place for every resource knob. Each limit has a host-derived default and one
+# AQ_TRANSCRIBE_* env var that overrides it; floors/ceilings keep tiny and huge hosts sane.
+# `source` is recorded per limit (env|derived) in run.json so behaviour is observable on any host.
+MB = 1 << 20
+GB = 1 << 30
+
+
+def _clamp(v: float, lo: float, hi: float) -> float:
+    return max(lo, min(hi, v))
+
+
+def read_host(cache_root: str = ".", out_dir: str = ".") -> dict:
+    """Live host readings: CPU count, MemTotal, cache-fs size/free, out-fs free."""
+
+    def anc(p: str) -> str:
+        q = Path(p).resolve()
+        while not q.exists() and q != q.parent:
+            q = q.parent
+        return str(q)
+
+    try:
+        ncpu = len(os.sched_getaffinity(0))
+    except (AttributeError, OSError):
+        ncpu = os.cpu_count() or 1
+    mem = 0
+    try:
+        for ln in Path("/proc/meminfo").read_text().splitlines():
+            if ln.startswith("MemTotal:"):
+                mem = int(ln.split()[1]) * 1024
+                break
+    except (OSError, ValueError, IndexError):
+        pass
+    cu = shutil.disk_usage(anc(cache_root))
+    ou = shutil.disk_usage(anc(out_dir))
+    return {"ncpu": ncpu, "mem_total": mem, "cache_total": cu.total, "cache_free": cu.free, "out_free": ou.free}
+
+
+def resource_limits(env: dict, host: dict, duration_s: float = -1.0) -> dict:
+    """name -> {"value": v, "source": "env"|"derived"}. Env overrides win; invalid env raises ValueError."""
+    out: dict = {}
+
+    def pick(name: str, var: str, derived, cast=float):
+        raw = env.get(var)
+        if raw not in (None, ""):
+            try:
+                out[name] = {"value": cast(raw), "source": f"env:{var}"}
+            except ValueError as e:
+                raise ValueError(f"{var}={raw!r} is not a valid number") from e
+        else:
+            out[name] = {"value": derived() if callable(derived) else derived, "source": "derived"}
+        return out[name]["value"]
+
+    ncpu = max(1, int(host["ncpu"]))
+    mem = int(host["mem_total"]) or 4 * GB  # unreadable /proc: assume a small host
+    cores = int(_clamp(ncpu // 4, 1, 16))
+    pick("cpu_quota_pct", "AQ_TRANSCRIBE_CPU_QUOTA_PCT", cores * 100, int)
+    mem_mb = pick("memory_max_mb", "AQ_TRANSCRIBE_MEMORY_MAX_MB",
+                  lambda: int(min(_clamp(mem * 0.10, 1 * GB, 16 * GB), mem * 0.5) // MB), int)
+    out["memory_max_bytes"] = {"value": int(mem_mb) * MB, "source": out["memory_max_mb"]["source"]}
+    # Policy defaults (not host facts): TasksMax floor/ceiling around cores*16.
+    t_lo = pick("tasks_floor", "AQ_TRANSCRIBE_TASKS_FLOOR", 32, int)
+    t_hi = pick("tasks_ceiling", "AQ_TRANSCRIBE_TASKS_CEILING", 4096, int)
+    pick("tasks_max", "AQ_TRANSCRIBE_TASKS_MAX", int(_clamp(cores * 16, t_lo, t_hi)), int)
+    pick("whisper_threads", "AQ_TRANSCRIBE_WHISPER_THREADS", cores, int)
+    pick("ffmpeg_threads", "AQ_TRANSCRIBE_FFMPEG_THREADS", max(1, cores // 2), int)
+
+    # Whisper time budget scales with media duration; fewer cores -> larger factor.
+    factor = pick("whisper_factor", "AQ_TRANSCRIBE_WHISPER_FACTOR", round(_clamp(8.0 / cores, 1.0, 8.0), 3))
+    bmax = pick("whisper_budget_max_s", "AQ_TRANSCRIBE_WHISPER_BUDGET_MAX", 4 * 3600, int)
+    if duration_s and duration_s > 0:
+        derived_budget = int(_clamp(duration_s * factor, 300, bmax))
+    else:
+        derived_budget = int(bmax)  # unknown duration: the ceiling, never unbounded
+    pick("whisper_budget_s", "AQ_TRANSCRIBE_WHISPER_BUDGET", derived_budget, int)
+    pick("max_media_min", "AQ_TRANSCRIBE_MAX_MIN", int(max(10, bmax / factor / 60)), int)
+
+    # Cache cap: fraction of the cache fs (size and free), with floor and an overridable ceiling.
+    ceil_gb = pick("cache_ceiling_gb", "AQ_TRANSCRIBE_CACHE_MAX_CEILING_GB", 100.0)
+    cap_bytes = int(_clamp(min(host["cache_total"] * 0.10, host["cache_free"] * 0.50), 256 * MB, ceil_gb * GB))
+    raw = env.get("AQ_TRANSCRIBE_CACHE_MAX_GB")
+    if raw not in (None, ""):
+        try:
+            out["cache_max_bytes"] = {"value": int(float(raw) * GB), "source": "env:AQ_TRANSCRIBE_CACHE_MAX_GB"}
+        except ValueError as e:
+            raise ValueError(f"AQ_TRANSCRIBE_CACHE_MAX_GB={raw!r} is not a valid number") from e
+    else:
+        out["cache_max_bytes"] = {"value": cap_bytes, "source": "derived"}
+    cap = out["cache_max_bytes"]["value"]
+    pick("run_budget_mb", "AQ_TRANSCRIBE_RUN_BUDGET_MB", int(_clamp(cap * 0.15 / MB, 16, 1500)), int)
+    pick("ulimit_fraction", "AQ_TRANSCRIBE_ULIMIT_FRACTION", 0.25)
+    pick("bundle_max_mb", "AQ_TRANSCRIBE_BUNDLE_MAX_MB", int(_clamp(host["out_free"] * 0.02 / MB, 50, 2048)), int)
+
+    # Acquisition retry policy.
+    # Policy defaults: 429 retry count, backoff growth multiplier, cache entry expiry.
+    pick("retries", "AQ_TRANSCRIBE_RETRIES", 3, int)
+    mult = pick("backoff_mult", "AQ_TRANSCRIBE_BACKOFF_MULT", 3, int)
+    pick("expiry_days", "AQ_TRANSCRIBE_EXPIRY_DAYS", 7, float)
+    base = pick("backoff_base_s", "AQ_TRANSCRIBE_BACKOFF_BASE_S", 30, int)
+    sched = env.get("AQ_TRANSCRIBE_BACKOFF")
+    if sched:
+        try:
+            lst = [int(x) for x in sched.split()]
+        except ValueError as e:
+            raise ValueError(f"AQ_TRANSCRIBE_BACKOFF={sched!r} must be space-separated seconds") from e
+        out["backoff_schedule_s"] = {"value": lst, "source": "env:AQ_TRANSCRIBE_BACKOFF"}
+        out["retries"] = {"value": len(lst), "source": "env:AQ_TRANSCRIBE_BACKOFF"}
+    else:
+        n = int(out["retries"]["value"])
+        out["backoff_schedule_s"] = {"value": [int(base * mult**i) for i in range(n)], "source": out["retries"]["source"] if out["retries"]["source"] != "derived" else out["backoff_base_s"]["source"]}
+    # Download max resolution (consumed by the frame stage; audio-only slice 1 only reports it).
+    pick("max_height", "AQ_TRANSCRIBE_MAX_HEIGHT",
+         480 if (ncpu <= 2 or mem < 6 * GB) else (720 if mem < 32 * GB else 1080), int)
+    return out
+
+
+def limits_cli(cache_root: str, out_dir: str, duration_s: float, kv: bool) -> int:
+    try:
+        lim = resource_limits(dict(os.environ), read_host(cache_root, out_dir), duration_s)
+    except ValueError as e:
+        print(f"limits: {e}", file=sys.stderr)
+        return 2
+    if kv:
+        for k, v in lim.items():
+            val = " ".join(str(x) for x in v["value"]) if isinstance(v["value"], list) else v["value"]
+            print(f"{k}={val}")
+    else:
+        print(json.dumps(lim, indent=1))
+    return 0
+
+
+def media_relative(pts: float, start_time: float) -> float:
+    """One timeline = media-relative seconds (frame ts = pts_time - format.start_time).
+    VTT cues and Whisper segments are already media-relative and must not be shifted."""
+    return round(pts - start_time, 3)
+
+
+def dir_size(p: Path) -> int:
+    return _size(p) if p.exists() else 0
 
 
 def main(argv: list[str]) -> int:
@@ -246,12 +396,27 @@ def main(argv: list[str]) -> int:
         return 0 if done_check(Path(a[0]), Path(a[1]), a[2]) else 1
     elif c == "meta-check":
         return meta_check(Path(a[0]))
+    elif c == "limits":  # <cache_root> <out_dir> <duration_s>
+        return limits_cli(a[0], a[1], float(a[2]), False)
+    elif c == "limits-kv":
+        return limits_cli(a[0], a[1], float(a[2]), True)
+    elif c == "bundle-check":  # <out_dir> <stage_dir> <max_mb>: size after the last write
+        sz = dir_size(Path(a[0])) + dir_size(Path(a[1]))
+        if sz > int(float(a[2])) * MB:
+            print(f"bundle-full: {a[0]} would be {sz} B, over the {a[2]} MB bundle cap", file=sys.stderr)
+            return 7
     elif c == "sha256":
         print(sha256_file(Path(a[0])))
-    elif c == "cache-admit":  # <root> <current> <need> <max>
-        return cache_admit(Path(a[0]), a[1], int(a[2]), int(float(a[3])))
-    elif c == "cache-check-write":  # <root> <need> <max>
-        return cache_check_write(Path(a[0]), int(a[1]), int(float(a[2])))
+    elif c == "cache-admit":  # <root> <run_budget_bytes> <max> [expiry_days]
+        return cache_admit(Path(a[0]), int(float(a[1])), int(float(a[2])),
+                           float(a[3]) * 86400 if len(a) > 3 else EXPIRY_S)
+    elif c == "remaining":  # <root> <max> <fraction> -> "<bytes> <ulimit_kib>"
+        r, k = remaining(Path(a[0]), int(float(a[1])), float(a[2]))
+        print(r, k)
+    elif c == "cache-check-write":  # <root> <need_bytes>
+        return cache_check_write(Path(a[0]), int(float(a[1])))
+    elif c == "media-relative":  # <pts> <format.start_time>
+        print(media_relative(float(a[0]), float(a[1])))
     elif c == "cache-measure":  # <root> <max>
         return cache_measure(Path(a[0]), int(float(a[1])))
     else:
