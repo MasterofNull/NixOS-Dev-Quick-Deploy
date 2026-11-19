@@ -29,6 +29,7 @@
 # Exit codes: 0 ok; 1 failure; 2 not public / policy reject; 3 missing tools;
 # 4 rate-limited (terminal); 5 power gate deferred or unavailable (fail closed);
 # 6 Whisper time budget exceeded (no transcript written); 7 cache-full / bundle-full;
+# 8 input container/codec outside the ffmpeg whitelist (AQ_TRANSCRIBE_FFMPEG_FORMATS / _CODECS override);
 # 9 busy (another run holds the cache lock).
 # Every resource number (CPU/memory/tasks quota, threads, Whisper budget, cache and bundle caps,
 # ulimit fraction, backoff, resolution) is host-derived by lib/video_frames.py resource_limits()
@@ -67,7 +68,7 @@ while [[ $# -gt 0 ]]; do
     --keep-audio) KEEP_AUDIO=1; shift ;;
     --allow-whisper-on-error) ALLOW_ON_ERROR=1; shift ;;
     --cookies*|--cookies-from-browser*) fail 2 "cookies are not accepted: public videos only" ;;
-    -h|--help) sed -n '2,36p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,38p' "$0"; exit 0 ;;
     -*) die "unknown option: $1" ;;
     *) [[ -z "$INPUT" ]] && INPUT="$1" || die "unexpected extra argument: $1"; shift ;;
   esac
@@ -132,6 +133,11 @@ quota() { # cmd... : nice/idle priority under a systemd scope quota (all numbers
 # Hard per-process write limit: a runaway writer gets SIGXFSZ instead of filling the disk.
 # An argv prefix (not a shell function): quota/timeout exec their command, which cannot see functions.
 limited() { LIM=(bash -c 'ulimit -f "$1"; shift; exec "$@"' _ "$ULIM_KB"); }
+# Security policy (not a hardware limit): ffmpeg may only probe these input demuxers and decode
+# these audio codecs, which shrinks the reachable-parser surface (-protocol_whitelist alone limits
+# protocols, not formats). Names are ffmpeg's own (`ffmpeg -formats` / `-decoders`); default-restrictive.
+FF_FORMATS="${AQ_TRANSCRIBE_FFMPEG_FORMATS:-matroska,webm,mov,mp4,m4a,3gp,3g2,mj2,mp3,ogg,wav,flac,aac}"
+FF_CODECS="${AQ_TRANSCRIBE_FFMPEG_CODECS:-opus,libopus,vorbis,aac,mp3,mp3float,flac,pcm_s16le,pcm_s24le,pcm_f32le}"
 declare -A L=()
 ULIM_KB=1048576
 limited
@@ -314,6 +320,7 @@ else
       refresh_remaining
       echo "[aq-transcribe] no caption track used; downloading audio for Whisper ASR"
       ytdlp_run "media download" --hls-prefer-native -f bestaudio -x --audio-format wav \
+        --postprocessor-args "ffmpeg_i:-format_whitelist $FF_FORMATS -codec_whitelist $FF_CODECS" \
         --max-filesize "$((ULIM_KB * 1024))" -o "$work/audio.%(ext)s" "$INPUT" \
         || { [[ -n "$(find "$work" -size +0 2>/dev/null | head -n1)" ]] && overrun_guard "$work"; die "yt-dlp failed to download audio (network? geo-block?)"; }
       overrun_guard "$work"
@@ -327,9 +334,16 @@ else
       # Hardening (WR-SEC-3): a local file can be a playlist/manifest that makes ffmpeg open
       # network protocols (HLS/DASH/RTSP/sftp CVEs, no fix released). Restrict to file+pipe,
       # never read stdin, and bound the runtime (override: AQ_TRANSCRIBE_FFMPEG_TIMEOUT seconds).
+      ffrc=0
       quota timeout "${AQ_TRANSCRIBE_FFMPEG_TIMEOUT:-600}" "${LIM[@]}" ffmpeg -nostdin -y -protocol_whitelist file,pipe \
-        -threads "${L[ffmpeg_threads]}" -i "$INPUT" -ar 16000 -ac 1 "$work/audio.wav" >/dev/null 2>&1 \
-        || { overrun_guard "$work"; die "ffmpeg failed (or timed out after ${AQ_TRANSCRIBE_FFMPEG_TIMEOUT:-600}s) extracting audio from $INPUT"; }
+        -format_whitelist "$FF_FORMATS" -codec_whitelist "$FF_CODECS" \
+        -threads "${L[ffmpeg_threads]}" -i "$INPUT" -vn -sn -dn -ar 16000 -ac 1 -c:a pcm_s16le "$work/audio.wav" >/dev/null 2>"$scratch/ff.err" || ffrc=$?
+      if [[ $ffrc -ne 0 ]]; then
+        if grep -qi 'not on whitelist' "$scratch/ff.err"; then
+          fail 8 "input rejected: container/codec outside the ffmpeg input whitelist (formats: $FF_FORMATS; codecs: $FF_CODECS)"
+        fi
+        overrun_guard "$work"; die "ffmpeg failed (or timed out after ${AQ_TRANSCRIBE_FFMPEG_TIMEOUT:-600}s) extracting audio from $INPUT"
+      fi
       overrun_guard "$work"
       audio="$work/audio.wav"
     fi

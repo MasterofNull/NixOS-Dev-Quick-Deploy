@@ -243,6 +243,36 @@ eq "7 missing systemd-run: whisper not run" "$(called whisper.log)" 0
 RUN_PATH="$STUBS:$TOOLS" run STUB_GATE_RC=5 -- "$T/fixture.mp4" --force-whisper
 eq "7 local whisper path gated before ffmpeg" "$(called ffmpeg.log)" 0
 
+# ---- 7b. ffmpeg input format/codec whitelist (security policy, exit 8) -----------------------
+RUN_PATH="$STUBS:$TOOLS" run -- "$T/fixture.mp4" --force-whisper
+eq "7b stub: ffmpeg gets -format_whitelist" "$(grep -c -e '-format_whitelist matroska,webm,mov,mp4,m4a,3gp,3g2,mj2,mp3,ogg,wav,flac,aac' "$LOG/ffmpeg.log")" 1
+eq "7b stub: ffmpeg gets -codec_whitelist (decoders only)" "$(grep -c -e '-codec_whitelist opus,libopus,vorbis,aac,mp3,mp3float,flac,pcm_s16le,pcm_s24le,pcm_f32le' "$LOG/ffmpeg.log")" 1
+eq "7b stub: whitelists precede -i" "$(grep -cE -e '-format_whitelist .* -codec_whitelist .* -i ' "$LOG/ffmpeg.log")" 1
+run STUB_CAPS=none STUB_ID=wl1 -- "$URL"
+eq "7b yt-dlp audio extract passes ffmpeg_i whitelists" "$(grep -c -e 'ffmpeg_i:-format_whitelist .* -codec_whitelist ' "$LOG/ytdlp.argv")" 1
+printf 'wl override bytes\n' > "$T/wl2.mp4"; printf 'wl reject bytes\n' > "$T/wl3.mp4"
+RUN_PATH="$STUBS:$TOOLS" run AQ_TRANSCRIBE_FFMPEG_FORMATS=wav AQ_TRANSCRIBE_FFMPEG_CODECS=pcm_s16le -- "$T/wl2.mp4" --force-whisper
+eq "7b env overrides the lists" "$(grep -c -e '-format_whitelist wav -codec_whitelist pcm_s16le' "$LOG/ffmpeg.log")" 1
+mk ffmpeg 'echo "[in#0] Format not on whitelist 'x'" >&2; exit 234'
+RUN_PATH="$STUBS:$TOOLS" run -- "$T/wl3.mp4" --force-whisper
+eq "7b whitelist rejection -> exit 8" "$RC" 8
+eq "7b rejected: whisper not run" "$(called whisper.log)" 0
+mk ffmpeg 'echo "ffmpeg $*" >> "$LOG/ffmpeg.log"; for a; do l=$a; done; echo wav > "$l"'
+if REALFF="$(command -v ffmpeg 2>/dev/null)" && [[ -x "$REALFF" ]]; then
+  mkdir -p "$T/realff" "$T/wlmedia"; ln -sf "$REALFF" "$T/realff/ffmpeg"
+  for s in whisper systemd-run; do ln -sf "$STUBS/$s" "$T/realff/$s"; done
+  ffmpeg -hide_banner -loglevel error -y -f lavfi -i sine=d=1 -ar 16000 -ac 1 "$T/wlmedia/ok.wav" </dev/null
+  ffmpeg -hide_banner -loglevel error -y -f lavfi -i sine=d=1 -f lavfi -i color=c=red:s=16x16:d=1 -c:a pcm_s16le -c:v mpeg4 "$T/wlmedia/bad.avi" </dev/null
+  RUN_PATH="$T/realff:$TOOLS" run -- "$T/wlmedia/ok.wav" --force-whisper
+  eq "7b real ffmpeg: wav passes" "$RC" 0
+  RUN_PATH="$T/realff:$TOOLS" run -- "$T/wlmedia/bad.avi" --force-whisper
+  eq "7b real ffmpeg: avi (not whitelisted) -> exit 8" "$RC" 8
+  grep -q 'ffmpeg input whitelist' "$T/last.err" && ok "7b real ffmpeg: clean named error" 1 || ok "7b real ffmpeg: clean named error" 0
+  eq "7b real ffmpeg: avi never reached whisper" "$(called whisper.log)" 0
+else
+  echo "SKIP 7b real-ffmpeg checks (no ffmpeg on PATH)"
+fi
+
 # ---- 8. cache fingerprint / validation -------------------------------------------------
 cp "$T/fixture.mp4" "$T/c.mp4"; cp "$T/fixture.vtt" "$T/c.vtt"
 hit() { python3 -I -c 'import json,sys;print(json.load(open(sys.argv[1]))["cache_hit"])' "$OUTD/run.json"; }

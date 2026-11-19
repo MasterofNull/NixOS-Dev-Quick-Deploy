@@ -34,7 +34,14 @@ scripts/governance/tier0-validation-gate.sh --pre-commit
 | 5 | power gate deferred, crashed or missing, or no systemd-run (fail closed) |
 | 6 | Whisper exceeded its time budget (no transcript, no `.done`) |
 | 7 | cache-full / bundle-full / write limit hit |
+| 8 | input container/codec outside the ffmpeg input whitelist (fail closed, named error) |
 | 9 | busy: another run holds the global cache lock |
+
+## ffmpeg input whitelist (security policy, not a hardware limit)
+- CVE triage found 74 ffmpeg input-parser CVEs reachable through aq-transcribe: `-protocol_whitelist` limits protocols, not formats. Every aq-transcribe ffmpeg call (local-file extract, and yt-dlp's audio extract via `--postprocessor-args ffmpeg_i:`) now also passes `-format_whitelist` and `-codec_whitelist` before `-i`.
+- Defaults (names verified against `ffmpeg -formats` / `-decoders` on this host): formats `matroska,webm,mov,mp4,m4a,3gp,3g2,mj2,mp3,ogg,wav,flac,aac`; codecs `opus,libopus,vorbis,aac,mp3,mp3float,flac,pcm_s16le,pcm_s24le,pcm_f32le`. Output is forced to `pcm_s16le` 16 kHz mono with `-vn -sn -dn`. Overrides: `AQ_TRANSCRIBE_FFMPEG_FORMATS` / `AQ_TRANSCRIBE_FFMPEG_CODECS`.
+- An input outside the lists ("not on whitelist") exits 8 with a named message; it never reaches Whisper. Verified with real ffmpeg: a generated wav passes, a generated avi is rejected.
+- Scope: this mitigates the reachable-parser class for our only ffmpeg consumer (aq-transcribe); it does not fix ffmpeg system-wide. Residual: a whitelisted container (e.g. mp4/mkv) still exercises that demuxer's parser.
 
 ## Limits (host-derived defaults; each overridable; sources logged in run.json)
 Sample derived values are from the dev host (1800 s media). Rows marked policy are policy defaults, not host facts.
@@ -62,9 +69,9 @@ Sample derived values are from the dev host (1800 s media). Rows marked policy a
 Other existing overrides: AQ_TRANSCRIBE_CACHE, AQ_TRANSCRIBE_FFMPEG_TIMEOUT (600 s), AQ_TRANSCRIBE_POWER_GATE, AQ_TRANSCRIBE_DEFER_LOG, AQ_TRANSCRIBE_SLEEP.
 
 ## Validation Evidence
-- `test-aq-transcribe-acquisition.sh`: 110 checks, 0 failed, on stubs with no network. Covers local VTT with no whisper/ffmpeg on PATH; caption-only URL without whisper; 429 terminal at meta/caps/media (3 backoffs 30/90/270, 4 attempts, Whisper never run, also with `--allow-whisper-on-error`); shared retry budget; non-429 caption error; Whisper under gate+quota with both backends normalising to identical segments; cache reuse; Whisper timeout exit 6; gate fail-closed exit 5; fingerprint misses; public-only; cache/bundle caps and exit 7; global lock exit 9; hard write limit; limits resolution, floors/ceilings, env overrides and run.json sources.
+- `test-aq-transcribe-acquisition.sh`: 121 checks, 0 failed, on stubs with no network. Covers local VTT with no whisper/ffmpeg on PATH; caption-only URL without whisper; 429 terminal at meta/caps/media (3 backoffs 30/90/270, 4 attempts, Whisper never run, also with `--allow-whisper-on-error`); shared retry budget; non-429 caption error; Whisper under gate+quota with both backends normalising to identical segments; cache reuse; Whisper timeout exit 6; gate fail-closed exit 5; fingerprint misses; public-only; cache/bundle caps and exit 7; global lock exit 9; hard write limit; limits resolution, floors/ceilings, env overrides and run.json sources.
 - Test isolation: every URL case uses a unique stub video id (captions are cached per id), so cases cannot interfere.
-- `test-ffmpeg-cve-mitigations.py`: 6 tests OK (needs `flock` on PATH, from util-linux).
+- `test-ffmpeg-cve-mitigations.py`: 7 tests OK (needs `flock` on PATH, from util-linux).
 - Not covered: real yt-dlp/Whisper/systemd-run (stubs only); real-network 429; the real power gate. A URL rerun makes exactly one metadata call (never cached) but no caption or media call on a cache hit.
 - Bug found and fixed in this pass: the Whisper path exited 1 (command not found, 127) because the per-process write limit was a bash function, and `systemd-run ... timeout ...` execs its command and cannot see shell functions. It is now an argv prefix (`bash -c 'ulimit -f ...; exec "$@"'`).
 
