@@ -1,8 +1,15 @@
 #!/usr/bin/env python3
 """Power/thermal gate for local llama.cpp work. Fail closed on any unreadable sensor.
 
-Rule: run only if (AC online OR battery >= 50%) AND 5-min loadavg is not "busy"
-(hysteresis: enter at >= 0.70*ncpu, leave at <= 0.55*ncpu) AND CPU temp < 80 C.
+Rule: run only if (AC online OR battery >= MIN_BATTERY_PCT) AND 5-min loadavg is not "busy"
+(hysteresis: enter at >= 0.70*ncpu, leave at <= 0.55*ncpu) AND CPU temp < max temp.
+
+Limits are not hardwired to one machine:
+  AQ_POWER_GATE_MIN_BATTERY_PCT  battery floor, default 50 (clamped 0..100)
+  AQ_POWER_GATE_MAX_TEMP_C       temp ceiling; default = lowest CPU critical/high trip point
+                                 (thermal_zone trip_point_*_temp, hwmon temp*_crit/_max)
+                                 minus AQ_POWER_GATE_TEMP_MARGIN_C (default 15), clamped to
+                                 [50, 100]; falls back to 80 C when no trip point is readable.
 Sensor parsing mirrors scripts/ai/aq-keep-awake (an extensionless script, so not
 importable); the CPU-specific temp source here avoids its all-zones max, which
 includes non-CPU board sensors.
@@ -20,10 +27,14 @@ import time
 from pathlib import Path
 
 DEFER_EXIT = 5
-MIN_BATTERY_PCT = 50
+MIN_BATTERY_PCT = 50  # default; AQ_POWER_GATE_MIN_BATTERY_PCT overrides
 BUSY_ENTER = 0.70
 BUSY_LEAVE = 0.55
-MAX_TEMP_C = 80.0
+MAX_TEMP_C = 80.0  # fallback when no trip point is readable; AQ_POWER_GATE_MAX_TEMP_C overrides
+TEMP_MARGIN_C = 15.0
+TEMP_FLOOR_C = 50.0
+TEMP_CEIL_C = 100.0
+TRIP_TYPES = ("critical", "hot", "high")
 CPU_HWMON = ("k10temp", "coretemp", "zenpower")
 CPU_ZONES = ("x86_pkg_temp",)
 
@@ -33,6 +44,53 @@ def _read(p: Path) -> str | None:
         return p.read_text().strip()
     except OSError:
         return None
+
+
+def _env_float(name: str) -> float | None:
+    raw = os.environ.get(name, "").strip()
+    try:
+        return float(raw) if raw else None
+    except ValueError:
+        return None
+
+
+def min_battery_pct() -> int:
+    v = _env_float("AQ_POWER_GATE_MIN_BATTERY_PCT")
+    return MIN_BATTERY_PCT if v is None else int(min(100.0, max(0.0, v)))
+
+
+def cpu_trip_points(sys_root: Path) -> list[float]:
+    """Critical/high trip temps (C) of CPU sensors: thermal trips plus hwmon crit/max."""
+    out: list[float] = []
+
+    def add(p: Path) -> None:
+        v = _read(p)
+        if v and v.isdigit() and int(v) > 0:
+            out.append(int(v) / 1000.0)
+
+    for z in sorted((sys_root / "class/thermal").glob("thermal_zone*")):
+        if _read(z / "type") in CPU_ZONES:
+            for t in z.glob("trip_point_*_type"):
+                if _read(t) in TRIP_TYPES:
+                    add(t.with_name(t.name.replace("_type", "_temp")))
+    for h in sorted((sys_root / "class/hwmon").glob("hwmon*")):
+        if _read(h / "name") in CPU_HWMON:
+            for suffix in ("crit", "max"):
+                for f in h.glob(f"temp*_{suffix}"):
+                    add(f)
+    return out
+
+
+def max_temp_c(sys_root: Path = Path("/sys")) -> float:
+    v = _env_float("AQ_POWER_GATE_MAX_TEMP_C")
+    if v is not None:
+        return v
+    trips = cpu_trip_points(sys_root)
+    if not trips:
+        return MAX_TEMP_C
+    margin = _env_float("AQ_POWER_GATE_TEMP_MARGIN_C")
+    margin = TEMP_MARGIN_C if margin is None else max(0.0, margin)
+    return min(TEMP_CEIL_C, max(TEMP_FLOOR_C, min(trips) - margin))
 
 
 def read_power(root: Path) -> tuple[bool | None, int | None]:
@@ -108,10 +166,13 @@ def evaluate(
         "cpu_temp_c": temp,
     }
     reasons: list[str] = []
+    min_bat = min_battery_pct()
+    max_temp = max_temp_c(sys_root)
+    readings["max_temp_c"] = max_temp
     if ac is None and bat is None:
         reasons.append("power state unreadable")
-    elif not ac and (bat is None or bat < MIN_BATTERY_PCT):
-        reasons.append(f"on battery below {MIN_BATTERY_PCT}% (battery={bat})")
+    elif not ac and (bat is None or bat < min_bat):
+        reasons.append(f"on battery below {min_bat}% (battery={bat})")
     if load5 is None:
         reasons.append("loadavg unreadable")
     elif _load_busy(load5, ncpu, state_file):
@@ -121,8 +182,8 @@ def evaluate(
         )
     if temp is None:
         reasons.append("cpu temp unreadable")
-    elif temp >= MAX_TEMP_C:
-        reasons.append(f"cpu temp {temp:.0f}C >= {MAX_TEMP_C:.0f}C")
+    elif temp >= max_temp:
+        reasons.append(f"cpu temp {temp:.0f}C >= {max_temp:.0f}C")
     return {"ok": not reasons, "reasons": reasons, "readings": readings}
 
 
