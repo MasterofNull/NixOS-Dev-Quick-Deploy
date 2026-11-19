@@ -1,0 +1,5 @@
+{
+  "classification": "durable_plan",
+  "tracking_route": "tracker.json",
+  "evidence": "tracker.json declares plan.id=frontier-adoption-20261118, an owned goal, prd_ref=.agents/plans/frontier-adoption-20261118/VERIFY.md (exists) and 14 items; durable goals, slices and tasks are authored there."
+}
