@@ -1051,6 +1051,7 @@ memory; that is why another lane committed straight into the main checkout. They
   `Reviewed-head-sha` (== current PR head, or a clean automatic merge of main onto it) and `Reviewed-by` (lane != Author-lane). The receipt is
   not in the PR: `aq-land` publishes it to the `review-receipts` branch (`scripts/ai/aq-review-receipt mint` + `publish`), so the head never moves.
   Template: `.github/pull_request_template.md`. Identity is declarative until signed receipts exist.
+- A review receipt is minted only by `aq-land` or the reviewer wrapper from a recorded, wrapper-hashed review run, never by hand or a helper script; minting one without a recorded review is faking a gate signal (Rule 19). `aq-review-receipt revoke` voids a bad one.
 - PR body layout (CI-enforced by `scripts/governance/check-pr-body-format.py` in the `review-disposition` workflow): `## Details` first (scope, merge order, tests with results, risk, then `### Review record`), followed by plain-language `## What`, `## How`, `## Why`, each non-empty.
 
 ### 4. Leave a resumable trail

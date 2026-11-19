@@ -2,7 +2,7 @@
 
 - One branch + worktree per slice from `origin/main`; never edit tracked files in the main checkout (append-only PULSE/backlog excepted); sub-agents stay in their worktree.
 - Commit only as `tier0-validation-gate.sh --pre-commit && git commit`; never `--no-verify`; graph/wiki generated, not committed.
-- Land via `aq-land` (PR only; body Details then What/How/Why), never push `main`; docs ship inside their code PR, never alone; evidence `docs/harness-first/evidence/<date>-<slug>.md`.
+- Land via `aq-land` (PR only; body Details then What/How/Why), never push `main`; docs ship inside their code PR, never alone; evidence `docs/harness-first/evidence/<date>-<slug>.md`. Review receipts: minted only by `aq-land`/the reviewer wrapper from a recorded wrapper-hashed run, never by hand or helper script (faking a gate signal, Rule 19); `aq-review-receipt revoke` voids one.
 - Resumable trail: RESUME.json + PULSE.log + HANDOFF.md; down lanes catch up via AGENT-CATCHUP-QUEUE.md.
 - sudo/nrs/systemctl = owner acts: give exact copy-paste cmds; no rebuild during DB jobs.
 - Done = enable -> rebuild (`aq-deploy-current`) -> validate live -> peer review -> owner grant; no derelict capabilities; archive only with parity. Dormant features found during work (implemented, never enabled): enable, validate end to end, test, fix what enabling breaks, as an activation slice (Rule 15); owner acts (rebuild/sudo/repo settings) are asked for; risky or contested enables get a recommendation.
