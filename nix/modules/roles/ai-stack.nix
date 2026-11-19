@@ -884,6 +884,28 @@ in {
     # When llamaCpp.useSymlink = true, the llama-server always loads from the
     # stable symlink path. The activation script seeds the symlink on first apply.
     # Subsequent swaps are performed by aq-model-switch (no rebuild required).
+    # Rule 13: ~/.lean-ctx/config.toml is a mutable hand/lean-ctx-written file, so
+    # shell_security is re-asserted each activation. Cause: lean-ctx 3.12.4's
+    # default allowlist blocks harness tools (aq-pin-watch, systemctl status, ...).
+    (lib.mkIf (cfg.leanCtx.shellSecurity != null) {
+      system.activationScripts.leanCtxShellSecurity = {
+        deps = ["users"];
+        text = ''
+          LCX_USER_HOME=${lib.escapeShellArg config.users.users.${cfg.primaryUser}.home}
+          LCX_HOME="$LCX_USER_HOME/.lean-ctx"
+          if [ -d "$LCX_USER_HOME" ]; then
+            # Runs as the user: root must never touch a user-controlled path
+            # (symlink -> privileged file). Editor also refuses symlinks/foreign uid.
+            ${pkgs.util-linux}/bin/runuser -u ${lib.escapeShellArg cfg.primaryUser} -- \
+              ${pkgs.coreutils}/bin/mkdir -p "$LCX_HOME" || true
+            ${pkgs.util-linux}/bin/runuser -u ${lib.escapeShellArg cfg.primaryUser} -- \
+              ${pkgs.python3}/bin/python3 ${../../../scripts/deploy/lean-ctx-set-shell-security.py} \
+              "$LCX_HOME/config.toml" ${cfg.leanCtx.shellSecurity} || true
+          fi
+        '';
+      };
+    })
+
     (lib.mkIf (roleEnabled && llama.useSymlink) {
       mySystem.aiStack.llamaCpp.model = lib.mkForce "${dataDir}/models/active.gguf";
       # Rule 14: something resets /var/lib/llama-cpp to 0700 (root cause open,
