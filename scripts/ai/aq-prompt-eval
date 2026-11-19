@@ -32,6 +32,7 @@ import json
 import os
 import re
 import sys
+import time
 import urllib.error
 import urllib.request
 from dataclasses import dataclass, field
@@ -63,6 +64,14 @@ LLAMA_URL = os.getenv(
 LLAMA_READY_TIMEOUT = float(os.getenv("AQ_PROMPT_EVAL_READY_TIMEOUT_S", "180"))
 LLM_CALL_TIMEOUT = float(os.getenv("AQ_PROMPT_EVAL_TIMEOUT_S", "300"))
 LLM_CALL_MAX_TOKENS = int(os.getenv("AQ_PROMPT_EVAL_MAX_TOKENS", "128"))
+# A saturated single-slot llama.cpp times out every call; without a breaker the run grinds to the unit's
+# TimeoutStartSec (1h) while each abandoned request keeps the slot busy for everyone else.
+MAX_CONSECUTIVE_ERRORS = int(os.getenv("AQ_PROMPT_EVAL_MAX_CONSECUTIVE_ERRORS", "3"))
+RUN_DEADLINE_S = float(os.getenv("AQ_PROMPT_EVAL_DEADLINE_S", "3000"))
+
+
+class BackendBusy(Exception):
+    """Too many consecutive transport errors, or the run deadline passed: stop calling the backend."""
 
 REGISTRY_PATH = Path(
     os.getenv(
@@ -556,8 +565,13 @@ def run_eval(
     state_dirty = False
     results_summary: List[dict] = []
     exit_code = 0
+    consecutive_errors = 0
+    deadline = time.monotonic() + RUN_DEADLINE_S
+    aborted = ""
 
     for entry in prompts:
+        if aborted:
+            break
         pid = entry.get("id", "")
         if target_id and pid != target_id:
             continue
@@ -586,12 +600,20 @@ def run_eval(
         if is_code_gen and functional and fe is not None:
             for ft in fe.FUNCTIONAL_TASKS:
                 rendered = render_template(template, ft.prompt_variables)
+                if time.monotonic() > deadline:
+                    aborted = f"run deadline {RUN_DEADLINE_S:.0f}s reached"
+                    break
                 try:
                     response, latency = llm_call(rendered, model=model, timeout=LLM_CALL_TIMEOUT)
                 except Exception as exc:
                     print(f"  ERROR {pid} / {ft.name}: {exc}", file=sys.stderr)
                     transport_error = True
+                    consecutive_errors += 1
+                    if consecutive_errors >= MAX_CONSECUTIVE_ERRORS:
+                        aborted = f"{consecutive_errors} consecutive transport errors; backend busy or down"
+                        break
                     continue
+                consecutive_errors = 0
 
                 extracted = fe.extract_code_block(response)
                 passed, failures = fe.execute_functional_check(extracted, ft.check_script)
@@ -605,6 +627,9 @@ def run_eval(
         else:
             for tc in tests:
                 rendered = render_template(template, tc.variables)
+                if time.monotonic() > deadline:
+                    aborted = f"run deadline {RUN_DEADLINE_S:.0f}s reached"
+                    break
 
                 # For code-gen prompts: wrap in a meta-quality question
                 if is_code_gen:
@@ -620,7 +645,12 @@ def run_eval(
                 except Exception as exc:
                     print(f"  ERROR {pid} / {tc.description}: {exc}", file=sys.stderr)
                     transport_error = True
+                    consecutive_errors += 1
+                    if consecutive_errors >= MAX_CONSECUTIVE_ERRORS:
+                        aborted = f"{consecutive_errors} consecutive transport errors; backend busy or down"
+                        break
                     continue
+                consecutive_errors = 0
 
                 passed, failures = score_response(tc, response)
                 case_results.append(passed)
@@ -634,6 +664,8 @@ def run_eval(
                     excerpt = response[:120].replace("\n", " ")
                     print(f"         response: {excerpt}…")
 
+        if aborted:
+            transport_error = True  # a partial case set must never be written as a score
         n = len(case_results)
         mean_score = None if transport_error or n == 0 else sum(case_results) / n
 
@@ -651,6 +683,10 @@ def run_eval(
             state_dirty = True
         elif transport_error:
             print(f"  SKIP  {pid:<40} registry update skipped due to runtime/transport errors")
+
+    if aborted:
+        print(f"  ABORT {aborted}; remaining prompts not evaluated (exit 1 so the failure stays visible)", file=sys.stderr)
+        exit_code = 1
 
     # Write back if not dry-run
     if not dry_run and state_dirty:

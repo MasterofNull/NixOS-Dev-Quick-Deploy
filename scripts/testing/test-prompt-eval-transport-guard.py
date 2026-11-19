@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import importlib.util
 import tempfile
+from unittest import mock
 from importlib.machinery import SourceFileLoader
 from pathlib import Path
 
@@ -60,6 +61,25 @@ def main() -> int:
         assert_true(updated_text == original_text, "transport errors should not rewrite registry scores")
 
     print("PASS: aq-prompt-eval preserves registry entries on transport/runtime failures")
+    return breaker_check()
+
+
+def breaker_check() -> int:
+    """A saturated backend must stop the run after MAX_CONSECUTIVE_ERRORS calls, not after every case."""
+    calls: list[int] = []
+
+    def failing(*_a, **_k):
+        calls.append(1)
+        raise TimeoutError("simulated timeout")
+
+    with mock.patch.object(aq_prompt_eval, "wait_for_llama_ready", lambda *_a, **_k: True), \
+            mock.patch.object(aq_prompt_eval, "llm_call", failing), tempfile.TemporaryDirectory() as tmpdir:
+        reg = Path(tmpdir) / "registry.yaml"
+        reg.write_text((ROOT / "ai-stack" / "prompts" / "registry.yaml").read_text(encoding="utf-8"), encoding="utf-8")
+        exit_code = aq_prompt_eval.run_eval(registry_path=reg, target_id=None, dry_run=True, verbose=False, model="local")
+    assert_true(exit_code == 1, "an aborted run must still exit 1")
+    assert_true(len(calls) == aq_prompt_eval.MAX_CONSECUTIVE_ERRORS, f"breaker should stop after {aq_prompt_eval.MAX_CONSECUTIVE_ERRORS} calls, made {len(calls)}")
+    print("PASS: aq-prompt-eval stops calling a saturated backend after the consecutive-error limit")
     return 0
 
 

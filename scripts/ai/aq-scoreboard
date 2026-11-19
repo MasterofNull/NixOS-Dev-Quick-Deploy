@@ -32,7 +32,10 @@ def summarize(d: Path, since: str = "") -> dict:
     for r in recs:
         for lane, t in (r.get("tokens") or {}).items():
             s = tok.setdefault(lane, {"in": 0, "out": 0, "known": 0, "unknown": 0})
-            if t.get("in") is None and t.get("out") is None:
+            if t.get("total") is not None:
+                s["known"] += 1
+                s["total"] = s.get("total", 0) + t["total"]
+            elif t.get("in") is None and t.get("out") is None:
                 s["unknown"] += 1
             else:
                 s["known"] += 1
@@ -74,7 +77,8 @@ def main() -> int:
     print(f"tier0 failures caught before merge: {s['tier0_failures_before_merge']}")
     print(f"CI failures caught before merge: {s['ci_failures_before_merge']}")
     for lane, t in sorted(s["tokens_by_lane"].items()):
-        print(f"Tokens {lane}: in={t['in']} out={t['out']} (known runs {t['known']}, unknown runs {t['unknown']})")
+        split = f" total={t['total']} (no in/out split)" if "total" in t else ""
+        print(f"Tokens {lane}: in={t['in']} out={t['out']}{split} (known runs {t['known']}, unknown runs {t['unknown']})")
     print(f"Quarantined: {s['quarantined']}")
     print(f"Trajectories collected: {s['trajectories_collected']} (quarantined {s['trajectories_quarantined']}, "
           f"receipts not eligible {s['receipts_not_eligible']}, pending {s['receipts_pending']})")
