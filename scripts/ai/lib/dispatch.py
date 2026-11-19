@@ -58,7 +58,18 @@ if str(_SHARED) not in sys.path:
 
 try:
     from llm_config import build_llama_payload, AGENT_TASK_MAX_TOKENS  # type: ignore
+    from llm_config import (  # type: ignore
+        REVIEW_VERDICT_SCHEMA, attach_json_schema, render_review_verdict,
+    )
 except ImportError:
+    # shared module unreachable (test environments): reviewer output stays free text
+    REVIEW_VERDICT_SCHEMA = None  # type: ignore
+
+    def attach_json_schema(payload, schema, name="output"):  # type: ignore
+        return payload
+
+    def render_review_verdict(text):  # type: ignore
+        return None
     # Fallback: inline minimal implementation so dispatch works even when
     # the shared module path isn't resolvable (e.g. test environments).
     AGENT_TASK_MAX_TOKENS = 1200
@@ -648,6 +659,14 @@ class DirectRunner:
             role=config.role,
             task_type=config.task_type,
         )
+        # Commit-review verdicts are machine-read (aq-land, aq-review-receipt). Opt-in only: other reviewer calls (rsi_convene) want free text.
+        _verdict_schema = (
+            REVIEW_VERDICT_SCHEMA
+            if config.role == "reviewer" and os.environ.get("AQ_LOCAL_VERDICT_SCHEMA") == "1"
+            else None
+        )
+        attach_json_schema(payload, _verdict_schema, "review_verdict")
+        _constrained = "response_format" in payload
 
         req = urllib.request.Request(
             f"{config.llama_url}/v1/chat/completions",
@@ -750,6 +769,14 @@ class DirectRunner:
                             role=config.role, run_id=task_id)
 
             result = output_file.read_text() if output_file.exists() else ""
+            if _constrained and _verdict_schema is not None:
+                # Keep the text contract (Reviewed-head-sha / Review-Disposition lines) for
+                # existing consumers; the raw JSON stays beside it. Invalid JSON is left as is.
+                _rendered = render_review_verdict(result)
+                if _rendered is not None:
+                    Path(str(output_file) + ".verdict.json").write_text(result)
+                    output_file.write_text(_rendered)
+                    result = _rendered
             if tokens_in or final_toks or _finish_reason:
                 Path(str(output_file) + ".usage.json").write_text(
                     json.dumps({"tokens_in": tokens_in, "tokens_out": final_toks,
