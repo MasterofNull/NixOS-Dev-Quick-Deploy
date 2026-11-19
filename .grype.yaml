@@ -344,3 +344,342 @@ ignore:
     package:
       name: ffmpeg
     reason: "Re-verified 2026-11-14: still no released upstream fix (latest tags n9.0.2, n8.1.3; CVE range 'through 9.0.2'; fix on master only): stack exhaustion in av_encryption_init_info_free (recursive PSSH). Affects 8.1.3 and the 9.0.2 CLI, so not version-scoped. Library consumers (pipewire, opencv, qtmultimedia, gst-libav) are not known to hand ffmpeg untrusted network URLs (repo consumer list unchanged: only scripts/ai/aq-transcribe invokes ffmpeg); aq-transcribe blocks rtsp/sftp/dash-network protocols via -protocol_whitelist file,pipe. WR-SEC-3 expires=2026-12-14"
+
+  # --- 2026-11-18 closure triage (171 alerts): time-boxed, version-scoped exceptions ---
+  # Evidence: triage evidence .agents/delegation/outputs/cve-triage-20261118.md + docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md
+
+  - vulnerability: CVE-2026-125198
+    package:
+      name: ffmpeg
+      version: "8.1.3"
+    reason: "ffmpeg 8.1.3, no released fix ('through 9.0.2'). Exception basis (applies to this CVE only): PLATFORM-only code (Android MediaCodec / Apple VideoToolbox): not built for or reachable on x86_64 Linux. Input demuxers/decoders are NOT covered by this basis. WR-SEC-3 expires=2026-12-14; evidence docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-125206
+    package:
+      name: ffmpeg
+      version: "8.1.3"
+    reason: "ffmpeg 8.1.3, no released fix ('through 9.0.2'). Exception basis (applies to this CVE only): ENCODER-only code path: aq-transcribe:139 selects no encoder but pcm_s16le (-ar 16000 -ac 1 audio.wav), so this encoder is never opened. Input demuxers/decoders are NOT covered by this basis. WR-SEC-3 expires=2026-12-14; evidence docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-125195
+    package:
+      name: ffmpeg
+      version: "8.1.3"
+    reason: "ffmpeg 8.1.3, no released fix ('through 9.0.2'). Exception basis (applies to this CVE only): ENCODER-only code path: aq-transcribe:139 selects no encoder but pcm_s16le (-ar 16000 -ac 1 audio.wav), so this encoder is never opened. Input demuxers/decoders are NOT covered by this basis. WR-SEC-3 expires=2026-12-14; evidence docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-125188
+    package:
+      name: ffmpeg
+      version: "8.1.3"
+    reason: "ffmpeg 8.1.3, no released fix ('through 9.0.2'). Exception basis (applies to this CVE only): ENCODER-only code path: aq-transcribe:139 selects no encoder but pcm_s16le (-ar 16000 -ac 1 audio.wav), so this encoder is never opened. Input demuxers/decoders are NOT covered by this basis. WR-SEC-3 expires=2026-12-14; evidence docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-125217
+    package:
+      name: ffmpeg
+      version: "8.1.3"
+    reason: "ffmpeg 8.1.3, no released fix ('through 9.0.2'). Exception basis (applies to this CVE only): ENCODER-only code path: aq-transcribe:139 selects no encoder but pcm_s16le (-ar 16000 -ac 1 audio.wav), so this encoder is never opened. Input demuxers/decoders are NOT covered by this basis. WR-SEC-3 expires=2026-12-14; evidence docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-125265
+    package:
+      name: ffmpeg
+      version: "8.1.3"
+    reason: "ffmpeg 8.1.3, no released fix ('through 9.0.2'). Exception basis (applies to this CVE only): HW-ACCEL-only code path (vaapi/vdpau/nvdec/v4l2/vulkan/dxva2/qsv): aq-transcribe passes no -hwaccel/-hwaccel_device, so the hwaccel is never initialised. Input demuxers/decoders are NOT covered by this basis. WR-SEC-3 expires=2026-12-14; evidence docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-125270
+    package:
+      name: ffmpeg
+      version: "8.1.3"
+    reason: "ffmpeg 8.1.3, no released fix ('through 9.0.2'). Exception basis (applies to this CVE only): HW-ACCEL-only code path (vaapi/vdpau/nvdec/v4l2/vulkan/dxva2/qsv): aq-transcribe passes no -hwaccel/-hwaccel_device, so the hwaccel is never initialised. Input demuxers/decoders are NOT covered by this basis. WR-SEC-3 expires=2026-12-14; evidence docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-125253
+    package:
+      name: ffmpeg
+      version: "8.1.3"
+    reason: "ffmpeg 8.1.3, no released fix ('through 9.0.2'). Exception basis (applies to this CVE only): ARCHITECTURE-only (32-bit or big-endian builds): this host is x86_64 little-endian. Input demuxers/decoders are NOT covered by this basis. WR-SEC-3 expires=2026-12-14; evidence docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-125261
+    package:
+      name: ffmpeg
+      version: "8.1.3"
+    reason: "ffmpeg 8.1.3, no released fix ('through 9.0.2'). Exception basis (applies to this CVE only): ENCODER-only code path: aq-transcribe:139 selects no encoder but pcm_s16le (-ar 16000 -ac 1 audio.wav), so this encoder is never opened. Input demuxers/decoders are NOT covered by this basis. WR-SEC-3 expires=2026-12-14; evidence docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-125252
+    package:
+      name: ffmpeg
+      version: "8.1.3"
+    reason: "ffmpeg 8.1.3, no released fix ('through 9.0.2'). Exception basis (applies to this CVE only): HW-ACCEL-only code path (vaapi/vdpau/nvdec/v4l2/vulkan/dxva2/qsv): aq-transcribe passes no -hwaccel/-hwaccel_device, so the hwaccel is never initialised. Input demuxers/decoders are NOT covered by this basis. WR-SEC-3 expires=2026-12-14; evidence docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-125215
+    package:
+      name: ffmpeg
+      version: "8.1.3"
+    reason: "ffmpeg 8.1.3, no released fix ('through 9.0.2'). Exception basis (applies to this CVE only): ENCODER-only code path: aq-transcribe:139 selects no encoder but pcm_s16le (-ar 16000 -ac 1 audio.wav), so this encoder is never opened. Input demuxers/decoders are NOT covered by this basis. WR-SEC-3 expires=2026-12-14; evidence docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-125191
+    package:
+      name: ffmpeg
+      version: "8.1.3"
+    reason: "ffmpeg 8.1.3, no released fix ('through 9.0.2'). Exception basis (applies to this CVE only): HW-ACCEL-only code path (vaapi/vdpau/nvdec/v4l2/vulkan/dxva2/qsv): aq-transcribe passes no -hwaccel/-hwaccel_device, so the hwaccel is never initialised. Input demuxers/decoders are NOT covered by this basis. WR-SEC-3 expires=2026-12-14; evidence docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-125258
+    package:
+      name: ffmpeg
+      version: "8.1.3"
+    reason: "ffmpeg 8.1.3, no released fix ('through 9.0.2'). Exception basis (applies to this CVE only): ENCODER-only code path: aq-transcribe:139 selects no encoder but pcm_s16le (-ar 16000 -ac 1 audio.wav), so this encoder is never opened. Input demuxers/decoders are NOT covered by this basis. WR-SEC-3 expires=2026-12-14; evidence docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-125245
+    package:
+      name: ffmpeg
+      version: "8.1.3"
+    reason: "ffmpeg 8.1.3, no released fix ('through 9.0.2'). Exception basis (applies to this CVE only): HW-ACCEL-only code path (vaapi/vdpau/nvdec/v4l2/vulkan/dxva2/qsv): aq-transcribe passes no -hwaccel/-hwaccel_device, so the hwaccel is never initialised. Input demuxers/decoders are NOT covered by this basis. WR-SEC-3 expires=2026-12-14; evidence docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-125237
+    package:
+      name: ffmpeg
+      version: "8.1.3"
+    reason: "ffmpeg 8.1.3, no released fix ('through 9.0.2'). Exception basis (applies to this CVE only): HW-ACCEL-only code path (vaapi/vdpau/nvdec/v4l2/vulkan/dxva2/qsv): aq-transcribe passes no -hwaccel/-hwaccel_device, so the hwaccel is never initialised. Input demuxers/decoders are NOT covered by this basis. WR-SEC-3 expires=2026-12-14; evidence docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-125242
+    package:
+      name: ffmpeg
+      version: "8.1.3"
+    reason: "ffmpeg 8.1.3, no released fix ('through 9.0.2'). Exception basis (applies to this CVE only): HW-ACCEL-only code path (vaapi/vdpau/nvdec/v4l2/vulkan/dxva2/qsv): aq-transcribe passes no -hwaccel/-hwaccel_device, so the hwaccel is never initialised. Input demuxers/decoders are NOT covered by this basis. WR-SEC-3 expires=2026-12-14; evidence docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-125251
+    package:
+      name: ffmpeg
+      version: "8.1.3"
+    reason: "ffmpeg 8.1.3, no released fix ('through 9.0.2'). Exception basis (applies to this CVE only): ARCHITECTURE-only (32-bit or big-endian builds): this host is x86_64 little-endian. Input demuxers/decoders are NOT covered by this basis. WR-SEC-3 expires=2026-12-14; evidence docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-125249
+    package:
+      name: ffmpeg
+      version: "8.1.3"
+    reason: "ffmpeg 8.1.3, no released fix ('through 9.0.2'). Exception basis (applies to this CVE only): HW-ACCEL-only code path (vaapi/vdpau/nvdec/v4l2/vulkan/dxva2/qsv): aq-transcribe passes no -hwaccel/-hwaccel_device, so the hwaccel is never initialised. Input demuxers/decoders are NOT covered by this basis. WR-SEC-3 expires=2026-12-14; evidence docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-125200
+    package:
+      name: ffmpeg
+      version: "8.1.3"
+    reason: "ffmpeg 8.1.3, no released fix ('through 9.0.2'). Exception basis (applies to this CVE only): ENCODER-only code path: aq-transcribe:139 selects no encoder but pcm_s16le (-ar 16000 -ac 1 audio.wav), so this encoder is never opened. Input demuxers/decoders are NOT covered by this basis. WR-SEC-3 expires=2026-12-14; evidence docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-125194
+    package:
+      name: ffmpeg
+      version: "8.1.3"
+    reason: "ffmpeg 8.1.3, no released fix ('through 9.0.2'). Exception basis (applies to this CVE only): ENCODER-only code path: aq-transcribe:139 selects no encoder but pcm_s16le (-ar 16000 -ac 1 audio.wav), so this encoder is never opened. Input demuxers/decoders are NOT covered by this basis. WR-SEC-3 expires=2026-12-14; evidence docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-125216
+    package:
+      name: ffmpeg
+      version: "8.1.3"
+    reason: "ffmpeg 8.1.3, no released fix ('through 9.0.2'). Exception basis (applies to this CVE only): ENCODER-only code path: aq-transcribe:139 selects no encoder but pcm_s16le (-ar 16000 -ac 1 audio.wav), so this encoder is never opened. Input demuxers/decoders are NOT covered by this basis. WR-SEC-3 expires=2026-12-14; evidence docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-125187
+    package:
+      name: ffmpeg
+      version: "8.1.3"
+    reason: "ffmpeg 8.1.3, no released fix ('through 9.0.2'). Exception basis (applies to this CVE only): ENCODER-only code path: aq-transcribe:139 selects no encoder but pcm_s16le (-ar 16000 -ac 1 audio.wav), so this encoder is never opened. Input demuxers/decoders are NOT covered by this basis. WR-SEC-3 expires=2026-12-14; evidence docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-125232
+    package:
+      name: ffmpeg
+      version: "8.1.3"
+    reason: "ffmpeg 8.1.3, no released fix ('through 9.0.2'). Exception basis (applies to this CVE only): ENCODER-only code path: aq-transcribe:139 selects no encoder but pcm_s16le (-ar 16000 -ac 1 audio.wav), so this encoder is never opened. Input demuxers/decoders are NOT covered by this basis. WR-SEC-3 expires=2026-12-14; evidence docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-125234
+    package:
+      name: ffmpeg
+      version: "8.1.3"
+    reason: "ffmpeg 8.1.3, no released fix ('through 9.0.2'). Exception basis (applies to this CVE only): ENCODER-only code path: aq-transcribe:139 selects no encoder but pcm_s16le (-ar 16000 -ac 1 audio.wav), so this encoder is never opened. Input demuxers/decoders are NOT covered by this basis. WR-SEC-3 expires=2026-12-14; evidence docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-125208
+    package:
+      name: ffmpeg
+      version: "8.1.3"
+    reason: "ffmpeg 8.1.3, no released fix ('through 9.0.2'). Exception basis (applies to this CVE only): HW-ACCEL-only code path (vaapi/vdpau/nvdec/v4l2/vulkan/dxva2/qsv): aq-transcribe passes no -hwaccel/-hwaccel_device, so the hwaccel is never initialised. Input demuxers/decoders are NOT covered by this basis. WR-SEC-3 expires=2026-12-14; evidence docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-125181
+    package:
+      name: ffmpeg
+      version: "8.1.3"
+    reason: "ffmpeg 8.1.3, no released fix ('through 9.0.2'). Exception basis (applies to this CVE only): ARCHITECTURE-only (32-bit or big-endian builds): this host is x86_64 little-endian. Input demuxers/decoders are NOT covered by this basis. WR-SEC-3 expires=2026-12-14; evidence docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-125239
+    package:
+      name: ffmpeg
+      version: "8.1.3"
+    reason: "ffmpeg 8.1.3, no released fix ('through 9.0.2'). Exception basis (applies to this CVE only): HW-ACCEL-only code path (vaapi/vdpau/nvdec/v4l2/vulkan/dxva2/qsv): aq-transcribe passes no -hwaccel/-hwaccel_device, so the hwaccel is never initialised. Input demuxers/decoders are NOT covered by this basis. WR-SEC-3 expires=2026-12-14; evidence docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-125235
+    package:
+      name: ffmpeg
+      version: "8.1.3"
+    reason: "ffmpeg 8.1.3, no released fix ('through 9.0.2'). Exception basis (applies to this CVE only): HW-ACCEL-only code path (vaapi/vdpau/nvdec/v4l2/vulkan/dxva2/qsv): aq-transcribe passes no -hwaccel/-hwaccel_device, so the hwaccel is never initialised. Input demuxers/decoders are NOT covered by this basis. WR-SEC-3 expires=2026-12-14; evidence docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-125259
+    package:
+      name: ffmpeg
+      version: "8.1.3"
+    reason: "ffmpeg 8.1.3, no released fix ('through 9.0.2'). Exception basis (applies to this CVE only): ENCODER-only code path: aq-transcribe:139 selects no encoder but pcm_s16le (-ar 16000 -ac 1 audio.wav), so this encoder is never opened. Input demuxers/decoders are NOT covered by this basis. WR-SEC-3 expires=2026-12-14; evidence docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-125229
+    package:
+      name: ffmpeg
+      version: "8.1.3"
+    reason: "ffmpeg 8.1.3, no released fix ('through 9.0.2'). Exception basis (applies to this CVE only): ENCODER-only code path: aq-transcribe:139 selects no encoder but pcm_s16le (-ar 16000 -ac 1 audio.wav), so this encoder is never opened. Input demuxers/decoders are NOT covered by this basis. WR-SEC-3 expires=2026-12-14; evidence docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-125219
+    package:
+      name: ffmpeg
+      version: "8.1.3"
+    reason: "ffmpeg 8.1.3, no released fix ('through 9.0.2'). Exception basis (applies to this CVE only): HW-ACCEL-only code path (vaapi/vdpau/nvdec/v4l2/vulkan/dxva2/qsv): aq-transcribe passes no -hwaccel/-hwaccel_device, so the hwaccel is never initialised. Input demuxers/decoders are NOT covered by this basis. WR-SEC-3 expires=2026-12-14; evidence docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-125212
+    package:
+      name: ffmpeg
+      version: "8.1.3"
+    reason: "ffmpeg 8.1.3, no released fix ('through 9.0.2'). Exception basis (applies to this CVE only): PLATFORM-only code (Android MediaCodec / Apple VideoToolbox): not built for or reachable on x86_64 Linux. Input demuxers/decoders are NOT covered by this basis. WR-SEC-3 expires=2026-12-14; evidence docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-125256
+    package:
+      name: ffmpeg
+      version: "8.1.3"
+    reason: "ffmpeg 8.1.3, no released fix ('through 9.0.2'). Exception basis (applies to this CVE only): ENCODER-only code path: aq-transcribe:139 selects no encoder but pcm_s16le (-ar 16000 -ac 1 audio.wav), so this encoder is never opened. Input demuxers/decoders are NOT covered by this basis. WR-SEC-3 expires=2026-12-14; evidence docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-125214
+    package:
+      name: ffmpeg
+      version: "8.1.3"
+    reason: "ffmpeg 8.1.3, no released fix ('through 9.0.2'). Exception basis (applies to this CVE only): ARCHITECTURE-only (32-bit or big-endian builds): this host is x86_64 little-endian. Input demuxers/decoders are NOT covered by this basis. WR-SEC-3 expires=2026-12-14; evidence docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-125204
+    package:
+      name: ffmpeg
+      version: "8.1.3"
+    reason: "ffmpeg 8.1.3, no released fix ('through 9.0.2'). Exception basis (applies to this CVE only): ENCODER-only code path: aq-transcribe:139 selects no encoder but pcm_s16le (-ar 16000 -ac 1 audio.wav), so this encoder is never opened. Input demuxers/decoders are NOT covered by this basis. WR-SEC-3 expires=2026-12-14; evidence docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-125260
+    package:
+      name: ffmpeg
+      version: "8.1.3"
+    reason: "ffmpeg 8.1.3, no released fix ('through 9.0.2'). Exception basis (applies to this CVE only): ENCODER-only code path: aq-transcribe:139 selects no encoder but pcm_s16le (-ar 16000 -ac 1 audio.wav), so this encoder is never opened. Input demuxers/decoders are NOT covered by this basis. WR-SEC-3 expires=2026-12-14; evidence docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-125227
+    package:
+      name: ffmpeg
+      version: "8.1.3"
+    reason: "ffmpeg 8.1.3, no released fix ('through 9.0.2'). Exception basis (applies to this CVE only): ARCHITECTURE-only (32-bit or big-endian builds): this host is x86_64 little-endian. Input demuxers/decoders are NOT covered by this basis. WR-SEC-3 expires=2026-12-14; evidence docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-125218
+    package:
+      name: ffmpeg
+      version: "8.1.3"
+    reason: "ffmpeg 8.1.3, no released fix ('through 9.0.2'). Exception basis (applies to this CVE only): ENCODER-only code path: aq-transcribe:139 selects no encoder but pcm_s16le (-ar 16000 -ac 1 audio.wav), so this encoder is never opened. Input demuxers/decoders are NOT covered by this basis. WR-SEC-3 expires=2026-12-14; evidence docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-125202
+    package:
+      name: ffmpeg
+      version: "8.1.3"
+    reason: "ffmpeg 8.1.3, no released fix ('through 9.0.2'). Exception basis (applies to this CVE only): HW-ACCEL-only code path (vaapi/vdpau/nvdec/v4l2/vulkan/dxva2/qsv): aq-transcribe passes no -hwaccel/-hwaccel_device, so the hwaccel is never initialised. Input demuxers/decoders are NOT covered by this basis. WR-SEC-3 expires=2026-12-14; evidence docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-125257
+    package:
+      name: ffmpeg
+      version: "8.1.3"
+    reason: "ffmpeg 8.1.3, no released fix ('through 9.0.2'). Exception basis (applies to this CVE only): ENCODER-only code path: aq-transcribe:139 selects no encoder but pcm_s16le (-ar 16000 -ac 1 audio.wav), so this encoder is never opened. Input demuxers/decoders are NOT covered by this basis. WR-SEC-3 expires=2026-12-14; evidence docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-125196
+    package:
+      name: ffmpeg
+      version: "8.1.3"
+    reason: "ffmpeg 8.1.3, no released fix ('through 9.0.2'). Exception basis (applies to this CVE only): ENCODER-only code path: aq-transcribe:139 selects no encoder but pcm_s16le (-ar 16000 -ac 1 audio.wav), so this encoder is never opened. Input demuxers/decoders are NOT covered by this basis. WR-SEC-3 expires=2026-12-14; evidence docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-125233
+    package:
+      name: ffmpeg
+      version: "8.1.3"
+    reason: "ffmpeg 8.1.3, no released fix ('through 9.0.2'). Exception basis (applies to this CVE only): ENCODER-only code path: aq-transcribe:139 selects no encoder but pcm_s16le (-ar 16000 -ac 1 audio.wav), so this encoder is never opened. Input demuxers/decoders are NOT covered by this basis. WR-SEC-3 expires=2026-12-14; evidence docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-125222
+    package:
+      name: ffmpeg
+      version: "8.1.3"
+    reason: "ffmpeg 8.1.3, no released fix ('through 9.0.2'). Exception basis (applies to this CVE only): ARCHITECTURE-only (32-bit or big-endian builds): this host is x86_64 little-endian. Input demuxers/decoders are NOT covered by this basis. WR-SEC-3 expires=2026-12-14; evidence docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-125213
+    package:
+      name: ffmpeg
+      version: "8.1.3"
+    reason: "ffmpeg 8.1.3, no released fix ('through 9.0.2'). Exception basis (applies to this CVE only): ARCHITECTURE-only (32-bit or big-endian builds): this host is x86_64 little-endian. Input demuxers/decoders are NOT covered by this basis. WR-SEC-3 expires=2026-12-14; evidence docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-125250
+    package:
+      name: ffmpeg
+      version: "8.1.3"
+    reason: "ffmpeg 8.1.3, no released fix ('through 9.0.2'). Exception basis (applies to this CVE only): ENCODER-only code path: aq-transcribe:139 selects no encoder but pcm_s16le (-ar 16000 -ac 1 audio.wav), so this encoder is never opened. Input demuxers/decoders are NOT covered by this basis. WR-SEC-3 expires=2026-12-14; evidence docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-119566
+    package:
+      name: prometheus
+      version: "3.12.0"
+    reason: "prometheus 3.12.0 (fixed in >3.15.1; unstable 3.16.0, nixos-26.05 has 3.12.0). Exception basis (applies to this CVE only): the leak needs Azure AD / Google IAM auth on a Prometheus remote_write that a redirect can divert. services.prometheus in nix/modules/services/monitoring.nix:625 configures no remoteWrite and no cloud auth (rg remote_write|azuread|sigv4|google over .nix/.yml/.py/.sh finds only Tempo metrics_generator at monitoring.nix:49, a different component writing to local Prometheus). Re-check on any monitoring.nix change. WR-SEC-9 expires=2027-02-16; triage evidence docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-119377
+    package:
+      name: sqlite
+      version: "3.53.3"
+    reason: "sqlite 3.53.3 (fixed 3.54.0; nixos-26.05 head still 3.53.3). Exception basis (applies to this CVE only): only matters when an application installs an authorizer (sqlite3_set_authorizer, SQLITE_READ denials); rg for set_authorizer over .py/.sql/.sh/.nix/.rs = 0 hits. Does not cover other consumers. WR-SEC-5 expires=2026-12-18; triage evidence docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-119372
+    package:
+      name: sqlite
+      version: "3.53.3"
+    reason: "sqlite 3.53.3 (fixed 3.54.0; nixos-26.05 head still 3.53.3). Exception basis (applies to this CVE only): needs an FTS3/FTS4 table (fts3BestSnippet); rg for fts3/fts4 over .py/.sql/.sh/.nix/.rs = 0 hits, the repo uses only FTS5. Does not cover third-party software that opens untrusted database files. WR-SEC-5 expires=2026-12-18; triage evidence docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-119373
+    package:
+      name: sqlite
+      version: "3.53.3"
+    reason: "sqlite 3.53.3 (fixed 3.54.0; nixos-26.05 head still 3.53.3). Exception basis (applies to this CVE only): needs an FTS5 table declared detail=none (negative rowids + prefix MATCH). The only FTS5 table in the repo is deployment_events_fts (dashboard/backend/api/services/context_store.py:164, default detail); rg for detail=none over .py/.sql/.sh/.nix/.rs has no SQL hit. Does not cover third-party software that opens untrusted database files. WR-SEC-5 expires=2026-12-18; triage evidence docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-119379
+    package:
+      name: sqlite
+      version: "3.53.3"
+    reason: "sqlite 3.53.3 (fixed 3.54.0; nixos-26.05 head still 3.53.3). Exception basis (applies to this CVE only): needs an application calling the session-extension C API sqlite3changeset_apply(); rg over .py/.sql/.sh/.nix/.rs = 0 hits and Python's sqlite3 module does not expose it. Does not cover other C consumers. WR-SEC-5 expires=2026-12-18; triage evidence docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-119586
+    package:
+      name: sqlite
+      version: "3.53.3"
+    reason: "sqlite 3.53.3 (fixed 3.54.0; nixos-26.05 head still 3.53.3). Exception basis (applies to this CVE only): flaw is in the sqlite3 CLI .recover command output being piped back into the shell; rg shows no repo script running sqlite3 .recover (only unrelated revocation_epoch.recover() Python calls). Manual operator action only. WR-SEC-5 expires=2026-12-18; triage evidence docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2000-0006
+    package:
+      name: strace
+      version: "7.3"
+    reason: "false positive (applies to this CVE only): NVD CVE-2000-0006 is a 1999-2000 flaw in another strace codebase (memory-mapped file names); its CPE has no version bound; strace 7.3 postdates it by 26 years and is the Linux strace project. No WR-SEC token; triage evidence docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-113680
+    package:
+      name: harfbuzz
+      version: "14.5.1"
+    reason: "harfbuzz, no released fix (NVD 8.0.0 through 14.6.0; commit 5e821de8 unreleased). Exception basis (applies to this CVE only): NULL deref in the experimental WebAssembly shaper host imports (buffer_set_contents/face_create/font_set_coords); nix eval of nixpkgs harfbuzz mesonFlags (13.2.1 stable, 14.5.1 unstable) has no -Dwasm option and buildInputs are only glib+freetype (no wasm runtime such as wamr), so the wasm shaper is not compiled. WR-SEC-6 expires=2026-12-18; triage evidence docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-113679
+    package:
+      name: harfbuzz
+      version: "14.5.1"
+    reason: "harfbuzz, no released fix (NVD 8.0.0 through 14.6.0; commit 5e821de8 unreleased). Exception basis (applies to this CVE only): out-of-bounds write in the experimental WebAssembly shaper font_glyph_to_string import; nix eval of nixpkgs harfbuzz mesonFlags (13.2.1 stable, 14.5.1 unstable) has no -Dwasm option and buildInputs are only glib+freetype (no wasm runtime such as wamr), so the wasm shaper is not compiled. WR-SEC-6 expires=2026-12-18; triage evidence docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-113680
+    package:
+      name: harfbuzz
+      version: "13.2.1"
+    reason: "harfbuzz, no released fix (NVD 8.0.0 through 14.6.0; commit 5e821de8 unreleased). Exception basis (applies to this CVE only): NULL deref in the experimental WebAssembly shaper host imports (buffer_set_contents/face_create/font_set_coords); nix eval of nixpkgs harfbuzz mesonFlags (13.2.1 stable, 14.5.1 unstable) has no -Dwasm option and buildInputs are only glib+freetype (no wasm runtime such as wamr), so the wasm shaper is not compiled. WR-SEC-6 expires=2026-12-18; triage evidence docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
+
+  - vulnerability: CVE-2026-113679
+    package:
+      name: harfbuzz
+      version: "13.2.1"
+    reason: "harfbuzz, no released fix (NVD 8.0.0 through 14.6.0; commit 5e821de8 unreleased). Exception basis (applies to this CVE only): out-of-bounds write in the experimental WebAssembly shaper font_glyph_to_string import; nix eval of nixpkgs harfbuzz mesonFlags (13.2.1 stable, 14.5.1 unstable) has no -Dwasm option and buildInputs are only glib+freetype (no wasm runtime such as wamr), so the wasm shaper is not compiled. WR-SEC-6 expires=2026-12-18; triage evidence docs/harness-first/evidence/2026-11-18-cve-triage-decisions.md"
