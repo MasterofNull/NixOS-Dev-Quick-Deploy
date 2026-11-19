@@ -1134,6 +1134,18 @@
     # Profile (ai-dev/gaming/minimal) selects the primary package set.
     # Roles layer additional capabilities on top without creating profile explosion.
     # ---------------------------------------------------------------------------
+    leanCtx.shellSecurity = lib.mkOption {
+      type = lib.types.nullOr (lib.types.enum ["enforce" "warn" "off"]);
+      default = null;
+      description = ''
+        Declarative top-level `shell_security` key in the primary user's
+        ~/.lean-ctx/config.toml (lean-ctx 3.12.x). null leaves the file unmanaged.
+        "warn" logs and compresses but never blocks, so harness tools outside
+        lean-ctx's default shell allowlist keep working. Applied on every
+        activation by system.activationScripts.leanCtxShellSecurity.
+      '';
+    };
+
     roles = {
       aiStack.enable = lib.mkOption {
         type = lib.types.bool;
@@ -1181,6 +1193,20 @@
         type = lib.types.bool;
         default = true;
         description = "Enable declarative AI stack runtime services when the aiStack role is active.";
+      };
+
+      mcpTimeoutScale = lib.mkOption {
+        type = lib.types.numbers.positive;
+        default =
+          if lib.elem config.mySystem.hardwareTier ["nano" "micro"]
+          then 2
+          else 1;
+        defaultText = lib.literalMD "2 on nano/micro hardware tiers, else 1";
+        description = ''
+          Multiplier on every MCP bridge per-tool HTTP timeout
+          (AQ_MCP_TIMEOUT_SCALE read by scripts/ai/mcp-bridge-hybrid.py).
+          Defaults derive from the hardware tier; raise it on slow hosts.
+        '';
       };
 
       # agent-auth AUTH-S2 (DESIGN 6.1): shadow authorization lifecycle.
@@ -1415,6 +1441,19 @@
             the latest version has issues.
 
             Only effective when trackLatest = true.
+          '';
+        };
+
+        vulkanAllowIgpuOffload = lib.mkOption {
+          type = lib.types.bool;
+          description = ''
+            Apply nix/patches/llama-cpp/allow-vulkan-igpu-offload*.patch, which makes
+            the Vulkan backend always include integrated GPUs in the automatic device
+            list (upstream skips an iGPU when a discrete GPU exists). Defaulted in
+            nix/modules/roles/ai-stack.nix from host facts: true only for APU /
+            iGPU-only hosts, false when a discrete GPU is present, so a dGPU+iGPU host
+            does not spill layers onto shared system memory. Set explicitly to opt in
+            to mixed-GPU offload. Only effective for Vulkan builds with trackLatest.
           '';
         };
 

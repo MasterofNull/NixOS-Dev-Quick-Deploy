@@ -19,6 +19,7 @@
   active = [
     "grafana" # Build-checked vulnerability fix from unstable.
     "nmap" # Build-checked vulnerability fix from unstable.
+    "xdg-desktop-portal" # CVE-2026-55888/55889 fixed in 1.22.1 (stable 26.05 = 1.20.4); referrers are only system-path/dbus-1/user-units (small rebuild). WR-SEC-4.
     "antigravity" # IDE. Unstable renamed it: antigravity -> antigravity-ide (2.5.5 vs stable 1.23.2).
   ];
 
@@ -32,7 +33,6 @@
     "ffmpeg" # CLI/media: stable 8.1.2 -> unstable 9.0.1 (21 closure alerts).
     "perl" # Scripting runtime (CVE-2023-31484, CVE-2023-31486)
     "pipewire" # Media pipeline vulnerability fix from unstable (CVE-2024-47537 etc.)
-    "xdg-desktop-portal" # Desktop portal update matching pipewire 1.6+
   ];
 
   # Upstream attr renames: stable-era name (the name consumers like
