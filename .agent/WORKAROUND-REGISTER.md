@@ -479,3 +479,27 @@ Codex lane absent).
 - Why: Gemini is quota-exhausted until ~2026-11-20 17:21 PST, which leaves Codex as the only non-Claude reviewer for gate and large diffs; the 1M cap admitted about 1 review per hour. The owner chose a "temp raise" in the CLI on 2026-11-14.
 - Root cause / proper fix: a single non-Claude reviewer is a single point of failure. The proper fix is a second reviewer lane (opencode or continue-cli), which is backlog.
 - Expiry: 2026-11-20 (Gemini reset) or when the second lane lands, whichever comes first. Do not carry it into new sessions.
+
+## WR-SEC-10 — grype ignores for CVEs in contained sandboxes (appimage-run libpng 1.2.59, playwright-webkit libxml2 2.13.9 / libjxl 0.8.2) — OPEN (MAINT-DUE 2027-02-15)
+- symptom: Grype flags old library versions bundled only inside appimage-run-fhsenv-rootfs and playwright-webkit.
+- band-aid in place? yes: 28 `.grype.yaml` ignores tagged `[WR-SEC-10] expires=2027-02-15`. Basis verified 2026-11-19: `nix-store -q --referrers` shows libpng-1.2.59 referenced only by appimage-run-fhsenv-rootfs and libxml2-2.13.9/libjxl-0.8.2 only by playwright-webkit; every match for these entries is on that bundled version.
+- root cause: upstream bundles legacy libraries; no 1.2.x/old-branch fixes exist.
+- producer to fix: upstream appimage-run / playwright packaging in nixpkgs.
+- fix-path: drop the entries when the bundled libs move to fixed versions or the sandboxes are removed; re-verify referrers at expiry.
+- class: T5 · severity: medium (contained) · owner hyperd.
+
+## WR-SEC-11 — grype ignores where the advisory DB lists no fixed version — OPEN (MAINT-DUE 2027-02-15)
+- symptom: 22 CVEs on gnutls, libssh, libtiff, p11-kit, zlib, gnupg, jbig2dec, libinput, pixman, libmad etc. match the installed version and the vulnerability DB lists no fix (state empty/unfixed).
+- band-aid in place? yes: `.grype.yaml` ignores tagged `[WR-SEC-11] expires=2027-02-15`. Basis verified 2026-11-19 against `grype -o json` fix data (no fixed version) on the 2026-11-14 closure SBOM.
+- root cause: no upstream fix published (or unmaintained project).
+- producer to fix: upstream releases.
+- fix-path: at expiry re-run grype; drop any entry whose DB now lists a fixed version, bump nixpkgs for those.
+- class: T5 · severity: medium · owner hyperd.
+
+## WR-SEC-12 — grype ignores for CPE product collisions and version-ordering false positives — OPEN (MAINT-DUE 2027-02-15)
+- symptom: Grype matches unrelated products by name (shellcheck/Mediawiki, samba/NetApp, sherlock, malcontent, typescript/Visual Studio, redis/Debian Lua) or mis-orders versions (lapack "3", dnsmasq 2.93, libmpeg2, ada, libcupsfilters/libppd b-suffix).
+- band-aid in place? yes: 7 `.grype.yaml` ignores tagged `[WR-SEC-12] expires=2027-02-15`; version-ordering ones confirmed against DB fix versions <= installed.
+- root cause: CPE name collision / Grype version parser.
+- producer to fix: Grype/NVD CPE data.
+- fix-path: re-check at expiry; drop on a Grype release that fixes the ordering.
+- class: T5 · severity: low · owner hyperd.
