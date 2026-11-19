@@ -216,3 +216,20 @@ All three stay in this plan as D2 and are not dropped.
 - **F3 clarification:** once the `.tar.zst` and `.sha256` are verified (`tar -tf` succeeds and the checksum matches), the uncompressed source is removed, so retention actually reclaims space. The verified tarball is the archived form (Rule 12 via a compressed move). If verification fails, the source stays.
 - **Owner decision 4:** confirm this reading of Rule 12 (archive = verified compressed copy, then remove the original). Recommended: yes. Until it is confirmed, the archiver moves the original into `archive/` alongside the tarball, which reclaims no space.
 - **D1 build order:** S0a (the `CLAUDE_CODE_TMPDIR` variable and 0700 directories) ships first, with these PRDs. Then S0b (retention timer and archiver), S1, S2, S5, S3, S4.
+
+## Revision 3 (Codex catch-up review, 2026-11-19: REVISE; .agents/delegation/outputs/prd-review-20261119/codex.out)
+- **Codex P1, archiving races a live writer:** a verified tarball proves integrity, not that the source stopped changing. The archiver (S0b, S8) only takes quiescent sources:
+  - the source is older than the idle-age option;
+  - no process holds a file open under it (`fuser -m` or a `/proc/*/fd` scan);
+  - for Claude session directories, the session is not running (its id is not the current one, and no `claude` process has it as its temp root).
+  - It snapshots the source's mtime and size, archives, then re-checks them; if they changed, it keeps the source and retries later. Active sessions are never moved.
+  - S0b ships with this check; it does not depend on the ledger.
+- **Codex P2, torn ledger records:** each event is one line, written with a single `write()` under `flock`, followed by `fsync`. The reader ignores an incomplete final line, which a crash mid-append can leave, and reports it. It fails closed on corruption before the last line: the entry is marked `needs-attention`, never auto-resumed. Test: truncate the last append and check that reconciliation still runs and replays nothing that was done.
+- **One-off run 2026-11-19 (owner directive):** `compress-archives.py` compressed only archive entries (static by definition) and worktrees idle for more than 24h with no open PR, which meets the quiescence rule above. Live Claude session directories were not touched; only a static snapshot copy was compressed.
+
+## Owner decisions (2026-11-19: "follow the recommendations", recorded verbatim as the recommended defaults)
+1. Linger and the user services ship in the next home-manager/NixOS switch: YES.
+2. Retention for the Claude temp root: 30 days, then a verified compressed archive (option-driven): YES.
+3. Auto-resume covers review and land steps only; implementer re-dispatch stays `confirm`: YES.
+4. A verified compressed archive replaces the original (Rule 12 via a compressed move): YES (owner: "compress all of our retired and archived files/folders").
+5. Worktree retirement runs automatically after a dry run: YES. The 2026-11-19 one-off retired 206 worktrees (23.9 GB down to 271 MB, `.agents/archive/archive-index.jsonl`). Dirty or unpushed worktrees stay listed for the owner.

@@ -116,3 +116,18 @@ MVP is G1, G2 and G4, in series mode only. Flood mode (G3) is phase G2. It is en
 ## Revision 2 (Gemini round 2, 2026-11-19)
 - **New P1, the throwaway merge stages nothing:** in the throwaway worktree, after merging `origin/main` into the throwaway commit, run `git reset --soft origin/main` so the slice's whole merged diff is staged. Only then run `tier0 --pre-commit`, so checks scoped to staged files see every change in the slice.
 - **New acceptance J6:** a slice with a deliberate shellcheck error in a changed file gets greenlight FAIL that names that file. This proves staged-scoped checks ran on the slice.
+
+## Revision 3 (Codex catch-up review, 2026-11-19: REVISE; .agents/delegation/outputs/prd-review-20261119/codex.out)
+- **Codex P1, merges can use stale results:** confirmed against live settings. main's protection has `required_status_checks.strict=false`, and the only required context is `review-disposition`. `aq-land` `wait_and_merge()` (aq-land:~663) pins only the PR head (`--match-head-commit`), and its resumed `settled()` path has no main-freshness check. So a PR whose CI ran against an older main can merge, in series mode today and much more often in flood mode. Revision 1 F9's claim that "aq-land already does this" was wrong.
+- **Change (new slice G0, prerequisite for G3 and shipped before flood):**
+  - Before merging, `aq-land` reads the PR's `mergeStateStatus` and base sha.
+  - If main advanced past the base CI ran on (BEHIND), it runs `gh pr update-branch`, waits for CI on the new head, and re-checks, with an option-driven retry bound.
+  - The resumed `settled()` path runs the same check.
+  - Alternative (owner decision): enable "require branches to be up to date" on main (strict) or a merge queue. Either makes GitHub enforce it, at the cost of more CI runs.
+- **New acceptance J7:** merge PR A; then PR B, whose CI ran before A merged, is updated and re-checked, not merged on its old results.
+
+## Owner decisions (2026-11-19: "follow the recommendations ... then validate and compare ... then reassess")
+1. The hook trusts an exact-tree greenlight (with the security checks always run): YES.
+2. Flood mode is capped by `max_flood_prs` (option), opened only with a recorded long-absence reason: YES.
+3. Freshness bound: an option, default 20 commits, covering every gate-listed path: YES.
+4. Merge freshness: build G0 in aq-land now. Leave GitHub "require branches up to date" off for now. G0 logs the extra CI wait for each merge to `.agents/delegation/outputs/aq-land/merge-freshness.jsonl`. After a sample of merges, compare that cost against the strict setting and reassess.

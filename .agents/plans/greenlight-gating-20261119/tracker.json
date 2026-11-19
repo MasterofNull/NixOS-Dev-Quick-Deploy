@@ -26,6 +26,20 @@
   ],
   "items": [
     {
+      "id": "g0-merge-freshness",
+      "name": "aq-land merge freshness (BEHIND -> update-branch -> re-wait CI)",
+      "phase": "g",
+      "kind": "slice",
+      "goal": "never merge on CI results from an older main",
+      "validation_goal": "J7",
+      "deps": [],
+      "detection": {
+        "commit_match": [
+          "G0-MERGE-FRESHNESS "
+        ]
+      }
+    },
+    {
       "id": "g1-greenlight",
       "name": "aq-greenlight on merged-with-main tree",
       "phase": "g",
