@@ -586,11 +586,13 @@ jobs:
             --only check-workflow-masks-test \
             --only tier0-gate-placement-tests \
             --only gate-lane-findings-tests \
+            --only timer-stagger-regression-tests \
             --only activation-manifest-tests \
             --only rea-sandbox-tests \
             --only intelligence-classifier-tests \
             --only delegate-headless-budget-tests \
             --only dispatch-preflight-tests \
+            --only constrained-decoding-tests \
             --only local-power-gate-tests \
             --only delegation-dir-resolution-tests \
             --only aq-review-request-tests \

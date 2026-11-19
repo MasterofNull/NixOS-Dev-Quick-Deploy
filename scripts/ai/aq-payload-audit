@@ -489,22 +489,24 @@ def _reset_has_passed(error_line: str, logged_at: datetime, now: datetime) -> Op
 def check_codex_dispatch_history(repo: Path, days: int = 2, now: Optional[datetime] = None) -> list[Finding]:
     """Check 6: Codex dispatch history analysis."""
     now = now or datetime.now()
+    if now.tzinfo is not None:
+        now = datetime.fromtimestamp(now.timestamp())  # naive local, same basis as log mtimes
     findings = []
     
     outputs_dir = repo / ".agents" / "delegation" / "outputs"
     if not outputs_dir.exists():
         return findings
     
-    cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+    # Window is measured from the injected clock, not the wall clock; mtimes are compared as epoch seconds.
+    cutoff_ts = now.timestamp() - days * 86400
     high_rehydration_tasks = []
     usage_limit_hits = []
     
     for log_file in outputs_dir.glob("codex-*.log"):
         try:
-            mtime = datetime.fromtimestamp(log_file.stat().st_mtime, tz=timezone.utc)
-            if mtime < cutoff:
+            if log_file.stat().st_mtime < cutoff_ts:
                 continue
-        except Exception:
+        except OSError:
             pass
         
         content = read_file_text(log_file, limit=5_000_000)
