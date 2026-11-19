@@ -459,7 +459,7 @@ class Land:
         with open(out, "w") as fh:
             try:
                 proc = subprocess.Popen([tool, *cmd, "--prompt-file", str(pfile)], cwd=self.W, stdout=fh, stderr=subprocess.STDOUT,
-                                        start_new_session=True, env={**os.environ, "AQ_DELEGATE_CWD": str(self.W)})
+                                        start_new_session=True, env={**os.environ, "AQ_DELEGATE_CWD": str(self.W), "AQ_LOCAL_VERDICT_SCHEMA": "1"})
             except OSError as e:
                 return "unavailable", f"cannot start {tool}: {e.strerror}", "", ""
             t0 = last = time.time()
