@@ -1218,7 +1218,18 @@ in {
               "--cache-type-v"
               llama.kvCacheType
             ])
-            ++ (lib.optionals llama.mlock ["--mlock"])
+            # b12503+ replaced --mmap/--mlock with --load-mode, and its "auto" mode drops
+            # mmap when a device reports no mmap support (RADV Renoir iGPU does). The CPU
+            # layers then land in a pinned Vulkan_Host buffer larger than GTT, and the
+            # model load ends in "device lost". Force mmap, as older builds did by default.
+            ++ [
+              "--load-mode"
+              (
+                if llama.mlock
+                then "mmap+mlock"
+                else "mmap"
+              )
+            ]
             ++ (map lib.escapeShellArg llamaArgs));
         };
       };
