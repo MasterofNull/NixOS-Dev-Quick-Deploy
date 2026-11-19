@@ -24,6 +24,7 @@ Tools exposed:
 import asyncio
 import concurrent.futures
 import json
+import math
 import os
 import subprocess
 import sys
@@ -81,7 +82,7 @@ def _recall_memory_default() -> int:
 
 # Per-tool HTTP timeouts (seconds). Fast endpoints get short timeouts so
 # VSCodium / Continue.dev don't hang when hybrid-coordinator is under load.
-_TOOL_TIMEOUTS: dict[str, int] = {
+_TOOL_TIMEOUTS: dict[str, float] = {
     "get_hints":          5,
     "harness_health":     30,  # runs a QA phase; 5s timed out under host load
     "qa_check":           30,
@@ -113,13 +114,21 @@ _DEFAULT_TIMEOUT_POST = 30
 _DEFAULT_TIMEOUT_GET  = 10
 
 
-def _env_timeout(name: str, default: int) -> int:
-    """AQ_MCP_TIMEOUT_<TOOL>_S overrides one tool; AQ_MCP_TIMEOUT_SCALE multiplies all."""
+def _env_timeout(name: str, default: float) -> float:
+    """AQ_MCP_TIMEOUT_<TOOL>_S overrides one tool; AQ_MCP_TIMEOUT_SCALE multiplies all.
+
+    Fractional results are kept (float seconds) with a 1 s floor: truncating to int
+    turned scale 0.1 on a 5 s budget into a 0 s timeout that fails every request.
+    Non-finite or non-positive inputs fall back to the unscaled default.
+    """
     try:
         scale = float(os.getenv("AQ_MCP_TIMEOUT_SCALE", "1") or 1)
-        return int(float(os.getenv(f"AQ_MCP_TIMEOUT_{name.upper()}_S", "") or default) * scale)
+        base = float(os.getenv(f"AQ_MCP_TIMEOUT_{name.upper()}_S", "") or default)
     except ValueError:
         return default
+    if not (math.isfinite(scale) and math.isfinite(base)) or scale <= 0 or base <= 0:
+        return default
+    return max(1.0, base * scale)
 
 
 _TOOL_TIMEOUTS = {k: _env_timeout(k, v) for k, v in _TOOL_TIMEOUTS.items()}
@@ -170,7 +179,7 @@ def _resolve_workflow_target(target_dir_arg: str) -> tuple[str, str | None]:
     return abs_target, warning
 
 
-def _post(url: str, payload: dict, key: str, timeout: int = _DEFAULT_TIMEOUT_POST) -> dict:
+def _post(url: str, payload: dict, key: str, timeout: float = _DEFAULT_TIMEOUT_POST) -> dict:
     body = json.dumps(payload).encode()
     headers = {
         "Content-Type": "application/json",
@@ -202,7 +211,7 @@ def _post(url: str, payload: dict, key: str, timeout: int = _DEFAULT_TIMEOUT_POS
         return {"error": str(e)}
 
 
-def _get(url: str, key: str, timeout: int = _DEFAULT_TIMEOUT_GET) -> dict:
+def _get(url: str, key: str, timeout: float = _DEFAULT_TIMEOUT_GET) -> dict:
     headers = {}
     if key:
         headers["X-API-Key"] = key
@@ -222,7 +231,7 @@ def _get(url: str, key: str, timeout: int = _DEFAULT_TIMEOUT_GET) -> dict:
         return {"error": str(e)}
 
 
-def _query_aidb_knowledge(query: str, limit: int = 5, project: str | None = None, timeout: int = _DEFAULT_TIMEOUT_POST) -> dict:
+def _query_aidb_knowledge(query: str, limit: int = 5, project: str | None = None, timeout: float = _DEFAULT_TIMEOUT_POST) -> dict:
     payload = {"query": query, "limit": limit}
     if project:
         payload["project"] = project

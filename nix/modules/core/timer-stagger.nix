@@ -6,8 +6,13 @@
 #      added to a time that is already over and fires them all at once.
 # Fix: every matched timer gets RandomizedDelaySec + FixedRandomDelay (stable
 # per-timer offset) + AccuracySec, Persistent catch-up is replaced by a
-# per-timer OnBootSec offset (hash-derived, heavy units pinned to distinct
-# slots). Every default is a mkDefault option, so explicit per-timer values
+# per-timer OnActiveSec offset (hash-derived, heavy units pinned to distinct
+# slots). OnActiveSec, not OnBootSec: systemd.timer(5) says an OnBootSec time
+# already in the past when the timer unit is activated elapses immediately
+# ("not the case for the other directives"), so after boot-uptime exceeds the
+# offset every timer restart (nixos-rebuild switch) would fire all of them at
+# once. OnActiveSec is relative to the timer's own activation, so the offset
+# re-applies on every (re)activation and equals the boot offset at boot. Every default is a mkDefault option, so explicit per-timer values
 # (including Persistent = true) win and a host can opt back into catch-up with
 # mySystem.timerStagger.persistent = true.
 # Evidence: docs/harness-first/evidence/2026-11-18-timer-stagger.md
@@ -153,7 +158,7 @@ in {
             then cfg.shortAccuracy
             else cfg.longAccuracy
           );
-          OnBootSec = lib.mkDefault "${toString (bootMinutes name)}min";
+          OnActiveSec = lib.mkDefault "${toString (bootMinutes name)}min";
           Persistent = lib.mkDefault cfg.persistent;
         };
       };

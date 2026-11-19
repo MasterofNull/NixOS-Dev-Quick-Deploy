@@ -63,6 +63,11 @@ def check(timers: dict, strict_persistent: bool = False) -> list[str]:
             errs.append(f"{name}: RandomizedDelaySec missing or 0")
         if not cfg.get("AccuracySec"):
             errs.append(f"{name}: AccuracySec unset")
+        if cfg.get("FixedRandomDelay") is not True:
+            errs.append(f"{name}: FixedRandomDelay not true (delay not stable across restarts)")
+        if "OnActiveSec" not in cfg:
+            errs.append(f"{name}: no OnActiveSec (activation-relative stagger missing; OnBootSec alone fires "
+                        "immediately on reactivation once uptime exceeds it, systemd.timer(5))")
         if cfg.get("Persistent") is True:
             if strict_persistent:
                 errs.append(f"{name}: Persistent=true (boot catch-up stampede)")
@@ -71,12 +76,12 @@ def check(timers: dict, strict_persistent: bool = False) -> list[str]:
                 print(f"WARN: {name}: Persistent=true (explicit; catch-up stampede risk)")
     slots: dict[float, str] = {}
     for name in HEAVY:
-        boot = timers.get(name, {}).get("OnBootSec")
+        boot = timers.get(name, {}).get("OnActiveSec")
         if boot is None:
             continue
         sec = seconds(boot)
         if sec in slots:
-            errs.append(f"{name}: OnBootSec {boot} collides with {slots[sec]}")
+            errs.append(f"{name}: OnActiveSec {boot} collides with {slots[sec]}")
         slots[sec] = name
     print(f"checked {len(scoped)} ai-*/aq-* timers; {len(slots)} heavy boot slots; "
           f"{warned} explicit Persistent=true")
