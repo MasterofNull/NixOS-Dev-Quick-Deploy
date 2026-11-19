@@ -24,6 +24,16 @@ class Outcome(_mod.Base):
         self.assertEqual(recs[0]["author_lane"], "claude")
         self.assertEqual(recs[0]["reviewer_lanes"], ["gemini"])
         self.assertEqual(recs[0]["request_changes_rounds"], 0)
+        self.assertEqual(recs[0]["tier0"], "pass")  # gate_committed ran tier0 on the landed branch diff
+
+    def test_receipt_records_tier0_pass_when_the_landing_ran_it(self):
+        self.env["AQ_DELEGATION_DIR"] = str(self.S / "deleg")
+        self.change("scripts/bar.py", "print(2)\n", commit=False)
+        msg = self.S / "msg.txt"
+        msg.write_text("feat(x): bar\n")
+        self.land("--commit-msg-file", str(msg), expect=0)
+        recs = [json.loads(x) for x in self._log().read_text().splitlines()]
+        self.assertEqual(recs[0]["tier0"], "pass")
 
     def test_write_failure_warns_and_landing_still_succeeds(self):
         blocker = self.S / "not-a-dir"

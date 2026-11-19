@@ -21,6 +21,8 @@ in {
     # activation direction (2026-09-26).
     mySystem.roles.agenticToolchain.enable = lib.mkDefault true;
     mySystem.mcpServers.enable = lib.mkDefault true;
+    # Owner 2026-11-18: lean-ctx logs and compresses but never blocks harness tools.
+    mySystem.leanCtx.shellSecurity = lib.mkDefault "warn";
     mySystem.monitoring.enable = lib.mkDefault true;
     # Owner 2026-11-13: daily notify-only update check ON; activation run (build/switch) stays OFF.
     mySystem.autoUpdate.enable = lib.mkDefault true;
