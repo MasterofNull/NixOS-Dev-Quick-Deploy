@@ -239,9 +239,14 @@ class Land:
         return (open_ or merged or [None])[0]
 
     # ---- preflight
+    def nul_names(self, *rev):
+        """NUL-delimited, so non-ASCII and tab/newline names arrive unquoted and unsplit."""
+        out = run(["git", "-C", self.W, "diff", "--name-only", "-z", "--no-renames", *rev], timeout=180).stdout
+        return out.split("\0")
+
     def changed_paths(self):
-        names = self.git("diff", "--name-only", "--no-renames", "refs/remotes/origin/main...HEAD").split("\n")
-        names += self.git("diff", "--name-only", "--no-renames", "--cached").split("\n")
+        names = self.nul_names("refs/remotes/origin/main...HEAD")
+        names += self.nul_names("--cached")
         return sorted({n for n in names if n})
 
     def is_code(self, p):
@@ -275,10 +280,11 @@ class Land:
         f = Path(self.W) / OWNED_DIR / f"{self.slug}.txt"
         return f if f.is_file() else None
 
-    def check_owned(self, paths):
+    def check_owned(self, paths, recheck=False):
         f = self.owned_file()
         if f is None:
-            say(f"WARN no owned-path declaration (--owned or {OWNED_DIR}/{self.slug}.txt): scope not checked")
+            if not recheck:
+                say(f"WARN no owned-path declaration (--owned or {OWNED_DIR}/{self.slug}.txt): scope not checked")
             self.save(owned_paths="undeclared")
             return
         globs = [g.strip() for g in f.read_text().splitlines() if g.strip() and not g.strip().startswith("#")]
@@ -714,6 +720,7 @@ class Land:
         for _ in range(4):  # main or the branch can move during a review; re-judge the evidence each round
             self.sync_main()
             head = self.head()
+            self.check_owned(self.changed_paths(), recheck=True)  # HEAD may have moved since preflight; before each review and the push
             rec = self.cp.get("review")
             if not self.review_valid(rec, head):
                 if not gated:
@@ -727,6 +734,7 @@ class Land:
             break
         else:
             raise Stop("merge", "origin/main or the branch kept moving; re-run aq-land")
+        self.check_owned(self.changed_paths(), recheck=True)
         self.stage_push(head, rec)
         n = self.stage_pr(rec, edit=False)
         self.stage_receipt(n, rec)  # a body edit triggers review-disposition, which needs the receipt already published

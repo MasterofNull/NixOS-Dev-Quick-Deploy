@@ -28,3 +28,6 @@ No aq-hints were consulted for this slice; none to rate.
 
 ## Follow-up: Codex review fixes
 Renames: changed_paths() now uses `git diff --name-only --no-renames` (committed and staged), so a rename lists both the removed unowned source and the added destination; it has no other caller. `--owned` is normalized to an absolute path before the chdir into --worktree. Tests added: committed rename, staged rename, relative --owned from another cwd (OwnedPaths, 9 tests; full suite 70 tests OK).
+
+## Follow-up: second Codex review
+Ownership is re-checked after every HEAD read in locked() (before each review) and immediately before stage_push, so a commit added during review that leaves the scope stops the landing. changed_paths() now reads `git diff --name-only -z --no-renames`, so non-ASCII and tab names are matched as real paths, not quoted. Tests added: late out-of-scope commit stops with one review and nothing published; non-ASCII and tab names pass under an owned dir and stop under an unowned dir (OwnedPaths, 11 tests).

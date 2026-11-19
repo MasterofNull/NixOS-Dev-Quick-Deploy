@@ -792,6 +792,27 @@ class OwnedPaths(Base):
         r = subprocess.run(args, capture_output=True, text=True, env=self.env, cwd=self.S, timeout=120)
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
 
+    def test_commit_added_during_review_outside_the_scope_stops_before_a_second_review_and_push(self):
+        self.cfg({"gemini": {"mode": "ok", "side": "local_commit"}})  # adds extra.txt after the first review
+        r = self.land("--owned", self.owned("scripts/"), expect=1)
+        self.assertIn("extra.txt", self.stop_line(r))
+        self.assertEqual(len(self.calls("gemini")), 1)
+        self.assertEqual(self.published(), [])
+        self.assertEqual(self.refusals()[-1]["files"], ["extra.txt"])
+
+    def test_non_ascii_and_tab_filenames_match_their_real_paths(self):
+        names = ["café ü.py", "a\tb.py"]
+        for n in names:
+            self.change("scripts/" + n, "x\n")
+        self.land("--owned", self.owned("scripts/"), expect=0)
+        self.tearDown_state()
+        for n in names:
+            self.change("config/" + n, "x\n")
+        r = self.land("--owned", self.owned("scripts/"), expect=1)
+        line = self.stop_line(r)
+        self.assertIn("config/café ü.py", line)
+        self.assertIn("config/a\tb.py", line)
+
     def test_merging_main_into_the_branch_does_not_count_mains_files(self):
         c2 = self.S / "c2"
         sh(self.S, "git", "clone", "-q", str(self.origin), str(c2))
