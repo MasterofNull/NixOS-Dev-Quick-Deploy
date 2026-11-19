@@ -586,6 +586,8 @@ jobs:
             --only check-workflow-masks-test \
             --only tier0-gate-placement-tests \
             --only gate-lane-findings-tests \
+            --only gemini-quota-fallback-tests \
+            --only gemini-model-guard-tests \
             --only timer-stagger-regression-tests \
             --only llama-post-switch-validate-tests \
             --only activation-manifest-tests \

@@ -2007,13 +2007,13 @@
           gemini = lib.mkOption {
             type = lib.types.nullOr lib.types.str;
             default = null;
-            example = "gemini-2.5-flash";
+            example = "gemini-3.8-flash";
             description = ''
               Remote model alias used for Gemini-backed orchestration, planning,
               and synthesis requests routed through the harness front door.
               When remoteUrl points to generativelanguage.googleapis.com/v1beta/openai,
-              use bare model names (e.g. "gemini-2.5-flash", "gemini-2.0-flash").
-              When using OpenRouter, prefix with "google/" (e.g. "google/gemini-2.5-pro").
+              use bare model names (e.g. "gemini-3.8-flash", "gemini-3.5-flash-lite").
+              When using OpenRouter, prefix with "google/" (e.g. "google/gemini-3.1-pro-preview").
             '';
           };
 

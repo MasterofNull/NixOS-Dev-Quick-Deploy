@@ -22,7 +22,7 @@ class TestAdvisorFallbackChains:
         assert len(chain) <= 6  # Including global fallbacks
 
         # First should be high-quality model
-        assert chain[0] in ["claude-opus-4-5", "gpt-4o", "claude-sonnet"]
+        assert chain[0] in ["claude-opus-5-5", "gpt-6.2-sol", "claude-sonnet"]
 
     def test_get_advisor_model_chain_security(self):
         """Test that security decisions prioritize best models."""
@@ -34,7 +34,7 @@ class TestAdvisorFallbackChains:
         assert len(chain) >= 3
 
         # First should be highest quality for security
-        assert chain[0] in ["claude-opus-4-5", "gpt-4o"]
+        assert chain[0] in ["claude-opus-5-5", "gpt-6.2-sol"]
 
     def test_get_advisor_model_chain_planning(self):
         """Test that planning decisions can use thinking models."""
