@@ -587,6 +587,7 @@ jobs:
             --only tier0-gate-placement-tests \
             --only gate-lane-findings-tests \
             --only gemini-quota-fallback-tests \
+            --only gemini-model-guard-tests \
             --only activation-manifest-tests \
             --only rea-sandbox-tests \
             --only intelligence-classifier-tests \

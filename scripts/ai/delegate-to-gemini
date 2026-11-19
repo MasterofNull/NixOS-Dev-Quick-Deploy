@@ -525,6 +525,11 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
+# Independence guard: only Gemini ids (SSOT: model-coordinator gemini_lane.required_id_prefix).
+# shellcheck disable=SC1091
+source "$SCRIPT_DIR/lib/gemini-model-guard.sh"
+gemini_model_guard "$MODEL" || exit 2
+
 # Validate approval mode
 case "$MODE" in
     yolo|auto_edit|plan) ;;

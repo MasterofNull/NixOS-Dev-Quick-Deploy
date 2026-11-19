@@ -2353,6 +2353,16 @@
         "bash"
       ],
       "ci_workflow": ".github/workflows/test.yml#manifest-tests"
+    },
+    {
+      "id": "gemini-model-guard-tests",
+      "cmd": "scripts/testing/test-gemini-model-guard.py",
+      "paths": [],
+      "needs": [
+        "python3",
+        "bash"
+      ],
+      "ci_workflow": ".github/workflows/test.yml#manifest-tests"
     }
   ],
   "ci_exempt": [

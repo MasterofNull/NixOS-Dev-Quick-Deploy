@@ -3,10 +3,14 @@
 # retry exactly once on gemini-4-hydrogen. Never retries on any other error, and
 # never when the caller pinned a non-Argon model.
 #   gemini-quota-fallback.sh CMD... [--model M]
-# Env: GEMINI_FALLBACK_MODEL (default gemini-4-hydrogen).
+# Env: GEMINI_FALLBACK_MODEL (default: model-coordinator tiers.google.gemini_lane.fallback).
 set -uo pipefail
 
-fallback="${GEMINI_FALLBACK_MODEL:-gemini-4-hydrogen}"
+# shellcheck disable=SC1091
+source "$(dirname "${BASH_SOURCE[0]}")/gemini-model-guard.sh"
+fallback="${GEMINI_FALLBACK_MODEL:-$(gemini_lane_cfg fallback)}"
+fallback="${fallback:-gemini-4-hydrogen}"
+gemini_model_guard "$fallback" || exit 2
 cmd=("$@")
 
 model=""
