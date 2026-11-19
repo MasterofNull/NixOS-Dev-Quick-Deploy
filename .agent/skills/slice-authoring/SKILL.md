@@ -142,6 +142,8 @@ scope_boundary:
 
 This prevents the implementer from "helpful" scope creep that breaks other things.
 
+Owned paths (enforced): write the `in_scope` globs, one per line, to `.agents/delegation/owned/<branch-slug>.txt` (or pass `aq-land --owned FILE`); `aq-land` stops in preflight, before any review, if the branch changes a file outside them.
+
 ---
 
 ## 7. Token Budget by Agent
