@@ -30,6 +30,8 @@ scripts/governance/tier0-validation-gate.sh --pre-commit
 - `nix eval` shows the option resolves to "warn" for hyperd-ai-dev and the activation text renders (see commit/handoff output).
 - Activation attestation: integrated (option + activation script in the ai-stack module); turned ON for ai-dev via `lib.mkDefault "warn"`; validated by the unit test and nix eval, live effect needs the owner's next `nixos-rebuild switch` (not run here); observable by `grep shell_security ~/.lean-ctx/config.toml` and lean-ctx's warn-only log line; intervenable by setting `mySystem.leanCtx.shellSecurity` to "enforce" or null; PM-tracked via this evidence file.
 
+- Portability (owner directive 2026-11-18, no hardwired limits): the activation script now resolves the home directory and group from `config.users.users.<primaryUser>.home` / `.group` (shell-escaped) instead of `/home/<user>` and `:users`, so non-`/home` or non-`users` setups are handled; if the user is undeclared the home defaults to /var/empty and the `-d` guard skips it.
+
 ## Rollback Plan
 - Set `mySystem.leanCtx.shellSecurity = null;` (unmanaged) or "enforce", rebuild; or `lean-ctx config set shell_security enforce` for an immediate runtime change (re-asserted by the next activation only while the option is non-null). Revert the commit to remove the script entirely.
 

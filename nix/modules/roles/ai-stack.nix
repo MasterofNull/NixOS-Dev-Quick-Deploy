@@ -891,12 +891,13 @@ in {
       system.activationScripts.leanCtxShellSecurity = {
         deps = ["users"];
         text = ''
-          LCX_HOME="/home/${cfg.primaryUser}/.lean-ctx"
-          if [ -d "/home/${cfg.primaryUser}" ]; then
+          LCX_USER_HOME=${lib.escapeShellArg config.users.users.${cfg.primaryUser}.home}
+          LCX_HOME="$LCX_USER_HOME/.lean-ctx"
+          if [ -d "$LCX_USER_HOME" ]; then
             mkdir -p "$LCX_HOME"
             ${pkgs.python3}/bin/python3 ${../../../scripts/deploy/lean-ctx-set-shell-security.py} \
               "$LCX_HOME/config.toml" ${cfg.leanCtx.shellSecurity} || true
-            chown ${cfg.primaryUser}:users "$LCX_HOME" "$LCX_HOME/config.toml" 2>/dev/null || true
+            chown ${lib.escapeShellArg cfg.primaryUser}:${lib.escapeShellArg config.users.users.${cfg.primaryUser}.group} "$LCX_HOME" "$LCX_HOME/config.toml" 2>/dev/null || true
           fi
         '';
       };
