@@ -366,6 +366,19 @@
       "ci_workflow": ".github/workflows/test.yml#syntax"
     },
     {
+      "id": "constrained-decoding-tests",
+      "cmd": "scripts/testing/test-constrained-decoding.py",
+      "paths": [
+        "ai-stack/mcp-servers/shared/llm_config.py",
+        "scripts/ai/lib/dispatch.py",
+        "scripts/testing/test-constrained-decoding.py"
+      ],
+      "needs": [
+        "python3"
+      ],
+      "ci_workflow": ".github/workflows/test.yml#syntax"
+    },
+    {
       "id": "local-power-gate-tests",
       "cmd": "scripts/testing/test-local-power-gate.py",
       "paths": [
@@ -791,6 +804,7 @@
         "scripts/testing/test-aq-optimizer-lesson-review.py",
         "scripts/testing/test-aq-payload-audit.py",
         "scripts/testing/test-payload-audit-routine.py",
+        "scripts/testing/test-payload-audit-tz.py",
         "scripts/testing/test-skill-frontmatter-keys.py",
         "scripts/testing/test-aq-pin-watch.py",
         "scripts/testing/test-aq-qa-delegate-window.py",
@@ -886,6 +900,7 @@
         "scripts/testing/test-aq-optimizer-lesson-review.py",
         "scripts/testing/test-aq-payload-audit.py",
         "scripts/testing/test-payload-audit-routine.py",
+        "scripts/testing/test-payload-audit-tz.py",
         "scripts/testing/test-skill-frontmatter-keys.py",
         "scripts/testing/test-aq-pin-watch.py",
         "scripts/testing/test-aq-qa-delegate-window.py",
