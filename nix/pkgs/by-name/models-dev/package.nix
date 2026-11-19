@@ -7,12 +7,12 @@
   writableTmpDirAsHomeHook,
 }: let
   pname = "models-dev";
-  version = "0-unstable-2026-11-14";
+  version = "0-unstable-2026-11-18";
   src = fetchFromGitHub {
     owner = "anomalyco";
     repo = "models.dev";
-    rev = "a5458bdc8326d995619413b54425db97e911f4d4";
-    hash = "sha256-BM1PqNP178/1TG3yyj4mHla5lZltEz7oGMMFCDvl3/8=";
+    rev = "d893237face842c5a4c918009d50c8e33b7c6523";
+    hash = "sha256-5WCO6GX9UcqiHXlQ2pNpZyseBm32tRlBYGuX8NDC07c=";
   };
 
   node_modules = stdenvNoCC.mkDerivation {
