@@ -333,6 +333,7 @@ class Land:
         r = run(["git", "-C", self.W, "commit", "-q", "-F", self.a.commit_msg_file], timeout=900, check=False, stage="commit")
         if r.returncode != 0:
             raise Stop("commit", self.blocker("commit", r))
+        self.save(tier0="pass", tier0_head=self.head())
         say(f"committed {self.head()[:9]}")
         return True
 
@@ -354,6 +355,7 @@ class Land:
             say(f"tier0 on the branch diff against {base[:9]}: exit {r.returncode} in {time.time() - t0:.0f}s")
             if r.returncode != 0:
                 raise Stop("tier0", self.blocker("tier0", r))
+            self.save(tier0="pass", tier0_head=self.head())
         finally:
             shutil.rmtree(wt, ignore_errors=True)  # ours; `worktree remove` needs a force flag the source-guard test bans
             run(["git", "-C", self.W, "worktree", "prune"], check=False, timeout=60)
@@ -777,7 +779,7 @@ class Land:
             rec = self.cp.get("review") or {}
             record_landing(resolve_delegation_dir(HERE), pr=n, head=rec.get("head") or self.head(), author_lane=self.a.author_lane,
                            reviews=[{"lane": rec["lane"], "run_id": rec["run_id"], "verdict": rec["disposition"]}] if rec else [],
-                           request_changes_rounds=self.cp.get("rc_rounds", 0), tier0=None, ci="pass",
+                           request_changes_rounds=self.cp.get("rc_rounds", 0), tier0=self.cp.get("tier0") if self.cp.get("tier0_head") == self.head() else None, ci="pass",
                            tier0_failures=self.cp.get("tier0_failures", 0), ci_failures=self.cp.get("ci_failures", 0))
         except Exception as e:  # noqa: BLE001
             print(f"aq-land: WARN outcome receipt not written: {e.__class__.__name__}: {str(e)[:120]}", file=sys.stderr)

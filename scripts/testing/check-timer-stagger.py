@@ -3,7 +3,7 @@
 
 Evaluates systemd.timers (no build, no switch) and requires, per matching
 timer: RandomizedDelaySec > 0, AccuracySec set, plus distinct heavy-unit boot
-slots. Persistent=true is no longer forced off (mySystem.timerStagger.persistent
+slots. Monotonic timers need OnActiveSec and no OnBootSec; calendar timers must have no OnActiveSec. Persistent=true is no longer forced off (mySystem.timerStagger.persistent
 is a mkDefault option, so per-timer values win); any Persistent=true seen is an
 explicit per-timer or host choice and is reported as WARN, or as FAIL with
 --strict-persistent (boot catch-up stampede risk). See
@@ -65,9 +65,20 @@ def check(timers: dict, strict_persistent: bool = False) -> list[str]:
             errs.append(f"{name}: AccuracySec unset")
         if cfg.get("FixedRandomDelay") is not True:
             errs.append(f"{name}: FixedRandomDelay not true (delay not stable across restarts)")
-        if "OnActiveSec" not in cfg:
-            errs.append(f"{name}: no OnActiveSec (activation-relative stagger missing; OnBootSec alone fires "
-                        "immediately on reactivation once uptime exceeds it, systemd.timer(5))")
+        calendar = bool(cfg.get("OnCalendar"))
+        if calendar:
+            # Calendar-only jobs must not carry a module-added activation trigger:
+            # OnActiveSec adds an unconditional run after every timer (re)activation.
+            if cfg.get("OnActiveSec"):
+                errs.append(f"{name}: calendar timer has OnActiveSec (runs again after every timer "
+                            "activation; calendar jobs are staggered by RandomizedDelaySec only)")
+        else:
+            if not cfg.get("OnActiveSec"):
+                errs.append(f"{name}: no OnActiveSec (activation-relative stagger missing; OnBootSec alone fires "
+                            "immediately on reactivation once uptime exceeds it, systemd.timer(5))")
+            if cfg.get("OnBootSec"):
+                errs.append(f"{name}: OnBootSec still set next to OnActiveSec (systemd fires on ANY elapsed "
+                            "expression, so an overdue OnBootSec defeats the stagger on restart)")
         if cfg.get("Persistent") is True:
             if strict_persistent:
                 errs.append(f"{name}: Persistent=true (boot catch-up stampede)")
@@ -77,7 +88,7 @@ def check(timers: dict, strict_persistent: bool = False) -> list[str]:
     slots: dict[float, str] = {}
     for name in HEAVY:
         boot = timers.get(name, {}).get("OnActiveSec")
-        if boot is None:
+        if not boot:
             continue
         sec = seconds(boot)
         if sec in slots:
