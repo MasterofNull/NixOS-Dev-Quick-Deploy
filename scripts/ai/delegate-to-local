@@ -312,7 +312,11 @@ case "${SUBCMD:-}" in
             PROMPT="$(cat "$PROMPT_FILE")"
             # Slice-brief caps: output_tokens becomes the max-tokens budget unless --max-tokens was given;
             # dispatch.py records actual-vs-cap to brief-caps.jsonl (AQ_BRIEF_FILE).
-            python3 "$LIB_DIR/brief_caps.py" validate "$PROMPT_FILE" >&2 || true
+            # Absolute before any worktree cd, so post-run measurement reads the same file.
+            PROMPT_FILE="$(cd "$(dirname "$PROMPT_FILE")" && pwd)/$(basename "$PROMPT_FILE")"
+            # Invalid caps / missing checks past AQ_BRIEF_CHECKS_FAIL_FROM exit 1 and block; WARNs exit 0.
+            python3 "$LIB_DIR/brief_caps.py" validate "$PROMPT_FILE" >&2 \
+                || die "Slice brief failed validation: $PROMPT_FILE"
             if [[ -z "$MAX_TOKENS" ]] && grep -q '^caps:' "$PROMPT_FILE"; then
                 MAX_TOKENS="$(python3 "$LIB_DIR/brief_caps.py" output-tokens "$PROMPT_FILE" 2>/dev/null || true)"
             fi

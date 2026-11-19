@@ -37,6 +37,38 @@ class Parse(unittest.TestCase):
         self.assertEqual((r["input_tokens"], r["max_turns"]), (9000, 3))
 
 
+class LegacyBudget(unittest.TestCase):
+    def test_nonpositive_or_bad_token_budget_rejected(self):
+        for v in ("0", "-5", "abc"):
+            with self.assertRaises(ValueError):
+                bc.resolve_caps({"token_budget": v})
+
+
+class DelegateGate(unittest.TestCase):
+    """delegate-to-local must block on validator failure and pass an absolute brief path."""
+    def _run(self, text, env_extra=None):
+        import subprocess
+        d = tempfile.mkdtemp()
+        Path(d, "brief.md").write_text(text)
+        env = dict(os.environ, **(env_extra or {}))
+        return subprocess.run([str(ROOT / "scripts/ai/delegate-to-local"), "--prompt-file", "brief.md"],
+                              cwd=d, env=env, capture_output=True, text=True)
+
+    def test_invalid_caps_block(self):
+        r = self._run("checks:\n  command: x\n  end_state: y\ncaps:\n  token_budget: 0\n")
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn("failed validation", r.stderr + r.stdout)
+
+    def test_missing_checks_blocks_after_deadline(self):
+        r = self._run("caps:\n  tier: small\n", {"AQ_BRIEF_CHECKS_FAIL_FROM": "2000-01-01"})
+        self.assertIn("failed validation", r.stderr + r.stdout)
+
+    def test_script_resolves_prompt_file_absolute(self):
+        src = (ROOT / "scripts/ai/delegate-to-local").read_text()
+        self.assertLess(src.index('PROMPT_FILE="$(cd "$(dirname "$PROMPT_FILE")"'),
+                        src.index('export AQ_BRIEF_FILE'))
+
+
 class Validate(unittest.TestCase):
     def test_valid(self):
         r = bc.validate(GOOD, BEFORE)

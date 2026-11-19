@@ -184,7 +184,13 @@ def resolve_caps(caps: dict, lane_ctx: Optional[int] = None) -> dict:
             res[k] = n
     if caps.get("token_budget") and "input_tokens" not in caps:
         # Legacy single budget: treat as the input cap; output stays at the tier default.
-        res["input_tokens"] = int(str(caps["token_budget"]).replace("_", ""))
+        try:
+            n = int(str(caps["token_budget"]).replace("_", ""))
+        except ValueError:
+            raise ValueError(f"caps.token_budget must be an integer, got {caps['token_budget']!r}") from None
+        if n <= 0:
+            raise ValueError("caps.token_budget must be positive")
+        res["input_tokens"] = n
     res["tier"] = tier
     if limits:
         res["lane_ctx"] = ctx
