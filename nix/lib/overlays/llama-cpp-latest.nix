@@ -122,7 +122,9 @@ in {
 
     patches =
       (oldAttrs.patches or [])
-      ++ [
+      # The iGPU offload patch only touches the Vulkan backend, so apply it for Vulkan
+      # builds only (the CPU/ROCm/CUDA builds never compile that code).
+      ++ prev.lib.optionals enableVulkan [
         # Patch hunks are source-version specific: the fallback pin (b9222) keeps its original
         # patch; the current pin uses the port that carries only the functional hunks.
         (

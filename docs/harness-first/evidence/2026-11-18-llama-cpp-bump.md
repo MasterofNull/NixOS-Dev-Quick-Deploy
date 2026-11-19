@@ -11,6 +11,8 @@ Upstream marks every `b*` release as prerelease, so `update-llama-cpp.sh` (which
 - `allow-vulkan-igpu-offload.patch` re-ported: 1 of 8 Vulkan hunks and the iGPU hunk no longer applied. Only the two functional hunks are kept (always add iGPUs to the device list; init the backend before `common_params_parse` in server.cpp). The `vkdiag`/`registry-diagnostic` stderr hunks were dropped (diagnostics only, no behaviour). Upstream now adds an iGPU when no discrete GPU exists, which is this machine, so the first hunk is belt-and-braces.
 - Root cause note (Rule 19): `update-llama-cpp.sh` computes the hash with `nix-prefetch-url --unpack` of the tarball, but the overlay uses `fetchFromGitHub` with `leaveDotGit` plus a COMMIT postFetch, which hashes differently (first build failed with a hash mismatch; correct value taken from the error). It also rewrites `current` without `npmDepsHash` and does not look at prerelease-flagged tags. Not fixed here (out of slice); register as a follow-up.
 
+Portability (owner directive 2026-11-18, no hardwired limits): the Vulkan iGPU offload patch is now applied only when `enableVulkan` (it only touches the Vulkan backend). `nix eval` of the overlay patch counts: base 0, cpu 0, cuda 0, rocm 0, vulkan 1, vulkan+fallback 1. The b12503 pin is unchanged.
+
 ## 3. Notable upstream changes for us
 - b12489: server returns 400 when `grammar` and `ignore_eos` are both set. `rg ignore_eos` over the repo (non-docs) finds no use, so no caller is affected.
 - b12498: slot_sched fix for lora and recurrent state (relevant to slot reuse on the Qwen3.6 hybrid model).
