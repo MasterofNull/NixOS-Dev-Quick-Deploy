@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import importlib.util
 import tempfile
+from unittest import mock
 from importlib.machinery import SourceFileLoader
 from pathlib import Path
 
@@ -35,7 +36,6 @@ def main() -> int:
         original_text = source_registry.read_text(encoding="utf-8")
         tmp_registry.write_text(original_text, encoding="utf-8")
 
-        ns = vars(aq_prompt_eval)  # module globals: avoids attribute-assignment lint/type noise
         original_wait = aq_prompt_eval.wait_for_llama_ready
         original_llm_call = aq_prompt_eval.llm_call
         try:
@@ -44,26 +44,15 @@ def main() -> int:
             def failing_llm_call(*_args, **_kwargs):
                 raise TimeoutError("simulated timeout")
 
-            calls = []
-
-            def counting_failing_call(*_args, **_kwargs):
-                calls.append(1)
-                raise TimeoutError("simulated timeout")
-
-            kw = dict(registry_path=tmp_registry, target_id=None, dry_run=False, verbose=False, model="local")
-            # Busy slot: the run defers after N consecutive failures instead of burning one timeout per case.
-            ns["llm_call"] = counting_failing_call
-            deferred = aq_prompt_eval.run_eval(**kw)
-            assert_true(deferred == aq_prompt_eval.EXIT_DEFERRED == 75, f"expected deferral exit 75, got {deferred}")
-            assert_true(len(calls) == aq_prompt_eval.DEFER_AFTER, f"expected {aq_prompt_eval.DEFER_AFTER} calls, got {len(calls)}")
-            assert_true(tmp_registry.read_text(encoding="utf-8") == original_text, "deferred run must not write scores")
-
-            # Deferral disabled: the original transport-failure behaviour (exit 1, registry untouched).
-            ns["DEFER_AFTER"] = 0
-            ns["llm_call"] = failing_llm_call
-            exit_code = aq_prompt_eval.run_eval(**{**kw, "target_id": "route_search_synthesis"})
+            aq_prompt_eval.llm_call = failing_llm_call
+            exit_code = aq_prompt_eval.run_eval(
+                registry_path=tmp_registry,
+                target_id="route_search_synthesis",
+                dry_run=False,
+                verbose=False,
+                model="local",
+            )
         finally:
-            ns["DEFER_AFTER"] = 3
             aq_prompt_eval.wait_for_llama_ready = original_wait
             aq_prompt_eval.llm_call = original_llm_call
 
@@ -72,6 +61,25 @@ def main() -> int:
         assert_true(updated_text == original_text, "transport errors should not rewrite registry scores")
 
     print("PASS: aq-prompt-eval preserves registry entries on transport/runtime failures")
+    return breaker_check()
+
+
+def breaker_check() -> int:
+    """A saturated backend must stop the run after MAX_CONSECUTIVE_ERRORS calls, not after every case."""
+    calls: list[int] = []
+
+    def failing(*_a, **_k):
+        calls.append(1)
+        raise TimeoutError("simulated timeout")
+
+    with mock.patch.object(aq_prompt_eval, "wait_for_llama_ready", lambda *_a, **_k: True), \
+            mock.patch.object(aq_prompt_eval, "llm_call", failing), tempfile.TemporaryDirectory() as tmpdir:
+        reg = Path(tmpdir) / "registry.yaml"
+        reg.write_text((ROOT / "ai-stack" / "prompts" / "registry.yaml").read_text(encoding="utf-8"), encoding="utf-8")
+        exit_code = aq_prompt_eval.run_eval(registry_path=reg, target_id=None, dry_run=True, verbose=False, model="local")
+    assert_true(exit_code == 1, "an aborted run must still exit 1")
+    assert_true(len(calls) == aq_prompt_eval.MAX_CONSECUTIVE_ERRORS, f"breaker should stop after {aq_prompt_eval.MAX_CONSECUTIVE_ERRORS} calls, made {len(calls)}")
+    print("PASS: aq-prompt-eval stops calling a saturated backend after the consecutive-error limit")
     return 0
 
 

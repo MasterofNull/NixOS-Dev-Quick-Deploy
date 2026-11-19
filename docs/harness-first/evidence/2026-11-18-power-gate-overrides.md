@@ -5,7 +5,7 @@ Task ID: HF-POWER-GATE-OVERRIDES-20261118
 
 ## Objective
 - Owner directive 2026-11-18: no hardwired limits, the system deploys across many hardware environments. Audit (`.agents/delegation/outputs/hardwired-limits-audit-20261118.md`) found `MIN_BATTERY_PCT = 50` and `MAX_TEMP_C = 80.0` in `scripts/ai/lib/power_gate.py` not overridable; 80 C is wrong for fanless parts and for server CPUs with a 95-105 C critical point.
-- Delivered: `AQ_POWER_GATE_MIN_BATTERY_PCT` (default 50, clamped 0-100) and `AQ_POWER_GATE_MAX_TEMP_C`. When the temp override is absent the ceiling derives from the CPU's own trip points (thermal_zone `trip_point_*_temp` of type critical/hot/high on x86_pkg_temp zones, hwmon `temp*_crit` / `temp*_max` on k10temp/coretemp/zenpower) as the lowest value minus `AQ_POWER_GATE_TEMP_MARGIN_C` (default 15), clamped to [50, 100] C; no readable trip point keeps 80 C. Non-CPU sensors (acpitz) are ignored. The temperature ceiling is now in the `readings` as `max_temp_c`.
+- Delivered: `AQ_POWER_GATE_MIN_BATTERY_PCT` (default 50, clamped 0-100) and `AQ_POWER_GATE_MAX_TEMP_C`. When the temp override is absent the ceiling derives from the CPU's own trip points (thermal_zone `trip_point_*_temp` of type critical/hot/high on x86_pkg_temp zones, hwmon `temp*_crit` / `temp*_max` on k10temp/coretemp/zenpower) as the lowest value minus `AQ_POWER_GATE_TEMP_MARGIN_C` (default 15), capped at 100 C (no floor; superseded by the 2026-11-19 retro fix); no readable trip point keeps 80 C. Non-CPU sensors (acpitz) are ignored. The temperature ceiling is now in the `readings` as `max_temp_c`.
 
 ## Workflow/Session IDs
 - Workflow ID: none (bounded implementer slice). Session: Simurg@claude/sonnet; orchestrator Simurg@claude/opus-5.5#da0ef470.
