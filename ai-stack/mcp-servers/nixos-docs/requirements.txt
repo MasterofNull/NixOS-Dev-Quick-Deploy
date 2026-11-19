@@ -37,7 +37,7 @@ gitpython>=3.1.59
 whoosh>=2.7.4
 
 # Logging
-structlog>=23.1.0
+structlog>=26.1.0
 
 # Metrics
 prometheus-client>=0.23.1
