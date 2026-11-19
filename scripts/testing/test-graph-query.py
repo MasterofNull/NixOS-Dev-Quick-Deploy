@@ -170,7 +170,7 @@ def test_wiring():
     ua = (REPO / "scripts/ai/aq-understand-anything").read_text()
     assert "git pull" not in ua and "--depth 1 \"$REPO_URL\"" not in ua and "PINNED_REV" in ua
     assert "aq-graph-query" in (REPO / "ai-stack/local-agents/builtin_tools/shell_tools.py").read_text()
-    for f, needle in (("scripts/testing/harness_qa/phases/phase0.py", "_check_understand_graph_freshness(ctx)"),
+    for f, needle in (("scripts/testing/harness_qa/phases/phase0.py", "plan.append(_check_understand_graph_freshness)"),
                       ("scripts/ai/_aq-qa-bash", "0.10.59")):
         assert needle in (REPO / f).read_text(), f
 
