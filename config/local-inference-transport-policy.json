@@ -6,7 +6,7 @@
   "canonical_builder": {
     "path": "ai-stack/mcp-servers/shared/llm_config.py",
     "revision": "llm-config-20261113",
-    "sha256": "31143716252e778180d0cbc86bb895d8bebbac0ae438a0c8835671627962743e"
+    "sha256": "5545dd3a73166e9ae00cb28825920d721b9ec3e379f6d41ee40548d146f55de3"
   },
   "builder_defaults": {
     "repeat_penalty": 1.08,

@@ -82,6 +82,12 @@ max_doc_bytes = int(os.getenv("AIDB_IMPORT_MAX_BYTES", "200000"))
 import_delay_ms = int(os.getenv("AIDB_IMPORT_DELAY_MS", "75"))
 max_retries = int(os.getenv("AIDB_IMPORT_MAX_RETRIES", "4"))
 fetch_max_retries = max(0, int(os.getenv("KNOWLEDGE_FETCH_MAX_RETRIES", "3")))
+# Share of attempted sources allowed to fail before the run counts as FAILED (else DEGRADED, exit 0).
+degraded_max_pct = float(os.getenv("KNOWLEDGE_SYNC_DEGRADED_MAX_PCT", "25"))
+status_file = Path(os.getenv("KNOWLEDGE_SYNC_STATUS_FILE") or cache_dir / "knowledge-sync-status.json")
+last_error = ""
+last_import_error = ""
+import_connectivity_error = False
 
 with open(sources_file) as f:
     config = yaml.safe_load(f)
@@ -89,19 +95,23 @@ with open(sources_file) as f:
 import urllib.request, urllib.error
 
 def fetch_url(url):
-    """Fetch UTF-8 content; max retries excludes the initial attempt."""
+    """Fetch UTF-8 content; max retries excludes the initial attempt. Failure reason lands in last_error."""
+    global last_error
+    last_error = ""
     for attempt in range(fetch_max_retries + 1):
         try:
             with urllib.request.urlopen(url, timeout=30) as resp:
                 return resp.read().decode("utf-8")
         except urllib.error.HTTPError as e:
             if not (e.code == 429 or 500 <= e.code < 600):
+                last_error = f"HTTP {e.code}"
                 print(f"  WARN: {url} → HTTP {e.code}", file=sys.stderr)
                 return None
             error = f"HTTP {e.code}"
         except (urllib.error.URLError, TimeoutError) as e:
             error = str(e)
         if attempt == fetch_max_retries:
+            last_error = error
             print(f"  WARN: fetch failed {url}: {error}", file=sys.stderr)
             return None
         backoff = min(2 ** min(attempt, 4), 10)
@@ -110,8 +120,8 @@ def fetch_url(url):
 
 
 def gh_raw(owner_repo, path):
-    """Fetch a file from GitHub raw content."""
-    url = f"https://raw.githubusercontent.com/{owner_repo}/main/{path}"
+    """Fetch a file from GitHub raw content on the repo's default branch (HEAD; not every repo uses main)."""
+    url = f"https://raw.githubusercontent.com/{owner_repo}/HEAD/{path}"
     return fetch_url(url)
 
 def split_content(text, max_bytes):
@@ -127,6 +137,7 @@ def split_content(text, max_bytes):
 
 def aidb_import(collection, content, source_id, aidb_url, endpoint, aidb_key):
     """POST content to AIDB import endpoint (default: /documents)."""
+    global last_import_error, import_connectivity_error
     import urllib.request, urllib.error, json as _json
     payload = _json.dumps({
         "project": collection,
@@ -155,6 +166,7 @@ def aidb_import(collection, content, source_id, aidb_url, endpoint, aidb_key):
                 print(f"  WARN: import retry ({e.code}) source={source_id} attempt={attempt+1}/{max_retries} backoff={backoff}s", file=sys.stderr)
                 time.sleep(backoff)
                 continue
+            last_import_error = f"AIDB import HTTP {e.code}"
             print(f"  ERROR importing to AIDB: HTTP {e.code} source={source_id}", file=sys.stderr)
             return None
         except Exception as e:
@@ -163,6 +175,8 @@ def aidb_import(collection, content, source_id, aidb_url, endpoint, aidb_key):
                 print(f"  WARN: import retry source={source_id} attempt={attempt+1}/{max_retries} backoff={backoff}s err={e}", file=sys.stderr)
                 time.sleep(backoff)
                 continue
+            last_import_error = f"AIDB unreachable: {e}"
+            import_connectivity_error = True
             print(f"  ERROR importing to AIDB: {e}", file=sys.stderr)
             return None
 
@@ -172,6 +186,14 @@ fetch_failed = 0
 attempted = 0
 fetched = 0
 import_failed = 0
+failed_sources = {}
+
+
+def mark_failed(sid, stype, reason):
+    """Record the first failure reason per source and warn explicitly; failures are never silent."""
+    if sid not in failed_sources:
+        failed_sources[sid] = {"id": sid, "type": stype, "reason": reason or "unknown"}
+        print(f"  WARN: source failed: {sid} ({stype}): {reason or 'unknown'}", file=sys.stderr)
 
 for source in config.get("sources", []):
     sid = source["id"]
@@ -207,6 +229,7 @@ for source in config.get("sources", []):
                         texts.append(("README.md", content))
                     else:
                         source_fetch_failed = True
+                        mark_failed(sid, stype, f"readme: {last_error or 'empty response'}")
                 elif spec.startswith("file:"):
                     path = spec[5:]
                     content = gh_raw(owner_repo, path)
@@ -214,12 +237,14 @@ for source in config.get("sources", []):
                         texts.append((path, content))
                     else:
                         source_fetch_failed = True
+                        mark_failed(sid, stype, f"{path}: {last_error or 'empty response'}")
 
         elif stype == "url":
             try:
                 raw = fetch_url(source["url"])
                 if raw is None:
                     fetch_failed += 1
+                    mark_failed(sid, stype, last_error or "fetch failed")
                     continue
                 stripped = raw.lstrip()
 
@@ -295,6 +320,7 @@ for source in config.get("sources", []):
                     texts.append((sid, raw[:40000]))
             except Exception as e:
                 source_fetch_failed = True
+                mark_failed(sid, stype, f"fetch error: {e}")
                 print(f"  WARN: fetching {source['url']}: {e}", file=sys.stderr)
 
         elif stype == "local_dir":
@@ -306,12 +332,14 @@ for source in config.get("sources", []):
 
     except (urllib.error.URLError, TimeoutError) as e:
         source_fetch_failed = True
+        mark_failed(sid, stype, f"fetch error: {e}")
         print(f"  WARN: fetching {sid}: {e}", file=sys.stderr)
 
     if texts:
         fetched += 1
     if source_fetch_failed or not texts:
         fetch_failed += 1
+        mark_failed(sid, stype, "no content fetched")
         print(f"  WARN: source fetch incomplete: {sid}", file=sys.stderr)
 
     for name, text in texts:
@@ -326,7 +354,48 @@ for source in config.get("sources", []):
             else:
                 skipped += 1
                 import_failed += 1
+                mark_failed(sid, stype, f"{source_id}: {last_import_error or 'AIDB import failed'}")
 
 print(f"synced={synced} skipped={skipped} fetch_failed={fetch_failed}")
-sys.exit(1 if import_failed or (attempted > 0 and fetched == 0) else 0)
+
+# DEGRADED (a minority of sources failed) exits 0 so a timer-driven oneshot is not marked failed;
+# FAILED (nothing synced, too many sources failed, or AIDB unreachable) exits 1.
+failed_pct = 100.0 * len(failed_sources) / attempted if attempted else 0.0
+hard_reason = ""
+if attempted > 0 and synced == 0:
+    hard_reason = "no source synced"
+elif import_connectivity_error:
+    hard_reason = "AIDB import/connectivity error"
+elif attempted > 0 and failed_pct > degraded_max_pct:
+    hard_reason = f"{failed_pct:.1f}% of sources failed (max {degraded_max_pct:g}%)"
+state = "failed" if hard_reason else ("degraded" if failed_sources else "ok")
+if state == "degraded":
+    print(f"DEGRADED: {len(failed_sources)} of {attempted} sources failed ({failed_pct:.1f}%, max {degraded_max_pct:g}%)")
+elif state == "failed":
+    print(f"FAILED: {hard_reason}", file=sys.stderr)
+
+if not dry_run:
+    status = {
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "status": state,
+        "reason": hard_reason,
+        "attempted": attempted,
+        "synced": synced,
+        "skipped": skipped,
+        "fetch_failed": fetch_failed,
+        "import_failed": import_failed,
+        "failed_count": len(failed_sources),
+        "failed_pct": round(failed_pct, 2),
+        "degraded_max_pct": degraded_max_pct,
+        "failed_sources": list(failed_sources.values()),
+    }
+    try:
+        status_file.parent.mkdir(parents=True, exist_ok=True)
+        tmp = status_file.with_name(status_file.name + ".tmp")
+        tmp.write_text(json.dumps(status, indent=2) + "\n")
+        os.replace(tmp, status_file)
+    except OSError as e:
+        print(f"  WARN: could not write status file {status_file}: {e}", file=sys.stderr)
+
+sys.exit(1 if hard_reason else 0)
 PYEOF

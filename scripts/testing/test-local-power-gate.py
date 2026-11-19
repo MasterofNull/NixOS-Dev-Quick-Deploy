@@ -103,6 +103,106 @@ class PowerGate(unittest.TestCase):
         self.set_load(0.60 * 10)
         self.assertTrue(self.run_gate(s, st)["ok"])  # clear state: 0.60 < enter
 
+    def _env(self, **kv: str):
+        import os
+
+        saved = {k: os.environ.get(k) for k in kv}
+        os.environ.update(kv)
+
+        def restore() -> None:
+            for k, v in saved.items():
+                if v is None:
+                    os.environ.pop(k, None)
+                else:
+                    os.environ[k] = v
+
+        self.addCleanup(restore)
+
+    def test_env_min_battery_override(self) -> None:
+        s = make_sys(self.tmp / "s", ac="0", bat="40")
+        self._env(AQ_POWER_GATE_MIN_BATTERY_PCT="30")
+        self.assertTrue(self.run_gate(s)["ok"])
+        self._env(AQ_POWER_GATE_MIN_BATTERY_PCT="80")
+        d = self.run_gate(s)
+        self.assertFalse(d["ok"])
+        self.assertIn("below 80%", d["reasons"][0])
+
+    def test_env_max_temp_override(self) -> None:
+        s = make_sys(self.tmp / "s", temp_mc="85000")
+        self._env(AQ_POWER_GATE_MAX_TEMP_C="90")
+        self.assertTrue(self.run_gate(s)["ok"])
+        self._env(AQ_POWER_GATE_MAX_TEMP_C="60")
+        self.assertFalse(self.run_gate(make_sys(self.tmp / "s2", temp_mc="65000"))["ok"])
+
+    def test_bad_env_values_fall_back(self) -> None:
+        self._env(AQ_POWER_GATE_MAX_TEMP_C="hot", AQ_POWER_GATE_MIN_BATTERY_PCT="x")
+        self.assertEqual(power_gate.max_temp_c(self.tmp), 80.0)
+        self.assertEqual(power_gate.min_battery_pct(), 50)
+
+    def test_non_finite_env_values_fail_closed_to_default(self) -> None:
+        import contextlib
+        import io
+
+        for bad in ("nan", "NaN", "inf", "-inf", "Infinity"):
+            self._env(
+                AQ_POWER_GATE_MAX_TEMP_C=bad,
+                AQ_POWER_GATE_MIN_BATTERY_PCT=bad,
+                AQ_POWER_GATE_TEMP_MARGIN_C=bad,
+            )
+            err = io.StringIO()
+            with contextlib.redirect_stderr(err):
+                self.assertEqual(power_gate.max_temp_c(self.tmp), 80.0, bad)
+                self.assertEqual(power_gate.min_battery_pct(), 50, bad)
+            self.assertIn("non-finite", err.getvalue())
+        # A hot CPU must still defer (nan used to disable the ceiling).
+        self._env(AQ_POWER_GATE_MAX_TEMP_C="nan")
+        self.assertFalse(self.run_gate(make_sys(self.tmp / "hot", temp_mc="95000"))["ok"])
+        # nan margin must not poison the derived ceiling.
+        self._env(AQ_POWER_GATE_TEMP_MARGIN_C="nan")
+        s = self.tmp / "d"
+        w(s / "class/hwmon/hwmon0/name", "k10temp")
+        w(s / "class/hwmon/hwmon0/temp1_crit", "95000")
+        self.assertEqual(power_gate.max_temp_c(s), 80.0)
+
+    def test_temp_derived_from_hwmon_crit(self) -> None:
+        s = make_sys(self.tmp / "s", temp_mc="72000")
+        w(s / "class/hwmon/hwmon5/temp1_crit", "85000")  # fanless: crit 85 -> limit 70
+        self.assertEqual(power_gate.max_temp_c(s), 70.0)
+        d = self.run_gate(s)
+        self.assertFalse(d["ok"])
+        self.assertIn("72C >= 70C", d["reasons"][0])
+
+    def test_temp_derived_server_class_cpu_allows_higher(self) -> None:
+        s = make_sys(self.tmp / "s", temp_mc="85000")
+        w(s / "class/hwmon/hwmon5/temp1_crit", "105000")
+        self.assertEqual(power_gate.max_temp_c(s), 90.0)
+        self.assertTrue(self.run_gate(s)["ok"])
+
+    def test_temp_derived_from_thermal_zone_trips(self) -> None:
+        s = make_sys(self.tmp / "s")
+        z = s / "class/thermal/thermal_zone0"
+        w(z / "type", "x86_pkg_temp")
+        w(z / "trip_point_0_type", "passive")
+        w(z / "trip_point_0_temp", "60000")  # passive trip is ignored
+        w(z / "trip_point_1_type", "critical")
+        w(z / "trip_point_1_temp", "95000")
+        self.assertEqual(power_gate.max_temp_c(s), 80.0)
+        self._env(AQ_POWER_GATE_TEMP_MARGIN_C="25")
+        self.assertEqual(power_gate.max_temp_c(s), 70.0)
+
+    def test_derived_temp_is_clamped(self) -> None:
+        s = make_sys(self.tmp / "s")
+        w(s / "class/hwmon/hwmon5/temp1_crit", "60000")
+        self.assertEqual(power_gate.max_temp_c(s), 50.0)  # floor
+        w(s / "class/hwmon/hwmon5/temp1_crit", "130000")
+        self.assertEqual(power_gate.max_temp_c(s), 100.0)  # ceiling
+
+    def test_non_cpu_trip_points_ignored(self) -> None:
+        s = make_sys(self.tmp / "s")
+        w(s / "class/hwmon/hwmon2/name", "acpitz")
+        w(s / "class/hwmon/hwmon2/temp1_crit", "60000")
+        self.assertEqual(power_gate.max_temp_c(s), 80.0)
+
     def _cli(
         self, sysroot: Path, *extra: str, env: dict | None = None
     ) -> subprocess.CompletedProcess:
