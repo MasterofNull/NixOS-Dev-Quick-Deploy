@@ -83,6 +83,12 @@ in {
       '';
     };
 
+  } // prev.lib.optionalAttrs (!(selected ? npmDepsHash)) {
+    npmDeps = null;
+    preConfigure = ''
+      prependToVar cmakeFlags "-DLLAMA_BUILD_COMMIT:STRING=$(cat COMMIT)"
+    '';
+  } // {
     # Preserve cmake flags from nixpkgs, allowing further overlays to patch.
     # Note: We do NOT enable GGML_BACKEND_DL - static backend linking ensures
     # GGML_USE_VULKAN is defined and the Vulkan backend auto-registers in the
@@ -99,7 +105,11 @@ in {
 
     # Phase 36: Add dependencies for build 9144 Vulkan support
     nativeBuildInputs =
-      (oldAttrs.nativeBuildInputs or [])
+      (if selected ? npmDepsHash
+       then (oldAttrs.nativeBuildInputs or [])
+       # Newer sources no longer ship tools/ui (web UI sources moved out of tree and
+       # LLAMA_BUILD_UI=OFF), so nixpkgs' npm hook and `npm run build` pushd would fail.
+       else builtins.filter (d: (d.name or "") != "npm-config-hook") (oldAttrs.nativeBuildInputs or []))
       ++ (with prev; [
         glslang
       ]);
@@ -112,8 +122,16 @@ in {
 
     patches =
       (oldAttrs.patches or [])
-      ++ [
-        ../../patches/llama-cpp/allow-vulkan-igpu-offload.patch
+      # The iGPU offload patch only touches the Vulkan backend, so apply it for Vulkan
+      # builds only (the CPU/ROCm/CUDA builds never compile that code).
+      ++ prev.lib.optionals enableVulkan [
+        # Patch hunks are source-version specific: the fallback pin (b9222) keeps its original
+        # patch; the current pin uses the port that carries only the functional hunks.
+        (
+          if useFallback
+          then ../../patches/llama-cpp/allow-vulkan-igpu-offload-b9222.patch
+          else ../../patches/llama-cpp/allow-vulkan-igpu-offload.patch
+        )
       ];
 
     # Add metadata for debugging/introspection
