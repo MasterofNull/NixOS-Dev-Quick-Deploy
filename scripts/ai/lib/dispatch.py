@@ -659,8 +659,12 @@ class DirectRunner:
             role=config.role,
             task_type=config.task_type,
         )
-        # Reviewer verdicts are machine-read (aq-land, aq-review-receipt): constrain them.
-        _verdict_schema = REVIEW_VERDICT_SCHEMA if config.role == "reviewer" else None
+        # Commit-review verdicts are machine-read (aq-land, aq-review-receipt). Opt-in only: other reviewer calls (rsi_convene) want free text.
+        _verdict_schema = (
+            REVIEW_VERDICT_SCHEMA
+            if config.role == "reviewer" and os.environ.get("AQ_LOCAL_VERDICT_SCHEMA") == "1"
+            else None
+        )
         attach_json_schema(payload, _verdict_schema, "review_verdict")
         _constrained = "response_format" in payload
 

@@ -7,6 +7,8 @@ scripts/ai/lib/dispatch.py DirectRunner, against a stub llama.cpp HTTP server
   1. a schema is attached as response_format json_schema
   2. ignore_eos is dropped alongside grammar/json_schema (llama.cpp b12489 = 400)
   3. AQ_LOCAL_JSON_SCHEMA=0 sends the old free-text payload
+  3b. only opted-in (AQ_LOCAL_VERDICT_SCHEMA=1, set by aq-land/aq-review-request) reviewer calls are
+      constrained; an rsi_convene-style reviewer call stays free text
   4. the reviewer output file still carries Reviewed-head-sha / Review-Disposition lines
   5. no source file combines ignore_eos with grammar/json_schema
 """
@@ -93,6 +95,13 @@ def main() -> int:
     url = f"http://127.0.0.1:{srv.server_port}"
     with tempfile.TemporaryDirectory() as td:
         outdir = Path(td)
+        # rsi_convene-style reviewer call (no opt-in): free text, never constrained
+        os.environ.pop("AQ_LOCAL_VERDICT_SCHEMA", None)
+        text = run_reviewer(url, outdir, "rsi")
+        assert "response_format" not in SEEN[-1], "reviewer call without opt-in must stay free text"
+        assert text.startswith("free text"), text
+        # aq-land / aq-review-request review: opt-in env set by the caller
+        os.environ["AQ_LOCAL_VERDICT_SCHEMA"] = "1"
         text = run_reviewer(url, outdir, "on")
         rf = SEEN[-1]["response_format"]
         assert rf["type"] == "json_schema" and rf["json_schema"]["schema"]["required"], rf
@@ -106,6 +115,8 @@ def main() -> int:
         assert "response_format" not in SEEN[-1], "kill switch must send the free-text payload"
         assert "Review-Disposition: PASS" in text
     srv.shutdown()
+    for caller in ("aq-land", "aq-review-request"):
+        assert 'AQ_LOCAL_VERDICT_SCHEMA": "1"' in (ROOT / "scripts/ai" / caller).read_text(), caller
 
     # no source combines ignore_eos with grammar/json_schema
     hits = subprocess.run(["git", "-C", str(ROOT), "grep", "-l", "ignore_eos", "--", "*.py", "*.sh", "*.nix",

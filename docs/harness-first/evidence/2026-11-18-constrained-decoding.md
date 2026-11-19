@@ -6,13 +6,13 @@ Task ID: HF-20261118-constrained-decoding
 ## Objective
 Owner approved frontier item fe-2ab16cb00ee3 (2026-11-18): constrain every local-model request whose output a machine parses with llama.cpp json_schema decoding. Delivered:
 - `attach_json_schema`, `REVIEW_VERDICT_SCHEMA`, `render_review_verdict`, `json_schema_enabled` in `ai-stack/mcp-servers/shared/llm_config.py`. Wire form is `response_format: {type: json_schema, json_schema: {name, schema, strict}}` on `/v1/chat/completions`, the form `scripts/ai/lib/aqos_ai_propose.py` already uses.
-- Reviewer path: `DirectRunner` in `scripts/ai/lib/dispatch.py` attaches the verdict schema when `role == reviewer`, then renders the JSON back to the `Reviewed-head-sha:` / `Review-Disposition:` lines that aq-land, aq-review-receipt and aq-review-request read. Raw JSON is kept in `<output>.verdict.json`. Invalid JSON leaves the raw output untouched.
+- Reviewer path: `DirectRunner` in `scripts/ai/lib/dispatch.py` attaches the verdict schema only when `role == reviewer` AND `AQ_LOCAL_VERDICT_SCHEMA=1` (explicit opt-in, set by aq-land and aq-review-request; rsi_convene reviewer calls are free-text diagnoses and stay unconstrained), then renders the JSON back to the `Reviewed-head-sha:` / `Review-Disposition:` lines that aq-land, aq-review-receipt and aq-review-request read. Raw JSON is kept in `<output>.verdict.json`. Invalid JSON leaves the raw output untouched.
 - Guard: `ignore_eos` is dropped whenever grammar, json_schema or a json_schema response_format is present (llama.cpp b12489 answers 400), in both the helper and `build_llama_payload`.
 - Kill switch `AQ_LOCAL_JSON_SCHEMA=0`; default ON for the reviewer path.
 - Plan dir `.agents/plans/frontier-adoption-20261118/` (VERIFY.md, tracker.json, .plan-classification.json).
 
 Call-site map (machine-read vs free text):
-- Constrained: delegate-to-local direct mode with role reviewer (aq-land local lane, aq-review-request local lane); both parse the verdict line.
+- Constrained: delegate-to-local direct mode with role reviewer and AQ_LOCAL_VERDICT_SCHEMA=1 (aq-land local lane, aq-review-request local lane); both parse the verdict line. Left free: rsi_convene local reviewer (five-line diagnosis); other role=reviewer callers (aq-loop, aq-cascade, aq-collab-round, prsi-orchestrator) go to gemini, not local.
 - Already constrained, unchanged: `aqos_ai_propose.py` (response_format json_schema); `agent_executor.py` tool calls (GBNF grammar).
 - Left free text: `claude-local-wrapper.py` (chat), `llm_code_reviewer.py` (prose review), the non-reviewer DirectRunner roles (implementer/architect output is read by humans or by agents), hybrid and agent modes (multi-step tool loops; tool calls are already grammar-bound), `local_agent_runtime.py` (loop payloads, not a single parsed record).
 - Follow-up candidates, not done: other `task_type=structured` callers once found to parse JSON (none found in ai-stack by rg).
