@@ -134,6 +134,18 @@
       "note": "slow (90-180s): path-triggered in --changed"
     },
     {
+      "id": "lean-ctx-shell-security",
+      "cmd": "scripts/testing/test-lean-ctx-shell-security.py",
+      "paths": [
+        "scripts/deploy/lean-ctx-set-shell-security.py",
+        "scripts/testing/test-lean-ctx-shell-security.py"
+      ],
+      "needs": [
+        "python3"
+      ],
+      "ci_workflow": ".github/workflows/test.yml#syntax"
+    },
+    {
       "id": "pm-tracker-untrusted-hold",
       "cmd": "scripts/testing/test-pm-tracker-untrusted-hold.py",
       "paths": [
@@ -1805,6 +1817,8 @@
         "scripts/testing/test-persona-instance-labels.py",
         "scripts/testing/test-outcome-receipt.py",
         "scripts/testing/test-aq-land-outcome.py",
+        "scripts/testing/test-delegate-local-context-packet.py",
+        "scripts/testing/test-training-loop-pulse-label.py",
         "scripts/testing/test-collect-trajectories.py",
         "scripts/testing/test-postflight-health-policy.py",
         "scripts/testing/test-pr-body-format-check.py",
@@ -1927,6 +1941,8 @@
         "scripts/testing/test-persona-instance-labels.py",
         "scripts/testing/test-outcome-receipt.py",
         "scripts/testing/test-aq-land-outcome.py",
+        "scripts/testing/test-delegate-local-context-packet.py",
+        "scripts/testing/test-training-loop-pulse-label.py",
         "scripts/testing/test-collect-trajectories.py",
         "scripts/testing/test-postflight-health-policy.py",
         "scripts/testing/test-pr-body-format-check.py",
@@ -2356,9 +2372,32 @@
         "git"
       ],
       "ci_workflow": ".github/workflows/test.yml#manifest-tests"
+    },
+    {
+      "id": "timer-stagger-regression-tests",
+      "cmd": "scripts/testing/test-timer-stagger-regressions.py",
+      "paths": [],
+      "needs": [
+        "python3"
+      ],
+      "ci_workflow": ".github/workflows/test.yml#manifest-tests"
+    },
+    {
+      "id": "llama-post-switch-validate-tests",
+      "cmd": "scripts/testing/test-llama-post-switch-validate.py",
+      "paths": [],
+      "needs": [
+        "python3",
+        "curl"
+      ],
+      "ci_workflow": ".github/workflows/test.yml#manifest-tests"
     }
   ],
   "ci_exempt": [
+    {
+      "script": "scripts/testing/check-timer-stagger.py",
+      "reason": "full nix eval of the host config (minutes); run locally via nice -n 19 before timer changes, see docs/harness-first/evidence/2026-11-18-timer-stagger.md"
+    },
     {
       "script": "scripts/testing/check-harness-first-platform-owner-approval.py",
       "reason": "needs GITHUB_TOKEN and the PR reviews API; inherently remote"
