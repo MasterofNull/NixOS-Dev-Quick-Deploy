@@ -1030,6 +1030,15 @@ in {
       ];
     })
 
+    # iGPU offload patch default from host facts: an APU (accelerationClass *-apu-*)
+    # or an iGPU with no dGPU. A dGPU+iGPU host keeps upstream device selection.
+    (lib.mkIf roleEnabled {
+      mySystem.aiStack.llamaCpp.vulkanAllowIgpuOffload = lib.mkDefault (
+        (cfg.hardware.gpuVendor == "none" && cfg.hardware.igpuVendor != "none")
+        || (cfg.hardware.accelerationClass != null && lib.hasInfix "-apu-" cfg.hardware.accelerationClass)
+      );
+    })
+
     # ── Phase 20.1 — llama.cpp version tracking overlay ────────────────────────
     # When trackLatest = true, build llama.cpp from source using the pinned
     # version in nix/pins/llama-cpp.json. This allows tracking upstream releases
@@ -1044,6 +1053,7 @@ in {
           enableVulkan = resolvedAccel == "vulkan";
           enableRocm = resolvedAccel == "rocm"; # Phase B: Enabled via nixos-rocm
           enableCuda = resolvedAccel == "cuda";
+          vulkanAllowIgpuOffload = llama.vulkanAllowIgpuOffload;
           inherit rocmGpuTargets;
         })
       ];
