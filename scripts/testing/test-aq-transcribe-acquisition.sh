@@ -195,7 +195,7 @@ eq "5 whisper json normalised to aq-segments/1" "$(segjson "$OUTD/transcript.jso
 eq "5 gate consulted with task + defer log" "$(grep -c -- '--task aq-transcribe-whisper --defer-log' "$LOG/gate.log")" 1
 eq "5 whisper ran under systemd-run quota (CPUQuota+MemoryMax+TasksMax)" "$(grep -cE 'CPUQuota=[0-9]+% -p MemoryMax=[0-9]+ -p TasksMax=[0-9]+' "$LOG/quota.log")" 1
 eq "5 media download passes a derived --max-filesize" "$(grep -cE -- '--max-filesize [0-9]+' "$LOG/ytdlp.argv")" 1
-ls "$T/cache/wh1/transcript/" | grep -q 'transcript.raw.openai.json' && ok "5 raw openai json kept" 1 || ok "5 raw openai json kept" 0
+[ -e "$T/cache/wh1/transcript/transcript.raw.openai.json" ] && ok "5 raw openai json kept" 1 || ok "5 raw openai json kept" 0
 [[ -f "$T/cache/wh1/stages/transcript.done" ]] && ok "5 .done written" 1 || ok "5 .done written" 0
 run STUB_CAPS=none STUB_ID=wh1 -- "$URL"
 eq "5 rerun cache hit: whisper not called" "$(called whisper.log)" 0
