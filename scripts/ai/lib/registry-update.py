@@ -3,6 +3,7 @@
 
   registry-update.py set    <registry.jsonl> <task_id> <field> <value>
   registry-update.py append <registry.jsonl> <json-row>
+  registry-update.py stamp  <registry.jsonl> <task_id>   (record output sha256 + bytes)
 
 All values arrive as argv (never shell-parsed). Writes go through TaskRegistry's
 shared lock + atomic replace, so concurrent readers never see a truncated file.
@@ -35,6 +36,9 @@ def main(argv: list[str]) -> int:
         return 0
     if op == "append" and len(argv) == 3:
         reg.append_row_atomic(json.loads(argv[2]))
+        return 0
+    if op == "stamp" and len(argv) == 3:
+        reg.stamp_output(argv[2])
         return 0
     print(__doc__, file=sys.stderr)
     return 2

@@ -190,6 +190,11 @@ if a[0] == "mint":
     lane = rid.split("-")[0]
     json.dump({"run_id": rid, "reviewer_lane": "local-direct" if lane == "local" else lane, "reviewed_head_sha": a[a.index("--head") + 1]},
               open(a[a.index("--out") + 1], "w"))
+elif a[0] == "verify":
+    if os.path.exists(f"{S}/verify_fail"):
+        sys.stderr.write("verify FAILED: receipt REVOKED: test\\n")
+        sys.exit(1)
+    sys.exit(0)
 else:
     if a[0] == "publish":
         g = json.load(open(f"{S}/gh.json")); g.setdefault("calls", []).append("RECEIPT publish"); json.dump(g, open(f"{S}/gh.json", "w"))
@@ -1102,6 +1107,16 @@ class Friction(Base):
         edit = calls.index("pr edit 77")
         self.assertEqual([i for i, c in enumerate(calls) if c == "RECEIPT publish"][-1] < edit, True, calls)
         self.assertEqual(len(self.published()), 2)
+
+    def test_merge_is_refused_when_receipt_verify_fails(self):
+        (self.S / "verify_fail").write_text("1")
+        line = self.stop_line(self.land(expect=1))
+        self.assertIn("merge", line)
+        self.assertIn("receipt verify refused the merge", line)
+        self.assertEqual(self.ghs().get("merges", 0), 0)
+        self.assertIn("verify --require-revocation-check", (self.S / "receipt.log").read_text())
+        (self.S / "verify_fail").unlink()
+        self.land(expect=0)  # a resume after the receipt verifies merges
 
     def test_bad_body_format_stops_in_preflight_before_any_review_or_push(self):
         (self.S / "body.md").write_text(BODY.replace("## Details", "## Summary"))

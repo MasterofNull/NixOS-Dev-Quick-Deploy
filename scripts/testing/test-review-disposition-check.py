@@ -27,7 +27,8 @@ TREE = "d" * 40
 def receipt(**kw):
     r = {"schema": 2, "repo": "o/r", "pr": 1, "reviewed_head_sha": HEAD, "tree": TREE, "base_commit": "e" * 40,
          "policy_version": crd.POLICY_VERSION, "run_id": "r1", "reviewer_lane": "codex", "author_lane": "claude",
-         "verdict": "PASS", "output_file": "x.log", "output_sha256": "c" * 64, "created_at": "2026-11-06T00:00:00Z"}
+         "verdict": "PASS", "output_file": "x.log", "output_sha256": "c" * 64, "created_at": "2026-11-06T00:00:00Z",
+         "registry_output_sha256": "c" * 64, "output_bytes": 10}
     r.update(kw)
     return r
 
@@ -223,7 +224,8 @@ class OffBranch(unittest.TestCase):
     def rec(self, **kw):
         r = {"schema": 2, "repo": REPO, "pr": 1, "reviewed_head_sha": self.head, "tree": self.tree, "base_commit": self.base,
              "policy_version": crd.POLICY_VERSION, "run_id": "r1", "reviewer_lane": "codex", "author_lane": "claude",
-             "verdict": "PASS", "output_file": "x.log", "output_sha256": "c" * 64, "created_at": "2026-11-06T00:00:00Z"}
+             "verdict": "PASS", "output_file": "x.log", "output_sha256": "c" * 64, "created_at": "2026-11-06T00:00:00Z",
+         "registry_output_sha256": "c" * 64, "output_bytes": 10}
         r.update(kw)
         return r
 
@@ -264,6 +266,26 @@ class OffBranch(unittest.TestCase):
             return crd.evaluate(ev, get=get, fetch_head=fetch_head)
         finally:
             os.chdir(old)
+
+    def test_revoked_receipt_fails_ci(self):
+        self.publish(self.rec())
+        self.assertEqual(self.evaluate(), [])
+        self.publish({"pr": 1, "reviewed_head_sha": self.head}, name=f"revocations/pr1-{self.head[:12]}.json",
+                     raw=json.dumps({"schema": 1, "pr": 1, "reviewed_head_sha": self.head, "reason": "hand-minted"}))
+        errs = self.evaluate()
+        self.assertTrue(any("REVOKED" in e and "hand-minted" in e for e in errs), errs)
+
+    def test_new_receipt_without_wrapper_recorded_hash_fails_ci(self):
+        self.publish(self.rec(registry_output_sha256=None, output_bytes=None))
+        errs = self.evaluate()
+        self.assertTrue(any("wrapper-recorded output hash" in e for e in errs), errs)
+
+    def test_new_receipt_with_wrapper_recorded_hash_passes_ci(self):
+        self.publish(self.rec())
+        self.assertEqual(self.evaluate(), [])
+        self.publish(self.rec(registry_output_sha256="d" * 64),
+                     name=f"receipts/pr1-{self.head[:12]}.json")
+        self.assertTrue(any("wrapper-recorded" in e for e in self.evaluate()))  # recorded hash must equal output_sha256
 
     def test_valid_receipt_head_unchanged(self):
         self.publish(self.rec())
