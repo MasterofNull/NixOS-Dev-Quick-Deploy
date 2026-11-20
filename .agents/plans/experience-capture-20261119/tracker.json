@@ -1,0 +1,56 @@
+{
+  "plan": {
+    "id": "experience-capture-20261119",
+    "title": "Experience capture: per model/agent/role/version tracking with recency+version weighting",
+    "prd_ref": ".agents/plans/experience-capture-20261119/DESIGN.md",
+    "owner": "hyperd",
+    "goal": "Extend agent-run-events with a dispatch->review->outcome->landing join, prompt/payload fingerprints and model identity, and read it through a decayed, version-weighted score used for advisory routing, reports and divergence alerts.",
+    "success_criteria": [
+      "Reviewer role compared across two real models with joined outcomes and weighting (J1-J7)",
+      "Unknown/non-agent outcomes never change a score (learning-attribution gate)"
+    ]
+  },
+  "phases": [
+    {"id": "P0", "name": "Freeze", "goal": "Frozen PRD and owner decisions", "order": 0},
+    {"id": "P1", "name": "Capture", "goal": "Emit and join records", "order": 1},
+    {"id": "P2", "name": "Read", "goal": "Weighted cards and consumers", "order": 2},
+    {"id": "P3", "name": "Scale", "goal": "Retention and replay", "order": 3}
+  ],
+  "items": [
+    {"id": "EC-0", "name": "Freeze PRD and owner decisions", "phase": "P0", "kind": "milestone",
+     "goal": "Independent scrutiny of formula and join design; owner answers decisions 1-9.",
+     "validation_goal": "PLAN_READY recorded with owner answers.",
+     "deps": [], "detection": {"freeze_record": ".agents/plans/experience-capture-20261119/DESIGN.md"}},
+    {"id": "EC-1", "name": "Emit lib with fingerprint and redaction", "phase": "P1", "kind": "slice",
+     "goal": "experience_emit over make_event: prompt_sha256, template version, manifest hash, model params, quota_window type, redacted sidecar, fail-open kill switch.",
+     "validation_goal": "Unit tests incl. synthetic-secret quarantine; real emit from one dispatch.",
+     "deps": ["EC-0"], "detection": {"commit_match": ["experience-capture", "experience_emit"]}},
+    {"id": "EC-2", "name": "Wire delegate wrappers", "phase": "P1", "kind": "slice",
+     "goal": "delegate-to-* and fanout emit events with dispatch_id==run_id, model id, tokens, wall time, quota windows.",
+     "validation_goal": "Real dispatches on two lanes produce complete J1 chains.",
+     "deps": ["EC-1"], "detection": {"wired_caller": {"file": "scripts/ai/delegate-to-codex", "pattern": "experience_emit"}}},
+    {"id": "EC-3", "name": "Join review receipt and landing outcome", "phase": "P1", "kind": "slice",
+     "goal": "aq-review-receipt review event; record_landing author_run_id, review_run_ids, redo/revert links; aq-land plumbing.",
+     "validation_goal": "A real PR landing yields a full prompt->review->outcome->landing chain (J2).",
+     "deps": ["EC-2"], "detection": {"wired_caller": {"file": "scripts/ai/lib/outcome_receipt.py", "pattern": "author_run_id"}}},
+    {"id": "EC-4", "name": "Weighted experience cards", "phase": "P2", "kind": "slice",
+     "goal": "experience_cards.py + config/experience-weighting.json implementing decay, version multiplier, shrinkage, confidence, LA gate.",
+     "validation_goal": "Hand recomputation matches; unknown outcomes leave score unchanged; new version starts low-trust (J3-J5).",
+     "deps": ["EC-3"], "detection": {"commit_match": ["experience_cards"]}},
+    {"id": "EC-5", "name": "Rollup and retention", "phase": "P3", "kind": "slice",
+     "goal": "Daily rollup and verified compression of raw events older than 90 days; no deletion.",
+     "validation_goal": "Rollup totals equal raw totals for a real month; measured size drop; restore test.",
+     "deps": ["EC-3"], "detection": {"commit_match": ["experience-rollup"]}},
+    {"id": "EC-6", "name": "Consumers: report, dashboard, hints, divergence alerts", "phase": "P2", "kind": "slice",
+     "goal": "aq-report Experience section, dashboard route, advisory aq-hints line, divergence alert job.",
+     "validation_goal": "Live aq-report and dashboard show real cards; alert path exercised (J6).",
+     "deps": ["EC-4"], "detection": {"wired_caller": {"file": "scripts/ai/aq-report", "pattern": "experience_cards"}}},
+    {"id": "EC-7", "name": "Cross-model replay and per-instance cards", "phase": "P3", "kind": "slice",
+     "goal": "aq-prompt-eval --replay across lanes; optional routing weights after owner decision.",
+     "validation_goal": "Replay on two lanes writes comparable experiment_id rows.",
+     "deps": ["EC-6"], "detection": {"commit_match": ["prompt-eval replay"]}}
+  ],
+  "issues": [
+    {"title": "Feature freeze scope", "sev": "med", "note": "Confirm telemetry work is allowed during system-integrity-recovery freeze (owner decision 1)."}
+  ]
+}
