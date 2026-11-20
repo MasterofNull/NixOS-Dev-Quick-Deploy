@@ -10,6 +10,7 @@ import sys
 import tempfile
 import threading
 import unittest
+from unittest import mock
 from contextlib import redirect_stdout
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
@@ -31,9 +32,10 @@ def reply(text: str, status: int = 200, hdrs: dict | None = None):
     return status, hdrs or {}, body
 
 
-def make_transport(defect_verdict: str = "REQUEST_CHANGES", clean_verdict: str = "PASS", catalog_status: int = 200, chat_status: int = 200, echo_token: bool = False):
+def make_transport(defect_verdict: str = "REQUEST_CHANGES", clean_verdict: str = "PASS", catalog_status: int = 200, chat_status: int = 200, echo_token: bool = False,
+                   identify: bool = True, token: str = TOKEN):
     def t(method, url, headers, body):
-        assert headers["Authorization"] == f"Bearer {TOKEN}"
+        assert headers["Authorization"] == f"Bearer {token}"
         if "catalog" in url:
             return catalog_status, {}, json.dumps([{"id": "toy/m"}, {"id": "toy/n"}])
         if chat_status != 200:
@@ -42,7 +44,9 @@ def make_transport(defect_verdict: str = "REQUEST_CHANGES", clean_verdict: str =
         if "exactly: ok" in prompt:
             return reply("ok", hdrs={"x-ratelimit-remaining": "9", "x-ratelimit-limit": "10"})
         clean = "toy/util.py" in prompt or "toy/cfg.py" in prompt
-        return reply("finding\nReview-Disposition: " + (clean_verdict if clean else defect_verdict))
+        case = next(c for c in P.CASES if c.diff in prompt)
+        finding = f"Found {case.defect} in {case.name}" if identify and case.defect else "finding"
+        return reply(finding + "\nReview-Disposition: " + (clean_verdict if clean else defect_verdict))
     return t
 
 
@@ -66,6 +70,10 @@ class Tests(unittest.TestCase):
         self.assertTrue(ok["capability"]["passed"])
         self.assertEqual(ok["capability"]["hits"], 8)
         self.assertEqual(ok["rate_limit"]["x-ratelimit-remaining"], "9")
+        placeholder = P.probe("ghm", LANE, "toy/m", make_transport(identify=False), TOKEN)
+        self.assertEqual(placeholder["capability"]["hits"], 0)
+        self.assertEqual(placeholder["capability"]["misses"], 8)
+        self.assertFalse(placeholder["capability"]["passed"])
         weak = P.probe("ghm", LANE, "toy/m", make_transport(defect_verdict="PASS"), TOKEN)
         self.assertFalse(weak["capability"]["passed"])
         self.assertEqual(weak["capability"]["misses"], 8)
@@ -74,11 +82,97 @@ class Tests(unittest.TestCase):
         self.assertFalse(noisy["capability"]["passed"])
 
     def test_one_false_rc_allowed_boundary(self):
-        rows = [{"defect": "d", "disposition": "REQUEST_CHANGES"}] * 4 + [{"defect": "d", "disposition": None}] \
+        rows = [{"defect": "d", "disposition": "REQUEST_CHANGES", "identified": True}] * 4 + [{"defect": "d", "disposition": None}] \
             + [{"defect": None, "disposition": "REQUEST_CHANGES"}, {"defect": None, "disposition": "PASS"}]
         s = P.score(rows)
         self.assertEqual((s["hits"], s["misses"], s["no_verdict"], s["false_request_changes"]), (4, 1, 1, 1))
         self.assertTrue(s["passed"])  # 0.8 hit rate, 1 false RC
+
+    def test_rc_without_identified_defect_is_not_a_hit(self):
+        rows = [{"defect": "d", "disposition": "REQUEST_CHANGES", "identified": False}] * 5
+        self.assertEqual(P.score(rows)["hits"], 0)
+
+    def test_smoke_requires_usable_catalog_and_nonempty_chat(self):
+        def mk(catalog_body: str, chat_text: str):
+            def t(method, url, headers, body):
+                if "catalog" in url:
+                    return 200, {}, catalog_body
+                return reply(chat_text)
+            return t
+        for name, cat, chat in (("empty_id_obj", "[{}]", "ok"), ("null_ids", '[{"id": null}, {"id": ""}]', "ok"),
+                                ("empty_chat", '[{"id": "toy/m"}]', ""), ("blank_chat", '[{"id": "toy/m"}]', "  \n"),
+                                ("wrong_chat", '[{"id": "toy/m"}]', "no thanks")):
+            r = P.probe("ghm", LANE, "toy/m", mk(cat, chat), TOKEN, skip_capability=True)
+            self.assertEqual(r["status"], "lane_unavailable", name)
+            with tempfile.TemporaryDirectory() as d, redirect_stdout(io.StringIO()):
+                self.assertEqual(P.main(["--token-cmd", f"echo {TOKEN}", "--probe-only", "--out-dir", d], transport=mk(cat, chat)), 3, name)
+        good = P.probe("ghm", LANE, "toy/m", mk('[{"id": "toy/m"}]', "ok"), TOKEN, skip_capability=True)
+        self.assertEqual(good["status"], "ok")
+
+    def test_redaction_only_at_output_boundary(self):
+        tok = "lane"  # equals a result key name
+        r = P.probe("ghm", LANE, "toy/m", make_transport(token=tok), tok)
+        self.assertEqual(r["status"], "ok")
+        self.assertEqual(r["lane"], "ghm")
+        self.assertEqual(r["capability"]["hits"], 8)  # scoring saw the unredacted findings
+        out = json.loads(P.render({**r, "note": "the lane said hi"}, tok))
+        self.assertEqual(out["lane"], "ghm")
+        self.assertIn("capability", out)
+        self.assertEqual(out["note"], "the [REDACTED] said hi")
+        with tempfile.TemporaryDirectory() as d:
+            written = json.loads(P.write_result(r, tok, Path(d)).read_text())
+            self.assertEqual(written["lane"], "ghm")
+            self.assertEqual(written["capability"]["hits"], 8)
+
+    def test_unique_exclusive_private_result_paths(self):
+        with tempfile.TemporaryDirectory() as d:
+            paths: list[Path] = []
+            errs: list[BaseException] = []
+
+            def w():
+                try:
+                    paths.append(P.write_result({"lane": "ghm", "status": "ok"}, TOKEN, Path(d)))
+                except BaseException as exc:  # noqa: BLE001
+                    errs.append(exc)
+            ts = [threading.Thread(target=w) for _ in range(16)]
+            for t in ts:
+                t.start()
+            for t in ts:
+                t.join()
+            self.assertEqual(errs, [])
+            self.assertEqual(len(set(paths)), 16)
+            self.assertEqual(len(list(Path(d).iterdir())), 16)
+            for p in paths:
+                self.assertEqual(p.stat().st_mode & 0o777, 0o600)
+            # exclusive create: a colliding name must fail, never overwrite
+            with mock.patch.object(P, "_result_name", lambda lane: paths[0].name):
+                with self.assertRaises(FileExistsError):
+                    P.write_result({"lane": "ghm", "status": "changed"}, TOKEN, Path(d))
+            self.assertEqual(json.loads(paths[0].read_text())["status"], "ok")
+
+    def test_foreign_endpoint_never_gets_default_credential(self):
+        calls: list[str] = []
+
+        def spy(*a):
+            calls.append("transport")
+            return 200, {}, "[]"
+        with mock.patch.object(P, "get_token", lambda cmd: calls.append("token") or TOKEN):
+            for extra in (["--endpoint", "https://evil.example/chat"], ["--catalog", "https://evil.example/cat"],
+                          ["--endpoint", "https://models.github.ai.evil.example/chat"]):
+                with tempfile.TemporaryDirectory() as d, redirect_stdout(io.StringIO()):
+                    rc = P.main([*extra, "--out-dir", d], transport=spy)
+                    self.assertEqual(rc, 2, extra)
+                    self.assertEqual(list(Path(d).iterdir()), [])
+            self.assertEqual(calls, [])
+            # explicit credential config for the foreign host is allowed
+            with tempfile.TemporaryDirectory() as d, redirect_stdout(io.StringIO()):
+                rc = P.main(["--endpoint", "https://evil.example/chat", "--token-cmd", "echo x", "--probe-only", "--out-dir", d], transport=spy)
+                self.assertNotEqual(rc, 2)
+            # same-host path override keeps the default credential
+            calls.clear()
+            with tempfile.TemporaryDirectory() as d, redirect_stdout(io.StringIO()):
+                P.main(["--endpoint", "https://models.github.ai/other/chat", "--probe-only", "--out-dir", d], transport=spy)
+            self.assertIn("token", calls)
 
     def test_failures_are_unavailable_not_verdicts(self):
         kws: list[dict] = [{"catalog_status": 403}, {"catalog_status": 401}, {"catalog_status": 500}, {"chat_status": 429}, {"chat_status": 503}]
@@ -136,9 +230,9 @@ class Tests(unittest.TestCase):
             path = P.write_result(r, TOKEN, Path(d))
             self.assertNotIn(TOKEN, path.read_text())
             self.assertEqual(path.stat().st_mode & 0o777, 0o600)
-            with self.assertRaises(RuntimeError):
-                P.write_result({"lane": "ghm", "leak": TOKEN}, TOKEN, Path(d))
-            self.assertEqual(len(list(Path(d).iterdir())), 1)
+            leaked = P.write_result({"lane": "ghm", "leak": TOKEN}, TOKEN, Path(d))
+            self.assertNotIn(TOKEN, leaked.read_text())
+            self.assertEqual(json.loads(leaked.read_text())["leak"], "[REDACTED]")
 
     def test_main_end_to_end_no_token_in_stdout_or_files(self):
         with tempfile.TemporaryDirectory() as d:
@@ -226,23 +320,23 @@ class ScrubTests(unittest.TestCase):
         def t(method, url, headers, body):
             if "catalog" in url:
                 return 200, {}, json.dumps([{"id": "toy/m"}, {"id": "id-" + TOKEN}])
-            return reply(TOKEN[:30] + " and " + TOKEN, hdrs={"x-ratelimit-remaining": TOKEN[:14]})
+            return reply(TOKEN[:30] + " and " + TOKEN + " ok", hdrs={"x-ratelimit-remaining": TOKEN[:14]})
         r = P.probe("ghm", LANE, "toy/m", t, TOKEN, skip_capability=True)
-        blob = json.dumps(r)
+        blob = P.render(r, TOKEN)
         for n in range(12, len(TOKEN) + 1):
             self.assertNotIn(TOKEN[:n], blob)
         self.assertTrue(r["chat"]["reply_head"].startswith("[REDACTED]"))
         with tempfile.TemporaryDirectory() as d:
             path = P.write_result(r, TOKEN, Path(d))
             self.assertNotIn(TOKEN[:12], path.read_text())
-            with self.assertRaises(RuntimeError):
-                P.write_result({"lane": "ghm", "x": TOKEN[:12] + "zz"}, TOKEN, Path(d))
+            p2 = P.write_result({"lane": "ghm", "x": TOKEN[:12] + "zz"}, TOKEN, Path(d))
+            self.assertNotIn(TOKEN[:12], p2.read_text())
 
     def test_main_stdout_scrubbed_on_echo(self):
         def t(method, url, headers, body):
             if "catalog" in url:
                 return 200, {}, json.dumps([{"id": "toy/m"}])
-            return reply(TOKEN)
+            return reply(TOKEN + " ok")
         with tempfile.TemporaryDirectory() as d:
             buf = io.StringIO()
             with redirect_stdout(buf):
@@ -260,7 +354,7 @@ class ScrubTests(unittest.TestCase):
         def t(method, url, headers, body):
             if "catalog" in url:
                 return 200, {}, json.dumps([{"id": "toy/m"}])
-            return reply(f"echoed {short_tok}")
+            return reply(f"echoed {short_tok} ok")
 
         with tempfile.TemporaryDirectory() as d:
             buf = io.StringIO()
@@ -270,8 +364,8 @@ class ScrubTests(unittest.TestCase):
             self.assertNotIn(short_tok, buf.getvalue())
             for f in Path(d).iterdir():
                 self.assertNotIn(short_tok, f.read_text())
-            with self.assertRaises(RuntimeError):
-                P.write_result({"lane": "ghm", "leak": short_tok}, short_tok, Path(d))
+            p3 = P.write_result({"lane": "ghm", "leak": short_tok}, short_tok, Path(d))
+            self.assertNotIn(short_tok, p3.read_text())
 
 
 if __name__ == "__main__":

@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import subprocess
 import sys
@@ -20,6 +21,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -58,6 +60,7 @@ class Case:
     name: str
     defect: str | None  # None = clean
     diff: str
+    marker: str = ""  # regex a finding must match to name this seeded defect (defect text or location)
 
 
 def _d(path: str, old: str, new: str) -> str:
@@ -67,28 +70,28 @@ def _d(path: str, old: str, new: str) -> str:
 CASES: tuple[Case, ...] = (
     Case("off_by_one", "off-by-one", _d("toy/pager.py",
         " def last_page(items, size):\n-    return (len(items) + size - 1) // size\n",
-        "+    return len(items) // size + 1\n # 10 items, size 5 -> returns 3, expected 2\n")),
+        "+    return len(items) // size + 1\n # 10 items, size 5 -> returns 3, expected 2\n"), marker=r"off[- ]by[- ]one|pager\.py|last_page|ceil"),
     Case("fail_open_except", "fail-open except", _d("toy/auth.py",
         " def is_allowed(user):\n-    return check_acl(user)\n",
-        "+    try:\n+        return check_acl(user)\n+    except Exception:\n+        return True\n")),
+        "+    try:\n+        return check_acl(user)\n+    except Exception:\n+        return True\n"), marker=r"fail[- ]open|auth\.py|is_allowed|except|swallow|return true"),
     Case("path_traversal", "path traversal", _d("toy/files.py",
         " def read_upload(name):\n-    return open(UPLOAD_DIR + '/' + os.path.basename(name)).read()\n",
-        "+    return open(UPLOAD_DIR + '/' + name).read()\n")),
+        "+    return open(UPLOAD_DIR + '/' + name).read()\n"), marker=r"traversal|files\.py|read_upload|basename|\.\./"),
     Case("missing_lock", "missing lock", _d("toy/counter.py",
         " def incr():\n-    with LOCK:\n-        state['n'] += 1\n",
-        "+    state['n'] += 1  # called from many threads\n")),
+        "+    state['n'] += 1  # called from many threads\n"), marker=r"lock|race|thread|counter\.py|incr|atomic"),
     Case("sql_injection", "SQL injection", _d("toy/db.py",
         " def find(cur, name):\n-    cur.execute('SELECT * FROM t WHERE n = ?', (name,))\n",
-        "+    cur.execute(f\"SELECT * FROM t WHERE n = '{name}'\")\n")),
+        "+    cur.execute(f\"SELECT * FROM t WHERE n = '{name}'\")\n"), marker=r"sql|inject|db\.py|parameteri|f-string"),
     Case("hardcoded_secret", "hardcoded secret", _d("toy/client.py",
         " def headers():\n-    return {'Authorization': 'Bearer ' + os.environ['TOY_TOKEN']}\n",
-        "+    return {'Authorization': 'Bearer toy-0000-FAKE-SECRET-VALUE'}\n")),
+        "+    return {'Authorization': 'Bearer toy-0000-FAKE-SECRET-VALUE'}\n"), marker=r"hard-?coded|secret|credential|client\.py|literal"),
     Case("gate_bypass", "gate bypass", _d("toy/gate.py",
         " def passes(score, floor):\n-    return score >= floor\n",
-        "+    return score >= floor or os.environ.get('SKIP_GATE') != '0'\n")),
+        "+    return score >= floor or os.environ.get('SKIP_GATE') != '0'\n"), marker=r"bypass|gate\.py|skip_gate|environ|always pass"),
     Case("resource_leak", "resource leak", _d("toy/io.py",
         " def count_lines(p):\n-    with open(p) as f:\n-        return sum(1 for _ in f)\n",
-        "+    f = open(p)\n+    return sum(1 for _ in f)\n")),
+        "+    f = open(p)\n+    return sum(1 for _ in f)\n"), marker=r"leak|close|with open|context manager|io\.py|file handle"),
     Case("clean_rename", None, _d("toy/util.py",
         " def total(xs):\n-    t = 0\n-    for x in xs:\n-        t += x\n-    return t\n",
         "+    return sum(xs)\n")),
@@ -121,13 +124,14 @@ def leaks(blob: str, token: str) -> bool:
     return bool(token) and scrub(blob, token) != blob
 
 
-def scrub_obj(obj: Any, token: str) -> Any:
+def scrub_values(obj: Any, token: str) -> Any:
+    """Redact the credential from string values only; dict keys are program constants and stay intact."""
     if isinstance(obj, str):
         return scrub(obj, token)
     if isinstance(obj, list):
-        return [scrub_obj(x, token) for x in obj]
+        return [scrub_values(x, token) for x in obj]
     if isinstance(obj, dict):
-        return {scrub(str(k), token): scrub_obj(v, token) for k, v in obj.items()}
+        return {k: scrub_values(v, token) for k, v in obj.items()}
     return obj
 
 
@@ -196,13 +200,14 @@ def chat(transport: Transport, lane: dict[str, str], token: str, model: str, use
         raise LaneUnavailable(f"chat response not parseable (HTTP 200, body head {scrub(text, token)[:120]!r})") from None
     if not isinstance(content, str) or not isinstance(hdrs, dict):
         raise LaneUnavailable("malformed response")
-    return scrub(content, token), hdrs, dt
+    return content, hdrs, dt
 
 
 def score(results: list[dict[str, Any]]) -> dict[str, Any]:
     defects = [r for r in results if r["defect"]]
     clean = [r for r in results if not r["defect"]]
-    hits = sum(1 for r in defects if r["disposition"] == "REQUEST_CHANGES")
+    # A hit needs REQUEST_CHANGES AND a finding that names the seeded defect; a bare verdict is not a catch.
+    hits = sum(1 for r in defects if r["disposition"] == "REQUEST_CHANGES" and r.get("identified"))
     false_rc = sum(1 for r in clean if r["disposition"] == "REQUEST_CHANGES")
     no_verdict = sum(1 for r in results if r["disposition"] is None)
     rate = hits / len(defects) if defects else 0.0
@@ -216,7 +221,9 @@ def run_capability(transport: Transport, lane: dict[str, str], token: str, model
     results = []
     for c in cases:
         content, _, _ = chat(transport, lane, token, model, "Review this diff:\n\n" + c.diff)
-        results.append({"case": c.name, "defect": c.defect, "disposition": parse_disposition(content)})
+        finding = DISPOSITION_RE.sub("", content)
+        results.append({"case": c.name, "defect": c.defect, "disposition": parse_disposition(content),
+                        "identified": bool(c.marker and re.search(c.marker, finding, re.IGNORECASE))})
     return {**score(results), "cases": results}
 
 
@@ -232,11 +239,15 @@ def probe(lane_name: str, lane: dict[str, str], model: str, transport: Transport
         data = _json(text)
         if not isinstance(data, list) or not data:
             raise LaneUnavailable(f"catalog is not a model list (HTTP 200, body head {scrub(text, token)[:60]!r}): entitlement unproven")
-        models = [m.get("id") for m in data if isinstance(m, dict)]
+        models = [m["id"] for m in data if isinstance(m, dict) and isinstance(m.get("id"), str) and m["id"].strip()]
+        if not models:
+            raise LaneUnavailable("catalog has no usable model ids: entitlement unproven")
         out["entitled"] = True
         out["models"] = models
         content, hdrs, dt = chat(transport, lane, token, model, "Reply with exactly: ok")
-        out["chat"] = {"ok": True, "latency_s": round(dt, 2), "reply_head": content[:40]}
+        if "ok" not in content.lower():
+            raise LaneUnavailable("smoke chat reply empty or not the expected 'ok'")
+        out["chat"] = {"ok": True, "latency_s": round(dt, 2), "reply_head": scrub(content, token)[:40]}
         out["rate_limit"] = {k: hdrs[k] for k in RATE_HEADERS if k in hdrs}
         if not skip_capability:
             out["capability"] = run_capability(transport, lane, token, model)
@@ -249,17 +260,26 @@ def probe(lane_name: str, lane: dict[str, str], model: str, transport: Transport
         out["status"] = "lane_unavailable"
         out["entitled"] = out.get("entitled", False)
         out["reason"] = f"unexpected error ({type(exc).__name__})"
-    return scrub_obj(out, token)
+    return out
+
+
+def render(result: dict[str, Any], token: str, **kw: Any) -> str:
+    """Output boundary: redact the credential from every value; keys and internal fields stay intact."""
+    return json.dumps(scrub_values(result, token), **kw)
+
+
+def _result_name(lane: str) -> str:
+    safe = re.sub(r"[^A-Za-z0-9_.-]", "_", str(lane))
+    return f"lane-probe-{safe}-{datetime.now(timezone.utc):%Y%m%d-%H%M%S}-{uuid.uuid4().hex[:12]}.json"
 
 
 def write_result(result: dict[str, Any], token: str, out_dir: Path) -> Path:
-    blob = json.dumps(result, indent=2)
-    if leaks(blob, token):
-        raise RuntimeError("token leak guard tripped: result not written")
+    blob = render(result, token, indent=2)
     out_dir.mkdir(parents=True, exist_ok=True)
-    path = out_dir / f"lane-probe-{result['lane']}-{datetime.now(timezone.utc):%Y%m%d-%H%M%S}.json"
-    path.write_text(blob + "\n")
-    path.chmod(0o600)
+    path = out_dir / _result_name(result.get("lane", "unknown"))
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)  # exclusive, private from creation
+    with os.fdopen(fd, "w") as fh:
+        fh.write(blob + "\n")
     return path
 
 
@@ -280,6 +300,13 @@ def main(argv: list[str] | None = None, transport: Transport = urllib_transport)
     if not all(k in lane for k in ("chat", "catalog", "token_cmd", "model")):
         print(f"lane {a.lane!r} needs --endpoint, --catalog, --token-cmd and --model", file=sys.stderr)
         return 2
+    default = LANES.get(a.lane, {})
+    foreign = [u for u in (lane["chat"], lane["catalog"])
+               if urllib.parse.urlsplit(u).hostname not in {urllib.parse.urlsplit(default.get(k, "")).hostname for k in ("chat", "catalog")}]
+    if foreign and not a.token_cmd:
+        print(f"refusing: endpoint host outside lane {a.lane!r} defaults; the default credential is never sent there. "
+              "Pass --token-cmd naming the credential intended for that host.", file=sys.stderr)
+        return 2
     try:
         token = get_token(lane["token_cmd"])
     except LaneUnavailable as exc:
@@ -289,8 +316,8 @@ def main(argv: list[str] | None = None, transport: Transport = urllib_transport)
         result = probe(a.lane, lane, lane["model"], transport, token, a.probe_only)
     out_dir = Path(a.out_dir) if a.out_dir else resolve_delegation_dir(Path(__file__).resolve().parent) / "outputs" / "lane-probes"
     path = write_result(result, token, out_dir)
-    print(scrub(json.dumps({"result_file": path.name, **{k: v for k, v in result.items() if k != "models"},
-                            "model_count": len(result.get("models", []))}, indent=2), token))
+    print(render({"result_file": path.name, **{k: v for k, v in result.items() if k != "models"},
+                  "model_count": len(result.get("models", []))}, token, indent=2))
     return 0 if result["status"] == "ok" else 3
 
 

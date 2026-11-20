@@ -33,3 +33,11 @@ scripts/governance/tier0-validation-gate.sh --pre-commit
 
 ## Hint Feedback
 - Codex round-4 (`izhxwq`) and live verification confirmed 18/18 unit tests pass.
+
+## Review Round (Codex REQUEST_CHANGES on b80b1f56, addressed)
+- P1 credential disclosure: a chat/catalog URL whose host is outside the lane's default hosts is refused (exit 2) unless `--token-cmd` names an explicit credential; the default `gh auth token` never runs for foreign hosts.
+- P2 scoring: a hit needs REQUEST_CHANGES plus a finding matching the case's defect marker (defect text or location); placeholder findings score 0/8.
+- P2 smoke validation: the catalog needs at least one non-empty string model id and the `ok` chat reply must be non-empty and contain `ok`; `[{}]` and empty chat give `lane_unavailable` (exit 3).
+- P2 redaction: internal result fields stay raw; `render()` redacts string values only at serialization (file and stdout); tested with credential `lane`.
+- P2 evidence paths: `lane-probe-<lane>-<ts>-<uuid12>.json`, created with `O_EXCL` and mode 0600 at creation; tested with 16 concurrent writers and a forced name collision.
+- Tests: `python3 scripts/testing/test-probe-reviewer-lane.py` now runs 23 tests, all passing.
