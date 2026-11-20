@@ -131,8 +131,10 @@ elif cmd == "pr create":
 elif cmd == "pr view":
     pr = [p for p in st["prs"] if p["number"] == int(a[2])][0]
     seq = st.get("rollups", [[]])
-    roll = seq.pop(0) if len(seq) > 1 else seq[0]
-    save()
+    roll = seq[0]
+    if "statusCheckRollup" in flag("--json") and len(seq) > 1:
+        seq.pop(0)  # only a status poll consumes the rollup sequence, never a head-only view
+        save()
     if "mergeStateStatus" in flag("--json"):
         print(json.dumps({"headRefOid": branch_head(pr["branch"]), "mergeStateStatus": st.get("merge_state", "CLEAN"), "baseRefOid": branch_head("main")}), flush=True)
         if st.get("move_after_state_view") == bump("n_state"):
@@ -1084,10 +1086,27 @@ class MergeFreshness(Base):
 
     def test_after_an_update_the_ordinary_checks_must_reappear(self):
         self.env["AQ_LAND_CHECKS_TIMEOUT_S"] = "4"
-        self.gh_state({"main_moves_at_wait": True, "after_update_rollups": [[RD_OK]]})  # new head shows only review-disposition
+        # protection requires ONLY review-disposition: the wait for "test" can come solely from the carry-forward
+        self.gh_state({"required": ["review-disposition"], "main_moves_at_wait": True, "after_update_rollups": [[RD_OK]]})
         r = self.land(expect=1)
         self.assertIn("timed out waiting for: test", self.stop_line(r))
         self.assertNotIn("merges", self.ghs())
+
+    def test_carried_checks_survive_an_interrupted_run(self):
+        self.env["AQ_LAND_CHECKS_TIMEOUT_S"] = "3"
+        self.gh_state({"required": ["review-disposition"], "main_moves_at_wait": True, "after_update_rollups": [[RD_OK]]})
+        self.land(expect=1)  # updated, then stopped waiting for the ordinary check
+        cp = json.loads(next(self.S.glob("**/checkpoint.json")).read_text())
+        self.assertEqual(cp["expected_checks"]["names"], ["test"])
+        g = self.ghs()
+        g.update({"rollups": [[RD_OK], [RD_OK], self.OK]})  # a rerun's first polls still lack "test"
+        (self.S / "gh.json").write_text(json.dumps(g))
+        self.land(expect=0)
+        st = self.ghs()
+        self.assertEqual(st["merges"], 1)
+        self.assertEqual(st["rollups"], [self.OK])  # the rerun polled past both review-only rollups instead of merging on the first
+        cp = json.loads(next(self.S.glob("**/checkpoint.json")).read_text())
+        self.assertIsNone(cp.get("expected_checks"))
 
 
 class Friction(Base):
@@ -1172,7 +1191,7 @@ def _run_sharded():
         res = unittest.TextTestRunner(verbosity=1).run(unittest.TestSuite(tests[k::n]))
         sys.exit(0 if res.wasSuccessful() else 1)
     jobs = int(os.environ.get("AQ_LAND_TEST_JOBS", "0")) or min(8, os.cpu_count() or 1)
-    if jobs <= 1:
+    if jobs <= 1 or len(sys.argv) > 1:  # selectors and unittest flags need plain unittest semantics
         unittest.main()
     procs = [subprocess.Popen([sys.executable, __file__], env={**os.environ, "AQ_LAND_TEST_SHARD": f"{k}/{jobs}"}) for k in range(jobs)]
     sys.exit(1 if any(p.wait() for p in procs) else 0)
