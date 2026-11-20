@@ -35,6 +35,55 @@ ignore:
       name: typescript
     reason: "Visual Studio TypeScript SDK 2020 flaw; modern TypeScript 5.9.3 is not affected [WR-SEC-12] expires=2027-02-15"
 
+  # --- GnuTLS 3.8.13 unbounded NVD CPE false positives (all fixed upstream by 3.8.13; nvd:cpe carries version: {}) ---
+  - vulnerability: CVE-2025-32989
+    package:
+      name: gnutls
+      version: "3.8.13"
+    reason: "Fixed upstream in GnuTLS 3.8.10 (closure ships 3.8.13); Grype nvd:cpe uses unbounded gnu:gnutls version {} [WR-SEC-12] expires=2027-02-15"
+
+  - vulnerability: CVE-2025-32990
+    package:
+      name: gnutls
+      version: "3.8.13"
+    reason: "Fixed upstream in GnuTLS 3.8.10 (closure ships 3.8.13); Grype nvd:cpe uses unbounded gnu:gnutls version {} [WR-SEC-12] expires=2027-02-15"
+
+  - vulnerability: CVE-2026-1584
+    package:
+      name: gnutls
+      version: "3.8.13"
+    reason: "Fixed upstream in GnuTLS 3.8.12 (closure ships 3.8.13); Grype nvd:cpe uses unbounded gnu:gnutls version {} [WR-SEC-12] expires=2027-02-15"
+
+  - vulnerability: CVE-2026-3832
+    package:
+      name: gnutls
+      version: "3.8.13"
+    reason: "Fixed upstream in GnuTLS 3.8.13 (closure ships 3.8.13); Grype nvd:cpe uses unbounded gnu:gnutls version {} [WR-SEC-12] expires=2027-02-15"
+
+  - vulnerability: CVE-2026-3833
+    package:
+      name: gnutls
+      version: "3.8.13"
+    reason: "Fixed upstream in GnuTLS 3.8.13 (closure ships 3.8.13); Grype nvd:cpe uses unbounded gnu:gnutls version {} [WR-SEC-12] expires=2027-02-15"
+
+  - vulnerability: CVE-2026-33845
+    package:
+      name: gnutls
+      version: "3.8.13"
+    reason: "Fixed upstream in GnuTLS 3.8.13 (closure ships 3.8.13); Grype nvd:cpe uses unbounded gnu:gnutls version {} [WR-SEC-12] expires=2027-02-15"
+
+  - vulnerability: CVE-2026-42009
+    package:
+      name: gnutls
+      version: "3.8.13"
+    reason: "Fixed upstream in GnuTLS 3.8.13 (closure ships 3.8.13); Grype nvd:cpe uses unbounded gnu:gnutls version {} [WR-SEC-12] expires=2027-02-15"
+
+  - vulnerability: CVE-2026-42010
+    package:
+      name: gnutls
+      version: "3.8.13"
+    reason: "Fixed upstream in GnuTLS 3.8.13 (closure ships 3.8.13); Grype nvd:cpe uses unbounded gnu:gnutls version {} [WR-SEC-12] expires=2027-02-15"
+
   # --- OpenSSH false positives (distro packaging, rowhammer, or fixed in 10.5p1) ---
   - vulnerability: CVE-2008-3844
     package:
@@ -234,46 +283,6 @@ ignore:
     package:
       name: gnupg
     reason: "Latest upstream release in nixpkgs (gnupg 2.4.9); no upstream fix available [WR-SEC-11] expires=2027-02-15"
-
-  - vulnerability: CVE-2025-32989
-    package:
-      name: gnutls
-    reason: "Latest upstream release in nixpkgs stable/unstable (3.8.13); no upstream patch or disputed CPE match [WR-SEC-11] expires=2027-02-15"
-
-  - vulnerability: CVE-2025-32990
-    package:
-      name: gnutls
-    reason: "Latest upstream release in nixpkgs stable/unstable (3.8.13); no upstream patch or disputed CPE match [WR-SEC-11] expires=2027-02-15"
-
-  - vulnerability: CVE-2026-1584
-    package:
-      name: gnutls
-    reason: "Latest upstream release in nixpkgs stable/unstable (3.8.13); no upstream patch or disputed CPE match [WR-SEC-11] expires=2027-02-15"
-
-  - vulnerability: CVE-2026-33845
-    package:
-      name: gnutls
-    reason: "Latest upstream release in nixpkgs stable/unstable (3.8.13); no upstream patch or disputed CPE match [WR-SEC-11] expires=2027-02-15"
-
-  - vulnerability: CVE-2026-3832
-    package:
-      name: gnutls
-    reason: "Latest upstream release in nixpkgs stable/unstable (3.8.13); no upstream patch or disputed CPE match [WR-SEC-11] expires=2027-02-15"
-
-  - vulnerability: CVE-2026-3833
-    package:
-      name: gnutls
-    reason: "Latest upstream release in nixpkgs stable/unstable (3.8.13); no upstream patch or disputed CPE match [WR-SEC-11] expires=2027-02-15"
-
-  - vulnerability: CVE-2026-42009
-    package:
-      name: gnutls
-    reason: "Latest upstream release in nixpkgs stable/unstable (3.8.13); no upstream patch or disputed CPE match [WR-SEC-11] expires=2027-02-15"
-
-  - vulnerability: CVE-2026-42010
-    package:
-      name: gnutls
-    reason: "Latest upstream release in nixpkgs stable/unstable (3.8.13); no upstream patch or disputed CPE match [WR-SEC-11] expires=2027-02-15"
 
   - vulnerability: CVE-2023-46361
     package:

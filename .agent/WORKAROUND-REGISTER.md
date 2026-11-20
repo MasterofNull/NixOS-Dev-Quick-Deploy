@@ -539,17 +539,17 @@ Codex lane absent).
 - class: T5 · severity: medium (contained) · owner hyperd.
 
 ## WR-SEC-11 — grype ignores where the advisory DB lists no fixed version — OPEN (MAINT-DUE 2027-02-15)
-- symptom: 22 CVEs on gnutls, libssh, libtiff, p11-kit, zlib, gnupg, jbig2dec, libinput, pixman, libmad etc. match the installed version and the vulnerability DB lists no fix (state empty/unfixed).
+- symptom: 14 CVEs on libssh, p11-kit, zlib, gnupg, jbig2dec, libinput, pixman, libmad, and openssh match the installed version and the vulnerability DB lists no fix (state empty/unfixed).
 - band-aid in place? yes: `.grype.yaml` ignores tagged `[WR-SEC-11] expires=2027-02-15`. Basis verified 2026-11-19 against `grype -o json` fix data (no fixed version) on the 2026-11-14 closure SBOM.
 - root cause: no upstream fix published (or unmaintained project).
 - producer to fix: upstream releases.
 - fix-path: at expiry re-run grype; drop any entry whose DB now lists a fixed version, bump nixpkgs for those.
 - class: T5 · severity: medium · owner hyperd.
 
-## WR-SEC-12 — grype ignores for CPE product collisions and version-ordering false positives — OPEN (MAINT-DUE 2027-02-15)
-- symptom: Grype matches unrelated products by name (shellcheck/Mediawiki, samba/NetApp, sherlock, malcontent, typescript/Visual Studio, redis/Debian Lua) or mis-orders versions (lapack "3", dnsmasq 2.93, libmpeg2, ada, libcupsfilters/libppd b-suffix).
-- band-aid in place? yes: 7 `.grype.yaml` ignores tagged `[WR-SEC-12] expires=2027-02-15`; version-ordering ones confirmed against DB fix versions <= installed.
-- root cause: CPE name collision / Grype version parser.
+## WR-SEC-12 — grype ignores for CPE product collisions, unbounded CPEs, and version-ordering false positives — OPEN (MAINT-DUE 2027-02-15)
+- symptom: Grype matches unrelated products by name (shellcheck/Mediawiki, samba/NetApp, sherlock, malcontent, typescript/Visual Studio, redis/Debian Lua), RedHat-repackaged OpenSSH, or unbounded NVD CPEs (`version: {}`) on GnuTLS 3.8.13 for 8 CVEs already fixed upstream in 3.8.10 (CVE-2025-32989, CVE-2025-32990), 3.8.12 (CVE-2026-1584), and 3.8.13 (CVE-2026-3832, CVE-2026-3833, CVE-2026-33845, CVE-2026-42009, CVE-2026-42010).
+- band-aid in place? yes: 15 `.grype.yaml` ignores tagged `[WR-SEC-12] expires=2027-02-15`; the 8 GnuTLS rules are strictly scoped to `package.version: "3.8.13"` (closure version) so older affected versions are never suppressed.
+- root cause: CPE name collision / unbounded `nvd:cpe` range (`version: {}`) in Grype's DB.
 - producer to fix: Grype/NVD CPE data.
-- fix-path: re-check at expiry; drop on a Grype release that fixes the ordering.
+- fix-path: re-check at expiry; drop once NVD CPE bounds reflect the upstream fixed versions.
 - class: T5 · severity: low · owner hyperd.
