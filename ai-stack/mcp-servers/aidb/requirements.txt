@@ -53,7 +53,7 @@ opentelemetry-instrumentation-fastapi>=0.55b0
 
 # Machine Learning (CPU-only, no CUDA)
 scikit-learn>=1.7.2
-numpy>=2.3.5
+numpy>=2.5.5
 scipy>=1.16.3
 # upper bound <3: pandas 3.0 is a known-breaking major (copy-on-write, string dtype)
 pandas>=2.3.3,<3
