@@ -49,7 +49,7 @@ agent is unavailable. For every role instance (orchestrator, architect, implemen
 binding-acceptance), the orchestrator selects the filler at dispatch time by **availability** (lane
 reachable, not quota-exhausted, route healthy) × **capability/tier** (this matrix ×
 `config/model-coordinator.json`) × **independence** (never self-review) × **cost-effectiveness** (most cost-effective correct lane).
-The filler is never hardcoded. Availability, quota, token limits and session windows are tracked per model, not per lane/provider; when one model is out, re-scope the prompt, scope, task or payload to fit a still-available model (same or other provider) without lowering quality (owner directive 2026-11-19). Binding acceptance in particular may be Codex OR a fresh Claude flagship
+The filler is never hardcoded. Availability, quota, token limits and session windows MUST be tracked per model, not per lane/provider (requirement, not current behavior: the Codex quota cooldown is still lane-wide and the Gemini fallback skips the Neon family; gap LANE-AVAILABILITY-NOT-PER-MODEL in `.agent/memory/issues-backlog.md`, manual retry procedure in Rule 18); when one model is out, re-scope the prompt, scope, task or payload to fit a still-available model (same or other provider) without lowering quality (owner directive 2026-11-19). Binding acceptance in particular may be Codex OR a fresh Claude flagship
 OR Gemini/Antigravity OR local Qwen (bounded) — whichever is up, eligible, and independent; if the
 first choice is down, route to the next eligible, proceed, and record the substitution in the receipt's
 unavailable-lane reason. Local Qwen is the always-available floor (never skipped). Work committed while
