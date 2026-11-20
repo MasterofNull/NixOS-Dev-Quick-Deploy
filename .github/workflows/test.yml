@@ -465,6 +465,8 @@ jobs:
           ./scripts/governance/run-ci-checks.sh --all --only prsi-phase7-static-gates
 
       - name: Validate Harness-First static gates
+        env:
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
         run: |
           chmod +x scripts/governance/run-ci-checks.sh scripts/governance/ci-clean-env.sh
           ./scripts/governance/ci-clean-env.sh --all --only harness-first-static-gates
@@ -586,8 +588,12 @@ jobs:
             --only check-workflow-masks-test \
             --only tier0-gate-placement-tests \
             --only gate-lane-findings-tests \
+            --only gemini-quota-fallback-tests \
+            --only gemini-model-guard-tests \
             --only timer-stagger-regression-tests \
+            --only llama-post-switch-validate-tests \
             --only activation-manifest-tests \
+            --only lean-ctx-shell-security \
             --only rea-sandbox-tests \
             --only intelligence-classifier-tests \
             --only delegate-headless-budget-tests \
@@ -879,6 +885,10 @@ jobs:
           python -m pip install pyyaml
 
       - name: Run advanced parity suite
+        env:
+          # The suite re-runs check-harness-first-pr-evidence-gate.sh, whose Dependabot
+          # manifest exemption keys on PR_AUTHOR (same as the harness-first step above).
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
         run: |
           chmod +x scripts/automation/*.sh scripts/testing/*.sh scripts/security/*.sh scripts/data/*.sh scripts/ai/*.sh 2>/dev/null || true  # NON-GATING: unmatched glob is fine; missing exec bit fails the run step
           ./scripts/automation/run-advanced-parity-suite.sh

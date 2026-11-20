@@ -928,7 +928,7 @@ _LANE_SELECT = {
     "local-agent":  ("Qwen3-35B (active.gguf)", "local-agent"),
     "local-direct": ("Qwen3-35B (active.gguf)", "local-direct"),
     "local":        ("Qwen3-35B (active.gguf)", "local-agent"),
-    "codex":        ("gpt-5.5", "codex-cli"),
+    "codex":        ("gpt-6.2-astra", "codex-cli"),
     "antigravity":  ("gemini-3.x (IDE OAuth)", "IDE-inbox"),
     "gemini":       ("gemini-3.x", "IDE-inbox"),
 }
