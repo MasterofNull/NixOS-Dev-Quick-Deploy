@@ -1106,6 +1106,13 @@ tested. A slice is finished only after these four steps, in this order:
   `scripts/ai/aq-graph-query search|symbol|impact <x>` (whole-system knowledge graph),
   `scripts/ai/aq-wiki --section <name>` (subsystem wiki), `aq-hints` (coordinator hints).
 - Friction or failures go to the RSI loop: `scripts/ai/aq-rsi report ...` (local, non-blocking).
+
+### 9. Onboard new lanes on synthetic data
+- New agents/models/lanes: probe, test, validate on synthetic data before real work or personal data; start restricted;
+  widen authority only on measured results (owner 2026-11-14). Send only hand-written toy prompts and diffs; tokens come
+  from the existing OAuth session at call time and never reach disk or logs. A transport, entitlement or rate-limit
+  failure means "lane unavailable", never a verdict. Tool: `scripts/ai/probe-reviewer-lane` (seeded-defect bar: at least
+  80% hits, at most 1 false REQUEST_CHANGES).
 <!-- canon:end delivery-workflow -->
 
 <!-- canon:begin headless-delegate-mode -->
