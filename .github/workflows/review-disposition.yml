@@ -29,7 +29,7 @@ jobs:
       # No `ref:`: the default is the base branch tip. persist-credentials:false
       # leaves no token in .git/config; the repo is public so the checker's
       # anonymous `git fetch` of main, review-receipts and refs/pull/N/head works.
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09  # v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           fetch-depth: 0
           persist-credentials: false
