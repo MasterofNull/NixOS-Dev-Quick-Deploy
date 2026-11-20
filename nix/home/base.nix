@@ -700,8 +700,8 @@ in {
       nrs = "scripts/governance/check-deploy-source.sh && scripts/governance/pre-rebuild-preflight.sh && sudo nixos-rebuild switch --flake .#hyperd-ai-dev";
       nrb = "scripts/governance/check-deploy-source.sh && sudo nixos-rebuild boot --flake .#hyperd-ai-dev";
       nrd = "sudo nixos-rebuild dry-build --flake .#hyperd-ai-dev";
-      # AI CLI tools
-      continue = "cn"; # Continue CLI shorthand
+      # AI CLI tools. No alias named `continue`: it shadows the shell keyword, so an
+      # interactive `for ...; do ... || continue; done` launched the Continue CLI (cn).
       # Agentic CLI Tools (Token-optimized)
       ag = "agrep";
       al = "als";
