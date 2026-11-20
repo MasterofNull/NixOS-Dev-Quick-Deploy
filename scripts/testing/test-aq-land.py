@@ -681,6 +681,54 @@ class Lanes(Base):
         self.assertEqual(self.calls("local"), [])
 
 
+class DepFastLane(Base):
+    def dep_branch(self, path="requirements.txt"):
+        self.g("reset", "-q", "--hard", "origin/main")
+        self.change(path, "pkg==2.0\n")
+
+    def cp(self):
+        return json.loads(next((self.S / "state").glob("*/checkpoint.json")).read_text())
+
+    def test_dependabot_manifest_only_uses_fast_lane(self):
+        self.dep_branch()
+        self.cfg({"gemini": {"mode": "ok"}, "codex": {"mode": "ok"}})
+        r = self.land("--author-lane", "Dependabot", expect=0)
+        self.assertIn("fast-lane: dependency-bump (1 manifest files)", r.stdout)
+        self.assertEqual(self.cp()["fast_lane"], "dependency-bump")
+        self.assertEqual(len(self.calls("gemini")), 1)
+        self.assertEqual(self.calls("local"), [])
+        self.assertIn("Upstream changes reviewed", (self.S / "prompt-gemini.txt").read_text())
+
+    def test_non_manifest_file_means_normal_path(self):
+        self.dep_branch()
+        self.change("scripts/foo2.py", "print(2)\n")
+        self.cfg({"gemini": {"mode": "ok"}, "codex": {"mode": "ok"}})
+        r = self.land("--author-lane", "dependabot", expect=0)
+        self.assertNotIn("fast-lane", r.stdout)
+        self.assertNotIn("fast_lane", self.cp())
+        self.assertNotIn("Upstream changes reviewed", (self.S / "prompt-gemini.txt").read_text())
+
+    def test_non_dependabot_author_is_not_fast_laned(self):
+        self.dep_branch()
+        self.cfg({"gemini": {"mode": "ok"}, "codex": {"mode": "ok"}})
+        r = self.land("--author-lane", "claude", expect=0)
+        self.assertNotIn("fast-lane", r.stdout)
+        self.assertNotIn("fast_lane", self.cp())
+
+    def test_explicit_lanes_win_and_criteria_file_wins(self):
+        self.dep_branch()
+        crit = self.S / "crit.md"
+        crit.write_text("MY CRITERIA\n")
+        self.cfg({"gemini": {"mode": "ok"}, "codex": {"mode": "ok"}, "local": {"mode": "ok"}})
+        r = self.land("--author-lane", "dependabot", "--lanes", "local", "--criteria-file", str(crit), expect=0)
+        self.assertIn("fast-lane: dependency-bump", r.stdout)
+        self.assertEqual(self.calls("gemini"), [])
+        self.assertEqual(len(self.calls("local")), 1)
+        text = (self.S / "prompt-local.txt").read_text()
+        self.assertIn("MY CRITERIA", text)
+        self.assertNotIn("Upstream changes reviewed", text)
+
+
 class Preflight(Base):
     def test_docs_only_change_is_refused_unless_allowed(self):
         self.g("reset", "-q", "--hard", "origin/main")

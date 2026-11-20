@@ -11,6 +11,12 @@ Replaces .agents/delegation/outputs/landing/land.sh (design: delivery-loop-simpl
   aq-land --title T --body-file F [--commit-msg-file M] [--criteria-file C] [--author-lane claude]
           [--allow-docs-only] [--lanes gemini,codex,local] [--optional-check NAME]... [--owned PATHFILE]
 
+Dependency-bump fast lane: with --author-lane dependabot and a net diff (vs origin/main) made only of files matching
+dependabot_manifest_exemption.manifest_globs in config/harness-first-policy.json, aq-land reviews with
+config/review-criteria/dependency-bump.md (unless --criteria-file is given) and defaults the lanes to
+gemini,codex (env AQ_LAND_DEP_LANES; local cannot read release notes). An explicit --lanes or AQ_LAND_LANES always wins.
+Any non-manifest file in the diff means the normal path. Receipt, review record, CI wait and merge are unchanged.
+
 --owned PATHFILE (default: .agents/delegation/owned/<branch-slug>.txt in the worktree) lists the globs
 the slice owns, one per line ('#' comments; a trailing '/' means a whole directory; '*' also crosses '/').
 A changed file outside them stops the landing in preflight, before any review, and is logged to
@@ -392,11 +398,30 @@ class Land:
         ok, _ = self.crd.merge_only_update(rec["head"], head, self.git("rev-parse", "refs/remotes/origin/main"))
         return ok
 
+    def detect_fast_lane(self):
+        """Dependabot + manifest-only net diff -> 'dependency-bump' (same glob semantics as the harness-first evidence gate)."""
+        self.fast_lane = ""
+        if (self.a.author_lane or "").strip().lower() != "dependabot":
+            return
+        try:
+            globs = json.loads((ROOT / "config/harness-first-policy.json").read_text())["dependabot_manifest_exemption"]["manifest_globs"]
+        except (OSError, ValueError, KeyError, TypeError):
+            return
+        names = [n for n in self.nul_names("refs/remotes/origin/main...HEAD") if n]
+        def is_manifest(n):
+            return any(fnmatch.fnmatchcase(n if "/" in g else n.rsplit("/", 1)[-1], g) for g in globs)
+
+        if names and all(is_manifest(n) for n in names):
+            self.fast_lane = "dependency-bump"
+            say(f"fast-lane: dependency-bump ({len(names)} manifest files)")
+            self.save(fast_lane=self.fast_lane)
+
     def lane_plan(self, diff_bytes):
         author = (self.a.author_lane or "").strip().lower()
         author = "local" if author.startswith("local") else author
         order, skipped = [], []
-        for lane in [x for x in self.a.lanes.split(",") if x]:
+        lanes = self.a.lanes or (os.environ.get("AQ_LAND_DEP_LANES", "gemini,codex") if getattr(self, "fast_lane", "") else "gemini,codex,local")
+        for lane in [x for x in lanes.split(",") if x]:
             if lane not in LANES:
                 raise Stop("review", f"unknown lane {lane!r}")
             if lane == author:
@@ -410,7 +435,8 @@ class Land:
         return order, skipped
 
     def prompt(self, lane, head, diff_file, diff_text):
-        crit = Path(self.a.criteria_file).read_text() if self.a.criteria_file else "Check correctness, tests, and security of the change."
+        crit_file = self.a.criteria_file or (str(ROOT / "config/review-criteria/dependency-bump.md") if getattr(self, "fast_lane", "") else "")
+        crit = Path(crit_file).read_text() if crit_file else "Check correctness, tests, and security of the change."
         p = [f"Independent review (you are not the author). Subject: branch {self.branch}, head {head}, base origin/main."]
         if lane == "local":
             p += ["Answer from the diff below alone.", "", crit, "", "```diff", diff_text, "```"]
@@ -824,6 +850,7 @@ class Land:
 
     def go(self):
         self.preflight()
+        self.detect_fast_lane()
         pr = self.find_pr()
         if pr and pr["state"] == "MERGED":
             say(f"PR #{pr['number']} already merged")
@@ -889,7 +916,8 @@ def main():
     ap.add_argument("--commit-msg-file", default="")
     ap.add_argument("--criteria-file", default="")
     ap.add_argument("--author-lane", default="claude")
-    ap.add_argument("--lanes", default=os.environ.get("AQ_LAND_LANES", "gemini,codex,local"))
+    ap.add_argument("--lanes", default=os.environ.get("AQ_LAND_LANES", ""),
+                    help="review lanes in order (default gemini,codex,local; gemini,codex on the dependency-bump fast lane)")
     ap.add_argument("--allow-docs-only", action="store_true")
     ap.add_argument("--max-updates", type=int, default=env_int("AQ_LAND_MAX_UPDATES", 3),
                     help="max gh pr update-branch rounds when main moves past the PR before merge (env AQ_LAND_MAX_UPDATES)")
