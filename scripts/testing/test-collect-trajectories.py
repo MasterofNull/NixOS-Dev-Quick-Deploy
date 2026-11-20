@@ -324,6 +324,49 @@ class Collector(unittest.TestCase):
         self.assertEqual((c["collected"], c["quarantined"]), (0, 1), c)
         q = [x for x in self.lines("trajectories.quarantine.jsonl") if x["pr"] == 61][0]
         self.assertIn("entropy", q["reasons"])
+        # A matching high-entropy token in an unrelated field must NOT be exempted by changed files
+        self.receipts(_receipt(62, author_lane=long_rel))
+        c = self.collect()
+        self.assertEqual((c["collected"], c["quarantined"]), (0, 1), c)
+        q62 = [x for x in self.lines("trajectories.quarantine.jsonl") if x["pr"] == 62][0]
+        self.assertIn("entropy", q62["reasons"])
+        # Single-segment high-entropy filename (no '/') remains subject to entropy even when in allowed_paths
+        single_seg = "AbCdEfGhIjKlMnOpQrStUvWxYz0123456789"
+        self.assertEqual(col.scan(json.dumps({"files": [{"path": single_seg}]}), allowed_paths={single_seg}), ["entropy"])
+
+    def test_k_long_unicode_changed_path_and_renamed_from_exempt_while_unrelated_field_quarantines(self) -> None:
+        r = self.repo
+        uni_long = "caf\u00e9/docs/harness-first/evidence/2026-11-15-deploy-validation.md"
+        self.assertEqual(col.scan(json.dumps({"path": uni_long})), ["entropy"],
+                         "precondition: JSON escaping produces u00e9/docs/... with entropy > 4.0")
+        (r / uni_long).parent.mkdir(parents=True, exist_ok=True)
+        (r / uni_long).write_text("".join(f"line{i}\n" for i in range(20)))
+        _git(r, "add", "-A")
+        _git(r, "commit", "-qm", "unicode-long-path")
+        uni_head = _git(r, "rev-parse", "HEAD")
+        self.set_gh(self.head, uni_head)
+        self.receipts(_receipt(63))
+        c = self.collect()
+        self.assertEqual((c["collected"], c["quarantined"]), (1, 0), c)
+        row63 = [x for x in self.lines("trajectories.jsonl") if x["pr"] == 63][0]
+        self.assertEqual(row63["files"][0]["path"], uni_long)
+        # Same Unicode path in renamed_from must also be exempt at the verified field occurrence
+        (r / "docs/moved").mkdir(parents=True, exist_ok=True)
+        _git(r, "mv", uni_long, "docs/moved/note.md")
+        _git(r, "commit", "-qm", "rename-unicode-long-path")
+        rename_head = _git(r, "rev-parse", "HEAD")
+        self.set_gh(uni_head, rename_head)
+        self.receipts(_receipt(64))
+        c = self.collect()
+        self.assertEqual((c["collected"], c["quarantined"]), (1, 0), c)
+        row64 = [x for x in self.lines("trajectories.jsonl") if x["pr"] == 64][0]
+        self.assertEqual(row64["files"][0]["renamed_from"], uni_long)
+        # Same Unicode path appearing in an unrelated field must still be quarantined
+        self.receipts(_receipt(65, author_lane=uni_long))
+        c = self.collect()
+        self.assertEqual((c["collected"], c["quarantined"]), (0, 1), c)
+        q65 = [x for x in self.lines("trajectories.quarantine.jsonl") if x["pr"] == 65][0]
+        self.assertIn("entropy", q65["reasons"])
 
 
 if __name__ == "__main__":

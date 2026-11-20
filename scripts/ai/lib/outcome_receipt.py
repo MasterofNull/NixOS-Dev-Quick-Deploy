@@ -32,16 +32,45 @@ def _entropy(s: str) -> float:
     return -sum(c / n * math.log2(c / n) for c in Counter(s).values())
 
 
+def _entropy_text(text: str, allowed_paths: set[str] | frozenset[str]) -> str:
+    """Return `text` with verified multi-segment `files[*].path`/`renamed_from` values blanked."""
+    if not allowed_paths:
+        return text
+    try:
+        obj = json.loads(text)
+    except ValueError:
+        return text
+    if not isinstance(obj, dict) or not isinstance(obj.get("files"), list):
+        return text
+    masked_files = []
+    changed = False
+    for entry in obj["files"]:
+        if isinstance(entry, dict):
+            copy = dict(entry)
+            for key in ("path", "renamed_from"):
+                val = copy.get(key)
+                if isinstance(val, str) and "/" in val and val in allowed_paths:
+                    copy[key] = ""
+                    changed = True
+            masked_files.append(copy)
+        else:
+            masked_files.append(entry)
+    if not changed:
+        return text
+    return json.dumps(dict(obj, files=masked_files), sort_keys=True)
+
+
 def scan(text: str, *, allowed_paths: set[str] | frozenset[str] = frozenset()) -> list[str]:
     """Names of fail-closed findings in already-redacted text; empty means clean.
 
-    `allowed_paths` exempts multi-segment (`/`-containing) `_BLOB` tokens extracted from the PR's
-    verified changed-file list (`git diff --numstat`) from the generic entropy heuristic; pattern
-    checks (`_HITS`) and `_redact` still run on every path and token unconditionally.
+    `allowed_paths` exempts multi-segment (`/`-containing) verified `files[*].path` and
+    `files[*].renamed_from` field values from the generic entropy heuristic; pattern checks
+    (`_HITS`) and `_redact` still run unconditionally, and matching tokens in any other field
+    remain subject to the entropy check.
     """
     hits = [f"pattern{i}" for i, p in enumerate(_HITS) if p.search(text)]
-    allowed_blobs = {tok for p in allowed_paths for tok in _BLOB.findall(p) if "/" in tok}
-    if any(b not in allowed_blobs and not _HEX.fullmatch(b) and _entropy(b) > 4.0 for b in _BLOB.findall(text)):
+    target = _entropy_text(text, allowed_paths)
+    if any(not _HEX.fullmatch(b) and _entropy(b) > 4.0 for b in _BLOB.findall(target)):
         hits.append("entropy")
     return hits
 
