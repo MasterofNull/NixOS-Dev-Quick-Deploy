@@ -455,7 +455,13 @@ def test_agent_runner_reaps_no_progress_child():
             dispatch_mod.time.sleep = original_sleep
 
         assert_true(not ok, "AgentRunner should fail a no-progress child")
-        assert_true(elapsed < 1.0, f"no-progress watchdog waited on stderr pipe: {elapsed:.2f}s")
+        # Clock and sleep are faked, so a correct run is near-instant; a regression
+        # that blocks on the stderr pipe stalls for the request timeout. Bound by
+        # that derived timeout, not a wall-clock constant a loaded runner can exceed.
+        assert_true(
+            elapsed < config.timeout_secs,
+            f"no-progress watchdog waited on stderr pipe: {elapsed:.2f}s (limit {config.timeout_secs}s)",
+        )
         assert_true(terminated == [fake_proc.pid], "AgentRunner should terminate the stalled child")
         assert_true(
             "Agent no-progress timeout" in output_file.read_text(encoding="utf-8"),

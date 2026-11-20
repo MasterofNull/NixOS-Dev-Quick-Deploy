@@ -421,6 +421,19 @@
       "ci_workflow": ".github/workflows/test.yml#syntax"
     },
     {
+      "id": "aq-transcribe-acquisition-tests",
+      "cmd": "scripts/testing/test-aq-transcribe-acquisition.sh",
+      "paths": [
+        "scripts/ai/aq-transcribe",
+        "scripts/ai/lib/video_frames.py",
+        "scripts/testing/test-aq-transcribe-acquisition.sh"
+      ],
+      "needs": [
+        "python3"
+      ],
+      "ci_workflow": ".github/workflows/test.yml#syntax"
+    },
+    {
       "id": "aq-review-request-tests",
       "cmd": "scripts/testing/test-aq-review-request.py",
       "paths": [
@@ -1337,6 +1350,7 @@
         "scripts/testing/test-ci-checks-manifest.py",
         "scripts/testing/test-ci-merge-parity.py",
         "scripts/testing/test-ci-skill-bundle-smoke.py",
+        "scripts/testing/test-claude-tmpdir-durable.py",
         "scripts/testing/test-cockpit-telemetry.py",
         "scripts/testing/test-collaborative-plan-persistence.py",
         "scripts/testing/test-commit-review-disposition-hook.py",
@@ -1435,6 +1449,7 @@
         "scripts/testing/test-ci-checks-manifest.py",
         "scripts/testing/test-ci-merge-parity.py",
         "scripts/testing/test-ci-skill-bundle-smoke.py",
+        "scripts/testing/test-claude-tmpdir-durable.py",
         "scripts/testing/test-cockpit-telemetry.py",
         "scripts/testing/test-collaborative-plan-persistence.py",
         "scripts/testing/test-commit-review-disposition-hook.py",
@@ -2112,6 +2127,7 @@
         "scripts/testing/test-worktree-write-guard.py",
         "scripts/testing/test-write-region.py",
         "scripts/testing/test-safety-layer.py",
+        "scripts/testing/test-safety-proposals-repo-root.py",
         "scripts/testing/test-search-router-collection-timeouts.py",
         "scripts/testing/test-security-workflow-integration.py",
         "scripts/testing/test-task-classifier-local-continuation.py",
@@ -2131,6 +2147,7 @@
       "tests": [
         "scripts/testing/test-safety-gate.py",
         "scripts/testing/test-safety-layer.py",
+        "scripts/testing/test-safety-proposals-repo-root.py",
         "scripts/testing/test-scheduler-context-issuer.py",
         "scripts/testing/test-scheduler-context-ledger.py",
         "scripts/testing/test-scheduler-lease-gate.py",
