@@ -9,7 +9,7 @@
   },
   "live_source_manifest": {
     "scripts/ai/aq-chat": "b0181653b767757cc3b5954ccb1ee256b25af52a7c5f3abf7ed3960fdafe8fae",
-    "scripts/ai/lib/dispatch.py": "572ac5b839f3a881777053b36b4fc93330786876b1a3f92f6105e0eab8a48f4e",
+    "scripts/ai/lib/dispatch.py": "755bad229b579dd969a9081413b04ec26a97c129ce5e26065e739de3a59eb8ed",
     "ai-stack/mcp-servers/shared/llm_config.py": "5545dd3a73166e9ae00cb28825920d721b9ec3e379f6d41ee40548d146f55de3",
     "ai-stack/mcp-servers/hybrid-coordinator/core/route_handler.py": "a3cca7f05220c9db64158a660f7b80f384e133e7a6843e82dacc25c49106a444",
     "ai-stack/mcp-servers/hybrid-coordinator/core/llm_client.py": "e4b4d6999a1ec34f9589827fd9386147d140127c3688adcf8f79c4969afbac8e",

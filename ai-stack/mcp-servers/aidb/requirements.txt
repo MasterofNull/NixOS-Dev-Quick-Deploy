@@ -11,7 +11,7 @@ pydantic-settings>=2.14.2  # Type-safe configuration management
 psycopg[binary,pool]>=3.2.13  # Modern async PostgreSQL driver (20-30% faster)
 asyncpg>=0.31.0  # Async PostgreSQL for health checks
 redis[hiredis]>=7.1.0  # Redis with C-based parser (5-10x faster)
-sqlalchemy>=2.0.44
+sqlalchemy>=2.1.9
 alembic>=1.17.2
 pgvector>=0.4.1
 
@@ -27,7 +27,7 @@ llama-index-core>=0.14.8,<0.15
 # upper bound <0.7: tracks llama-index-core 0.x minors
 llama-index-embeddings-huggingface>=0.6.1,<0.7
 sentence-transformers>=5.2.0  # first release allowing transformers 5.x (5.1.x caps transformers<5)
-transformers>=5.10.0
+transformers>=5.23.0
 # upper bound <3: SDK majors break the client API
 openai>=2.8.1,<3
 # HuggingFace Hub: transformers 5.x requires >=1.5 (the old <1.0 cap only existed
@@ -53,7 +53,7 @@ opentelemetry-instrumentation-fastapi>=0.55b0
 
 # Machine Learning (CPU-only, no CUDA)
 scikit-learn>=1.7.2
-numpy>=2.3.5
+numpy>=2.5.5
 scipy>=1.16.3
 # upper bound <3: pandas 3.0 is a known-breaking major (copy-on-write, string dtype)
 pandas>=2.3.3,<3
