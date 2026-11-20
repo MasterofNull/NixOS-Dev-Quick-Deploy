@@ -1134,6 +1134,18 @@
     # Profile (ai-dev/gaming/minimal) selects the primary package set.
     # Roles layer additional capabilities on top without creating profile explosion.
     # ---------------------------------------------------------------------------
+    leanCtx.shellSecurity = lib.mkOption {
+      type = lib.types.nullOr (lib.types.enum ["enforce" "warn" "off"]);
+      default = null;
+      description = ''
+        Declarative top-level `shell_security` key in the primary user's
+        ~/.lean-ctx/config.toml (lean-ctx 3.12.x). null leaves the file unmanaged.
+        "warn" logs and compresses but never blocks, so harness tools outside
+        lean-ctx's default shell allowlist keep working. Applied on every
+        activation by system.activationScripts.leanCtxShellSecurity.
+      '';
+    };
+
     roles = {
       aiStack.enable = lib.mkOption {
         type = lib.types.bool;
@@ -1354,7 +1366,7 @@
           type = lib.types.bool;
           default = false;
           description = ''
-            Lock model weights in RAM via --mlock (mlockall).
+            Lock model weights in RAM (llama-server --load-mode mmap+mlock on b12503+, --mlock on older builds).
             Prevents model from being swapped out under memory pressure.
             Requires sufficient free RAM to hold the full model (22+ GB for 35B Q4).
             Enable only when ram_free_gb > model_size_gb + 3GB OS reserve.
@@ -1429,6 +1441,19 @@
             the latest version has issues.
 
             Only effective when trackLatest = true.
+          '';
+        };
+
+        vulkanAllowIgpuOffload = lib.mkOption {
+          type = lib.types.bool;
+          description = ''
+            Apply nix/patches/llama-cpp/allow-vulkan-igpu-offload*.patch, which makes
+            the Vulkan backend always include integrated GPUs in the automatic device
+            list (upstream skips an iGPU when a discrete GPU exists). Defaulted in
+            nix/modules/roles/ai-stack.nix from host facts: true only for APU /
+            iGPU-only hosts, false when a discrete GPU is present, so a dGPU+iGPU host
+            does not spill layers onto shared system memory. Set explicitly to opt in
+            to mixed-GPU offload. Only effective for Vulkan builds with trackLatest.
           '';
         };
 
@@ -1982,13 +2007,13 @@
           gemini = lib.mkOption {
             type = lib.types.nullOr lib.types.str;
             default = null;
-            example = "gemini-2.5-flash";
+            example = "gemini-3.8-flash";
             description = ''
               Remote model alias used for Gemini-backed orchestration, planning,
               and synthesis requests routed through the harness front door.
               When remoteUrl points to generativelanguage.googleapis.com/v1beta/openai,
-              use bare model names (e.g. "gemini-2.5-flash", "gemini-2.0-flash").
-              When using OpenRouter, prefix with "google/" (e.g. "google/gemini-2.5-pro").
+              use bare model names (e.g. "gemini-3.8-flash", "gemini-3.5-flash-lite").
+              When using OpenRouter, prefix with "google/" (e.g. "google/gemini-3.1-pro-preview").
             '';
           };
 

@@ -1,4 +1,4 @@
 ## Dependency Hygiene (Canonical — all agents)
 
-- **Trigger**: ONLY failing security gate, strictly scoped to implicated package; no broad churn.
-- **Ladder**: (1) Fixed release -> raise floor; (2) Active upstream, fix unreleased -> mitigate + time-boxed exception (<=90d); (3) Abandoned/stale (>18m no commits) -> migrate to maintained replacement/stdlib; (4) Upstream PRs are owner-authored (propose-not-push).
+- **Security ladder** — **Trigger**: ONLY a failing security gate, scoped to the implicated package; no broad churn. **Ladder**: (1) Fixed release -> raise floor; (2) Active upstream, fix unreleased -> mitigate + time-boxed exception (<=90d); (3) Abandoned/stale (>18m no commits) -> migrate to maintained replacement/stdlib; (4) Upstream PRs are owner-authored (propose-not-push).
+- **Release notes on EVERY version change** (pin bump, flake refresh, package/model swap; owner 2026-11-19): before landing and before rebuild/reboot, diff what moved, read upstream release notes/changelogs for the full range (removed/renamed flags, default changes, config/schema/data migrations), adapt our Nix/flags/configs in the same PR, validate with the real live config (not a stand-in), and list "Upstream changes reviewed" in the PR body.

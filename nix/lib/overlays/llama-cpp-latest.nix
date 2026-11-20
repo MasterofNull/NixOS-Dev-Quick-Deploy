@@ -28,6 +28,10 @@ GPU Support:
   enableVulkan ? false,
   enableRocm ? false,
   enableCuda ? false,
+  # Upstream refuses to add an iGPU to the auto device list when a discrete GPU
+  # exists; the patch removes that. Only for iGPU-only hosts (the caller derives it
+  # from host facts): on a dGPU+iGPU host it would split layers onto shared memory.
+  vulkanAllowIgpuOffload ? false,
   rocmGpuTargets ? [],
 }: _final: prev: let
   # Read the pin file
@@ -123,8 +127,9 @@ in {
     patches =
       (oldAttrs.patches or [])
       # The iGPU offload patch only touches the Vulkan backend, so apply it for Vulkan
-      # builds only (the CPU/ROCm/CUDA builds never compile that code).
-      ++ prev.lib.optionals enableVulkan [
+      # builds only (the CPU/ROCm/CUDA builds never compile that code), and only when
+      # the host has an iGPU and no dGPU (mySystem.aiStack.llamaCpp.vulkanAllowIgpuOffload).
+      ++ prev.lib.optionals (enableVulkan && vulkanAllowIgpuOffload) [
         # Patch hunks are source-version specific: the fallback pin (b9222) keeps its original
         # patch; the current pin uses the port that carries only the functional hunks.
         (
@@ -145,6 +150,7 @@ in {
           isFallback = useFallback;
           pinFile = toString pinFile;
           vulkanEnabled = enableVulkan;
+          igpuOffloadPatched = enableVulkan && vulkanAllowIgpuOffload;
           rocmEnabled = enableRocm;
           rocmGpuTargets = rocmGpuTargets;
           cudaEnabled = enableCuda;

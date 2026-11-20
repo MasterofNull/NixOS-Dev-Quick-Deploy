@@ -610,7 +610,7 @@ variables:
     default: ""
     layer: nix
     consumers: [switchboard]
-    description: "Remote model alias for Gemini-role profiles (e.g. gemini-2.5-pro)"
+    description: "Remote model alias for Gemini-role profiles (e.g. gemini-3.8-flash)"
 
   - canonical: SWB_REMOTE_MODEL_ALIAS_FREE
     aliases: []

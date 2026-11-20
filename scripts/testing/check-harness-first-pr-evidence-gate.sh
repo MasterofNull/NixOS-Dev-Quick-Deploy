@@ -81,6 +81,32 @@ if [[ ${#high_impact_changes[@]} -eq 0 ]]; then
   exit 0
 fi
 
+# Scoped exemption: Dependabot cannot author evidence files. Its evidence is the recorded
+# independent review plus CI. PR_AUTHOR must come from the workflow (github.event.pull_request.user.login).
+if python3 - "${POLICY_FILE}" "${PR_AUTHOR:-}" "${changed_files[@]}" <<'PY'
+import fnmatch
+import json
+import sys
+from pathlib import Path
+
+policy = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+author, files = sys.argv[2], sys.argv[3:]
+cfg = policy.get("dependabot_manifest_exemption") or {}
+globs = cfg.get("manifest_globs") or []
+if not cfg.get("author") or author != cfg["author"] or not globs or not files:
+    sys.exit(1)
+
+def is_manifest(path):
+    name = path.rsplit("/", 1)[-1]
+    return any(fnmatch.fnmatchcase(path if "/" in g else name, g) for g in globs)
+
+sys.exit(0 if all(is_manifest(f) for f in files) else 1)
+PY
+then
+  pass "dependabot manifest-only exemption: author ${PR_AUTHOR} changed only dependency manifests (${#changed_files[@]} file(s)); evidence is the recorded review + CI"
+  exit 0
+fi
+
 mapfile -t added_evidence_files < <({
   git diff --name-status --diff-filter=A "${DIFF_RANGE}" 2>/dev/null || true
   git diff --cached --name-status --diff-filter=A 2>/dev/null || true
