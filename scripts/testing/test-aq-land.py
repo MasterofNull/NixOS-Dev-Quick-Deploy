@@ -707,7 +707,7 @@ class DepFastLane(Base):
         self.cfg({"gemini": {"mode": "ok"}, "codex": {"mode": "ok"}})
         r = self.land("--author-lane", "dependabot", expect=0)
         self.assertNotIn("fast-lane", r.stdout)
-        self.assertNotIn("fast_lane", self.cp())
+        self.assertEqual(self.cp().get("fast_lane", ""), "")
         self.assertNotIn("Upstream changes reviewed", (self.S / "prompt-gemini.txt").read_text())
 
     def test_non_dependabot_author_is_not_fast_laned(self):
@@ -715,7 +715,7 @@ class DepFastLane(Base):
         self.cfg({"gemini": {"mode": "ok"}, "codex": {"mode": "ok"}})
         r = self.land("--author-lane", "claude", expect=0)
         self.assertNotIn("fast-lane", r.stdout)
-        self.assertNotIn("fast_lane", self.cp())
+        self.assertEqual(self.cp().get("fast_lane", ""), "")
 
     def test_explicit_lanes_win_and_criteria_file_wins(self):
         self.dep_branch()
@@ -729,6 +729,30 @@ class DepFastLane(Base):
         text = (self.S / "prompt-local.txt").read_text()
         self.assertIn("MY CRITERIA", text)
         self.assertNotIn("Upstream changes reviewed", text)
+
+    def test_staged_non_manifest_change_committed_before_review_means_normal_path(self):
+        self.dep_branch()
+        self.change("scripts/foo3.py", "print(3)\n", commit=False)
+        msg = self.S / "msg.txt"
+        msg.write_text("feat: x\n")
+        self.cfg({"gemini": {"mode": "ok"}, "codex": {"mode": "ok"}})
+        r = self.land("--author-lane", "dependabot", "--commit-msg-file", str(msg), expect=0)
+        self.assertNotIn("fast-lane: dependency-bump", r.stdout)
+        self.assertEqual(self.cp()["fast_lane"], "")
+        self.assertNotIn("Upstream changes reviewed", (self.S / "prompt-gemini.txt").read_text())
+
+    def test_malformed_policy_globs_use_the_normal_path(self):
+        for bad in (None, "*", ["*"], [""]):
+            with self.subTest(globs=bad):
+                self.tearDown_state(); self.gh_state({})
+                pol = self.S / "policy.json"
+                pol.write_text(json.dumps({"dependabot_manifest_exemption": {"author": "dependabot[bot]", "manifest_globs": bad}}))
+                self.env["AQ_LAND_POLICY_FILE"] = str(pol)
+                self.dep_branch()
+                self.cfg({"gemini": {"mode": "ok"}, "codex": {"mode": "ok"}})
+                r = self.land("--author-lane", "dependabot", expect=0)
+                self.assertIn("fast-lane: policy invalid, normal review path", r.stdout)
+                self.assertEqual(self.cp()["fast_lane"], "")
 
 
 class Preflight(Base):

@@ -398,24 +398,37 @@ class Land:
         ok, _ = self.crd.merge_only_update(rec["head"], head, self.git("rev-parse", "refs/remotes/origin/main"))
         return ok
 
-    def detect_fast_lane(self):
-        """Dependabot + manifest-only net diff -> 'dependency-bump' (same glob semantics as the harness-first evidence gate)."""
+    def detect_fast_lane(self, head):
+        """Dependabot + manifest-only net diff of base...head -> 'dependency-bump'.
+
+        Called from review() with the same pinned range the reviewer's diff is built from, on every round.
+        Glob semantics match the harness-first evidence gate.
+        """
         self.fast_lane = ""
         if (self.a.author_lane or "").strip().lower() != "dependabot":
+            self.save(fast_lane="")
             return
         try:
-            globs = json.loads((ROOT / "config/harness-first-policy.json").read_text())["dependabot_manifest_exemption"]["manifest_globs"]
+            ex = json.loads(Path(os.environ.get("AQ_LAND_POLICY_FILE") or ROOT / "config/harness-first-policy.json").read_text())["dependabot_manifest_exemption"]
+            globs = ex["manifest_globs"]
         except (OSError, ValueError, KeyError, TypeError):
             say("fast-lane: policy unreadable, normal review path")
+            self.save(fast_lane="")
             return
-        names = [n for n in self.nul_names("refs/remotes/origin/main...HEAD") if n]
+        if (not isinstance(ex.get("author"), str) or not isinstance(globs, list) or not globs
+                or not all(isinstance(g, str) and g.strip() not in ("", "*", "**") for g in globs)):
+            say("fast-lane: policy invalid, normal review path")
+            self.save(fast_lane="")
+            return
+        names = [n for n in self.nul_names(f"refs/remotes/origin/main...{head}") if n]
+
         def is_manifest(n):
             return any(fnmatch.fnmatchcase(n if "/" in g else n.rsplit("/", 1)[-1], g) for g in globs)
 
         if names and all(is_manifest(n) for n in names):
             self.fast_lane = "dependency-bump"
             say(f"fast-lane: dependency-bump ({len(names)} manifest files)")
-            self.save(fast_lane=self.fast_lane)
+        self.save(fast_lane=self.fast_lane)
 
     def lane_plan(self, diff_bytes):
         author = (self.a.author_lane or "").strip().lower()
@@ -542,6 +555,7 @@ class Land:
         diff = self.git("diff", f"{base}...{head}")
         diff_file = self.dir / f"subject-{head[:12]}.diff"
         diff_file.write_text(diff + "\n")
+        self.detect_fast_lane(head)
         order, notes = self.lane_plan(len(diff.encode()))
         if not order:
             raise Stop("review", "no eligible independent lane: " + "; ".join(notes))
@@ -858,7 +872,6 @@ class Land:
 
     def go(self):
         self.preflight()
-        self.detect_fast_lane()
         pr = self.find_pr()
         if pr and pr["state"] == "MERGED":
             say(f"PR #{pr['number']} already merged")

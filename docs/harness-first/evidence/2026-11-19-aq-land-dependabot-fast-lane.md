@@ -17,7 +17,7 @@ Bounded single-file change plus criteria file and tests, implemented by a Sonnet
 - `GITHUB_EVENT_NAME=pull_request GITHUB_BASE_REF=main ./scripts/governance/ci-clean-env.sh --all --only harness-first-static-gates`
 
 ## Validation Evidence
-Trigger: `--author-lane dependabot` (case-insensitive) and every file in the net diff vs origin/main matches `dependabot_manifest_exemption.manifest_globs` (same fnmatchcase semantics as the evidence gate). New tests in `DepFastLane`: applies (criteria used, gemini first, local unused, log line, checkpoint `fast_lane`); not with a non-manifest file; not for a non-dependabot author; explicit `--lanes` and `--criteria-file` win. Full command output is in the slice report.
+Eligibility is decided in review() from the same pinned origin/main...head range as the reviewer diff, on every round (checkpoint `fast_lane` reflects the reviewed head); a malformed policy (non-list or empty globs, bare `*`/`**`) logs `fast-lane: policy invalid, normal review path`. Trigger: `--author-lane dependabot` (case-insensitive) and every file in the net diff vs origin/main matches `dependabot_manifest_exemption.manifest_globs` (same fnmatchcase semantics as the evidence gate). New tests in `DepFastLane`: applies (criteria used, gemini first, local unused, log line, checkpoint `fast_lane`); not with a non-manifest file; not for a non-dependabot author; explicit `--lanes` and `--criteria-file` win. Full command output is in the slice report.
 
 ## Rollback Plan
 Revert this commit. The fast lane is inert unless `--author-lane dependabot` is passed, so non-Dependabot landings are unaffected in the meantime.
