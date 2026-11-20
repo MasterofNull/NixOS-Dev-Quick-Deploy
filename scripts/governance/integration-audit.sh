@@ -206,9 +206,7 @@ categorize_features() {
 
     # Category B: Keep disabled (experimental or resource-dependent)
     local category_b_features=(
-        "QUERY_EXPANSION_ENABLED"
         "REMOTE_LLM_FEEDBACK_ENABLED"
-        "MULTI_TURN_QUERY_EXPANSION"
         "AI_LLM_EXPANSION_ENABLED"
         "AI_SPECULATIVE_DECODING_ENABLED"
         "AI_CROSS_ENCODER_ENABLED"

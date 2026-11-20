@@ -511,6 +511,7 @@ def classify_task_type(prompt: str, mode: str = "direct") -> str:
                 {
                     "state": {"text": prompt, "mode": mode},
                     "questions": {"task_profile": {"type": "choice"}},
+                    "incumbent": {"task_profile": heuristic},
                 },
                 caller="dispatch.classify_task_type",
             )

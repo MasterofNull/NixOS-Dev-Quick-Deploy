@@ -33,6 +33,13 @@ in {
     # agent-auth AUTH-S2: shadow-only (never blocks); expiry is a runtime health signal.
     mySystem.aiStack.agentAuth.mode = lib.mkDefault "shadow";
     mySystem.aiStack.agentAuth.shadowUntil = lib.mkDefault "2026-12-15";
+    # Dormant-feature batch B (owner 2026-11-19): aq-decide System 1 engine, SHADOW stage. T0a rules + exact cache +
+    # T0.5 hashed TF-IDF run in-process and are logged beside the caller's own answer; nothing is acted on (promotion
+    # to advise/enforce is gated on DEC section 4.3 data gates). Only task_profile has a live caller (dispatch.py).
+    # embedder (needs a model-fetch unit and a design-gated T1 decision) and train.timer (no consumer) stay off.
+    mySystem.aiStack.aqDecide.enable = lib.mkDefault true;
+    mySystem.aiStack.aqDecide.mode = lib.mkDefault "shadow";
+    mySystem.aiStack.aqDecide.integrations.taskProfile.mode = lib.mkDefault "shadow";
     # Foundation C — R6 activation STEP 1 (2026-08-02, owner-authorized). The
     # runner-deployment-hardening slice (rev4, accepted + integrated 0cf1192e) fixed
     # the 5 R5-shadow deploy bugs: it now adopts the systemd socket-activation fd

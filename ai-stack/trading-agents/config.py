@@ -37,10 +37,6 @@ def get_config() -> dict:
         "max_memory_items": int(os.getenv("TRADING_MAX_MEMORY_ITEMS", "100")),
         "prune_resolved_memory": os.getenv("TRADING_PRUNE_MEMORY", "true").lower() == "true",
 
-        # Checkpointing
-        "enable_checkpoints": os.getenv("TRADING_ENABLE_CHECKPOINTS", "false").lower() == "true",
-        "checkpoint_dir": str(data_dir / "checkpoints"),
-
         # Data vendors (Alpha Vantage key must be set externally)
         "alpha_vantage_key": os.getenv("ALPHA_VANTAGE_API_KEY", ""),
         "data_vendor": os.getenv("TRADING_DATA_VENDOR", "yfinance"),  # yfinance | alpha_vantage
