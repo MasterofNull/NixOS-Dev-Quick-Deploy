@@ -20,9 +20,11 @@ role authority. Model capability/cost and workflow authority remain orthogonal.
   local. Passes provide angle diversity; agents provide model diversity. Dissent and unavailable
   lanes are recorded rather than collapsed into consensus.
 - **Economical execution plane:** after the PRD, plan, contracts, acceptance criteria, and exact slice
-  are frozen, the orchestrator routes implementation to the cheapest healthy model whose measured
-  capability, tools, context envelope, hardware budget, and task eligibility satisfy the slice.
-  Cost never overrides eligibility, authorization, monitoring, or stop conditions.
+  are frozen, the orchestrator routes implementation to the most cost-effective model that is also correct for the
+  task: measured capability, tools, context envelope, hardware budget, and task eligibility must satisfy
+  the slice (a gate goes only to a lane that can actually perform it), and among such lanes the most
+  cost-effective wins; a cheap result that must be redone is not cost-effective. Cost never overrides
+  correctness, eligibility, authorization, monitoring, or stop conditions.
 - **Flagship acceptance plane:** risk-tier policy selects independent flagship reviewers. A flagship
   that implemented or materially rewrote the candidate cannot provide its binding acceptance.
   Reviewers may request changes; changes become a new bounded implementation/revision slice with new
@@ -46,7 +48,7 @@ this is a model/agent-agnostic, locally-hosted software factory that keeps progr
 agent is unavailable. For every role instance (orchestrator, architect, implementer, reviewer,
 binding-acceptance), the orchestrator selects the filler at dispatch time by **availability** (lane
 reachable, not quota-exhausted, route healthy) × **capability/tier** (this matrix ×
-`config/model-coordinator.json`) × **independence** (never self-review) × **cost** (cheapest eligible).
+`config/model-coordinator.json`) × **independence** (never self-review) × **cost-effectiveness** (most cost-effective correct lane).
 The filler is never hardcoded. Binding acceptance in particular may be Codex OR a fresh Claude flagship
 OR Gemini/Antigravity OR local Qwen (bounded) — whichever is up, eligible, and independent; if the
 first choice is down, route to the next eligible, proceed, and record the substitution in the receipt's
