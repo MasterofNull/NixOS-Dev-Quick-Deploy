@@ -27,6 +27,28 @@ def _lines(p: Path) -> list[dict]:
     return [json.loads(x) for x in p.read_text().splitlines()] if p.exists() else []
 
 
+class Producers(unittest.TestCase):
+    def test_scoreboard_is_executable(self) -> None:
+        self.assertTrue(os.access(BOARD, os.X_OK), "aq-scoreboard must be +x so it resolves on PATH")
+
+    def test_codex_log_total_fills_tokens(self) -> None:
+        with tempfile.TemporaryDirectory() as t:
+            d = Path(t)
+            (d / "outputs").mkdir()
+            (d / "outputs" / "codex-x.log").write_text("noise\ntokens used\n40,781\nPASS\n")
+            _registry(d, [{"id": "c1", "agent": "codex", "output_file": ".agents/delegation/outputs/codex-x.log",
+                           "tokens_in": None, "tokens_out": None}])
+            orc.record_landing(d, pr=7, head=H, author_lane="claude", ci="pass", tier0="pass",
+                               reviews=[{"lane": "codex", "run_id": "c1", "verdict": "PASS"}])
+            rec = _lines(d / orc.LOG)[0]
+            self.assertEqual(rec["tokens"], {"codex": {"in": None, "out": None, "total": 40781}})
+            self.assertEqual(rec["tier0"], "pass")
+            out = subprocess.run([sys.executable, str(BOARD), "--dir", str(d)], capture_output=True, text=True, check=True).stdout
+            self.assertIn("total=40781", out)
+            self.assertEqual(json.loads(subprocess.run([sys.executable, str(BOARD), "--dir", str(d), "--json"], capture_output=True,
+                                                       text=True, check=True).stdout)["tokens_by_lane"]["codex"]["known"], 1)
+
+
 class Receipt(unittest.TestCase):
     def setUp(self) -> None:
         self._t = tempfile.TemporaryDirectory()

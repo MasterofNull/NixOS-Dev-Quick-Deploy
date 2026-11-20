@@ -1,0 +1,5 @@
+{
+  "classification": "durable_plan",
+  "tracking_route": "tracker.json",
+  "evidence": "tracker.json tracks the rebuild-enablement items (oncalld, auditd, auto-revert sweep); DECISIONS.md records the enablement decisions."
+}
