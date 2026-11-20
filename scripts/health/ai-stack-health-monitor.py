@@ -51,6 +51,19 @@ def push_alert(**spec) -> None:
         print(f"[{_SOURCE}] Skipping invalid alert: {exc}", file=sys.stderr)
 
 
+def _bounded_phase0_budget_s(raw: str | None, outer_timeout_s: int) -> str:
+    """Clamp AQ_QA_PHASE0_BUDGET_S strictly below outer_timeout_s so phase 0 emits partial JSON before SIGKILL."""
+    cap = float(int(outer_timeout_s * 0.85)) if outer_timeout_s >= 2 else max(0.1, outer_timeout_s * 0.85)
+    try:
+        val = float((raw or "").strip())
+        if val > 0:
+            chosen = min(val, cap)
+            return str(int(chosen)) if chosen.is_integer() else str(chosen)
+    except ValueError:
+        pass
+    return str(int(cap)) if cap.is_integer() else str(cap)
+
+
 def run_aq_qa(phase: str) -> dict:
     """Run aq-qa <phase> --json and return parsed output."""
     try:
@@ -61,8 +74,10 @@ def run_aq_qa(phase: str) -> dict:
         env.update({"TMPDIR": str(_TMPDIR), "TEMP": str(_TMPDIR), "TMP": str(_TMPDIR)})
         env["PYTHONDONTWRITEBYTECODE"] = "1"
         # Phase 0 must finish with a partial result before this process's own deadline (never an all-or-nothing
-        # timeout): give it 85% of the harness timeout, leaving room to serialize and exit.
-        env.setdefault("AQ_QA_PHASE0_BUDGET_S", str(int(_HARNESS_TIMEOUT_S * 0.85)))
+        # timeout): clamp any override strictly below _HARNESS_TIMEOUT_S, leaving room to serialize and exit.
+        env["AQ_QA_PHASE0_BUDGET_S"] = _bounded_phase0_budget_s(
+            env.get("AQ_QA_PHASE0_BUDGET_S"), _HARNESS_TIMEOUT_S
+        )
         # Scheduled monitoring must not read "cannot run here" as healthy: an unreachable systemd user manager
         # fails 0.10.66 instead of skipping it (phase0._confine_context_gap). No unit change needed.
         env["AQ_CONFINE_REQUIRE_CONTEXT"] = "1"

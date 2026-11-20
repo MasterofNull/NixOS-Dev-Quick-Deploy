@@ -48,27 +48,49 @@ class _LoadScaledSubprocess:
             kwargs["timeout"] = kwargs["timeout"] * _timeout_scale()
         try:
             return _subprocess.run(*args, **kwargs)
-        except _subprocess.TimeoutExpired:
-            _TIMEOUT_SEEN.hit = True
+        except _subprocess.TimeoutExpired as exc:
+            hits = getattr(_TIMEOUT_SEEN, "hits", None)
+            if hits is None:
+                hits = []
+                _TIMEOUT_SEEN.hits = hits
+            hits.append(str(exc))
             raise
 
 
 subprocess = _LoadScaledSubprocess()
 _TIMEOUT_SEEN = threading.local()
+_TIMEOUT_REASON_RE = re.compile(r"\btimed out\b|^(?:probe |subprocess )?timeout\b", re.IGNORECASE)
+
+
+def _is_timeout_failure(result: CheckResult, seen_errors: list[str]) -> bool:
+    """Return True only when this CheckResult failed because of a subprocess timeout."""
+    if getattr(result, "_timed_out", False):
+        return True
+    reason = (result.reason or "").strip()
+    if not reason:
+        return False
+    if any(err and (err in reason or (len(reason) >= 12 and reason in err)) for err in seen_errors):
+        return True
+    return bool(_TIMEOUT_REASON_RE.search(reason))
 
 
 def _demote_timeouts(fn):
-    """A check whose subprocess timed out has no verdict: its FAIL rows become DEGRADED SKIPs (busy host), not
-    outage alerts. Checks that failed without a timeout stay FAIL."""
+    """A check whose subprocess timed out has no verdict: only the FAIL row(s) caused by that timeout become
+    DEGRADED SKIPs (busy host), not outage alerts. Unrelated FAILs in the same check stay FAIL."""
     def wrapped(ctx):
-        _TIMEOUT_SEEN.hit = False
-        results = fn(ctx)
-        if not getattr(_TIMEOUT_SEEN, "hit", False):
-            return results
+        _TIMEOUT_SEEN.hits = []
+        try:
+            results = fn(ctx)
+            seen_errors = list(getattr(_TIMEOUT_SEEN, "hits", ()))
+        finally:
+            _TIMEOUT_SEEN.hits = []
         from ..core.result import Status
         out = []
         for r in results:
-            if r.status == Status.FAIL:
+            if r.status == Status.FAIL and (
+                getattr(r, "_timed_out", False)
+                or (seen_errors and _is_timeout_failure(r, seen_errors))
+            ):
                 r = skipped(r.layer, r.id, r.description, f"DEGRADED: subprocess timed out, no verdict ({r.reason})")
             out.append(r)
         return out
@@ -575,6 +597,7 @@ def _check_flagship_cli(ctx: RunContext) -> list[CheckResult]:
         "PATH": f"{ctx.primary_home}/.local/bin:{ctx.primary_home}/.npm-global/bin:{os.environ.get('PATH', '')}",
     }
     # exit 0 = healthy -> pass; anything else (missing script, script/config broken) -> fail.
+    gemini_timed_out = False
     try:
         gemini_proc = subprocess.run(
             ["bash", str(gemini_script), "--check"],
@@ -582,7 +605,11 @@ def _check_flagship_cli(ctx: RunContext) -> list[CheckResult]:
         )
         gemini_rc = gemini_proc.returncode
         gemini_out = gemini_proc.stdout + gemini_proc.stderr
-    except (subprocess.TimeoutExpired, OSError) as exc:
+    except subprocess.TimeoutExpired as exc:
+        gemini_rc = None
+        gemini_out = str(exc)
+        gemini_timed_out = True
+    except OSError as exc:
         gemini_rc = None
         gemini_out = str(exc)
 
@@ -591,6 +618,13 @@ def _check_flagship_cli(ctx: RunContext) -> list[CheckResult]:
 
     if gemini_rc == 0:
         results.append(passed(7, "0.6.2", "gemini CLI live-state health check"))
+    elif gemini_timed_out:
+        detail = f"probe timed out: {gemini_out}"[:160]
+        if reason:
+            detail = f"{detail}: {reason}"
+        res = failed(7, "0.6.2", "gemini CLI live-state health check", detail)
+        res._timed_out = True
+        results.append(res)
     else:
         detail = f"exit {gemini_rc}" if gemini_rc is not None else "probe error"
         if reason:
@@ -3040,8 +3074,12 @@ def _check_local_direct_health_contract(ctx: RunContext) -> list[CheckResult]:
                 ["python3", str(checker)], cwd=ctx.repo_root,
                 capture_output=True, text=True, timeout=180,
             )
+        except subprocess.TimeoutExpired as exc:
+            res = failed(5, "0.10.42", description, str(exc)[:240])
+            res._timed_out = True
+            return [res]
         except Exception as exc:
-            return [failed(5, "0.10.42", description)]
+            return [failed(5, "0.10.42", description, str(exc)[:240])]
         if run.returncode != 0:
             detail = (run.stderr or run.stdout or f"exit {run.returncode}").strip()[-500:]
             return [failed(5, "0.10.42", description)]

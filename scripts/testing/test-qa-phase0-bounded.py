@@ -2,9 +2,13 @@
 """Phase 0 must return a partial per-check result under a deadline, never an all-or-nothing timeout."""
 import importlib.util
 import os
+import subprocess as sp
 import sys
+import tempfile
+import threading
 import time
 from pathlib import Path
+from types import SimpleNamespace
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts" / "testing"))
@@ -62,7 +66,6 @@ def main() -> int:
     check(scheduler.resolve_limits(10) == (3, 7.0, 40.0), "explicit env overrides win")
 
     from harness_qa.phases import phase0
-    import subprocess as sp
 
     def _times_out(ctx):
         try:
@@ -72,6 +75,125 @@ def main() -> int:
     os.environ["AQ_QA_TIMEOUT_SCALE"] = "1"
     check(phase0._demote_timeouts(_times_out)(None)[0].status == Status.SKIP, "subprocess timeout -> DEGRADED SKIP")
     check(phase0._demote_timeouts(_bad)(None)[0].status == Status.FAIL, "non-timeout failure stays FAIL")
+
+    # Finding 1: mixed results in the same check function must demote ONLY the timeout result.
+    def _mixed_fail_then_timeout(ctx):
+        out = [failed(4, "t.real", "real", "real failure")]
+        try:
+            phase0.subprocess.run(["sleep", "5"], timeout=0.05)
+        except sp.TimeoutExpired:
+            out.append(failed(4, "t.to", "to", "timeout"))
+        return out
+
+    mixed1 = phase0._demote_timeouts(_mixed_fail_then_timeout)(None)
+    check([x.status for x in mixed1] == [Status.FAIL, Status.SKIP],
+          f"independent FAIL before timeout must stay FAIL: {[x.status for x in mixed1]}")
+
+    def _mixed_timeout_then_fail(ctx):
+        out = []
+        try:
+            phase0.subprocess.run(["sleep", "5"], timeout=0.05)
+        except sp.TimeoutExpired:
+            out.append(failed(4, "t.to", "to", "timeout"))
+        out.append(failed(4, "t.real", "real", "exit 1"))
+        return out
+
+    mixed2 = phase0._demote_timeouts(_mixed_timeout_then_fail)(None)
+    check([x.status for x in mixed2] == [Status.SKIP, Status.FAIL],
+          f"independent FAIL after timeout must stay FAIL: {[x.status for x in mixed2]}")
+
+    # Finding 1 (_check_flagship_cli): 0.6.1 failure must survive a 0.6.2 gemini probe timeout.
+    with tempfile.TemporaryDirectory() as td:
+        repo = Path(td)
+        probe_path = repo / "scripts" / "testing" / "qa-provider-probe.py"
+        probe_path.parent.mkdir(parents=True, exist_ok=True)
+        probe_path.write_text(
+            "def run_provider_probe(**kwargs):\n"
+            "    return [{'provider_id': 'codex', 'result': 'fail'}]\n",
+            encoding="utf-8",
+        )
+        orig_run = phase0.subprocess.run
+
+        def _fake_gemini_timeout(*args, **kwargs):
+            raise sp.TimeoutExpired(cmd=args[0], timeout=kwargs.get("timeout", 20))
+
+        phase0.subprocess.run = _fake_gemini_timeout
+        try:
+            ctx = SimpleNamespace(
+                should_run=lambda _layer: True,
+                repo_root=repo,
+                qa_invocation_id="test-invocation",
+                primary_user_path="/bin",
+                primary_home="/tmp",
+                primary_user="test",
+            )
+            cli_res = phase0._demote_timeouts(phase0._check_flagship_cli)(ctx)
+        finally:
+            phase0.subprocess.run = orig_run
+        check(len(cli_res) == 2, f"_check_flagship_cli yields 2 results: {len(cli_res)}")
+        check(cli_res[0].id == "0.6.1" and cli_res[0].status == Status.FAIL,
+              f"0.6.1 CLI smoke failure must stay FAIL when 0.6.2 times out: {cli_res[0]}")
+        check(cli_res[1].id == "0.6.2" and cli_res[1].status == Status.SKIP and "DEGRADED:" in cli_res[1].reason,
+              f"0.6.2 gemini timeout must demote to DEGRADED SKIP: {cli_res[1]}")
+
+    # Finding 2: timed-out still-alive threads count against the concurrency cap.
+    lock = threading.Lock()
+    active = 0
+    max_active = 0
+    slow_done = threading.Event()
+
+    def _slow_then_finish(ctx):
+        nonlocal active, max_active
+        with lock:
+            active += 1
+            max_active = max(max_active, active)
+        try:
+            time.sleep(0.35)
+            return [passed(4, "t.slow", "slow")]
+        finally:
+            with lock:
+                active -= 1
+            slow_done.set()
+
+    def _tracked_ok(ctx):
+        nonlocal active, max_active
+        with lock:
+            active += 1
+            max_active = max(max_active, active)
+        try:
+            return [passed(4, "t.fast", "fast")]
+        finally:
+            with lock:
+                active -= 1
+
+    r_cap = scheduler.run_checks(None, [_slow_then_finish, _tracked_ok, _tracked_ok],
+                                 workers=1, per_check_s=0.1, budget_s=2.0)
+    slow_done.wait(timeout=2.0)
+    check(max_active == 1, f"workers=1 concurrency must stay <= 1 across per-check timeout (got {max_active})")
+    check([x.status for x in r_cap] == [Status.SKIP, Status.PASS, Status.PASS],
+          f"slow check degrades, subsequent checks run after slot frees: {[x.status for x in r_cap]}")
+
+    # Finding 3: phase expiry collects completed workers before marking running checks degraded.
+    finished = threading.Event()
+
+    def _finishes_before_expiry(ctx):
+        finished.set()
+        return [failed(4, "t.done", "done", "real fail right before expiry")]
+
+    ticks = iter([0.0, 0.0, 0.0, 10.0, 10.0, 10.0])
+
+    def _expiry_clock():
+        # Hold clock below budget until _finishes_before_expiry has returned, then jump past expiry.
+        if not finished.is_set():
+            return next(ticks, 0.0)
+        return 10.0
+
+    r_exp = scheduler.run_checks(None, [_finishes_before_expiry, _hang], workers=2,
+                                 per_check_s=5.0, budget_s=1.0, clock=_expiry_clock)
+    check(r_exp[0].status == Status.FAIL and "real fail" in r_exp[0].reason,
+          f"completed worker at expiry must keep its FAIL result: {r_exp[0]}")
+    check(r_exp[1].status == Status.SKIP and "still running" in r_exp[1].reason,
+          f"actually running worker at expiry must be marked still running: {r_exp[1]}")
 
     # phase0.run wires the scheduler; the plan is declarative.
     src = (ROOT / "scripts/testing/harness_qa/phases/phase0.py").read_text()
@@ -89,6 +211,35 @@ def main() -> int:
     check(len(mon.degraded_checks(data)) == 1, "monitor finds degraded rows")
     check(not mon.failed_checks(data), "degraded is not a failure")
     check(not mon.is_complete_clean_phase0_result(data), "degraded run is never 'clean'")
+
+    # Finding 4: monitor clamps oversized AQ_QA_PHASE0_BUDGET_S strictly below _HARNESS_TIMEOUT_S.
+    captured_envs = []
+    orig_mon_run = mon.subprocess.run
+    orig_budget_env = os.environ.get("AQ_QA_PHASE0_BUDGET_S")
+    try:
+        def _capture_run(cmd, *, env=None, capture_output=False, text=False, timeout=None):
+            captured_envs.append((dict(env or {}), timeout))
+            return sp.CompletedProcess(cmd, 0, stdout='{"tests":[]}', stderr="")
+
+        mon.subprocess.run = _capture_run
+        for oversized in (str(mon._HARNESS_TIMEOUT_S), str(mon._HARNESS_TIMEOUT_S + 500), "0", "bogus"):
+            os.environ["AQ_QA_PHASE0_BUDGET_S"] = oversized
+            mon.run_aq_qa("0")
+            env_seen, outer_t = captured_envs[-1]
+            bval = float(env_seen["AQ_QA_PHASE0_BUDGET_S"])
+            check(0 < bval < outer_t,
+                  f"monitor must clamp AQ_QA_PHASE0_BUDGET_S={oversized!r} strictly below {outer_t}, got {bval}")
+
+        os.environ["AQ_QA_PHASE0_BUDGET_S"] = "60"
+        mon.run_aq_qa("0")
+        check(captured_envs[-1][0]["AQ_QA_PHASE0_BUDGET_S"] == "60",
+              "monitor preserves a smaller valid AQ_QA_PHASE0_BUDGET_S override")
+    finally:
+        mon.subprocess.run = orig_mon_run
+        if orig_budget_env is None:
+            os.environ.pop("AQ_QA_PHASE0_BUDGET_S", None)
+        else:
+            os.environ["AQ_QA_PHASE0_BUDGET_S"] = orig_budget_env
     print("PASS: phase 0 bounded scheduler (partial results, DEGRADED semantics, env limits, monitor)")
     return 0
 

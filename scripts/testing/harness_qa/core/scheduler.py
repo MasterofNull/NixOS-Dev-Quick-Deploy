@@ -53,10 +53,12 @@ def run_checks(
     clock: Callable[[], float] = time.monotonic,
 ) -> list[CheckResult]:
     """Run checks (each `fn(ctx) -> list[CheckResult]`), preserving plan order in the returned list."""
+    workers = max(1, workers)
     n = len(checks)
     slots: list[list[CheckResult] | None] = [None] * n
     pending = list(range(n))
     running: dict[int, tuple[threading.Thread, float, dict]] = {}
+    timed_out_threads: list[threading.Thread] = []
     start = clock()
 
     def hint() -> str:
@@ -64,6 +66,14 @@ def run_checks(
             return busy_hint() if busy_hint else ""
         except Exception:
             return ""
+
+    def drain_completed() -> None:
+        timed_out_threads[:] = [t for t in timed_out_threads if t.is_alive()]
+        for i in list(running):
+            t, _, box = running[i]
+            if not t.is_alive():
+                slots[i] = box["r"]
+                del running[i]
 
     def launch(i: int) -> None:
         box: dict = {}
@@ -80,9 +90,14 @@ def run_checks(
         t.start()
 
     while pending or running:
+        drain_completed()
+        if not pending and not running:
+            break
         now = clock()
         if now - start >= budget_s:
             why = f"phase budget {budget_s:.0f}s exhausted{hint()}"
+            # Re-drain in case a worker finished while busy_hint() was queried.
+            drain_completed()
             for i in list(running):
                 slots[i] = [degraded_result(checks[i].__name__, f"still running at {why}")]
             for i in pending:
@@ -95,11 +110,13 @@ def run_checks(
                 del running[i]
             elif now - t0 >= per_check_s:
                 slots[i] = [degraded_result(checks[i].__name__, f"exceeded {per_check_s:.0f}s per-check budget{hint()}")]
+                timed_out_threads.append(t)
                 del running[i]
-        while pending and len(running) < workers:
+        while pending and (len(running) + len(timed_out_threads)) < workers:
             launch(pending.pop(0))
-        if running:
-            next(iter(running.values()))[0].join(0.05)
+        wait_target = next(iter(running.values()))[0] if running else (timed_out_threads[0] if timed_out_threads else None)
+        if wait_target is not None:
+            wait_target.join(0.05)
     out: list[CheckResult] = []
     for s in slots:
         out.extend(s or [])
