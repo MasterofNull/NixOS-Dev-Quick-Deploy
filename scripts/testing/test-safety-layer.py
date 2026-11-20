@@ -15,14 +15,17 @@ from tool_registry import ToolRegistry, ToolDefinition, ToolCall, SafetyPolicy, 
 async def test_safety_interception():
     print("--- Testing Safety Control Layer Interception ---")
 
-    # The safety layer writes proposals under a cwd-relative .agent/proposals; keep that in a temp dir.
+    # The safety layer writes proposals under REPO_ROOT/.agent/proposals; point REPO_ROOT at a temp dir.
     with tempfile.TemporaryDirectory(prefix="safety-layer-test-") as tmp:
-        previous_cwd = os.getcwd()
-        os.chdir(tmp)
+        previous_root = os.environ.get("REPO_ROOT")
+        os.environ["REPO_ROOT"] = tmp
         try:
             await _run_interception_check(Path(tmp) / "tool_audit.db")
         finally:
-            os.chdir(previous_cwd)
+            if previous_root is None:
+                os.environ.pop("REPO_ROOT", None)
+            else:
+                os.environ["REPO_ROOT"] = previous_root
 
 
 async def _run_interception_check(db_path):
