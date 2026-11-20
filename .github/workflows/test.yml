@@ -465,6 +465,8 @@ jobs:
           ./scripts/governance/run-ci-checks.sh --all --only prsi-phase7-static-gates
 
       - name: Validate Harness-First static gates
+        env:
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
         run: |
           chmod +x scripts/governance/run-ci-checks.sh scripts/governance/ci-clean-env.sh
           ./scripts/governance/ci-clean-env.sh --all --only harness-first-static-gates
@@ -586,6 +588,8 @@ jobs:
             --only check-workflow-masks-test \
             --only tier0-gate-placement-tests \
             --only gate-lane-findings-tests \
+            --only gemini-quota-fallback-tests \
+            --only gemini-model-guard-tests \
             --only timer-stagger-regression-tests \
             --only llama-post-switch-validate-tests \
             --only activation-manifest-tests \
