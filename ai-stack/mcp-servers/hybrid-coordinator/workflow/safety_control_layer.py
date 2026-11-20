@@ -7,35 +7,59 @@ requiring human approval or automated validation.
 """
 
 import json
+import logging
 import os
-import time
-import hashlib
 import subprocess
+import time
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
 from extensions.blast_radius_classifier import classify
 
-PROPOSALS_DIR = Path(".agent/proposals")
+logger = logging.getLogger(__name__)
+
+def _resolve_repo_root() -> Path:
+    """Resolve REPO_ROOT from env or by walking up from this file to CLAUDE.md."""
+    env_root = os.environ.get("REPO_ROOT", "").strip()
+    if env_root:
+        return Path(env_root).resolve()
+    current = Path(__file__).resolve().parent
+    while current != current.parent:
+        if (current / "CLAUDE.md").exists():
+            return current
+        current = current.parent
+    return Path.cwd()
+
+
+def _resolve_proposals_dir() -> Path:
+    return _resolve_repo_root() / ".agent/proposals"
+
+
+PROPOSALS_DIR = _resolve_proposals_dir()
 PROPOSALS_DB = PROPOSALS_DIR / "proposals.json"
 
+
 class SafetyControlLayer:
-    def __init__(self, mode: str = "review"):
-        self.mode = mode # open, review, strict
-        PROPOSALS_DIR.mkdir(parents=True, exist_ok=True)
-        self._ensure_db()
+    def __init__(self, mode: str = "review", proposals_dir: Optional[Path] = None):
+        self.mode = mode  # open, review, strict
+        self.proposals_dir = Path(proposals_dir) if proposals_dir is not None else _resolve_proposals_dir()
+        self.proposals_db = self.proposals_dir / "proposals.json"
+        # Created lazily on first write: the sandboxed coordinator can only write
+        # declared paths, and registration must not fail on an unwritable repo.
 
     def _ensure_db(self):
-        if not PROPOSALS_DB.exists():
-            with open(PROPOSALS_DB, "w") as f:
+        self.proposals_dir.mkdir(parents=True, exist_ok=True)
+        if not self.proposals_db.exists():
+            with open(self.proposals_db, "w") as f:
                 json.dump({"proposals": [], "last_id": 0}, f)
 
     def _get_next_id(self) -> int:
-        with open(PROPOSALS_DB, "r") as f:
+        self._ensure_db()
+        with open(self.proposals_db, "r") as f:
             db = json.load(f)
         new_id = db.get("last_id", 0) + 1
         db["last_id"] = new_id
-        with open(PROPOSALS_DB, "w") as f:
+        with open(self.proposals_db, "w") as f:
             json.dump(db, f)
         return new_id
 
@@ -60,9 +84,20 @@ class SafetyControlLayer:
         if not should_intercept:
             return None
 
-        # Intercept!
+        # Intercept! An unwritable proposals dir fails closed (action blocked).
+        try:
+            return self._write_proposal(action_type, params, agent_id, tier)
+        except OSError as exc:
+            logger.warning("proposals dir %s unwritable: %s", self.proposals_dir, exc)
+            return {
+                "status": "blocked",
+                "reason": "proposals_dir_unwritable",
+                "tier": tier,
+            }
+
+    def _write_proposal(self, action_type: str, params: Dict[str, Any], agent_id: str, tier: str) -> Dict[str, Any]:
         proposal_id = self._get_next_id()
-        proposal_path = PROPOSALS_DIR / f"proposal_{proposal_id:04d}.json"
+        proposal_path = self.proposals_dir / f"proposal_{proposal_id:04d}.json"
         
         proposal_data = {
             "id": proposal_id,
@@ -79,7 +114,7 @@ class SafetyControlLayer:
             json.dump(proposal_data, f, indent=2)
 
         # Update DB index
-        with open(PROPOSALS_DB, "r") as f:
+        with open(self.proposals_db, "r") as f:
             db = json.load(f)
         db["proposals"].append({
             "id": proposal_id,
@@ -88,7 +123,7 @@ class SafetyControlLayer:
             "status": "pending",
             "path": str(proposal_path)
         })
-        with open(PROPOSALS_DB, "w") as f:
+        with open(self.proposals_db, "w") as f:
             json.dump(db, f, indent=2)
 
         return {
@@ -101,7 +136,7 @@ class SafetyControlLayer:
 
     def validate_proposal(self, proposal_id: int) -> Dict[str, Any]:
         """Perform automated validation (dry-runs) on a proposal."""
-        proposal_path = PROPOSALS_DIR / f"proposal_{proposal_id:04d}.json"
+        proposal_path = self.proposals_dir / f"proposal_{proposal_id:04d}.json"
         if not proposal_path.exists():
             return {"error": "Proposal not found"}
 
