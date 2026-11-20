@@ -1,0 +1,18 @@
+{
+  "schema": 2,
+  "pr": 823,
+  "reviewed_head_sha": "430db10b0db7cf0da92b557f190cabe6f2112683",
+  "run_id": "local-20261119-200516-c8zcmy",
+  "reviewer_lane": "local-direct",
+  "author_lane": "dependabot",
+  "verdict": "PASS_WITH_FOLLOWUPS",
+  "reviewer_instance": "Simurg@local-direct/unknown#local-20",
+  "author_instance": "Simurg@dependabot/unknown",
+  "output_file": ".agents/delegation/outputs/local-20261119-200516-c8zcmy.log",
+  "output_sha256": "700f34fc3f086fc1b90a2966bfb8b6093c03296876b14f189fe2f54219fd000b",
+  "created_at": "2026-11-20T04:10:02Z",
+  "repo": "MasterofNull/NixOS-Dev-Quick-Deploy",
+  "policy_version": "review-receipts/1",
+  "tree": "60719fa3a4003c2160f0f86dfcb969d178d8435a",
+  "base_commit": "09e2b6da1a8626405a3c1bda20ce3ab9a3119318"
+}
