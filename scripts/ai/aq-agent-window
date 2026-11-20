@@ -93,7 +93,7 @@ BUILTIN_LANES = {
         "color": "#50fa7b",
         "backend": "Coordinator :8003 / Switchboard :8085 (OpenAI)",
         "url": f"{SWITCHBOARD_URL}/v1/chat/completions",
-        "model": "gpt-6-astra",
+        "model": "gpt-6.2-astra",
         "profile": "remote-coding",
         "prompt_symbol": "codex",
     },

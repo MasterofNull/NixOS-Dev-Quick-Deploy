@@ -1132,7 +1132,7 @@ Consider edge cases and provide reasoning.
             List of model names to try in ranked order (3-4 models)
         """
         if not Config:
-            return ["claude-opus-4-5", "claude-sonnet", "gpt-4o", "gemini-2.0-flash-thinking"]
+            return ["claude-opus-5-5", "claude-sonnet", "gpt-6.2-sol", "gemini-3.8-flash"]
 
         chain = []
 
@@ -1182,7 +1182,7 @@ Consider edge cases and provide reasoning.
         # Ensure we have at least one model
         if not chain:
             logger.warning("No advisor models configured, using default chain")
-            chain = ["claude-opus-4-5", "claude-sonnet", "gpt-4o", "gemini-2.0-flash-thinking"]
+            chain = ["claude-opus-5-5", "claude-sonnet", "gpt-6.2-sol", "gemini-3.8-flash"]
 
         logger.info(f"Advisor chain for {decision_type}: {chain[:4]} ({len(chain)} total)")
         return chain
