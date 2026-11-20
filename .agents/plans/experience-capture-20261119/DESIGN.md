@@ -5,7 +5,7 @@ Ground truth: `.agents/delegation/outputs/llama-bisect/capture-inventory-2026111
 
 ## Problem
 
-The owner wants every agent to see up-to-date experience: what prompts and payloads were sent to which model, under which variables, and what happened, so agents can do efficiency checks, gut checks, testing, divergence detection and routing (Rule 17 cheapest correct lane, Rule 18 per-model availability). Records must be keyed by MODEL, AGENT (Simurg instance), ROLE and VERSION (model id+version, prompt/template version, harness/tool version). Recent experience and recent model versions weigh more; a new version starts low-trust and earns weight from its own outcomes; old evidence decays and is never deleted.
+The owner wants every agent to see up-to-date experience: what prompts and payloads were sent to which model, under which variables, and what happened, so agents can do efficiency checks, gut checks, testing, divergence detection and routing (Rule 17 cheapest correct lane, Rule 18 per-model availability). Records must be keyed by MODEL, AGENT (Simurg instance), ROLE and VERSION (model id+version, prompt/template version, harness/tool version). Recent experience and recent model versions weigh more; a new version starts from a discounted, sourced, informed prior (release notes + carried-over experience, re-tested, not assumed) and earns full weight from its own outcomes; old evidence decays and is never deleted; a bounded exploration budget keeps testing better variants.
 
 Today's stores each hold a slice of this and none joins to another. The nine gaps (inventory numbering):
 
@@ -30,6 +30,9 @@ Today's stores each hold a slice of this and none joins to another. The nine gap
 - G3. A deterministic, explicit weighting formula (below) producing per (model x role x version) cards with sample count and confidence.
 - G4. Consumers: routing hints (advisory first), aq-report/dashboard cards, divergence alerts, cross-model eval replay.
 - G5. Retention/rollup so the log stops growing unboundedly without deleting evidence.
+- G6. Informed priors, not cold starts (owner refinement 2026-11-19): on any model/version change, check the vendor release notes and prompting guidance and record a dated, sourced prior; carry past experience and trends to the new version as a discounted prior that is re-tested, never assumed ("this is how we always did it" is not evidence).
+- G7. Deliberate, bounded experimentation: a small exploration budget on low-risk reversible tasks tries prompt/payload/model/parameter/tactic variants; never on gates. Every experiment has hypothesis, metric, minimum sample and stop/rollback rule; the baseline design stays default until evidence beats it.
+- G8. Two-directional change detection: record and respond to both degradation and improvement per model x agent x role x version x variant; setting changes are versioned, logged and reversible.
 
 ## Non-goals
 
@@ -92,7 +95,27 @@ For cell c = (model_id, model_version, role) and eligible outcome i with age a_i
 - Routing rank value (advisory): `S_c * m_v`, tie-broken by lower median tokens per accepted outcome (Rule 17). Only cells with `n_c >= 5` and conf >= low are ranked; otherwise the router keeps its default and the hint says "no experience yet" (exploration never blocked).
 - Constants (H=30, 0.6, K=8, min n=5, 0.5 prior mix, 90d window) live in `config/experience-weighting.json`, so the owner can tune without code changes.
 
-Worked check: 12 recent s=1 outcomes (W about 10) with prior 0.7 gives S = (10 + 5.6)/18 = 0.87, conf 0.56. Three outcomes (W about 2.85) gives conf 0.26 and is shown `insufficient`. A new version starts low and earns weight.
+Worked check: 12 recent s=1 outcomes (W about 10) with prior 0.7 gives S = (10 + 5.6)/18 = 0.87, conf 0.56. Three outcomes (W about 2.85) gives conf 0.26 and is shown `insufficient`. A new version starts from a discounted informed prior and its own outcomes progressively replace it.
+
+Refinement (owner 2026-11-19), replacing "starts low-trust and earns weight only from its own outcomes": the new-version prior is informed and carries a documented provenance, built from three recorded sources, all stored in one `version_priors` record (`model_id`, `version`, `created`, `sources[]`, `prior_mean`, `prior_strength`, `expires_on_evidence`):
+
+1. Release-note prior. On any model/version change (detected when `model_call` shows a new `model_id`/`model_version` or the llama.cpp pin/quant changes) a bounded task reads the vendor release notes and prompting guidance and records: changed defaults/capabilities, recommended prompt or parameter changes, deprecations. Each item becomes a hypothesis candidate (see D10) with `source_url`, `retrieved`, and a claimed direction. Same discipline as the canon release-note rule; recorded as notes, not as score. A release note never raises a score by itself; it only seeds experiments and sets which settings to test first.
+2. Carry-over prior. `p_c = lambda_c * S_family_old + (1 - lambda_c) * mu_role`, with carry-over fraction `lambda_c = 0.5` by default (not 0, not 1), and the prior strength is the same K pseudo-observations, so the prior is overridden by own evidence once `W_c > K`. Carried-over learned behaviors (prompt templates, parameter settings, tactics, trends) are applied as the baseline but marked `carried=true` and queued for a re-test experiment on the new version (D10) within the first N=20 eligible outcomes of that role; a carried setting that has not been re-tested after 60 days is flagged `stale-assumption` on the card.
+3. Own evidence. From D6 unchanged.
+
+Confidence on a new version is displayed from `W_c` only (own evidence), so the card honestly shows "prior-driven" until own evidence accrues; the rank value for a prior-driven cell is `S_c * m_v` with its conf tier `low`.
+
+### D10. Exploration policy, experiments, and setting changes (owner refinement 2026-11-19)
+
+Policy: epsilon-greedy with a hard budget per (model x role x task_type) cell, deliberately simpler than Thompson sampling (minimal-code ladder: one number, deterministic, auditable). Default exploration rate epsilon = 5% of eligible dispatches, capped at 1 experiment in flight per cell and a global cap of 10% of dispatches per day. Upgrade path to Beta-Bernoulli Thompson sampling is a post-MVP option when per-cell volume supports it (sampling noise at current volumes, about tens of outcomes per month, makes Thompson no better than epsilon-greedy; owner decision 11).
+
+Eligibility (all must hold): task_type is on the owner-approved exploration-eligible list; risk class low; change is reversible (nothing merged without the normal gates); not a gate role. Never explored: review-disposition and trusted-review lanes, security/OWASP gates, tier0/trust-critical paths, owner-private work, Nix/secrets/deploy changes, anything the registry marks `risk != low`. An exploration arm only changes an input variable (prompt/template version, payload manifest, parameter, tactic, model choice within the same capability class), never a gate's verdict or acceptance criteria; the normal review and tier0 still decide acceptance.
+
+Experiment record (one row in `telemetry/experiments.jsonl`, ids reused as `experiment_id` on run events): `hypothesis` (required text and source: release note, trend, or carried-over assumption), `metric` (primary: S per D6; guardrails: tokens per accepted outcome, rework rate), `variant` and `baseline` ids (template_version, manifest id, params, tactic), `min_sample` (default 12 eligible outcomes per arm), `stop_rule` (stop early and revert if a guardrail degrades by > 0.25 S or > 2x tokens over >= 5 paired outcomes), `rollback` (the exact prior setting id), `status`, `decided_by`. An experiment with no hypothesis, metric, min_sample or rollback is rejected by the emitter (fail-closed on missing fields, fail-open on infra).
+
+Promotion rule (two-directional): a variant becomes the cell default only if, at `n >= min_sample` per arm, the variant's S exceeds baseline's by >= 0.10 and the one-sided 90% lower confidence bound (Wilson or bootstrap over decayed outcomes) of the difference is > 0, with no guardrail breached. Promotion is a versioned `setting_change` record (`setting_id`, `from`, `to`, `evidence` experiment_id, `created`, `reverted_by`), applied by changing the config template pointer, never by editing prompts in place, and is reversible by one command that restores `from`. Demotion/regression is symmetric: a promoted or carried setting whose rolling 14-day S (n >= 8) falls below its 30-day S by > 0.15, or the baseline's, triggers a `degradation` alert and an automatic re-test (not an automatic revert, owner decision 10). Both `performance_gain` and `degradation` findings are recorded per model x agent x role x version x variant, shown on the card, and only the `setting_change` path changes behavior. In the MVP, promotion is proposed and a human/orchestrator approves; automatic promotion is post-MVP.
+
+Goodhart limits: the metric S is computed from receipts (reviewer verdict, landing, revert) not from the author's self-report; guardrail metrics are fixed in advance; a variant may not be selected on a metric it also controls (e.g. shorter prompt judged by token count alone); metric definitions are versioned with the formula config.
 
 ### D7. Consumers (readers)
 
@@ -122,8 +145,11 @@ MVP = the same role (reviewer) compared across two real models with joined outco
 - J2. Land one reviewed PR via aq-land; the outcome receipt carries `author_run_id` and `review_run_ids`; a chain-check script joins prompt -> review receipt -> outcome -> landing with zero missing links.
 - J3. `experience_cards.py` over real data (>=5 eligible outcomes per cell, else it correctly prints `insufficient`) produces reviewer-role cards for two models; hand recomputation of one cell from raw events matches to 3 decimals.
 - J4. A real unknown/`infrastructure_error` outcome is shown as raw and demonstrably does not change S (before/after on real rows).
-- J5. A new model version appears as its own low-confidence cell and does not inherit the old version's confidence.
+- J5. A new model version appears as its own low-confidence, prior-driven cell: it inherits a discounted prior value but not the old version's confidence.
 - J6. aq-report shows the Experience section from live data; the dashboard route returns the same JSON; a `quota_window` event from a real Gemini or Codex limit episode appears in the availability view.
+- J8. Release-note prior: for one real model/version change (or a replayed real past change), a `version_priors` record exists with sourced release-note items and the carry-over prior; the card labels the cell prior-driven; a carried setting is queued for re-test.
+- J9. One real bounded experiment on a low-risk eligible task type: hypothesis, metric, min_sample, stop rule and rollback recorded; both arms produce joined events; the emitter refuses an experiment missing a field and refuses any gate/security task type. Evaluation yields either "no change, baseline stays" or a versioned `setting_change` proposal with an executed, verified revert.
+- J10. Degradation and gain detection exercised on real rolling data (or an honestly reported "none found"), recorded per cell with thresholds and confidence.
 - J7. The J1 prompt sidecar exists 0600, redacted, passes `scan`; a planted synthetic secret in a probe prompt is quarantined (hashes kept, text dropped).
 
 Committed is not done: see Activation DoD.
@@ -138,6 +164,12 @@ Committed is not done: see Activation DoD.
 - R6. Read cost on a 162 MB file: rollup in MVP, not deferred.
 - R7. Privacy of prompts in a public repo: D9, gitignored sidecars.
 - R8. Two homes (`/var/lib` events vs repo `.agents/` receipts): join by id at read time, no copying; telemetry path via env var (default `SERVICE_EVENT_PATH`) because worktrees may lack it.
+- R10. Exploration on the wrong tasks: a variant leaks into a gate or high-risk task. Mitigation: allow-list of task types (default empty until owner approves), risk=low and reversible checks in the emitter, gate roles hard-excluded, exploration never changes acceptance criteria.
+- R11. Goodhart on metrics: optimizing S or token cost distorts behavior (e.g. shorter prompts, easier tasks self-selected). Mitigation: receipt-derived S, fixed guardrails, paired arms on the same task type, human-approved promotion in the MVP.
+- R12. Under-powered experiments at about tens of outcomes per month: min_sample 12 per arm may take months; spurious promotions. Mitigation: conservative lower-bound rule, promotion proposals only, extend budget only by owner decision; honest "inconclusive" status.
+- R13. Release-note priors are unverified vendor claims and can themselves be stale or marketing: treated as hypotheses only, never as score.
+- R14. Carried-over assumptions ossify: 60-day stale-assumption flag and mandatory re-test within 20 outcomes.
+- R15. Experiments confound each other (model change plus prompt change): one in-flight experiment per cell, version changes pause cell experiments until n >= 5 on the new version.
 - R9. Feature freeze: memory records a FEATURE FREEZE (2026-10-27) until system-integrity-recovery P0+P1 exit; this is additive telemetry but needs owner confirmation (decision 1).
 
 ## Rollback
@@ -156,6 +188,11 @@ All changes are additive: optional event fields, one new event type, new read-on
 8. Local lane. Default: local Qwen is a first-class model with its own cards (llama.cpp build + quant as version), never blended with remote cells.
 9. Backfill. Default: none beyond the existing newer registry rows (unknown-model cohort, decay only); pre-capture history stays raw.
 
+10. Promotion and degradation response. Default: promotion needs variant S >= baseline + 0.10, lower 90% bound > 0, n >= 12 per arm, no guardrail breached, and a human/orchestrator approves in the MVP; degradation triggers an alert plus a re-test, not an automatic revert (automatic revert only for a guardrail breach during an active experiment).
+11. Exploration budget and policy. Default: epsilon-greedy, 5% of eligible dispatches per cell, 10% daily global cap, one in-flight experiment per cell; Thompson sampling deferred until volume supports it.
+12. Exploration-eligible task types. Default: initially none auto-enabled; owner approves a starting list from low-risk, reversible, non-gate types (e.g. doc drafting, test scaffolding, research summaries, local-lane bounded tasks); never review dispositions, security, tier0, Nix/secrets/deploy.
+13. Carry-over fraction. Default: 0.5 prior mix and re-test within 20 outcomes; release-note review is a bounded cheap-lane task run on each detected model/version change.
+
 ## Slices (bounded, ordered; lane = most cost-effective correct, Rule 17, explicit model override)
 
 | Slice | Scope | Lane suggestion | Validation |
@@ -167,9 +204,11 @@ All changes are additive: optional event fields, one new event type, new read-on
 | S4 | `experience_cards.py` + `config/experience-weighting.json` + LA-gate regression | Sonnet (formula care); Qwen decomposed for test scaffolding | J3 hand recomputation; J4 before/after; monotonic-decay property tests |
 | S5 | `aq-experience-rollup` + timer; monthly compress of old raw events; optional post-merge CI event | Codex (script); Nix timer declaration + owner rebuild act | rollup totals equal raw totals on a real month; measured size drop; restore test |
 | S6 | aq-report section, dashboard route, aq-hints advisory line, divergence alert job (MVP complete) | Sonnet for report/dashboard; Codex for alert job | J6 live; real divergence case detected or honest "none" |
-| S7 | Post-MVP: `aq-prompt-eval --replay`, per-instance cards, optional routing weights (needs decision 3 change) | Qwen/Codex first; remote only if value justifies | replay on 2 lanes writes comparable experiment_id rows |
+| S6b | Version priors + release-note intake: version-change detector, `version_priors` record, bounded release-note review task (cheap lane), carry-over prior in D6, stale-assumption flag | Haiku/Qwen for release-note extraction (mechanical, checkable sources), Codex for detector; Sonnet reviews the prior formula | J8 on a real or replayed version change; prior sourced and displayed |
+| S6c | Experiment engine: `experiments.jsonl`, emitter validation, epsilon-greedy selector with allow-list/risk/gate exclusions, promotion rule, versioned `setting_change` + one-command revert, gain/degradation detector | Codex implementer (bounded); independent Claude reviewer incl. adversarial gate-exclusion test | J9, J10; negative test: gate task type refused; revert restores prior setting byte-for-byte |
+| S7 | Post-MVP: `aq-prompt-eval --replay`, per-instance cards, optional routing weights and automatic promotion (needs decisions 3, 10) | Qwen/Codex first; remote only if value justifies | replay on 2 lanes writes comparable experiment_id rows |
 
-MVP = S1-S6 (S5 may follow S6 if log growth is tolerable). Land S1+S2 together and S4+S6 together to avoid dormant code (Rule 23), or record a dated deferral. Reviewer for each slice differs from the author lane.
+MVP = S1-S6; S6b and S6c are MVP-phase-2 (the first real comparison needs only S1-S6; priors and exploration follow once there is a cards baseline, and S6c waits on owner decisions 10-12). (S5 may follow S6 if log growth is tolerable). Land S1+S2 together and S4+S6 together to avoid dormant code (Rule 23), or record a dated deferral. Reviewer for each slice differs from the author lane.
 
 ## Activation DoD per slice (Rule 15)
 
@@ -183,3 +222,5 @@ Each slice PR body and `.agent/ACTIVATION-AUDIT.md` entry states: integrated (na
 | S4 | called by S6 readers | via S6 | J3-J5 | card freshness | config weights |
 | S5 | systemd timer | on (owner rebuild) | totals match | rollup lag | disable timer |
 | S6 | aq-report, dashboard, hints, alerts | on | J6 | alert JSONL + report | advisory flag |
+| S6b | detector called on every model_call with a new id/version | on | J8 | priors listed on cards, stale-assumption count | edit/expire a prior by record |
+| S6c | selector called by delegate dispatch for allow-listed task types | on at epsilon=0 until owner enables an eligible list (then 5%) | J9, J10 | experiment table in report, gate-refusal counter | `EXPERIENCE_EXPLORE=0`, one-command revert of any setting_change |

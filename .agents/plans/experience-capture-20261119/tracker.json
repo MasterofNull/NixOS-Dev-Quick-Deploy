@@ -45,10 +45,18 @@
      "goal": "aq-report Experience section, dashboard route, advisory aq-hints line, divergence alert job.",
      "validation_goal": "Live aq-report and dashboard show real cards; alert path exercised (J6).",
      "deps": ["EC-4"], "detection": {"wired_caller": {"file": "scripts/ai/aq-report", "pattern": "experience_cards"}}},
+    {"id": "EC-6b", "name": "Version priors and release-note intake", "phase": "P2", "kind": "slice",
+     "goal": "Version-change detector, sourced version_priors record from vendor release notes, discounted carry-over prior, stale-assumption flag.",
+     "validation_goal": "Real or replayed version change yields a sourced prior shown as prior-driven on the card (J8).",
+     "deps": ["EC-4"], "detection": {"commit_match": ["version_priors", "release-note intake"]}},
+    {"id": "EC-6c", "name": "Experiment engine with bounded exploration", "phase": "P2", "kind": "slice",
+     "goal": "experiments.jsonl, fail-closed emitter validation, epsilon-greedy selector with allow-list and gate exclusions, promotion rule, versioned setting_change with one-command revert, gain/degradation detector.",
+     "validation_goal": "Real bounded experiment with hypothesis/metric/min sample/stop rule; gate task type refused; revert verified (J9, J10).",
+     "deps": ["EC-6", "EC-6b"], "detection": {"commit_match": ["experiment engine", "setting_change"]}},
     {"id": "EC-7", "name": "Cross-model replay and per-instance cards", "phase": "P3", "kind": "slice",
      "goal": "aq-prompt-eval --replay across lanes; optional routing weights after owner decision.",
      "validation_goal": "Replay on two lanes writes comparable experiment_id rows.",
-     "deps": ["EC-6"], "detection": {"commit_match": ["prompt-eval replay"]}}
+     "deps": ["EC-6c"], "detection": {"commit_match": ["prompt-eval replay"]}}
   ],
   "issues": [
     {"title": "Feature freeze scope", "sev": "med", "note": "Confirm telemetry work is allowed during system-integrity-recovery freeze (owner decision 1)."}
