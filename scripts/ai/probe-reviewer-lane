@@ -1,0 +1,325 @@
+#!/usr/bin/env python3
+"""probe-reviewer-lane: probe and capability-test a candidate reviewer lane on SYNTHETIC data only.
+
+Owner rule 2026-11-14: a new agent/model/lane is probed, tested and validated on synthetic
+data before it gets real work or personal data. This sends only the hand-written toy prompts
+and toy diffs below; never repo files, real diffs, local paths or identities.
+
+The OAuth token is read at call time (`gh auth token`), held in memory, sent in an HTTP header,
+and scrubbed from every string that leaves this process. Any transport, entitlement or
+rate-limit failure is "lane_unavailable", never a verdict.
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import re
+import subprocess
+import sys
+import time
+import urllib.error
+import urllib.parse
+import urllib.request
+import uuid
+from dataclasses import dataclass
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any, Callable
+
+sys.path.insert(0, str(Path(__file__).resolve().parent / "lib"))
+from delegation_dir import resolve_delegation_dir  # noqa: E402
+
+HIT_BAR = 0.80
+MAX_FALSE_RC = 1
+DISPOSITIONS = ("PASS", "PASS_WITH_FOLLOWUPS", "REQUEST_CHANGES")
+DISPOSITION_RE = re.compile(r"^Review-Disposition:\s*(\S+)\s*$", re.MULTILINE)
+RATE_HEADERS = ("x-ratelimit-limit", "x-ratelimit-remaining", "x-ratelimit-reset", "retry-after")
+
+# Lane registry: endpoints are config, so another lane (e.g. local-2) is a new entry or --endpoint.
+LANES: dict[str, dict[str, str]] = {
+    "ghm": {
+        "catalog": "https://models.github.ai/catalog/models",
+        "chat": "https://models.github.ai/inference/chat/completions",
+        "model": "openai/gpt-4.1",
+        "token_cmd": "gh auth token",
+    },
+}
+
+API_HEADERS = {"Accept": "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28"}
+
+SYSTEM_PROMPT = (
+    "You are a code reviewer. Review the diff. Reply with brief findings, then a final line that is exactly "
+    "one of: Review-Disposition: PASS | Review-Disposition: PASS_WITH_FOLLOWUPS | Review-Disposition: REQUEST_CHANGES. "
+    "Use REQUEST_CHANGES only for a real defect."
+)
+
+
+@dataclass(frozen=True)
+class Case:
+    name: str
+    defect: str | None  # None = clean
+    diff: str
+    marker: str = ""  # regex a finding must match to name this seeded defect (defect text or location)
+
+
+def _d(path: str, old: str, new: str) -> str:
+    return f"--- a/{path}\n+++ b/{path}\n@@ -1,4 +1,4 @@\n{old}{new}"
+
+
+CASES: tuple[Case, ...] = (
+    Case("off_by_one", "off-by-one", _d("toy/pager.py",
+        " def last_page(items, size):\n-    return (len(items) + size - 1) // size\n",
+        "+    return len(items) // size + 1\n # 10 items, size 5 -> returns 3, expected 2\n"), marker=r"off[- ]by[- ]one|pager\.py|last_page|ceil"),
+    Case("fail_open_except", "fail-open except", _d("toy/auth.py",
+        " def is_allowed(user):\n-    return check_acl(user)\n",
+        "+    try:\n+        return check_acl(user)\n+    except Exception:\n+        return True\n"), marker=r"fail[- ]open|auth\.py|is_allowed|except|swallow|return true"),
+    Case("path_traversal", "path traversal", _d("toy/files.py",
+        " def read_upload(name):\n-    return open(UPLOAD_DIR + '/' + os.path.basename(name)).read()\n",
+        "+    return open(UPLOAD_DIR + '/' + name).read()\n"), marker=r"traversal|files\.py|read_upload|basename|\.\./"),
+    Case("missing_lock", "missing lock", _d("toy/counter.py",
+        " def incr():\n-    with LOCK:\n-        state['n'] += 1\n",
+        "+    state['n'] += 1  # called from many threads\n"), marker=r"lock|race|thread|counter\.py|incr|atomic"),
+    Case("sql_injection", "SQL injection", _d("toy/db.py",
+        " def find(cur, name):\n-    cur.execute('SELECT * FROM t WHERE n = ?', (name,))\n",
+        "+    cur.execute(f\"SELECT * FROM t WHERE n = '{name}'\")\n"), marker=r"sql|inject|db\.py|parameteri|f-string"),
+    Case("hardcoded_secret", "hardcoded secret", _d("toy/client.py",
+        " def headers():\n-    return {'Authorization': 'Bearer ' + os.environ['TOY_TOKEN']}\n",
+        "+    return {'Authorization': 'Bearer toy-0000-FAKE-SECRET-VALUE'}\n"), marker=r"hard-?coded|secret|credential|client\.py|literal"),
+    Case("gate_bypass", "gate bypass", _d("toy/gate.py",
+        " def passes(score, floor):\n-    return score >= floor\n",
+        "+    return score >= floor or os.environ.get('SKIP_GATE') != '0'\n"), marker=r"bypass|gate\.py|skip_gate|environ|always pass"),
+    Case("resource_leak", "resource leak", _d("toy/io.py",
+        " def count_lines(p):\n-    with open(p) as f:\n-        return sum(1 for _ in f)\n",
+        "+    f = open(p)\n+    return sum(1 for _ in f)\n"), marker=r"leak|close|with open|context manager|io\.py|file handle"),
+    Case("clean_rename", None, _d("toy/util.py",
+        " def total(xs):\n-    t = 0\n-    for x in xs:\n-        t += x\n-    return t\n",
+        "+    return sum(xs)\n")),
+    Case("clean_guard", None, _d("toy/cfg.py",
+        " def port(env):\n-    return int(env['PORT'])\n",
+        "+    v = env.get('PORT')\n+    if v is None or not v.isdigit():\n+        raise ValueError('PORT must be digits')\n+    return int(v)\n")),
+)
+
+Transport = Callable[[str, str, dict[str, str], bytes | None], tuple[int, dict[str, str], str]]
+
+
+class LaneUnavailable(Exception):
+    """Transport, entitlement or rate-limit failure: the lane could not run. Never a verdict."""
+
+
+MIN_PREFIX = 12
+
+
+def scrub(text: str, token: str) -> str:
+    """Redact the full token (regardless of length) and any prefix of it that is MIN_PREFIX+ chars."""
+    if not token:
+        return text
+    text = text.replace(token, "[REDACTED]")
+    for n in range(len(token) - 1, max(MIN_PREFIX, 1) - 1, -1):
+        text = text.replace(token[:n], "[REDACTED]")
+    return text
+
+
+def leaks(blob: str, token: str) -> bool:
+    return bool(token) and scrub(blob, token) != blob
+
+
+def scrub_values(obj: Any, token: str) -> Any:
+    """Redact the credential from string values only; dict keys are program constants and stay intact."""
+    if isinstance(obj, str):
+        return scrub(obj, token)
+    if isinstance(obj, list):
+        return [scrub_values(x, token) for x in obj]
+    if isinstance(obj, dict):
+        return {k: scrub_values(v, token) for k, v in obj.items()}
+    return obj
+
+
+def get_token(cmd: str) -> str:
+    try:
+        out = subprocess.run(cmd.split(), capture_output=True, text=True, timeout=15, check=True).stdout.strip()
+    except (OSError, subprocess.SubprocessError) as exc:
+        raise LaneUnavailable(f"no token available ({type(exc).__name__})") from None
+    if not out:
+        raise LaneUnavailable("no token available (empty)")
+    return out
+
+
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    """urllib forwards Authorization across redirects; refuse every redirect instead."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):  # noqa: ANN001
+        return None
+
+
+def build_opener() -> urllib.request.OpenerDirector:
+    return urllib.request.build_opener(_NoRedirect)
+
+
+def urllib_transport(method: str, url: str, headers: dict[str, str], body: bytes | None) -> tuple[int, dict[str, str], str]:
+    if urllib.parse.urlsplit(url).scheme != "https":
+        raise LaneUnavailable("non-https endpoint refused")
+    req = urllib.request.Request(url, data=body, headers=headers, method=method)
+    try:
+        with build_opener().open(req, timeout=90) as resp:  # noqa: S310 - https-only, no redirects
+            return resp.status, {k.lower(): v for k, v in resp.headers.items()}, resp.read().decode("utf-8", "replace")
+    except urllib.error.HTTPError as exc:
+        if 300 <= exc.code < 400:
+            raise LaneUnavailable("redirect refused") from None
+        return exc.code, {k.lower(): v for k, v in exc.headers.items()}, exc.read().decode("utf-8", "replace")
+    except (urllib.error.URLError, OSError, TimeoutError) as exc:
+        raise LaneUnavailable(f"transport error ({type(exc).__name__})") from None
+
+
+def parse_disposition(text: str) -> str | None:
+    """Exactly one valid Review-Disposition line, else None (not a verdict)."""
+    found = DISPOSITION_RE.findall(text or "")
+    return found[0] if len(found) == 1 and found[0] in DISPOSITIONS else None
+
+
+def _json(text: str) -> Any:
+    try:
+        return json.loads(text)
+    except (ValueError, RecursionError):
+        return None
+
+
+def chat(transport: Transport, lane: dict[str, str], token: str, model: str, user: str) -> tuple[str, dict[str, str], float]:
+    body = json.dumps({"model": model, "temperature": 0, "max_tokens": 600,
+                       "messages": [{"role": "system", "content": SYSTEM_PROMPT}, {"role": "user", "content": user}]}).encode()
+    headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json", **API_HEADERS}
+    t0 = time.monotonic()
+    status, hdrs, text = transport("POST", lane["chat"], headers, body)
+    dt = time.monotonic() - t0
+    if status != 200:
+        raise LaneUnavailable(f"chat HTTP {status}: {scrub(text, token)[:160]!r}")
+    data = _json(text)
+    try:
+        content = data["choices"][0]["message"]["content"]
+    except (TypeError, KeyError, IndexError, AttributeError):
+        raise LaneUnavailable(f"chat response not parseable (HTTP 200, body head {scrub(text, token)[:120]!r})") from None
+    if not isinstance(content, str) or not isinstance(hdrs, dict):
+        raise LaneUnavailable("malformed response")
+    return content, hdrs, dt
+
+
+def score(results: list[dict[str, Any]]) -> dict[str, Any]:
+    defects = [r for r in results if r["defect"]]
+    clean = [r for r in results if not r["defect"]]
+    # A hit needs REQUEST_CHANGES AND a finding that names the seeded defect; a bare verdict is not a catch.
+    hits = sum(1 for r in defects if r["disposition"] == "REQUEST_CHANGES" and r.get("identified"))
+    false_rc = sum(1 for r in clean if r["disposition"] == "REQUEST_CHANGES")
+    no_verdict = sum(1 for r in results if r["disposition"] is None)
+    rate = hits / len(defects) if defects else 0.0
+    return {"defect_cases": len(defects), "clean_cases": len(clean), "hits": hits, "misses": len(defects) - hits,
+            "false_request_changes": false_rc, "no_verdict": no_verdict, "hit_rate": round(rate, 3),
+            "bar": {"min_hit_rate": HIT_BAR, "max_false_rc": MAX_FALSE_RC},
+            "passed": bool(defects) and rate >= HIT_BAR and false_rc <= MAX_FALSE_RC}
+
+
+def run_capability(transport: Transport, lane: dict[str, str], token: str, model: str, cases: tuple[Case, ...] = CASES) -> dict[str, Any]:
+    results = []
+    for c in cases:
+        content, _, _ = chat(transport, lane, token, model, "Review this diff:\n\n" + c.diff)
+        finding = DISPOSITION_RE.sub("", content)
+        results.append({"case": c.name, "defect": c.defect, "disposition": parse_disposition(content),
+                        "identified": bool(c.marker and re.search(c.marker, finding, re.IGNORECASE))})
+    return {**score(results), "cases": results}
+
+
+def probe(lane_name: str, lane: dict[str, str], model: str, transport: Transport, token: str, skip_capability: bool = False) -> dict[str, Any]:
+    out: dict[str, Any] = {"lane": lane_name, "model": model, "synthetic_only": True,
+                           "at": datetime.now(timezone.utc).isoformat(timespec="seconds")}
+    try:
+        status, _, text = transport("GET", lane["catalog"], {"Authorization": f"Bearer {token}", **API_HEADERS}, None)
+        if status in (401, 403):
+            raise LaneUnavailable(f"not entitled: catalog HTTP {status}")
+        if status != 200:
+            raise LaneUnavailable(f"catalog HTTP {status}")
+        data = _json(text)
+        if not isinstance(data, list) or not data:
+            raise LaneUnavailable(f"catalog is not a model list (HTTP 200, body head {scrub(text, token)[:60]!r}): entitlement unproven")
+        models = [m["id"] for m in data if isinstance(m, dict) and isinstance(m.get("id"), str) and m["id"].strip()]
+        if not models:
+            raise LaneUnavailable("catalog has no usable model ids: entitlement unproven")
+        out["entitled"] = True
+        out["models"] = models
+        content, hdrs, dt = chat(transport, lane, token, model, "Reply with exactly: ok")
+        if "ok" not in content.lower():
+            raise LaneUnavailable("smoke chat reply empty or not the expected 'ok'")
+        out["chat"] = {"ok": True, "latency_s": round(dt, 2), "reply_head": scrub(content, token)[:40]}
+        out["rate_limit"] = {k: hdrs[k] for k in RATE_HEADERS if k in hdrs}
+        if not skip_capability:
+            out["capability"] = run_capability(transport, lane, token, model)
+        out["status"] = "ok"
+    except LaneUnavailable as exc:
+        out["status"] = "lane_unavailable"
+        out["entitled"] = out.get("entitled", False)
+        out["reason"] = str(exc)
+    except Exception as exc:  # noqa: BLE001 - any surprise is "lane could not run"; type name only, the message could carry the token
+        out["status"] = "lane_unavailable"
+        out["entitled"] = out.get("entitled", False)
+        out["reason"] = f"unexpected error ({type(exc).__name__})"
+    return out
+
+
+def render(result: dict[str, Any], token: str, **kw: Any) -> str:
+    """Output boundary: redact the credential from every value; keys and internal fields stay intact."""
+    return json.dumps(scrub_values(result, token), **kw)
+
+
+def _result_name(lane: str) -> str:
+    safe = re.sub(r"[^A-Za-z0-9_.-]", "_", str(lane))
+    return f"lane-probe-{safe}-{datetime.now(timezone.utc):%Y%m%d-%H%M%S}-{uuid.uuid4().hex[:12]}.json"
+
+
+def write_result(result: dict[str, Any], token: str, out_dir: Path) -> Path:
+    blob = render(result, token, indent=2)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    path = out_dir / _result_name(result.get("lane", "unknown"))
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)  # exclusive, private from creation
+    with os.fdopen(fd, "w") as fh:
+        fh.write(blob + "\n")
+    return path
+
+
+def main(argv: list[str] | None = None, transport: Transport = urllib_transport) -> int:
+    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap.add_argument("--lane", default="ghm")
+    ap.add_argument("--model")
+    ap.add_argument("--endpoint", help="override chat endpoint (other lanes, e.g. local-2)")
+    ap.add_argument("--catalog", help="override catalog endpoint")
+    ap.add_argument("--token-cmd", help="override token command")
+    ap.add_argument("--probe-only", action="store_true", help="skip the seeded-defect capability test")
+    ap.add_argument("--out-dir", help="override output dir (default: <delegation>/outputs/lane-probes)")
+    a = ap.parse_args(argv)
+    lane = dict(LANES.get(a.lane, {}))
+    for key, val in (("chat", a.endpoint), ("catalog", a.catalog), ("token_cmd", a.token_cmd), ("model", a.model)):
+        if val:
+            lane[key] = val
+    if not all(k in lane for k in ("chat", "catalog", "token_cmd", "model")):
+        print(f"lane {a.lane!r} needs --endpoint, --catalog, --token-cmd and --model", file=sys.stderr)
+        return 2
+    default = LANES.get(a.lane, {})
+    foreign = [u for u in (lane["chat"], lane["catalog"])
+               if urllib.parse.urlsplit(u).hostname not in {urllib.parse.urlsplit(default.get(k, "")).hostname for k in ("chat", "catalog")}]
+    if foreign and not a.token_cmd:
+        print(f"refusing: endpoint host outside lane {a.lane!r} defaults; the default credential is never sent there. "
+              "Pass --token-cmd naming the credential intended for that host.", file=sys.stderr)
+        return 2
+    try:
+        token = get_token(lane["token_cmd"])
+    except LaneUnavailable as exc:
+        result: dict[str, Any] = {"lane": a.lane, "status": "lane_unavailable", "entitled": False, "reason": str(exc), "synthetic_only": True}
+        token = ""
+    else:
+        result = probe(a.lane, lane, lane["model"], transport, token, a.probe_only)
+    out_dir = Path(a.out_dir) if a.out_dir else resolve_delegation_dir(Path(__file__).resolve().parent) / "outputs" / "lane-probes"
+    path = write_result(result, token, out_dir)
+    print(render({"result_file": path.name, **{k: v for k, v in result.items() if k != "models"},
+                  "model_count": len(result.get("models", []))}, token, indent=2))
+    return 0 if result["status"] == "ok" else 3
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

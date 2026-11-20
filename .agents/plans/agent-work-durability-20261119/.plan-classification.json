@@ -1,0 +1,5 @@
+{
+  "classification": "durable_plan",
+  "tracking_route": "tracker.json",
+  "evidence": "tracker.json declares plan.id=agent-work-durability-20261119, an owner, a goal, prd_ref=.agents/plans/agent-work-durability-20261119/DESIGN.md (exists) and phases; durable goals and slices are authored there."
+}
