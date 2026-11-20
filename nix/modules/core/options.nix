@@ -1366,7 +1366,7 @@
           type = lib.types.bool;
           default = false;
           description = ''
-            Lock model weights in RAM via --mlock (mlockall).
+            Lock model weights in RAM (llama-server --load-mode mmap+mlock on b12503+, --mlock on older builds).
             Prevents model from being swapped out under memory pressure.
             Requires sufficient free RAM to hold the full model (22+ GB for 35B Q4).
             Enable only when ram_free_gb > model_size_gb + 3GB OS reserve.
