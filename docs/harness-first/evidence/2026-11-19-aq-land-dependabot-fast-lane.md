@@ -23,7 +23,7 @@ Trigger: `--author-lane dependabot` (case-insensitive) and every file in the net
 Revert this commit. The fast lane is inert unless `--author-lane dependabot` is passed, so non-Dependabot landings are unaffected in the meantime.
 
 ## Residual Risk
-Review quality depends on the reviewer lane having web access to release notes; the criteria require an "Upstream changes reviewed" list but aq-land does not machine-verify it. If the policy file cannot be read the fast lane silently does not apply (normal path).
+Review quality depends on the reviewer lane having web access to release notes; the criteria require an "Upstream changes reviewed" list but aq-land does not machine-verify it. If the policy file cannot be read the fast lane does not apply (normal path) and aq-land logs `fast-lane: policy unreadable, normal review path`.
 
 ## Hint Feedback
 No aq-hints were consulted for this slice; nothing to report.

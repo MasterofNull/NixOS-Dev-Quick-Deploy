@@ -406,6 +406,7 @@ class Land:
         try:
             globs = json.loads((ROOT / "config/harness-first-policy.json").read_text())["dependabot_manifest_exemption"]["manifest_globs"]
         except (OSError, ValueError, KeyError, TypeError):
+            say("fast-lane: policy unreadable, normal review path")
             return
         names = [n for n in self.nul_names("refs/remotes/origin/main...HEAD") if n]
         def is_manifest(n):
