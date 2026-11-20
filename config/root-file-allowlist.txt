@@ -31,3 +31,4 @@ COMMERCIAL-LICENSE
 LICENSE-MIT-historical
 NOTICE
 ruff.toml
+.python-version

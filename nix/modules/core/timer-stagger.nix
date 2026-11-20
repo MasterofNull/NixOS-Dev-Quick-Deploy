@@ -5,14 +5,25 @@
 #  (b) Persistent=true catch-up elapses in the past, so RandomizedDelaySec is
 #      added to a time that is already over and fires them all at once.
 # Fix: every matched timer gets RandomizedDelaySec + FixedRandomDelay (stable
-# per-timer offset) + AccuracySec, Persistent catch-up is replaced by a
-# per-timer OnActiveSec offset (hash-derived, heavy units pinned to distinct
-# slots). OnActiveSec, not OnBootSec: systemd.timer(5) says an OnBootSec time
-# already in the past when the timer unit is activated elapses immediately
-# ("not the case for the other directives"), so after boot-uptime exceeds the
-# offset every timer restart (nixos-rebuild switch) would fire all of them at
-# once. OnActiveSec is relative to the timer's own activation, so the offset
-# re-applies on every (re)activation and equals the boot offset at boot. Every default is a mkDefault option, so explicit per-timer values
+# per-timer offset) + AccuracySec. Monotonic (non-OnCalendar) timers also get
+# the boot-delay moved from OnBootSec to a per-timer hash-derived OnActiveSec:
+# systemd.timer(5) says a timer configured with OnBootSec= that is already in
+# the past when the timer unit is activated "will immediately elapse ... This
+# is not the case for timers defined in the other directives", and that "the
+# timer unit will trigger whenever any of the specified timer expressions
+# elapse". So adding OnActiveSec next to a kept OnBootSec does not stagger a
+# restart (nixos-rebuild switch): the overdue OnBootSec still fires at once.
+# This module therefore REMOVES OnBootSec (mkForce [], an empty list renders no
+# line, systemd-lib attrsToSection) on monotonic timers and uses OnActiveSec,
+# which is relative to the timer's own activation, so the offset re-applies on
+# every (re)activation and equals the boot offset at boot.
+# Calendar timers (OnCalendar=) get NO OnActiveSec and keep any OnBootSec their
+# owner wrote: OnActiveSec would add an unconditional run after every timer
+# activation (e.g. ai-optimizer re-running ~18 min after each switch). They are
+# staggered by RandomizedDelaySec + FixedRandomDelay only, and a host that wants
+# catch-up sets Persistent. The monotonic/calendar split reads only OnCalendar
+# (a key this module never defines), so it cannot recurse into its own output.
+# Every default is a mkDefault option, so explicit per-timer values
 # (including Persistent = true) win and a host can opt back into catch-up with
 # mySystem.timerStagger.persistent = true.
 # Evidence: docs/harness-first/evidence/2026-11-18-timer-stagger.md
@@ -48,7 +59,7 @@ in {
     enable = lib.mkOption {
       type = lib.types.bool;
       default = true;
-      description = "Apply RandomizedDelaySec/FixedRandomDelay/AccuracySec and a staggered boot catch-up to matching timers.";
+      description = "Apply RandomizedDelaySec/FixedRandomDelay/AccuracySec and an activation-relative stagger (monotonic timers only) to matching timers.";
     };
     prefixes = lib.mkOption {
       type = lib.types.listOf lib.types.str;
@@ -137,15 +148,20 @@ in {
         ai-training-ingest = 48;
         ai-gap-auto-remediate = 54;
       };
-      description = "Distinct post-boot slots (minutes, 6 apart) for CPU/llama-heavy units so they never overlap on boot.";
+      description = "Distinct post-activation slots (minutes, 6 apart) for CPU/llama-heavy monotonic timers; ignored for calendar timers (they have no OnActiveSec).";
     };
   };
 
   # Extends the existing systemd.timers option type (submodule merge); no
   # per-module edits are needed for new timers.
   options.systemd.timers = lib.mkOption {
-    type = lib.types.attrsOf (lib.types.submodule ({name, ...}: {
-      config = lib.mkIf (cfg.enable && matches name) {
+    type = lib.types.attrsOf (lib.types.submodule ({name, options, ...}: {
+      config = lib.mkIf (cfg.enable && matches name) (let
+        # Raw (pre-merge) definitions: reading the merged attrsOf would force
+        # this module's own mkIf values and recurse. This module never defines
+        # OnCalendar, so the answer is independent of its own output.
+        isCalendar = lib.any (d: d ? OnCalendar) options.timerConfig.definitions;
+      in {
         timerConfig = {
           RandomizedDelaySec = lib.mkDefault (
             if isShort name
@@ -158,10 +174,13 @@ in {
             then cfg.shortAccuracy
             else cfg.longAccuracy
           );
-          OnActiveSec = lib.mkDefault "${toString (bootMinutes name)}min";
+          # Monotonic timers only: swap the boot-relative delay for an
+          # activation-relative one (see header). Calendar timers untouched.
+          OnBootSec = lib.mkIf (!isCalendar) (lib.mkForce []);
+          OnActiveSec = lib.mkIf (!isCalendar) (lib.mkDefault "${toString (bootMinutes name)}min");
           Persistent = lib.mkDefault cfg.persistent;
         };
-      };
+      });
     }));
   };
 }

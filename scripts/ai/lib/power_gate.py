@@ -8,8 +8,8 @@ Limits are not hardwired to one machine:
   AQ_POWER_GATE_MIN_BATTERY_PCT  battery floor, default 50 (clamped 0..100)
   AQ_POWER_GATE_MAX_TEMP_C       temp ceiling; default = lowest CPU critical/high trip point
                                  (thermal_zone trip_point_*_temp, hwmon temp*_crit/_max)
-                                 minus AQ_POWER_GATE_TEMP_MARGIN_C (default 15), clamped to
-                                 [50, 100]; falls back to 80 C when no trip point is readable.
+                                 minus AQ_POWER_GATE_TEMP_MARGIN_C (default 15), capped at
+                                 100 (never raised above trip minus margin); falls back to 80 C when no trip point is readable.
 Sensor parsing mirrors scripts/ai/aq-keep-awake (an extensionless script, so not
 importable); the CPU-specific temp source here avoids its all-zones max, which
 includes non-CPU board sensors.
@@ -33,7 +33,6 @@ BUSY_ENTER = 0.70
 BUSY_LEAVE = 0.55
 MAX_TEMP_C = 80.0  # fallback when no trip point is readable; AQ_POWER_GATE_MAX_TEMP_C overrides
 TEMP_MARGIN_C = 15.0
-TEMP_FLOOR_C = 50.0
 TEMP_CEIL_C = 100.0
 TRIP_TYPES = ("critical", "hot", "high")
 CPU_HWMON = ("k10temp", "coretemp", "zenpower")
@@ -103,7 +102,7 @@ def max_temp_c(sys_root: Path = Path("/sys")) -> float:
         return MAX_TEMP_C
     margin = _env_float("AQ_POWER_GATE_TEMP_MARGIN_C")
     margin = TEMP_MARGIN_C if margin is None else max(0.0, margin)
-    return min(TEMP_CEIL_C, max(TEMP_FLOOR_C, min(trips) - margin))
+    return min(TEMP_CEIL_C, min(trips) - margin)
 
 
 def read_power(root: Path) -> tuple[bool | None, int | None]:

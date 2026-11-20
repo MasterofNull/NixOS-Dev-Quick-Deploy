@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Regressions: fractional MCP timeout scale keeps a >=1s timeout; stagger check demands activation-relative offsets."""
+"""Regressions: fractional MCP timeout scale keeps a >=1s timeout; stagger check demands activation-relative offsets on monotonic timers only; non-finite recall env falls back."""
 import importlib.util
 import os
 import unittest
@@ -44,6 +44,36 @@ class EnvTimeout(unittest.TestCase):
             self.assertEqual(self.t(v), 5, v)
 
 
+class RecallDefault(unittest.TestCase):
+    KEYS = ("AI_MEMORY_BROKER_RW_TIMEOUT_S", "AQ_MCP_RECALL_MARGIN_S")
+
+    def setUp(self):
+        self._saved = {k: os.environ.get(k) for k in self.KEYS}
+        for k in self.KEYS:
+            os.environ.pop(k, None)
+
+    def tearDown(self):
+        for k, v in self._saved.items():
+            os.environ.pop(k, None)
+            if v is not None:
+                os.environ[k] = v
+
+    def test_nonfinite_env_does_not_crash_import_and_falls_back(self):
+        for bad in ("nan", "inf", "-inf", "NaN", "abc"):
+            for key in self.KEYS:
+                os.environ.pop(self.KEYS[0], None)
+                os.environ.pop(self.KEYS[1], None)
+                os.environ[key] = bad
+                bridge = load("mcp_bridge_hybrid_x", "scripts/ai/mcp-bridge-hybrid.py")
+                self.assertEqual(bridge._recall_memory_default(), 20, (key, bad))
+
+    def test_valid_values_still_used(self):
+        os.environ["AI_MEMORY_BROKER_RW_TIMEOUT_S"] = "5"
+        os.environ["AQ_MCP_RECALL_MARGIN_S"] = "7"
+        bridge = load("mcp_bridge_hybrid_y", "scripts/ai/mcp-bridge-hybrid.py")
+        self.assertEqual(bridge._recall_memory_default(), 12)
+
+
 class StaggerCheck(unittest.TestCase):
     def setUp(self):
         self.chk = load("check_timer_stagger", "scripts/testing/check-timer-stagger.py")
@@ -52,6 +82,28 @@ class StaggerCheck(unittest.TestCase):
 
     def test_good_timer_passes(self):
         self.assertEqual(self.chk.check({"ai-x": dict(self.base)}), [])
+
+    def test_boot_next_to_active_fails(self):
+        cfg = dict(self.base)
+        cfg["OnBootSec"] = "5min"
+        errs = self.chk.check({"ai-x": cfg})
+        self.assertTrue(any("OnBootSec still set" in e for e in errs), errs)
+
+    def test_empty_boot_list_ok(self):
+        cfg = dict(self.base)
+        cfg["OnBootSec"] = []
+        self.assertEqual(self.chk.check({"ai-x": cfg}), [])
+
+    def test_calendar_only_passes_without_active(self):
+        cfg = {"RandomizedDelaySec": "30min", "AccuracySec": "5min", "FixedRandomDelay": True,
+               "OnCalendar": "daily"}
+        self.assertEqual(self.chk.check({"ai-x": cfg}), [])
+
+    def test_calendar_with_active_fails(self):
+        cfg = {"RandomizedDelaySec": "30min", "AccuracySec": "5min", "FixedRandomDelay": True,
+               "OnCalendar": "daily", "OnActiveSec": "18min"}
+        errs = self.chk.check({"ai-x": cfg})
+        self.assertTrue(any("calendar timer has OnActiveSec" in e for e in errs), errs)
 
     def test_boot_relative_only_fails(self):
         cfg = dict(self.base)

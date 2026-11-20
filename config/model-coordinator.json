@@ -10,11 +10,11 @@
   "tiers": {
     "_comment": "Version SSOT. Route phase/slice complexity -> tier -> concrete current model id. When a new model version ships, bump the id HERE only; downstream pools (remote_agents.py, delegate-to-gemini) should read these ids rather than hardcoding their own. Prevents the drift where pools stay pinned to superseded versions.",
     "anthropic": {
-      "_comment": "claude-fable-5-1 (Mythos-class tier, above Opus) is the flagship AND creative lane — most capable generally-available Claude. Opus 5.5 = deep fallback when Fable is unavailable; Sonnet 5.5 = balanced (default Claude implementer); Haiku 4.5 = fast. Behavioral parity contract for ALL lanes (any provider): .agent/FABLE-PARITY-CONTRACT.md.",
+      "_comment": "claude-fable-5-1 (Mythos-class tier, above Opus) is the flagship AND creative lane — most capable generally-available Claude. Opus 5.5 = deep fallback when Fable is unavailable; Sonnet 5.5 = balanced (default Claude implementer); Haiku 5.5 = fast. Behavioral parity contract for ALL lanes (any provider): .agent/FABLE-PARITY-CONTRACT.md.",
       "flagship": "claude-fable-5-1",
       "flagship_fallback": "claude-opus-5-5",
       "balanced": "claude-sonnet-5-5",
-      "fast": "claude-haiku-4-5-20251001",
+      "fast": "claude-haiku-5-5",
       "creative": "claude-fable-5-1"
     },
     "google": {
@@ -48,6 +48,235 @@
           "best_use": "Complex/critical work needing more reasoning but not the gemini-3.1-pro-preview architect tier; a cost-efficient high-reasoning pass for reviews and multi-file refactors."
         }
       },
+      "gemini_lane": {
+        "_comment": "Gemini CLI lane (scripts/ai/delegate-to-gemini, OAuth, no API keys). SSOT for ids served by `gemini models` on 2026-11-19 (Gemini CLI 1.5.12), their roles and probe results; scripts read default/fallback/required_id_prefix from here. Independence guard: the lane refuses any id not starting with required_id_prefix (claude-*, gpt-* are also listed by the CLI but are not Gemini models: a Gemini review of Claude-authored work would be a self-review and gpt-oss overlaps the Codex lane). Evidence: docs/harness-first/evidence/2026-11-19-gemini-model-roster.md. Unlike the direct-API tiers above, this lane's ids are the CLI's, not generativelanguage.googleapis.com ids.",
+        "required_id_prefix": "gemini-",
+        "default": "gemini-4-argon",
+        "fallback": "gemini-4-hydrogen",
+        "baseline_fallback": "gemini-3.8-flash-medium",
+        "role_map": {
+          "flagship": "gemini-4-argon-high",
+          "balanced": "gemini-4-neon-medium",
+          "fast": "gemini-4-hydrogen-low",
+          "deep": "gemini-4-neon-xhigh",
+          "reviewer": "gemini-4-neon-high",
+          "implementer": "gemini-4-hydrogen-high",
+          "orchestrator": "gemini-pro-orchestrator-neon"
+        },
+        "roster": {
+          "gemini-4-neon-low": {
+            "role": "fast",
+            "capabilities": [
+              "frontier-class coding and analytical reasoning at Flash-like speed (Google: comparable to Carbon, sometimes better, at lower cost)",
+              "1M-token context"
+            ],
+            "best_use": "Quick Neon-quality checks where latency matters; UNVERIFIED vs Hydrogen-low on speed.",
+            "sources": [
+              "https://9to5google.com/2026/11/18/gemini-4-neon-announcement/",
+              "https://deepmind.google/models/gemini/"
+            ],
+            "probe_2026_11_19": "PASS correct, 19s"
+          },
+          "gemini-4-neon-medium": {
+            "role": "balanced",
+            "capabilities": [
+              "frontier-class coding and analytical reasoning at Flash-like speed (Google: comparable to Carbon, sometimes better, at lower cost)",
+              "1M-token context",
+              "four thinking levels low/medium/high/xhigh"
+            ],
+            "best_use": "Default Neon working tier for standard implementation review and analysis.",
+            "sources": [
+              "https://9to5google.com/2026/11/18/gemini-4-neon-announcement/",
+              "https://deepmind.google/models/gemini/"
+            ],
+            "probe_2026_11_19": "PASS correct, 19s"
+          },
+          "gemini-4-neon-high": {
+            "role": "reviewer",
+            "capabilities": [
+              "frontier-class coding and analytical reasoning at Flash-like speed (Google: comparable to Carbon, sometimes better, at lower cost)",
+              "1M-token context",
+              "four thinking levels low/medium/high/xhigh"
+            ],
+            "best_use": "Independent PR/design review and complex coding (Google: Neon is built for complex coding, analytical reasoning, production-grade enterprise workflows). Preferred Gemini reviewer when Argon quota is exhausted.",
+            "sources": [
+              "https://9to5google.com/2026/11/18/gemini-4-neon-announcement/",
+              "https://deepmind.google/models/gemini/"
+            ],
+            "probe_2026_11_19": "PASS correct, 25s"
+          },
+          "gemini-4-neon-xhigh": {
+            "role": "deep",
+            "capabilities": [
+              "frontier-class coding and analytical reasoning at Flash-like speed (Google: comparable to Carbon, sometimes better, at lower cost)",
+              "1M-token context",
+              "four thinking levels low/medium/high/xhigh"
+            ],
+            "best_use": "Hardest reasoning/architecture-judgment passes; slowest Neon level (probe 32s on a trivial item), use sparingly.",
+            "sources": [
+              "https://9to5google.com/2026/11/18/gemini-4-neon-announcement/",
+              "https://deepmind.google/models/gemini/"
+            ],
+            "probe_2026_11_19": "PASS correct, 32s"
+          },
+          "gemini-4-hydrogen-low": {
+            "role": "fast",
+            "capabilities": [
+              "everyday model; standalone upgrade over Gemini 3.8 Flash",
+              "coding, agentic workflows, web prototyping, multimodal knowledge work",
+              "1M-token context; flat $1.50/$7.50 per 1M tokens in/out (API list price)",
+              "four thinking levels low/medium/high(default)/xhigh"
+            ],
+            "best_use": "Mechanical, high-volume or latency-sensitive slices; verifier/worker tier.",
+            "sources": [
+              "https://blog.google/innovation-and-ai/models-and-research/gemini-models/introducing-gemini-4-hydrogen/"
+            ],
+            "probe_2026_11_19": "PASS correct, 18s"
+          },
+          "gemini-4-hydrogen-medium": {
+            "role": "balanced",
+            "capabilities": [
+              "everyday model; standalone upgrade over Gemini 3.8 Flash",
+              "coding, agentic workflows, web prototyping, multimodal knowledge work",
+              "1M-token context; flat $1.50/$7.50 per 1M tokens in/out (API list price)",
+              "four thinking levels low/medium/high(default)/xhigh"
+            ],
+            "best_use": "General implementation slices and routine review; also the lane the Argon quota fallback lands on (bare id gemini-4-hydrogen probed OK).",
+            "sources": [
+              "https://blog.google/innovation-and-ai/models-and-research/gemini-models/introducing-gemini-4-hydrogen/"
+            ],
+            "probe_2026_11_19": "PASS correct, 13s"
+          },
+          "gemini-4-hydrogen-high": {
+            "role": "implementer",
+            "capabilities": [
+              "everyday model; standalone upgrade over Gemini 3.8 Flash",
+              "coding, agentic workflows, web prototyping, multimodal knowledge work",
+              "1M-token context; flat $1.50/$7.50 per 1M tokens in/out (API list price)",
+              "four thinking levels low/medium/high(default)/xhigh"
+            ],
+            "best_use": "Default bounded-implementer tier (Google default level).",
+            "sources": [
+              "https://blog.google/innovation-and-ai/models-and-research/gemini-models/introducing-gemini-4-hydrogen/"
+            ],
+            "probe_2026_11_19": "PASS correct, 18s"
+          },
+          "gemini-4-hydrogen-xhigh": {
+            "role": "deep",
+            "capabilities": [
+              "everyday model; standalone upgrade over Gemini 3.8 Flash",
+              "coding, agentic workflows, web prototyping, multimodal knowledge work",
+              "1M-token context; flat $1.50/$7.50 per 1M tokens in/out (API list price)",
+              "four thinking levels low/medium/high(default)/xhigh"
+            ],
+            "best_use": "Hardest tasks on the cheaper Hydrogen tier; Google added xhigh for it.",
+            "sources": [
+              "https://blog.google/innovation-and-ai/models-and-research/gemini-models/introducing-gemini-4-hydrogen/"
+            ],
+            "probe_2026_11_19": "PASS correct, 40s"
+          },
+          "gemini-4-argon-low": {
+            "role": "fast",
+            "capabilities": [
+              "frontier model for hard problems and code/analysis (Google DeepMind: built to solve your hardest problems; 9to5Google quoting Google: ideal for the majority of software engineering and knowledge work)",
+              "three thinking levels low/medium/high per the Gemini CLI model list; 1M context UNVERIFIED (third-party sources only)"
+            ],
+            "best_use": "Cheap Argon pass. Quota-exhausted when probed (Individual quota reached); capability beyond listing UNVERIFIED.",
+            "sources": [
+              "https://deepmind.google/models/gemini/",
+              "https://9to5google.com/2026/11/18/gemini-4-neon-announcement/"
+            ],
+            "probe_2026_11_19": "QUOTA_EXHAUSTED via fallback to Hydrogen; Argon itself not exercised"
+          },
+          "gemini-4-argon-medium": {
+            "role": "balanced",
+            "capabilities": [
+              "frontier model for hard problems and code/analysis (Google DeepMind: built to solve your hardest problems; 9to5Google quoting Google: ideal for the majority of software engineering and knowledge work)",
+              "three thinking levels low/medium/high per the Gemini CLI model list; 1M context UNVERIFIED (third-party sources only)"
+            ],
+            "best_use": "Owner-chosen primary (CLI default family). Not probed: Argon family quota exhausted (stop rule).",
+            "sources": [
+              "https://deepmind.google/models/gemini/",
+              "https://9to5google.com/2026/11/18/gemini-4-neon-announcement/"
+            ],
+            "probe_2026_11_19": "NOT_PROBED (family quota exhausted)"
+          },
+          "gemini-4-argon-high": {
+            "role": "flagship",
+            "capabilities": [
+              "frontier model for hard problems and code/analysis (Google DeepMind: built to solve your hardest problems; 9to5Google quoting Google: ideal for the majority of software engineering and knowledge work)",
+              "three thinking levels low/medium/high per the Gemini CLI model list; 1M context UNVERIFIED (third-party sources only)"
+            ],
+            "best_use": "Owner-chosen primary flagship for hard problems. Not probed: Argon family quota exhausted (stop rule).",
+            "sources": [
+              "https://deepmind.google/models/gemini/",
+              "https://9to5google.com/2026/11/18/gemini-4-neon-announcement/"
+            ],
+            "probe_2026_11_19": "NOT_PROBED (family quota exhausted)"
+          },
+          "gemini-pro-orchestrator-neon": {
+            "role": "orchestrator",
+            "capabilities": [
+              "plan/execute split: a planner model explores dependencies and writes the plan, Hydrogen (High) executes code and tests and hands back to the planner on failure",
+              "Google-reported (Terminal-Bench 4.0): near-Carbon task success with about 24% less quota and 19% faster completion",
+              "planner = Neon in this CLI build; UNVERIFIED which executor model the CLI pairs with it"
+            ],
+            "best_use": "Front-door planning plus execution of multi-step slices in one session; the CLI exposes it as a single model id.",
+            "sources": [
+              "https://blog.google/innovation-and-ai/models-and-research/gemini-models/introducing-gemini-4-hydrogen/",
+              "https://github.com/google-antigravity/antigravity-cli/releases"
+            ],
+            "probe_2026_11_19": "PASS correct, 33s (twice; first run invalid)"
+          },
+          "gemini-pro-orchestrator-g1-pro": {
+            "role": "orchestrator",
+            "capabilities": [
+              "plan/execute split: a planner model explores dependencies and writes the plan, Hydrogen (High) executes code and tests and hands back to the planner on failure",
+              "Google-reported (Terminal-Bench 4.0): near-Carbon task success with about 24% less quota and 19% faster completion",
+              "planner = Argon (CLI label 'Orchestrator (Argon)')"
+            ],
+            "best_use": "Same as Orchestrator (Neon) but Argon-planned; shares the Argon quota pool.",
+            "sources": [
+              "https://blog.google/innovation-and-ai/models-and-research/gemini-models/introducing-gemini-4-hydrogen/",
+              "https://github.com/google-antigravity/antigravity-cli/releases"
+            ],
+            "probe_2026_11_19": "QUOTA_EXHAUSTED rc=3, resets in 137h19m"
+          },
+          "gemini-3.8-flash-low": {
+            "role": "fast",
+            "capabilities": [
+              "previous-generation Flash; served by the CLI at three effort levels low/medium/high"
+            ],
+            "best_use": "Cheapest served baseline for trivial/mechanical items.",
+            "sources": [
+              "config/model-coordinator.json gemini_3_8_flash_efforts"
+            ],
+            "probe_2026_11_19": "PASS correct, 14s"
+          },
+          "gemini-3.8-flash-medium": {
+            "role": "baseline",
+            "capabilities": [
+              "previous-generation Flash; served by the CLI at three effort levels low/medium/high"
+            ],
+            "best_use": "Baseline fallback id that the CLI still serves; whether its quota pool is separate from the Gemini 4 pools is UNVERIFIED.",
+            "sources": [
+              "config/model-coordinator.json gemini_3_8_flash_efforts"
+            ],
+            "probe_2026_11_19": "PASS correct, 22s"
+          },
+          "gemini-3.8-flash-high": {
+            "role": "baseline",
+            "capabilities": [
+              "previous-generation Flash; served by the CLI at three effort levels low/medium/high"
+            ],
+            "best_use": "Deeper pass on the legacy tier.",
+            "sources": [
+              "config/model-coordinator.json gemini_3_8_flash_efforts"
+            ],
+            "probe_2026_11_19": "PASS correct, 26s"
+          }
+        }
+      },
       "baseline_fallback": {
         "flagship": "gemini-3.5-flash",
         "balanced": "gemini-3.5-flash",
@@ -55,9 +284,9 @@
       }
     },
     "openai": {
-      "_comment": "OpenAI GPT-6 family (refreshed 2026-09-25 from gpt-5.5). flagship=gpt-6-astra (flagship reasoning/coding), balanced=gpt-6-sol (balanced coding/agentic), fast=gpt-6-luna (efficient/high-volume). Specialized gpt-5.6-cyber (vuln research) is available but NOT wired into a routing tier here.",
-      "flagship": "gpt-6-astra",
-      "balanced": "gpt-6-sol",
+      "_comment": "OpenAI GPT-6 family (refreshed 2026-09-25 from gpt-5.5). flagship=gpt-6.2-astra (flagship reasoning/coding), balanced=gpt-6.2-sol (balanced coding/agentic), fast=gpt-6-luna (efficient/high-volume). Specialized gpt-5.6-cyber (vuln research) is available but NOT wired into a routing tier here.",
+      "flagship": "gpt-6.2-astra",
+      "balanced": "gpt-6.2-sol",
       "fast": "gpt-6-luna"
     },
     "local": {
