@@ -602,6 +602,7 @@ jobs:
             --only local-power-gate-tests \
             --only delegation-dir-resolution-tests \
             --only aq-review-request-tests \
+            --only aq-transcribe-acquisition-tests \
             --only llm-speed-probe-tests \
             --only hook-git-env-isolation \
             --only delegate-sleep-inhibit \

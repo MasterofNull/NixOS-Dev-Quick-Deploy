@@ -421,6 +421,19 @@
       "ci_workflow": ".github/workflows/test.yml#syntax"
     },
     {
+      "id": "aq-transcribe-acquisition-tests",
+      "cmd": "scripts/testing/test-aq-transcribe-acquisition.sh",
+      "paths": [
+        "scripts/ai/aq-transcribe",
+        "scripts/ai/lib/video_frames.py",
+        "scripts/testing/test-aq-transcribe-acquisition.sh"
+      ],
+      "needs": [
+        "python3"
+      ],
+      "ci_workflow": ".github/workflows/test.yml#syntax"
+    },
+    {
       "id": "aq-review-request-tests",
       "cmd": "scripts/testing/test-aq-review-request.py",
       "paths": [
