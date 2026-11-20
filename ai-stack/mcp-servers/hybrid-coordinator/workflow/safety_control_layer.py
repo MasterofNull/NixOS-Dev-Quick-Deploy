@@ -7,6 +7,7 @@ requiring human approval or automated validation.
 """
 
 import json
+import logging
 import os
 import subprocess
 import time
@@ -14,6 +15,8 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 
 from extensions.blast_radius_classifier import classify
+
+logger = logging.getLogger(__name__)
 
 def _resolve_repo_root() -> Path:
     """Resolve REPO_ROOT from env or by walking up from this file to CLAUDE.md."""
@@ -41,15 +44,17 @@ class SafetyControlLayer:
         self.mode = mode  # open, review, strict
         self.proposals_dir = Path(proposals_dir) if proposals_dir is not None else _resolve_proposals_dir()
         self.proposals_db = self.proposals_dir / "proposals.json"
-        self.proposals_dir.mkdir(parents=True, exist_ok=True)
-        self._ensure_db()
+        # Created lazily on first write: the sandboxed coordinator can only write
+        # declared paths, and registration must not fail on an unwritable repo.
 
     def _ensure_db(self):
+        self.proposals_dir.mkdir(parents=True, exist_ok=True)
         if not self.proposals_db.exists():
             with open(self.proposals_db, "w") as f:
                 json.dump({"proposals": [], "last_id": 0}, f)
 
     def _get_next_id(self) -> int:
+        self._ensure_db()
         with open(self.proposals_db, "r") as f:
             db = json.load(f)
         new_id = db.get("last_id", 0) + 1
@@ -79,7 +84,18 @@ class SafetyControlLayer:
         if not should_intercept:
             return None
 
-        # Intercept!
+        # Intercept! An unwritable proposals dir fails closed (action blocked).
+        try:
+            return self._write_proposal(action_type, params, agent_id, tier)
+        except OSError as exc:
+            logger.warning("proposals dir %s unwritable: %s", self.proposals_dir, exc)
+            return {
+                "status": "blocked",
+                "reason": "proposals_dir_unwritable",
+                "tier": tier,
+            }
+
+    def _write_proposal(self, action_type: str, params: Dict[str, Any], agent_id: str, tier: str) -> Dict[str, Any]:
         proposal_id = self._get_next_id()
         proposal_path = self.proposals_dir / f"proposal_{proposal_id:04d}.json"
         

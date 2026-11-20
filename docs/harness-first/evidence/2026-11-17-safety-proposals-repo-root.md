@@ -26,6 +26,9 @@ scripts/governance/tier0-validation-gate.sh --pre-commit
 - Fix: Added `_resolve_repo_root()` checking `os.environ.get("REPO_ROOT")` first and walking parent directories for `CLAUDE.md` before falling back to `Path.cwd()`. Removed unused `hashlib` and `typing.List` imports.
 - Tests: `scripts/testing/test-safety-proposals-repo-root.py` verifies both ancestor `CLAUDE.md` walk-up and `REPO_ROOT` env override (`2/2` pass).
 
+- Review follow-up (#832, Codex High x2): (1) the proposals dir is now created lazily on first write, so registration succeeds under the coordinator's systemd sandbox (no Nix change; repo is not writable there); an unwritable dir at intercept time logs a warning and returns `status=blocked` (fail closed). (2) `delegate-to-local` now sets `REPO_ROOT` to the isolated worktree for the dispatched child (blocking and background paths), so proposal state never lands in the shared checkout.
+- Tests: `test-safety-proposals-repo-root.py` now 4/4 (adds unwritable-dir registration, delegate child env).
+
 ## Rollback Plan
 - `git revert <sha>`. Trigger: proposal files failing to write under `.agent/proposals`.
 
