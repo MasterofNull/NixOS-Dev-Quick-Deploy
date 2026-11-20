@@ -134,7 +134,9 @@ elif cmd == "pr view":
     roll = seq.pop(0) if len(seq) > 1 else seq[0]
     save()
     if "mergeStateStatus" in flag("--json"):
-        print(json.dumps({"headRefOid": branch_head(pr["branch"]), "mergeStateStatus": st.get("merge_state", "CLEAN"), "baseRefOid": branch_head("main")}))
+        print(json.dumps({"headRefOid": branch_head(pr["branch"]), "mergeStateStatus": st.get("merge_state", "CLEAN"), "baseRefOid": branch_head("main")}), flush=True)
+        if st.get("move_after_state_view") == bump("n_state"):
+            move_main("main moved between the freshness check and the merge")
         sys.exit(0)
     if st.get("main_moves_at_wait") and "statusCheckRollup" in flag("--json") and bump("n_wait") == 1:
         move_main("main moved after CI")
@@ -169,7 +171,7 @@ elif a[0] == "api":
     if "required_status_checks" in a[1]:
         if st.get("required") is None:
             sys.exit(1)
-        print(json.dumps({"contexts": st["required"]}))
+        print(json.dumps({"contexts": st["required"], "strict": st.get("strict", False)}))
     else:
         print(json.dumps(st["jobs"][a[1].rsplit("/", 1)[1]]))
 else:
@@ -989,6 +991,55 @@ class MergeFreshness(Base):
         self.assertNotIn("merges", st)
         row = self.jsonl()[0]
         self.assertEqual((row["was_behind"], row["merged"]), (True, False))
+
+    def test_main_advancing_after_the_check_is_caught_by_the_final_recheck(self):
+        self.gh_state({"move_after_state_view": 1, "after_update_rollups": [self.OK]})
+        self.land(expect=0)
+        st = self.ghs()
+        self.assertEqual((st["updates"], st["merges"]), (1, 1))
+
+    def test_non_strict_protection_is_flagged_and_logged(self):
+        self.gh_state({})
+        r = self.land(expect=0)
+        self.assertIn("main protection is not strict", r.stdout)
+        self.assertIs(self.jsonl()[0]["strict"], False)
+
+    def test_strict_protection_has_no_warning(self):
+        self.gh_state({"strict": True})
+        r = self.land(expect=0)
+        self.assertNotIn("not strict", r.stdout)
+        self.assertIs(self.jsonl()[0]["strict"], True)
+
+    def test_resume_adopts_a_github_update_instead_of_a_second_merge(self):
+        self.gh_state({"required": ["never-reported"]})
+        self.land(expect=1)  # PR pushed, reviewed, receipted; stops at checks
+        c = self.S / "c9"
+        gi = ["git", "-C", str(c), "-c", "user.name=x", "-c", "user.email=x@x"]
+        subprocess.run(["git", "clone", "-q", str(self.S / "origin.git"), str(c)], check=True)
+        (c / "m.txt").write_text("m\n")
+        subprocess.run([*gi, "add", "."], check=True)
+        subprocess.run([*gi, "commit", "-qm", "main moves"], check=True)
+        subprocess.run([*gi, "push", "-q", "origin", "HEAD:main"], check=True)
+        subprocess.run([*gi, "checkout", "-q", "-b", "pr", "origin/" + self.g("rev-parse", "--abbrev-ref", "HEAD")], check=True)
+        subprocess.run([*gi, "merge", "-q", "--no-ff", "-m", "Merge main", "origin/main"], check=True)
+        subprocess.run([*gi, "push", "-q", "origin", "HEAD:" + self.g("rev-parse", "--abbrev-ref", "HEAD")], check=True)  # what GitHub update-branch did
+        g = self.ghs()
+        g.update({"required": ["test"]})
+        (self.S / "gh.json").write_text(json.dumps(g))
+        r = self.land(expect=0)
+        self.assertIn("adopted the PR branch update", r.stdout)
+        st = self.ghs()
+        self.assertEqual((st.get("updates", 0), st["merges"]), (0, 1))
+        self.assertEqual(len(self.calls("gemini")), 1)
+        merges = self.g("rev-list", "--merges", "--count", "origin/main..HEAD")
+        self.assertEqual(merges, "1")
+
+    def test_after_an_update_the_ordinary_checks_must_reappear(self):
+        self.env["AQ_LAND_CHECKS_TIMEOUT_S"] = "4"
+        self.gh_state({"main_moves_at_wait": True, "after_update_rollups": [[RD_OK]]})  # new head shows only review-disposition
+        r = self.land(expect=1)
+        self.assertIn("timed out waiting for: test", self.stop_line(r))
+        self.assertNotIn("merges", self.ghs())
 
 
 class Friction(Base):

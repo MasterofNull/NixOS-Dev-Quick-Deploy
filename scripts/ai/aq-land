@@ -637,6 +637,7 @@ class Land:
             d = json.loads(out)
         except ValueError:
             return None
+        self.strict = bool(d.get("strict"))
         return set(d.get("contexts") or []) | {c.get("context") for c in d.get("checks") or [] if c.get("context")}
 
     def classify(self, c, repo):
@@ -663,7 +664,11 @@ class Land:
     def wait_and_merge(self, n, head):
         deadline = time.time() + env_int("AQ_LAND_CHECKS_TIMEOUT_S", 14400)
         repo = self.ghjson_poll(deadline, "repo", "view", "--json", "nameWithOwner")["nameWithOwner"]
+        self.strict = None
         required = (self.required_checks(repo, deadline) or set()) | {REVIEW_CHECK}
+        if not self.strict:
+            say("WARN main protection is not strict (strict=false or unreadable): main can still advance between the final freshness check and the merge; "
+                "the full guarantee needs required_status_checks.strict=true or a merge queue")
         optional = set(self.a.optional_check)
         poll = float(os.environ.get("AQ_LAND_POLL_S", "30"))
         fresh = {"was_behind": False, "updates": 0, "t0": None}
@@ -696,8 +701,11 @@ class Land:
             if not pending and seen.get(REVIEW_CHECK, ("pending",))[0] == "pass":
                 new = self.update_if_behind(n, head, fresh, deadline)
                 if new is None:
+                    if self.is_behind(n, head, deadline):
+                        continue  # main advanced since the check above; judge again rather than merge on older-main CI
                     break
                 head = new  # checks above ran on the old head; wait again for the updated one
+                required |= {x for x in seen if x != REVIEW_CHECK and x not in optional}  # the new head must show the ordinary checks again, not just review-disposition
                 continue
             if not pending:
                 pending = [REVIEW_CHECK]
@@ -719,23 +727,38 @@ class Land:
             d = resolve_delegation_dir(HERE) / "outputs" / "aq-land"
             d.mkdir(parents=True, exist_ok=True)
             row = {"pr": n, "at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), "was_behind": fresh["was_behind"],
-                   "updates": fresh["updates"], "extra_ci_wait_s": round(time.time() - fresh["t0"], 1) if fresh["t0"] else 0, "merged": merged}
+                   "updates": fresh["updates"], "extra_ci_wait_s": round(time.time() - fresh["t0"], 1) if fresh["t0"] else 0, "merged": merged, "strict": getattr(self, "strict", None)}
             with open(d / "merge-freshness.jsonl", "a") as fh:
                 fh.write(json.dumps(row) + "\n")
         except Exception as e:  # noqa: BLE001
             print(f"aq-land: WARN merge-freshness not logged: {e.__class__.__name__}: {str(e)[:120]}", file=sys.stderr)
+
+    def is_behind(self, n, head, deadline):
+        run(["git", "-C", self.W, "fetch", "-q", "origin", "main", self.branch], timeout=180, stage="merge")
+        v = self.ghjson_poll(deadline, "pr", "view", str(n), "--json", "mergeStateStatus,baseRefOid,headRefOid")
+        main = self.git("rev-parse", "refs/remotes/origin/main")
+        return (v.get("mergeStateStatus") == "BEHIND" or v.get("baseRefOid", main) != main
+                or self.gitrc("merge-base", "--is-ancestor", main, head) != 0)
+
+    def adopt_remote_update(self):
+        """A previous run let GitHub update the PR branch and stopped before the local fast-forward: take that head
+        (a clean merge of main onto the reviewed one) instead of merging main locally into a second merge commit."""
+        rec = self.cp.get("review")
+        if not rec or self.git("status", "--porcelain", "--untracked-files=no"):
+            return
+        run(["git", "-C", self.W, "fetch", "-q", "origin", "main", self.branch], timeout=180, stage="merge")
+        remote = self.git("rev-parse", "--verify", "-q", f"refs/remotes/origin/{self.branch}", check=False)
+        h = self.head()
+        if (remote and remote != h and self.gitrc("merge-base", "--is-ancestor", h, remote) == 0
+                and self.review_valid(rec, remote) and self.gitrc("merge", "--ff-only", f"refs/remotes/origin/{self.branch}") == 0):
+            say(f"adopted the PR branch update {remote[:9]} made by GitHub in an earlier run")
 
     def update_if_behind(self, n, head, fresh, deadline):
         """Checks passed for head. If main moved past it (the CI ran on an older main), update the PR branch through
         GitHub and return the new head so the caller re-waits CI; None when head already contains origin/main.
         The review stays bound exactly as for a local merge of main: valid only if the new head is a clean merge of main."""
         branch = self.branch
-        run(["git", "-C", self.W, "fetch", "-q", "origin", "main", branch], timeout=180, stage="merge")
-        v = self.ghjson_poll(deadline, "pr", "view", str(n), "--json", "mergeStateStatus,baseRefOid,headRefOid")
-        main = self.git("rev-parse", "refs/remotes/origin/main")
-        behind = (v.get("mergeStateStatus") == "BEHIND" or v.get("baseRefOid", main) != main
-                  or self.gitrc("merge-base", "--is-ancestor", main, head) != 0)
-        if not behind:
+        if not self.is_behind(n, head, deadline):
             return None
         fresh["was_behind"] = True
         if fresh["updates"] >= self.a.max_updates:
@@ -805,6 +828,8 @@ class Land:
         if pr and pr["state"] == "MERGED":
             say(f"PR #{pr['number']} already merged")
             return 0
+        if pr and pr["state"] == "OPEN":
+            self.adopt_remote_update()
         if self.settled(pr):
             say(f"resuming PR #{pr['number']}: pushed, reviewed and receipted")
             n = self.stage_pr(self.cp["review"])
