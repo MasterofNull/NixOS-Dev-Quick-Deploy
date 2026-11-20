@@ -35,5 +35,22 @@
     "## Rollback Plan",
     "## Residual Risk",
     "## Hint Feedback"
-  ]
+  ],
+  "dependabot_manifest_exemption": {
+    "author": "dependabot[bot]",
+    "comment": "Evidence-file requirement is waived only when the PR author (env PR_AUTHOR, set by the workflow from github.event.pull_request.user.login) equals author AND every changed file matches one of these globs. Patterns without a slash match the basename; patterns with a slash match the full path.",
+    "manifest_globs": [
+      "requirements*.txt",
+      "pyproject.toml",
+      "*.lock",
+      "package.json",
+      "package-lock.json",
+      "Cargo.toml",
+      "Cargo.lock",
+      "go.mod",
+      "go.sum",
+      "flake.lock",
+      ".github/workflows/*.yml"
+    ]
+  }
 }
