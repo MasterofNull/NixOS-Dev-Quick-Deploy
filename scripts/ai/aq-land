@@ -670,11 +670,15 @@ class Land:
             say("WARN main protection is not strict (strict=false or unreadable): main can still advance between the final freshness check and the merge; "
                 "the full guarantee needs required_status_checks.strict=true or a merge queue")
         optional = set(self.a.optional_check)
+        carried = self.cp.get("expected_checks") or {}
+        if carried.get("names") and self.gitrc("merge-base", "--is-ancestor", carried.get("head", ""), head) == 0:
+            required |= set(carried["names"]) - optional  # a resumed run still owes the ordinary checks the interrupted update reset
         poll = float(os.environ.get("AQ_LAND_POLL_S", "30"))
         fresh = {"was_behind": False, "updates": 0, "t0": None}
         while True:
             v = self.ghjson_poll(deadline, "pr", "view", str(n), "--json", "headRefOid,state,statusCheckRollup")
             if v["state"] == "MERGED":
+                self.save(expected_checks=None)
                 say(f"PR #{n} merged")
                 return
             if v["state"] != "OPEN":
@@ -699,6 +703,8 @@ class Land:
                 self.save(ci_failures=self.cp.get("ci_failures", 0) + 1)
                 raise Stop("checks", "failed: " + ", ".join(failed))
             if not pending and seen.get(REVIEW_CHECK, ("pending",))[0] == "pass":
+                owed = sorted((required | set(seen)) - optional - {REVIEW_CHECK})
+                self.save(expected_checks={"head": head, "names": owed})  # persisted before the update so an interrupted run cannot merge the new head on review-disposition alone
                 new = self.update_if_behind(n, head, fresh, deadline)
                 if new is None:
                     if self.is_behind(n, head, deadline):
@@ -716,6 +722,7 @@ class Land:
         v = self.ghjson_poll(deadline, "pr", "view", str(n), "--json", "state")
         if v["state"] != "MERGED":
             raise Stop("merge", f"PR #{n} is {v['state']} after gh pr merge")
+        self.save(expected_checks=None)
         self.log_freshness(n, fresh, True)
         say(f"PR #{n} merged")
 
