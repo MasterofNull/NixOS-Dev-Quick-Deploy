@@ -1,0 +1,18 @@
+{
+  "schema": 2,
+  "pr": 846,
+  "reviewed_head_sha": "ca027432c6e0de54eb681d95a3c884f3a2333696",
+  "run_id": "codex-20261119-213929-ojhdnc",
+  "reviewer_lane": "codex",
+  "author_lane": "claude",
+  "verdict": "REQUEST_CHANGES",
+  "reviewer_instance": "Simurg@codex/unknown#codex-20",
+  "author_instance": "Simurg@claude/sonnet-5.5",
+  "output_file": ".agents/delegation/outputs/codex-20261119-213929-ojhdnc.log",
+  "output_sha256": "5f7a5e48e72e6e034da70f9e7086ae70c5b44d3fae1860c707d745d1482c44f2",
+  "created_at": "2026-11-20T18:09:49Z",
+  "repo": "MasterofNull/NixOS-Dev-Quick-Deploy",
+  "policy_version": "review-receipts/1",
+  "tree": "7354676b601d9baee457c2d79ce07b2f9a2294c0",
+  "base_commit": "274e5b527d0494f28280b1d0f0afde2a1adc1306"
+}
