@@ -4,7 +4,7 @@ Date: 2026-11-19
 Task ID: SEC-GRYPE-HYGIENE-20261119-001
 
 ## Objective
-Clear tier0 check-grype-ignore-expiry WARN (188 of 196 ignores had no expires=; W3 of security-warnings-inventory-20261119). No bulk date-stamping: each legacy entry was checked against a current-closure scan; stale entries removed, entries with an establishable basis kept with expires=2027-02-15 (<=90 days) and a WR-SEC id, the rest removed so the alert reappears honestly. Result: 196 -> 65 ignores, legacy WARN 188 -> 0.
+Clear tier0 check-grype-ignore-expiry WARN (189 of 252 ignores had no expires=; W3 of security-warnings-inventory-20261119). No bulk date-stamping: each legacy entry was checked against a current-closure scan; stale entries removed, entries with an establishable basis kept with expires=2027-02-15 (<=90 days) and a WR-SEC id, the rest removed so the alert reappears honestly. Result: 252 -> 121 ignores, entries without expires= 189 -> 0. Counts computed with python3 yaml over `.grype.yaml` at merge base fac504ee2 and at HEAD: total = length of the top-level `ignore` list; without expires= = entries whose `reason` string lacks `expires=`.
 
 ## Workflow/Session IDs
 - Workflow ID: n/a (owner-directed warning sweep, 2026-11-19)
