@@ -101,6 +101,23 @@ class Format(Base):
         self.stage()
         self.assertEqual(self.check(), [], "a full commit sha is evidence, not a secret")
 
+    def test_git_quoted_paths_validated_staged_and_committed(self) -> None:
+        git(self.repo, "config", "core.quotePath", "true")
+        fact(self.repo, "topic.café", claim="see /home/alice/x")
+        for i in range(10):
+            fact(self.repo, f"topic.s{i}")
+        self.stage()
+        staged_errs = "\n".join(self.check())
+        self.assertIn("topic.café.md: subject", staged_errs)
+        self.assertIn("topic.café.md: contains a private path", staged_errs)
+        self.assertIn("staged: 11 fact files touched, cap is 10 per commit", staged_errs)
+
+        git(self.repo, "commit", "-qm", "quoted fact")
+        committed_errs = "\n".join(self.check())
+        self.assertIn("topic.café.md: subject", committed_errs)
+        self.assertIn("topic.café.md: contains a private path", committed_errs)
+        self.assertIn("11 fact files touched, cap is 10 per commit", committed_errs)
+
 
 class Conflicts(Base):
     def test_sequential_overwrite_needs_fresh_owner_reply_and_prints_both_claims(self) -> None:
@@ -429,6 +446,44 @@ class Conflicts(Base):
         fact(self.repo, "a.b.codex", claim="other", instance=CODEX, reply="3 keep both")
         self.stage()
         self.assertEqual(self.check(), [])
+
+    def test_retained_split_approvals_do_not_authorize_parent_deletion(self) -> None:
+        git(self.repo, "checkout", "-q", "main")
+        fact(self.repo, "a.b", claim="one", instance=CLAUDE)
+        fact(self.repo, "a.b.codex", claim="codex side", instance=CODEX, reply="3 keep both")
+        fact(self.repo, "a.b.claude", claim="claude side", instance=CLAUDE, reply="3 keep both")
+        git(self.repo, "add", ".")
+        git(self.repo, "commit", "-qm", "seed parent and approved splits")
+        git(self.repo, "push", "-q", "origin", "main")
+        git(self.repo, "checkout", "-qb", "slice-retained")
+
+        # Evidence-only edits retain the old owner_reply; deleting another lane's parent fact must fail.
+        (self.repo / ".agent/memory/facts/a.b.md").unlink()
+        fact(self.repo, "a.b.codex", claim="codex side", evidence="CLAUDE.md:81", instance=CODEX, reply="3 keep both")
+        fact(self.repo, "a.b.claude", claim="claude side", evidence="CLAUDE.md:82", instance=CLAUDE, reply="3 keep both")
+        self.stage()
+        with mock.patch.dict(os.environ, {"AQ_INSTANCE_LANE": "codex"}):
+            staged_errs = self.check()
+        self.assertTrue(any("a.b.md: deletes or renames" in e for e in staged_errs), staged_errs)
+        self.assertTrue(any("a.b.md: net delete or rename" in e for e in staged_errs), staged_errs)
+
+        git(self.repo, "commit", "-qm", "delete parent with retained split replies",
+            "-m", "Co-Authored-By: Codex <noreply@openai.com>")
+        with mock.patch.dict(os.environ, {"AQ_INSTANCE_LANE": ""}):
+            committed_errs = self.check()
+        self.assertTrue(any("a.b.md: deletes or renames" in e for e in committed_errs), committed_errs)
+        self.assertTrue(any("a.b.md: net delete or rename" in e for e in committed_errs), committed_errs)
+
+        # Updating both scoped facts with fresh owner_reply values in the deletion commit passes.
+        git(self.repo, "reset", "-q", "--hard", "HEAD~1")
+        (self.repo / ".agent/memory/facts/a.b.md").unlink()
+        fact(self.repo, "a.b.codex", claim="codex side", evidence="CLAUDE.md:81", instance=CODEX, reply="3 keep both (fresh)")
+        fact(self.repo, "a.b.claude", claim="claude side", evidence="CLAUDE.md:82", instance=CLAUDE, reply="3 keep both (fresh)")
+        self.stage()
+        git(self.repo, "commit", "-qm", "delete parent with fresh split replies",
+            "-m", "Co-Authored-By: Codex <noreply@openai.com>")
+        with mock.patch.dict(os.environ, {"AQ_INSTANCE_LANE": ""}):
+            self.assertEqual(self.check(), [])
 
 
 class Report(Base):

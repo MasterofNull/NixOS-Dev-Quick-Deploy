@@ -94,12 +94,18 @@ def content_errors(rel: str, text: str) -> tuple[list[str], dict[str, str]]:
 
 
 def _facts(names: str) -> list[tuple[str, str]]:
-    out = []
-    for ln in names.splitlines():
-        if "\t" in ln:
-            st, p = ln.split("\t", 1)
-            if p.startswith(FACTS_DIR) and p.endswith(".md") and "/" not in p[len(FACTS_DIR):]:
-                out.append((st[0], p))
+    out: list[tuple[str, str]] = []
+    parts = iter(names.split("\0"))
+    for st in parts:
+        if not st:
+            continue
+        p = next(parts, "")
+        if not p:
+            break
+        if st[0] in ("R", "C"):
+            p = next(parts, p)
+        if p.startswith(FACTS_DIR) and p.endswith(".md") and "/" not in p[len(FACTS_DIR):]:
+            out.append((st[0], p))
     return out
 
 
@@ -205,12 +211,12 @@ def check_repo(repo: Path, base: str = "origin/main") -> list[str]:
     if mb:
         revs = _git(repo, "rev-list", "--reverse", f"{mb}..HEAD").stdout.split()
         for sha in revs:
-            fl = _facts(_git(repo, "diff-tree", "-r", "--no-commit-id", "--name-status", "--no-renames", "-m", "--first-parent", sha).stdout)
+            fl = _facts(_git(repo, "diff-tree", "-z", "-r", "--no-commit-id", "--name-status", "--no-renames", "-m", "--first-parent", sha).stdout)
             if fl:
                 msg = _git(repo, "log", "-1", "--format=%B", sha).stdout
                 units.append((sha[:9], fl, (lambda s: (lambda p: _show(repo, f"{s}:{p}")))(sha), msg, f"{sha}^"))
     # Strict chronological order: the index is the newest unit, so it is processed last.
-    staged = _facts(_git(repo, "diff", "--cached", "--name-status", "--no-renames", "--", FACTS_DIR).stdout)
+    staged = _facts(_git(repo, "diff", "--cached", "-z", "--name-status", "--no-renames", "--", FACTS_DIR).stdout)
     if staged:
         units.append(("staged", staged, lambda p: _show(repo, f":{p}"), "", "HEAD"))
 
@@ -220,7 +226,7 @@ def check_repo(repo: Path, base: str = "origin/main") -> list[str]:
     for label, files, reader, msg, prev in units:
         if len(files) > MAX_PER_COMMIT:
             errs.append(f"{label}: {len(files)} fact files touched, cap is {MAX_PER_COMMIT} per commit")
-        new_fms: dict[str, dict[str, str]] = {}
+        fresh_replies: set[str] = set()
         deleted: list[str] = []
         for status, rel in files:
             if status == "D":
@@ -235,19 +241,20 @@ def check_repo(repo: Path, base: str = "origin/main") -> list[str]:
             errs.extend(_gitleaks(repo, rel, text))
             if not fm:
                 continue
-            new_fms[rel] = fm
             last_delete[rel] = None
             # Transition vs the predecessor only: a later commit may legitimately resolve an earlier one.
             old = _show(repo, f"{prev}:{rel}")
             old_fm = parse_frontmatter(old) if old else None
+            reply = fm_reply(fm)
+            if reply and reply != fm_reply(old_fm or {}):
+                fresh_replies.add(rel)
             if old_fm:
                 _lane_gate(errs, rel, old_fm, fm)
                 _actor_gate(errs, rel, old_fm, fm, msg, allow_env=(label == "staged"))
         actor = _actor_lane(msg, allow_env=(label == "staged"))
         for rel in deleted:
             subj = Path(rel).stem
-            splits = [f for p, f in new_fms.items()
-                      if Path(p).stem.startswith(subj + ".") and fm_reply(f)]
+            splits = [p for p in fresh_replies if Path(p).stem.startswith(subj + ".")]
             has_reply = len(splits) >= 2 or msg_has_reply(msg)
             last_delete[rel] = has_reply
             old = _show(repo, f"{prev}:{rel}")
@@ -290,7 +297,7 @@ def report(repo: Path) -> str:
     subjects: dict[str, dict] = {}
     deletes = 0
     for sha in reversed(log):
-        for st, p in _facts(_git(repo, "diff-tree", "-r", "--no-commit-id", "--name-status", "--no-renames", "-m", "--first-parent", "--root", sha).stdout):
+        for st, p in _facts(_git(repo, "diff-tree", "-z", "-r", "--no-commit-id", "--name-status", "--no-renames", "-m", "--first-parent", "--root", sha).stdout):
             s = subjects.setdefault(Path(p).stem, {"lanes": set(), "claim": None, "reply": "", "changes": 0, "replies": 0})
             if st == "D":
                 deletes += 1
