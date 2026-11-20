@@ -258,7 +258,7 @@ run STUB_CAPS=none STUB_ID=wl1 -- "$URL"
 eq "7b yt-dlp media call has no -x / --audio-format / --postprocessor-args" "$(grep -cE -e '(^| )(-x|--extract-audio|--audio-format|--postprocessor-args|--exec)( |$)' "$LOG/ytdlp.argv")" 0
 eq "7b yt-dlp media call is denied any ffmpeg/ffprobe (--ffmpeg-location empty dir, --fixup never)" "$(grep -cE -e '--ffmpeg-location [^ ]*no-ffmpeg .*--fixup never' "$LOG/ytdlp.argv")" 1
 eq "7b downloaded media converted by our ffmpeg with both whitelists before -i" "$(grep -cE -e '-protocol_whitelist file,pipe -format_whitelist [^ ]+ -codec_whitelist [^ ]+ .*-i [^ ]*/dl\.m4a ' "$LOG/ffmpeg.log")" 1
-eq "7b no ffprobe is ever called" "$(ls "$LOG" | grep -c ffprobe)" 0
+eq "7b no ffprobe is ever called" "$(find "$LOG" -maxdepth 1 -name '*ffprobe*' | wc -l)" 0
 printf 'wl override bytes\n' > "$T/wl2.mp4"; printf 'wl reject bytes\n' > "$T/wl3.mp4"
 RUN_PATH="$STUBS:$TOOLS" run AQ_TRANSCRIBE_FFMPEG_FORMATS=wav AQ_TRANSCRIBE_FFMPEG_CODECS=pcm_s16le -- "$T/wl2.mp4" --force-whisper
 eq "7b env overrides the lists" "$(grep -c -e '-format_whitelist wav -codec_whitelist pcm_s16le' "$LOG/ffmpeg.log")" 1
