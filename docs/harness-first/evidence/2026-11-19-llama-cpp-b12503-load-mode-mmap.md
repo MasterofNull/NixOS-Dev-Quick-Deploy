@@ -58,6 +58,12 @@ with an explicit `--n-gpu-layers`), `--no-host` (not needed).
 Revert this PR, or set `mySystem.aiStack.llamaCpp.useFallback = true` (b9222 pin) on the host, then
 rebuild. A pre-merge live trial with `nixos-rebuild test` does not persist across reboot.
 
+Review fix (Gemini REQUEST_CHANGES on 58a4d79ea): b9222 and nixpkgs' llama-cpp reject `--load-mode`,
+so the flag is gated on `lib.versionAtLeast pkgs.llama-cpp.version "12503"`. Older builds keep their
+default mmap and get `--mlock` when `llamaCpp.mlock` is set. Verified with `nix derivation show` on the
+llama-cpp unit: host default -> `llama-cpp-12503 ... --load-mode mmap`; `useFallback = true` ->
+`llama-cpp-9222` with no `--load-mode`.
+
 ## Residual Risk
 - Warm throughput on b12503 is not yet measured against the 5.3 tok/s b9222 baseline.
 - Other hosts: forcing mmap restores the pre-b12503 default everywhere. The new `dio` mode and the auto behaviour are no longer used.

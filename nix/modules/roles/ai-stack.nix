@@ -1222,14 +1222,20 @@ in {
             # mmap when a device reports no mmap support (RADV Renoir iGPU does). The CPU
             # layers then land in a pinned Vulkan_Host buffer larger than GTT, and the
             # model load ends in "device lost". Force mmap, as older builds did by default.
-            ++ [
-              "--load-mode"
-              (
-                if llama.mlock
-                then "mmap+mlock"
-                else "mmap"
-              )
-            ]
+            # Gated on the built package version: the b9222 fallback pin and nixpkgs' llama-cpp
+            # reject --load-mode, mmap is their default, and they still take --mlock.
+            ++ (
+              if lib.versionAtLeast pkgs.llama-cpp.version "12503"
+              then [
+                "--load-mode"
+                (
+                  if llama.mlock
+                  then "mmap+mlock"
+                  else "mmap"
+                )
+              ]
+              else lib.optionals llama.mlock ["--mlock"]
+            )
             ++ (map lib.escapeShellArg llamaArgs));
         };
       };
