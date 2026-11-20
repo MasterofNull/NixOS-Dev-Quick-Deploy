@@ -166,4 +166,14 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    # SafetyControlLayer writes proposals under REPO_ROOT/.agent/proposals; keep that state out of the checkout.
+    with tempfile.TemporaryDirectory(prefix="aq-local-repo-root-") as _repo_root:
+        _prev_repo_root = os.environ.get("REPO_ROOT")
+        os.environ["REPO_ROOT"] = _repo_root
+        try:
+            main()
+        finally:
+            if _prev_repo_root is None:
+                os.environ.pop("REPO_ROOT", None)
+            else:
+                os.environ["REPO_ROOT"] = _prev_repo_root
