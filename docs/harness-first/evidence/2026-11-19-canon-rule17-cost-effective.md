@@ -27,3 +27,6 @@ Historical PRDs under .agent/PROJECT-*-PRD.md still say "cheapest"; they are dat
 
 ## Hint Feedback
 None.
+
+## Rule 18 per-model windows
+Owner directive 2026-11-19: Rule 18 now tracks availability, quota, token limits and session windows per model, not per lane/provider. One model being out does not make other models unavailable; the orchestrator re-scopes prompt/scope/task/payload to a still-available model without lowering quality (correctness first, Rule 17). Mirrored in docs/architecture/role-matrix.md (Agnostic execution).
