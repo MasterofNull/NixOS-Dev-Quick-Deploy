@@ -160,7 +160,7 @@ Enforcement, injection variants and the `FABLE_PARITY=0` kill switch: `.agent/FA
 - Land via `aq-land` (PR only; body Details then What/How/Why), never push `main`; docs ship inside their code PR, never alone; evidence `docs/harness-first/evidence/<date>-<slug>.md`.
 - Resumable trail: RESUME.json + PULSE.log + HANDOFF.md; down lanes catch up via AGENT-CATCHUP-QUEUE.md.
 - sudo/nrs/systemctl = owner acts: give exact copy-paste cmds; no rebuild during DB jobs.
-- Done = enable -> rebuild (`aq-deploy-current`) -> validate live -> peer review -> owner grant; no derelict capabilities; archive only with parity. Dormant features found during work (implemented, never enabled): enable, validate end to end, test, fix what enabling breaks, as an activation slice (Rule 15); owner acts (rebuild/sudo/repo settings) are asked for; risky or contested enables get a recommendation.
+- Done = enable -> rebuild (`aq-deploy-current`) -> validate live -> peer review -> owner grant; no derelict capabilities; archive only with parity. Dormant features found during work (implemented, never enabled): enable, validate end to end, test, fix what enabling breaks, as an activation slice (Rule 15); owner acts (rebuild/sudo/repo settings) are asked for; risky or contested enables get a recommendation. New agents/models/lanes: probe and validate on synthetic data first, start restricted, widen on measured results (`probe-reviewer-lane`).
 - Discover first: CAPABILITY-INDEX.md, `aq-graph-query`, `aq-wiki --section`, `aq-hints`; friction -> `aq-rsi report`.
 - Full text: `canon/blocks/delivery-workflow.md`
 <!-- canon:end delivery-workflow -->
