@@ -66,18 +66,31 @@ def _read_key(path_env: str, key_env: str) -> str:
 HYBRID_KEY = _read_key("HYBRID_API_KEY_FILE", "HYBRID_API_KEY")
 AIDB_KEY   = _read_key("AIDB_API_KEY_FILE",   "AIDB_API_KEY")
 
+def _finite_float_env(name: str, default: float) -> float:
+    """float(nan/inf) parses but int() of it crashes at import; reject and warn."""
+    raw = os.getenv(name, "")
+    if not raw:
+        return default
+    try:
+        value = float(raw)
+    except ValueError:
+        value = float("nan")
+    if not math.isfinite(value):
+        print(f"WARN: {name}={raw!r} is not a finite number; using {default}", file=sys.stderr)
+        return default
+    return value
+
+
 def _recall_memory_default() -> int:
     """Broker read budget (AI_MEMORY_BROKER_RW_TIMEOUT_S, default 10s) plus a margin.
 
     The bridge must outlast the broker's own timeout or the caller sees a
     transport timeout instead of the broker's structured error.
     """
-    try:
-        broker = float(os.getenv("AI_MEMORY_BROKER_RW_TIMEOUT_S", "") or 10.0)
-        margin = float(os.getenv("AQ_MCP_RECALL_MARGIN_S", "") or 10.0)
-    except ValueError:
-        broker, margin = 10.0, 10.0
-    return max(1, int(broker + margin))
+    broker = _finite_float_env("AI_MEMORY_BROKER_RW_TIMEOUT_S", 10.0)
+    margin = _finite_float_env("AQ_MCP_RECALL_MARGIN_S", 10.0)
+    total = broker + margin
+    return max(1, int(total)) if math.isfinite(total) else 20
 
 
 # Per-tool HTTP timeouts (seconds). Fast endpoints get short timeouts so

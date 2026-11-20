@@ -1166,7 +1166,7 @@ class TrainingLoop:
         _pulse(f"aq-local-training-loop run {run_id}: "
                f"pass={len(passing)}/{len(cases)}, "
                f"+{ingest_report.get('positive_samples_added', 0)} training samples, "
-               f"{len(validated_improvements)} improvement proposals written")
+               f"{len(validated_improvements)} improvement proposals written", run_id)
 
         # Clear checkpoint — run completed successfully, no resume needed
         _checkpoint_clear(run_id)
@@ -1196,10 +1196,13 @@ class TrainingLoop:
             await asyncio.sleep(interval_minutes * 60)
 
 
-def _pulse(msg: str) -> None:
+def _pulse(msg: str, run_id: str = "") -> None:
     ts = _now()
     from instance_label import agent_slot
-    entry = f"[{ts}] [{agent_slot('aq-local-training-loop', 'local')}] [run]: {msg}\n"
+    # The loop is a local-lane writer with no AQ_INSTANCE_MODEL in a timer unit; "local" is the lane's generic model name.
+    slot = agent_slot("aq-local-training-loop", "local", model=os.getenv("AQ_INSTANCE_MODEL") or "local",
+                      session=run_id.rsplit("-", 1)[-1])
+    entry = f"[{ts}] [{slot}] [run]: {msg}\n"
     try:
         with open(PULSE_LOG, "a", encoding="utf-8") as fh:
             fh.write(entry)
