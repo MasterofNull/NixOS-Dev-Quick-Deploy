@@ -398,7 +398,7 @@ class Config:
     # Advisor Strategy Configuration (Phase 2026-04-17)
     AI_ADVISOR_ENABLED = os.getenv("AI_ADVISOR_ENABLED", "true").lower() == "true"
     # Primary advisor model (defaults to highest-capability available)
-    AI_ADVISOR_MODEL = os.getenv("AI_ADVISOR_MODEL", "claude-opus-4-5")
+    AI_ADVISOR_MODEL = os.getenv("AI_ADVISOR_MODEL", "claude-opus-5-5")
     AI_ADVISOR_ENDPOINT = os.getenv("AI_ADVISOR_ENDPOINT", "switchboard")  # anthropic, openrouter, local, switchboard
     AI_ADVISOR_PROFILE = os.getenv("AI_ADVISOR_PROFILE", "remote-reasoning")
     AI_ADVISOR_MAX_USES_PER_TASK = int(os.getenv("AI_ADVISOR_MAX_USES_PER_TASK", "3"))
@@ -409,29 +409,29 @@ class Config:
     # Format: JSON array of models, tried in order until one succeeds
     AI_ADVISOR_ARCHITECTURE_MODELS = _json_str_list_env(
         "AI_ADVISOR_ARCHITECTURE_MODELS_JSON",
-        default=["claude-opus-4-5", "gpt-4o", "claude-sonnet", "gemini-2.0-flash-thinking"]
+        default=["claude-opus-5-5", "gpt-6.2-sol", "claude-sonnet", "gemini-3.8-flash"]
     )
     AI_ADVISOR_SECURITY_MODELS = _json_str_list_env(
         "AI_ADVISOR_SECURITY_MODELS_JSON",
-        default=["claude-opus-4-5", "gpt-4o", "claude-sonnet", "gemini-2.0-flash-thinking"]
+        default=["claude-opus-5-5", "gpt-6.2-sol", "claude-sonnet", "gemini-3.8-flash"]
     )
     AI_ADVISOR_PLANNING_MODELS = _json_str_list_env(
         "AI_ADVISOR_PLANNING_MODELS_JSON",
-        default=["gemini-2.0-flash-thinking", "claude-sonnet", "gpt-4o", "qwen-max"]
+        default=["gemini-3.8-flash", "claude-sonnet", "gpt-6.2-sol", "qwen-max"]
     )
     AI_ADVISOR_TRADEOFF_MODELS = _json_str_list_env(
         "AI_ADVISOR_TRADEOFF_MODELS_JSON",
-        default=["gpt-4o", "claude-sonnet", "gemini-2.0-flash-thinking", "qwen-max"]
+        default=["gpt-6.2-sol", "claude-sonnet", "gemini-3.8-flash", "qwen-max"]
     )
     AI_ADVISOR_AMBIGUITY_MODELS = _json_str_list_env(
         "AI_ADVISOR_AMBIGUITY_MODELS_JSON",
-        default=["claude-sonnet", "gpt-4o", "gemini-2.0-flash-thinking", "qwen-max"]
+        default=["claude-sonnet", "gpt-6.2-sol", "gemini-3.8-flash", "qwen-max"]
     )
 
     # Global fallback chain (used if decision-type specific chain exhausted)
     AI_ADVISOR_GLOBAL_FALLBACKS = _json_str_list_env(
         "AI_ADVISOR_GLOBAL_FALLBACKS_JSON",
-        default=["claude-sonnet", "gpt-4o", "gemini-2.0-flash-thinking", "qwen-max", "deepseek-r1"]
+        default=["claude-sonnet", "gpt-6.2-sol", "gemini-3.8-flash", "qwen-max", "deepseek-r1"]
     )
 
     # Legacy single-model overrides (deprecated in favor of ranked chains above)
