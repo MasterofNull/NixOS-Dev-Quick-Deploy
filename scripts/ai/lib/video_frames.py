@@ -43,10 +43,15 @@ def sha256_file(p: Path) -> str:
     return h.hexdigest()
 
 
-def parse_vtt(text: str) -> list[dict]:
-    """VTT cues -> segments. Rolling captions (a cue repeating the previous cue's lines) collapse."""
+ROLLING_GAP_S = 1.0  # rolling auto-caption cues overlap or abut; a larger silence means a genuine repeat
+
+
+def parse_vtt(text: str, rolling: bool = False, gap_s: float = ROLLING_GAP_S) -> list[dict]:
+    """VTT cues -> segments. rolling=True (auto-captions only) collapses a cue that repeats the previous
+    cue's lines, but only while the cue overlaps/abuts it (start <= previous end + gap_s)."""
     segs: list[dict] = []
     prev_lines: list[str] = []
+    prev_end = float("-inf")
     for block in re.split(r"\n\s*\n", text.replace("\r", "")):
         lines = block.split("\n")
         cue_at = [i for i, ln in enumerate(lines) if CUE.match(ln)]
@@ -59,8 +64,14 @@ def parse_vtt(text: str) -> list[dict]:
         start, end = _secs(*g[0:4]), _secs(*g[4:8])
         cur = [clean(TAG.sub("", ln)) for ln in lines[idx + 1 :]]
         cur = [ln for ln in cur if ln]
-        new = [ln for ln in cur if ln not in prev_lines]
-        prev_lines = cur or prev_lines
+        if rolling:
+            if start - prev_end > gap_s:
+                prev_lines = []
+            new = [ln for ln in cur if ln not in prev_lines]
+            prev_lines = cur or prev_lines
+            prev_end = max(prev_end, end)
+        else:
+            new = cur
         if not new:
             if segs:
                 segs[-1]["end_s"] = max(segs[-1]["end_s"], end)
@@ -167,9 +178,11 @@ def meta_check(p: Path) -> int:
 # ---- cache cap (exit 7 = cache-full) --------------------------------------------------------
 
 def _size(p: Path) -> int:
+    if p.is_symlink():
+        return 0
     if p.is_file():
         return p.stat().st_size
-    return sum(f.stat().st_size for f in p.rglob("*") if f.is_file() and not f.is_symlink())
+    return sum(f.lstat().st_size for f in p.rglob("*") if f.is_file() and not f.is_symlink())
 
 
 def cache_usage(root: Path) -> int:
@@ -177,15 +190,29 @@ def cache_usage(root: Path) -> int:
 
 
 def _rm(e: Path) -> None:
-    shutil.rmtree(e, ignore_errors=True) if e.is_dir() else e.unlink(missing_ok=True)
+    """Remove a cache entry without ever following a symlink: a link is unlinked, never traversed."""
+    if e.is_symlink() or not e.is_dir():
+        e.unlink(missing_ok=True)
+    else:
+        shutil.rmtree(e, ignore_errors=True)
+
+
+def _inside(root: Path, p: Path) -> bool:
+    try:
+        return p.resolve().is_relative_to(root.resolve())
+    except (OSError, RuntimeError):
+        return False
 
 
 def sweep_orphans(root: Path) -> None:
-    """Under the global lock no other run is live: tmp dirs, work dirs and .part files are orphans."""
+    """Under the global lock no other run is live: tmp dirs, work dirs and .part files are orphans.
+    Symlinked entries are never descended into, and a target must resolve inside the cache root."""
     for e in root.iterdir():
-        if e.is_dir():
-            for sub in e.iterdir():
-                if sub.name == "work" or sub.name.endswith((".tmp", ".part")):
+        if e.is_symlink() or not e.is_dir() or not _inside(root, e):
+            continue
+        for sub in e.iterdir():
+            if sub.name == "work" or sub.name.endswith((".tmp", ".part")):
+                if sub.is_symlink() or _inside(root, sub):
                     _rm(sub)
 
 
@@ -380,10 +407,32 @@ def dir_size(p: Path) -> int:
     return _size(p) if p.exists() else 0
 
 
+BUNDLE_FILES = ("transcript.json", "transcript.txt", "transcript.vtt")
+BUNDLE_RESERVE = 64 * 1024  # SOURCE.txt + run.json are written after the check
+
+
+def bundle_size(out: Path, stage: Path | None) -> int:
+    """Bytes the out dir holds after publication. With a stage: current content, minus the files the
+    publication overwrites, plus the stage's final outputs only (raw Whisper JSON stays in the cache)."""
+    total = dir_size(out)
+    if stage is None:
+        return total
+    for name in BUNDLE_FILES + ("SOURCE.txt", "run.json"):
+        f = out / name
+        if f.is_file() and not f.is_symlink():
+            total -= f.stat().st_size
+    for name in BUNDLE_FILES:
+        f = stage / name
+        if f.is_file():
+            total += f.stat().st_size
+    return total + BUNDLE_RESERVE
+
+
 def main(argv: list[str]) -> int:
     c, a = argv[1], argv[2:]
     if c == "vtt2seg":  # <vtt> <out_dir> <source_kind> <lang>
-        write_transcript(finalize(parse_vtt(Path(a[0]).read_text(errors="replace")), a[2], a[3]), Path(a[1]))
+        segs = parse_vtt(Path(a[0]).read_text(errors="replace"), rolling=a[2] == "auto-captions")
+        write_transcript(finalize(segs, a[2], a[3]), Path(a[1]))
     elif c == "whisper2seg":  # <whisper.json> <out_dir> <source_kind> <lang> -> prints backend
         segs, be = parse_whisper_json(json.loads(Path(a[0]).read_text()))
         write_transcript(finalize(segs, a[2], a[3]), Path(a[1]))
@@ -400,8 +449,8 @@ def main(argv: list[str]) -> int:
         return limits_cli(a[0], a[1], float(a[2]), False)
     elif c == "limits-kv":
         return limits_cli(a[0], a[1], float(a[2]), True)
-    elif c == "bundle-check":  # <out_dir> <stage_dir> <max_mb>: size after the last write
-        sz = dir_size(Path(a[0])) + dir_size(Path(a[1]))
+    elif c == "bundle-check":  # <out_dir> <stage_dir|""> <max_mb>: projected (stage given) or actual size
+        sz = bundle_size(Path(a[0]), Path(a[1]) if a[1] else None)
         if sz > int(float(a[2])) * MB:
             print(f"bundle-full: {a[0]} would be {sz} B, over the {a[2]} MB bundle cap", file=sys.stderr)
             return 7

@@ -38,7 +38,7 @@ scripts/governance/tier0-validation-gate.sh --pre-commit
 | 9 | busy: another run holds the global cache lock |
 
 ## ffmpeg input whitelist (security policy, not a hardware limit)
-- CVE triage found 74 ffmpeg input-parser CVEs reachable through aq-transcribe: `-protocol_whitelist` limits protocols, not formats. Every aq-transcribe ffmpeg call (local-file extract, and yt-dlp's audio extract via `--postprocessor-args ffmpeg_i:`) now also passes `-format_whitelist` and `-codec_whitelist` before `-i`.
+- CVE triage found 74 ffmpeg input-parser CVEs reachable through aq-transcribe: `-protocol_whitelist` limits protocols, not formats. Every aq-transcribe ffmpeg call (one shared `extract_audio` for local files and downloaded media; yt-dlp postprocessing is no longer used, see Review fixes) now also passes `-format_whitelist` and `-codec_whitelist` before `-i`.
 - Defaults (names verified against `ffmpeg -formats` / `-decoders` on this host): formats `matroska,webm,mov,mp4,m4a,3gp,3g2,mj2,mp3,ogg,wav,flac,aac`; codecs `opus,libopus,vorbis,aac,mp3,mp3float,flac,pcm_s16le,pcm_s24le,pcm_f32le`. Output is forced to `pcm_s16le` 16 kHz mono with `-vn -sn -dn`. Overrides: `AQ_TRANSCRIBE_FFMPEG_FORMATS` / `AQ_TRANSCRIBE_FFMPEG_CODECS`.
 - An input outside the lists ("not on whitelist") exits 8 with a named message; it never reaches Whisper. Verified with real ffmpeg: a generated wav passes, a generated avi is rejected.
 - Scope: this mitigates the reachable-parser class for our only ffmpeg consumer (aq-transcribe); it does not fix ffmpeg system-wide. Residual: a whitelisted container (e.g. mp4/mkv) still exercises that demuxer's parser.
@@ -72,13 +72,23 @@ Other existing overrides: AQ_TRANSCRIBE_CACHE, AQ_TRANSCRIBE_FFMPEG_TIMEOUT (600
 - `test-aq-transcribe-acquisition.sh`: 121 checks, 0 failed, on stubs with no network. Covers local VTT with no whisper/ffmpeg on PATH; caption-only URL without whisper; 429 terminal at meta/caps/media (3 backoffs 30/90/270, 4 attempts, Whisper never run, also with `--allow-whisper-on-error`); shared retry budget; non-429 caption error; Whisper under gate+quota with both backends normalising to identical segments; cache reuse; Whisper timeout exit 6; gate fail-closed exit 5; fingerprint misses; public-only; cache/bundle caps and exit 7; global lock exit 9; hard write limit; limits resolution, floors/ceilings, env overrides and run.json sources.
 - Test isolation: every URL case uses a unique stub video id (captions are cached per id), so cases cannot interfere.
 - `test-ffmpeg-cve-mitigations.py`: 7 tests OK (needs `flock` on PATH, from util-linux).
+- PR #805 review fixes (Codex REQUEST_CHANGES 0d0d10eb): `test-aq-transcribe-acquisition.sh` 144 checks, 0 failed; `test-ffmpeg-cve-mitigations.py` 8 tests OK. New cases: symlinked cache entries/work dirs are never traversed or deleted through; `--lang` allowlist (rejects `../x`, `a/b`, `.`); media-download argv inspection (no `-x`/`--audio-format`/`--postprocessor-args`, `--ffmpeg-location` empty dir, `--fixup never`, no ffprobe call, our ffmpeg carries both whitelists before `-i`); 429 and skipped-fragment output on exit 0 is a failure and caches nothing; 1-2 s / 30-31 s identical cues keep both timings; rolling dedup only for auto-captions; bundle accounting (existing out content over the cap, unchanged rerun not double-counted, raw Whisper JSON not published).
 - Not covered: real yt-dlp/Whisper/systemd-run (stubs only); real-network 429; the real power gate. A URL rerun makes exactly one metadata call (never cached) but no caption or media call on a cache hit.
 - Bug found and fixed in this pass: the Whisper path exited 1 (command not found, 127) because the per-process write limit was a bash function, and `systemd-run ... timeout ...` execs its command and cannot see shell functions. It is now an argv prefix (`bash -c 'ulimit -f ...; exec "$@"'`).
 
 ## Rollback Plan
 - `git revert` the slice commit. Trigger: any regression in aq-transcribe callers. Cache lives under `${AQ_TRANSCRIBE_CACHE:-~/.cache/aq-transcribe}` and is disposable.
 
+## Review fixes (PR #805, Codex REQUEST_CHANGES)
+- P1 cache containment: `sweep_orphans`/`_rm`/`_size` never follow symlinks (links are unlinked, not traversed; targets must resolve under the cache root); `--lang` must match `^[A-Za-z]{2,3}([-_][A-Za-z0-9]{2,8})*$` (exit 2).
+- P1 unrestricted probe: yt-dlp no longer postprocesses. The media call has no `-x`, runs with `--ffmpeg-location <empty dir>` and `--fixup never`, so it cannot spawn ffprobe/ffmpeg on downloaded bytes; the downloaded file is converted by our own allowlisted ffmpeg (`extract_audio`, shared with the local path). A non-HLS-native stream that needs yt-dlp's ffmpeg downloader now fails closed.
+- P2 rate limit: `--abort-on-unavailable-fragments` on every call, and exit-0 output matching 429 / skipped-fragment markers is treated as failure (429 uses the shared backoff budget, terminal exit 4; a skip is exit 1). `--no-warnings` dropped so the markers are visible. Nothing is cached.
+- P2 caption timing: rolling dedup applies to auto-captions only and only to cues within 1.0 s of the previous cue; creator/local subtitles keep every cue.
+- P2 bundle admission: projected size = current out dir minus files this run overwrites plus the stage's final outputs (not the cache-only raw Whisper JSON) plus a 64 KiB reserve; re-checked against the real out dir after SOURCE.txt/run.json are written (exit 7, outputs left in place, none deleted).
+
 ## Residual Risk
+- A post-publish bundle overflow exits 7 but leaves the published files in the out dir (no-delete rule); the caller decides.
+- `--ffmpeg-location` with an empty directory is verified against stubs only, not a real yt-dlp (not installed in CI).
 - `transcript.json` format changed from raw Whisper JSON to `aq-segments/1`; no in-repo consumer found besides the tests. Raw backend JSON is kept as `transcript.raw.<backend>.json` in the cache stage.
 - Whisper needs systemd-run user scopes; hosts without them get exit 5 by design (fail closed).
 - Quota/priority behavior on this APU is unmeasured.

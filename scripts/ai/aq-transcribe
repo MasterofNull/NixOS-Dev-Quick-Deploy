@@ -74,6 +74,10 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+# --lang becomes a cache path component and yt-dlp/whisper arg: strict BCP47-ish allowlist, no separators or "..".
+if [[ -n "$LANG" ]] && ! [[ "$LANG" =~ ^[A-Za-z]{2,3}([-_][A-Za-z0-9]{2,8})*$ ]]; then
+  fail 2 "invalid --lang: expected a language code such as en, pt-BR, zh_Hans"
+fi
 [[ -n "$INPUT" ]] || die "need a YouTube URL or a local audio/video file (see --help)"
 [[ -z "$SUBS" || -f "$SUBS" ]] || die "--subs file not found: $SUBS"
 
@@ -188,16 +192,24 @@ for v in $(compgen -e); do
   esac
 done
 YT_OUT="$scratch/yt.out"; YT_ERR="$scratch/yt.err"
-# Returns 0 ok, 1 non-429 error; a 429 that exhausts the budget exits 4 here.
+# yt-dlp can exit 0 after rate limiting (429) or skipping unavailable fragments: that output is incomplete.
+YT_RATE='HTTP Error 429|Too Many Requests'
+YT_SKIP='Skipping fragment|fragment .*(not found|unavailable)|Unable to download fragment|fragment [0-9]+ not found'
+# <label> <pattern>: match yt-dlp stderr, and stdout too except for --dump-json (stdout is untrusted metadata there)
+yt_saw() { grep -qiE "$2" "$YT_ERR" && return 0; [[ $1 != metadata ]] && grep -qiE "$2" "$YT_OUT"; }
+# Returns 0 ok, 1 non-429 error or incomplete download; a 429 that exhausts the budget exits 4 here.
 ytdlp_run() { # <label> yt-dlp args...
   local label="$1" rc; shift
   while :; do
     rc=0
     env ${YT_ENV_STRIP[@]+"${YT_ENV_STRIP[@]}"} bash -c 'ulimit -f "$1"; shift; exec "$@"' _ "$ULIM_KB" yt-dlp --ignore-config --no-cookies --no-cookies-from-browser \
-      --no-playlist --retries 0 --fragment-retries 2 --sleep-requests 1 --no-warnings "$@" \
+      --no-playlist --retries 0 --fragment-retries 2 --abort-on-unavailable-fragments --sleep-requests 1 "$@" \
       >"$YT_OUT" 2>"$YT_ERR" || rc=$?
-    [[ $rc -eq 0 ]] && return 0
-    if grep -qiE 'HTTP Error 429|Too Many Requests' "$YT_ERR"; then
+    if [[ $rc -eq 0 ]]; then
+      yt_saw "$label" "$YT_RATE|$YT_SKIP" || return 0
+      rc=1
+    fi
+    if yt_saw "$label" "$YT_RATE"; then
       if (( YT_RETRIES_USED < ${#YT_BACKOFF[@]} )); then
         echo "[aq-transcribe] rate limited during $label; backoff ${YT_BACKOFF[$YT_RETRIES_USED]}s (retry $((YT_RETRIES_USED+1))/${#YT_BACKOFF[@]})" >&2
         "$SLEEP_CMD" "${YT_BACKOFF[$YT_RETRIES_USED]}"
@@ -209,6 +221,20 @@ ytdlp_run() { # <label> yt-dlp args...
     fi
     return 1
   done
+}
+# Convert downloaded/local media to 16 kHz mono wav. The ONLY ffmpeg/ffprobe invocation on untrusted media
+# in this script: yt-dlp postprocessing is never used (it probes with ffprobe/ffmpeg -i without our allowlists).
+extract_audio() { # <in> <out.wav>
+  local ffrc=0
+  quota timeout "${AQ_TRANSCRIBE_FFMPEG_TIMEOUT:-600}" "${LIM[@]}" ffmpeg -nostdin -y -protocol_whitelist file,pipe \
+    -format_whitelist "$FF_FORMATS" -codec_whitelist "$FF_CODECS" \
+    -threads "${L[ffmpeg_threads]}" -i "$1" -vn -sn -dn -ar 16000 -ac 1 -c:a pcm_s16le "$2" >/dev/null 2>"$scratch/ff.err" || ffrc=$?
+  if [[ $ffrc -ne 0 ]]; then
+    if grep -qi 'not on whitelist' "$scratch/ff.err"; then
+      fail 8 "input rejected: container/codec outside the ffmpeg input whitelist (formats: $FF_FORMATS; codecs: $FF_CODECS)"
+    fi
+    overrun_guard "$work"; die "ffmpeg failed (or timed out after ${AQ_TRANSCRIBE_FFMPEG_TIMEOUT:-600}s) extracting audio from $INPUT"
+  fi
 }
 
 # ---- resolve identity -----------------------------------------------------------------
@@ -318,13 +344,19 @@ else
       admit whisper
       refresh_remaining
       echo "[aq-transcribe] no caption track used; downloading audio for Whisper ASR"
-      ytdlp_run "media download" --hls-prefer-native -f bestaudio -x --audio-format wav \
-        --postprocessor-args "ffmpeg_i:-format_whitelist $FF_FORMATS -codec_whitelist $FF_CODECS" \
-        --max-filesize "$((ULIM_KB * 1024))" -o "$work/audio.%(ext)s" "$INPUT" \
-        || { [[ -n "$(find "$work" -size +0 2>/dev/null | head -n1)" ]] && overrun_guard "$work"; die "yt-dlp failed to download audio (network? geo-block?)"; }
+      need_tool ffmpeg
+      # No -x / postprocessors: yt-dlp is pointed at an empty ffmpeg dir and told not to fixup, so it
+      # cannot spawn ffprobe/ffmpeg on the downloaded bytes; our allowlisted ffmpeg does the conversion.
+      mkdir -p "$scratch/no-ffmpeg"
+      ytdlp_run "media download" --hls-prefer-native -f bestaudio --ffmpeg-location "$scratch/no-ffmpeg" --fixup never \
+        --max-filesize "$((ULIM_KB * 1024))" -o "$work/dl.%(ext)s" "$INPUT" \
+        || { [[ -n "$(find "$work" -size +0 2>/dev/null | head -n1)" ]] && overrun_guard "$work"; die "yt-dlp failed to download a complete audio file (network? rate limit? geo-block?)"; }
       overrun_guard "$work"
-      audio="$(find "$work" -name 'audio.*' -not -name '*.part' | head -n1)"
-      [[ -n "$audio" ]] || die "yt-dlp produced no audio file"
+      dl="$(find "$work" -name 'dl.*' -not -name '*.part' -not -name '*.ytdl' | head -n1)"
+      [[ -n "$dl" ]] || die "yt-dlp produced no audio file"
+      extract_audio "$dl" "$work/audio.wav"
+      overrun_guard "$work"
+      audio="$work/audio.wav"
     else
       need_tool ffmpeg
       admit whisper
@@ -333,16 +365,7 @@ else
       # Hardening (WR-SEC-3): a local file can be a playlist/manifest that makes ffmpeg open
       # network protocols (HLS/DASH/RTSP/sftp CVEs, no fix released). Restrict to file+pipe,
       # never read stdin, and bound the runtime (override: AQ_TRANSCRIBE_FFMPEG_TIMEOUT seconds).
-      ffrc=0
-      quota timeout "${AQ_TRANSCRIBE_FFMPEG_TIMEOUT:-600}" "${LIM[@]}" ffmpeg -nostdin -y -protocol_whitelist file,pipe \
-        -format_whitelist "$FF_FORMATS" -codec_whitelist "$FF_CODECS" \
-        -threads "${L[ffmpeg_threads]}" -i "$INPUT" -vn -sn -dn -ar 16000 -ac 1 -c:a pcm_s16le "$work/audio.wav" >/dev/null 2>"$scratch/ff.err" || ffrc=$?
-      if [[ $ffrc -ne 0 ]]; then
-        if grep -qi 'not on whitelist' "$scratch/ff.err"; then
-          fail 8 "input rejected: container/codec outside the ffmpeg input whitelist (formats: $FF_FORMATS; codecs: $FF_CODECS)"
-        fi
-        overrun_guard "$work"; die "ffmpeg failed (or timed out after ${AQ_TRANSCRIBE_FFMPEG_TIMEOUT:-600}s) extracting audio from $INPUT"
-      fi
+      extract_audio "$INPUT" "$work/audio.wav"
       overrun_guard "$work"
       audio="$work/audio.wav"
     fi
@@ -380,6 +403,8 @@ else
 fi
 
 # ---- publish to the out dir ------------------------------------------------------------
+# Admission counts only the files published below: existing OUT content minus what gets overwritten, plus the
+# stage's final outputs (never the cache-internal raw Whisper JSON); re-checked after SOURCE.txt/run.json land.
 hp bundle-check "$OUT" "$stage" "${L[bundle_max_mb]}" || exit 7
 cp "$stage/transcript.json" "$stage/transcript.txt" "$OUT/"
 [[ -f "$stage/transcript.vtt" ]] && cp "$stage/transcript.vtt" "$OUT/"
@@ -391,6 +416,7 @@ json.dump({"input_kind":a[1],"id":a[2],"selection_mode":a[3],"fingerprint":a[4],
  "yt_dlp_retries_used":int(a[6]),"limits":json.load(open(a[8])),"finished_at":time.strftime("%Y-%m-%dT%H:%M:%SZ",time.gmtime())},
  open(a[7]+"/run.json","w"),indent=1)' "$kind" "$vid" "$mode" "$fp" "$cache_hit" "$YT_RETRIES_USED" "$OUT" "$scratch/limits.json"
 
+hp bundle-check "$OUT" "" "${L[bundle_max_mb]}" || fail 7 "bundle-full after publish: $OUT exceeds the bundle cap; outputs left in place for inspection (none deleted)"
 touch "$ent"
 [[ $KEEP_AUDIO -eq 0 ]] && rm -rf "$work"
 hp cache-measure "$CACHE_ROOT" "$MAX_BYTES" || exit 7

@@ -32,6 +32,8 @@ n=${STUB_FAIL_N:-0}
 if [ "$STUB_429_ON" = "$kind" ] && [ "$cnt" -le "$n" ]; then
   echo "ERROR: HTTP Error 429: Too Many Requests" >&2; exit 1; fi
 if [ "$STUB_ERR_ON" = "$kind" ]; then echo "ERROR: boom" >&2; exit 1; fi
+if [ "$STUB_OK429_ON" = "$kind" ]; then echo "ERROR: HTTP Error 429: Too Many Requests (skipped)" >&2; fi
+if [ "$STUB_SKIPFRAG_ON" = "$kind" ]; then echo "[download] Skipping fragment 3 ..." ; fi
 case $kind in
  id) echo "${STUB_ID:-vid123}";;
  meta) if [ "$STUB_AVAIL" = MISSING ]; then echo "{\"id\":\"${STUB_ID:-vid123}\",\"duration\":60}"
@@ -41,7 +43,7 @@ case $kind in
          o=""; p=""; for a; do [ "$p" = -o ] && o=$a; p=$a; done
          d=${o%/*}; cp "$STUB_VTT" "$d/${STUB_ID:-vid123}.en.vtt";; esac;; esac;;
  media) o=""; p=""; for a; do [ "$p" = -o ] && o=$a; p=$a; done
-        echo wavdata > "${o%/*}/audio.wav";;
+        echo m4adata > "${o%/*}/dl.m4a";;
 esac'
 mk ffmpeg 'echo "ffmpeg $*" >> "$LOG/ffmpeg.log"; for a; do l=$a; done; echo wav > "$l"'
 mk whisper 'echo "whisper $*" >> "$LOG/whisper.log"
@@ -104,8 +106,7 @@ URL="https://www.youtube.com/watch?v=vid123"
 RUN_PATH="$TOOLS" run -- "$T/fixture.mp4" --subs "$T/fixture.vtt"
 eq "1 local vtt exit 0" "$RC" 0
 eq "1 SOURCE creator-subtitles" "$(cat "$OUTD/SOURCE.txt")" creator-subtitles
-eq "1 nonzero timestamps + rolling captions collapsed (3 segs, 600..606)" "$(segjson "$OUTD/transcript.json")" "aq-segments/1 3 600.0 606.0"
-eq "1 rolling cue extends previous end to 604.01" "$(python3 -I -c 'import json,sys;print(json.load(open(sys.argv[1]))["segments"][1]["end_s"])' "$OUTD/transcript.json")" 604.01
+eq "1 nonzero timestamps; creator/local subs keep every cue (4 segs, 600..606)" "$(segjson "$OUTD/transcript.json")" "aq-segments/1 4 600.0 606.0"
 eq "1 tags stripped" "$(grep -c '<c>' "$OUTD/transcript.txt")" 0
 
 # adjacent VTT is picked up without --subs
@@ -121,6 +122,8 @@ eq "2 creator-subtitles" "$(cat "$OUTD/SOURCE.txt")" creator-subtitles
 RUN_PATH="$T/ytonly:$TOOLS" run STUB_CAPS=auto STUB_ID=autoid -- "$URL"
 eq "2 auto-captions fallback exit 0" "$RC" 0
 eq "2 auto SOURCE" "$(cat "$OUTD/SOURCE.txt")" auto-captions
+eq "2 auto-captions: rolling cues collapsed (3 segs, 600..606)" "$(segjson "$OUTD/transcript.json")" "aq-segments/1 3 600.0 606.0"
+eq "2 rolling cue extends previous end to 604.01" "$(python3 -I -c 'import json,sys;print(json.load(open(sys.argv[1]))["segments"][1]["end_s"])' "$OUTD/transcript.json")" 604.01
 eq "2 creator tried before auto" "$(grep -c -- '--write-subs' "$LOG/ytdlp.argv")" 1
 # argv hygiene: config/cookies disabled on every call
 eq "2 --ignore-config on every yt-dlp call" "$(grep -vc -- '--ignore-config' "$LOG/ytdlp.argv")" 0
@@ -166,6 +169,8 @@ n=${STUB_FAIL_N:-0}
 if [ "$STUB_429_ON" = "$kind" ] && [ "$cnt" -le "$n" ]; then
   echo "ERROR: HTTP Error 429: Too Many Requests" >&2; exit 1; fi
 if [ "$STUB_ERR_ON" = "$kind" ]; then echo "ERROR: boom" >&2; exit 1; fi
+if [ "$STUB_OK429_ON" = "$kind" ]; then echo "ERROR: HTTP Error 429: Too Many Requests (skipped)" >&2; fi
+if [ "$STUB_SKIPFRAG_ON" = "$kind" ]; then echo "[download] Skipping fragment 3 ..." ; fi
 case $kind in
  id) echo "${STUB_ID:-vid123}";;
  meta) if [ "$STUB_AVAIL" = MISSING ]; then echo "{\"id\":\"${STUB_ID:-vid123}\",\"duration\":60}"
@@ -175,7 +180,7 @@ case $kind in
          o=""; p=""; for a; do [ "$p" = -o ] && o=$a; p=$a; done
          d=${o%/*}; cp "$STUB_VTT" "$d/${STUB_ID:-vid123}.en.vtt";; esac;; esac;;
  media) o=""; p=""; for a; do [ "$p" = -o ] && o=$a; p=$a; done
-        echo wavdata > "${o%/*}/audio.wav";;
+        echo m4adata > "${o%/*}/dl.m4a";;
 esac'
 
 # ---- 4. non-429 caption error ----------------------------------------------------------
@@ -193,7 +198,7 @@ OPENAI_OUT="$OUTD"
 eq "5 SOURCE whisper-asr" "$(cat "$OUTD/SOURCE.txt")" "whisper-asr(model=small)"
 eq "5 whisper json normalised to aq-segments/1" "$(segjson "$OUTD/transcript.json")" "aq-segments/1 3 600.0 606.0"
 eq "5 gate consulted with task + defer log" "$(grep -c -- '--task aq-transcribe-whisper --defer-log' "$LOG/gate.log")" 1
-eq "5 whisper ran under systemd-run quota (CPUQuota+MemoryMax+TasksMax)" "$(grep -cE 'CPUQuota=[0-9]+% -p MemoryMax=[0-9]+ -p TasksMax=[0-9]+' "$LOG/quota.log")" 1
+eq "5 ffmpeg conversion + whisper both ran under systemd-run quota (CPUQuota+MemoryMax+TasksMax)" "$(grep -cE 'CPUQuota=[0-9]+% -p MemoryMax=[0-9]+ -p TasksMax=[0-9]+' "$LOG/quota.log")" 2
 eq "5 media download passes a derived --max-filesize" "$(grep -cE -- '--max-filesize [0-9]+' "$LOG/ytdlp.argv")" 1
 [ -e "$T/cache/wh1/transcript/transcript.raw.openai.json" ] && ok "5 raw openai json kept" 1 || ok "5 raw openai json kept" 0
 [[ -f "$T/cache/wh1/stages/transcript.done" ]] && ok "5 .done written" 1 || ok "5 .done written" 0
@@ -205,7 +210,7 @@ eq "5 rerun: captions answered from cache" "$(count ytdlp.kinds '^caps$')" 0
 eq "5 rerun cache hit: no media download" "$(count ytdlp.kinds '^media$')" 0
 eq "5 rerun cache hit: gate not consulted" "$(called gate.log)" 0
 mkdir -p "$T/cpponly"; ln -sf "$STUBS/whisper-cli" "$T/cpponly/whisper-cli"
-for s in yt-dlp systemd-run; do ln -sf "$STUBS/$s" "$T/cpponly/$s"; done
+for s in yt-dlp systemd-run ffmpeg; do ln -sf "$STUBS/$s" "$T/cpponly/$s"; done
 RUN_PATH="$T/cpponly:$TOOLS" run STUB_CAPS=none STUB_ID=cpp1 -- "$URL"
 eq "5 whisper-cli backend exit 0" "$RC" 0
 eq "5 cpp json normalised identically (ms offsets -> s)" "$(segjson "$OUTD/transcript.json")" "aq-segments/1 3 600.0 606.0"
@@ -218,7 +223,7 @@ eq "5 --force-whisper skips captions" "$(count ytdlp.kinds '^caps$')" 0
 # ---- 6. Whisper timeout = failure (exit 6), both backends ------------------------------
 for be in whisper whisper-cli; do
   mkdir -p "$T/to-$be"; ln -sf "$STUBS/$be" "$T/to-$be/$be"
-  for s in yt-dlp systemd-run; do ln -sf "$STUBS/$s" "$T/to-$be/$s"; done
+  for s in yt-dlp systemd-run ffmpeg; do ln -sf "$STUBS/$s" "$T/to-$be/$s"; done
   RUN_PATH="$T/to-$be:$TOOLS" run STUB_CAPS=none STUB_ID="to$be" STUB_WHISPER_SLEEP=5 AQ_TRANSCRIBE_WHISPER_BUDGET=1 -- "$URL"
   eq "6 $be timeout -> exit 6" "$RC" 6
   [[ ! -e "$OUTD/transcript.json" ]] && ok "6 $be no transcript.json in out" 1 || ok "6 $be no transcript.json in out" 0
@@ -249,7 +254,11 @@ eq "7b stub: ffmpeg gets -format_whitelist" "$(grep -c -e '-format_whitelist mat
 eq "7b stub: ffmpeg gets -codec_whitelist (decoders only)" "$(grep -c -e '-codec_whitelist opus,libopus,vorbis,aac,mp3,mp3float,flac,pcm_s16le,pcm_s24le,pcm_f32le' "$LOG/ffmpeg.log")" 1
 eq "7b stub: whitelists precede -i" "$(grep -cE -e '-format_whitelist .* -codec_whitelist .* -i ' "$LOG/ffmpeg.log")" 1
 run STUB_CAPS=none STUB_ID=wl1 -- "$URL"
-eq "7b yt-dlp audio extract passes ffmpeg_i whitelists" "$(grep -c -e 'ffmpeg_i:-format_whitelist .* -codec_whitelist ' "$LOG/ytdlp.argv")" 1
+# the media download never lets yt-dlp postprocess (its -x probe runs ffprobe/ffmpeg -i with no allowlist)
+eq "7b yt-dlp media call has no -x / --audio-format / --postprocessor-args" "$(grep -cE -e '(^| )(-x|--extract-audio|--audio-format|--postprocessor-args|--exec)( |$)' "$LOG/ytdlp.argv")" 0
+eq "7b yt-dlp media call is denied any ffmpeg/ffprobe (--ffmpeg-location empty dir, --fixup never)" "$(grep -cE -e '--ffmpeg-location [^ ]*no-ffmpeg .*--fixup never' "$LOG/ytdlp.argv")" 1
+eq "7b downloaded media converted by our ffmpeg with both whitelists before -i" "$(grep -cE -e '-protocol_whitelist file,pipe -format_whitelist [^ ]+ -codec_whitelist [^ ]+ .*-i [^ ]*/dl\.m4a ' "$LOG/ffmpeg.log")" 1
+eq "7b no ffprobe is ever called" "$(ls "$LOG" | grep -c ffprobe)" 0
 printf 'wl override bytes\n' > "$T/wl2.mp4"; printf 'wl reject bytes\n' > "$T/wl3.mp4"
 RUN_PATH="$STUBS:$TOOLS" run AQ_TRANSCRIBE_FFMPEG_FORMATS=wav AQ_TRANSCRIBE_FFMPEG_CODECS=pcm_s16le -- "$T/wl2.mp4" --force-whisper
 eq "7b env overrides the lists" "$(grep -c -e '-format_whitelist wav -codec_whitelist pcm_s16le' "$LOG/ffmpeg.log")" 1
@@ -320,11 +329,25 @@ eq "10 over-cap admission prunes -> exit 0" "$RC" 0
 C3="$T/cap3"; rm -rf "$C3"
 CACHE_OVERRIDE="$C3" run AQ_TRANSCRIBE_CACHE_MAX_GB=0.0001 -- "$T/fixture.mp4" --subs "$T/fixture.vtt"
 eq "10 run budget exceeding the cap outright -> exit 7" "$RC" 7
-C4="$T/cap4"; rm -rf "$C4"; mkdir -p "$T/bigout"; head -c 41943040 /dev/zero > "$T/bigout/bundle.bin"
+C4="$T/cap4"; rm -rf "$C4"
 CACHE_OVERRIDE="$C4" run AQ_TRANSCRIBE_CACHE_MAX_GB=0.02 -- "$T/fixture.mp4" --subs "$T/fixture.vtt"
-eq "10 bundles (out dir, outside cache) are not counted" "$RC" 0
+eq "10 bundles (out dir, outside cache) are not counted against the cache cap" "$RC" 0
 CACHE_OVERRIDE="$T/capb" run AQ_TRANSCRIBE_BUNDLE_MAX_MB=0 -- "$T/fixture.mp4" --subs "$T/fixture.vtt"
 eq "10 bundle cap exceeded -> exit 7" "$RC" 7
+# bundle accounting is over the files actually in the out dir (a pre-existing big file in --out counts)
+bigdir="$T/bigout"; mkdir -p "$bigdir"; head -c 4194304 /dev/zero > "$bigdir/bundle.bin"
+n=$((n+1)); RC=0
+env -i PATH="$STUBS:$TOOLS" HOME="$T/home" TMPDIR="$T" LOG="$LOG" AQ_TRANSCRIBE_CACHE="$T/capc" AQ_TRANSCRIBE_POWER_GATE="$STUBS/gate" \
+  AQ_TRANSCRIBE_DEFER_LOG="$T/defer.jsonl" AQ_TRANSCRIBE_BUNDLE_MAX_MB=2 bash "$SCRIPT" "$T/fixture.mp4" --subs "$T/fixture.vtt" --out "$bigdir" >/dev/null 2>&1 || RC=$?
+eq "10 out dir already over the bundle cap -> exit 7" "$RC" 7
+# rerun into the same out dir does not double-count the files it overwrites, nor the raw whisper json
+rm -rf "$T/rerun"; RC=0
+for i in 1 2; do
+  RC=0; env -i PATH="$STUBS:$TOOLS" HOME="$T/home" TMPDIR="$T" LOG="$LOG" AQ_TRANSCRIBE_CACHE="$T/capd" AQ_TRANSCRIBE_POWER_GATE="$STUBS/gate" \
+    AQ_TRANSCRIBE_DEFER_LOG="$T/defer.jsonl" AQ_TRANSCRIBE_BUNDLE_MAX_MB=1 bash "$SCRIPT" "$T/fixture.mp4" --force-whisper --out "$T/rerun" >/dev/null 2>&1 || RC=$?
+done
+eq "10 unchanged rerun into the same out dir stays under a tight cap (no double count)" "$RC" 0
+[[ ! -e "$T/rerun/transcript.raw.openai.json" ]] && ok "10 raw whisper json is cache-internal, not published" 1 || ok "10 raw whisper json is cache-internal, not published" 0
 # stage overrun: six 4 MB writes (each under the ulimit) exceed the cap -> stage deleted, exit 7, cache <= cap
 mk whisper 'while [ $# -gt 0 ]; do [ "$1" = --output_dir ] && o=$2; shift; done
 for i in 1 2 3 4 5 6; do head -c 4000000 /dev/zero > "$o/bloat$i"; done
@@ -345,6 +368,49 @@ J'
 CACHE_OVERRIDE="$T/cap6" run AQ_TRANSCRIBE_CACHE_MAX_GB=0.1 STUB_CAPS=none STUB_ID=ulim1 -- "$URL"
 bs="$(cat "$LOG/bloat.size" 2>/dev/null || echo 99999999)"
 [[ "$bs" -lt 60000000 && "$bs" -le $(( 107374182 / 4 + 1048576 )) ]] && ok "10 ulimit -f truncates a runaway writer ($bs B)" 1 || ok "10 ulimit -f truncates a runaway writer ($bs B)" 0
+
+# ---- 10a. incomplete downloads are failures even on exit 0 -----------------------------------
+run STUB_CAPS=none STUB_ID=ok429 STUB_OK429_ON=media -- "$URL"
+eq "10a 429 with exit 0 on media download -> exit 4 (terminal)" "$RC" 4
+eq "10a 429-on-exit-0 retried with backoff, whisper never run" "$(called whisper.log)$(wc -l < "$LOG/sleeps.log")" 03
+[[ ! -e "$T/cache/ok429/transcript" && ! -e "$T/cache/ok429/stages/transcript.done" ]] && ok "10a incomplete download cached nothing" 1 || ok "10a incomplete download cached nothing" 0
+run STUB_CAPS=none STUB_ID=skipfrag STUB_SKIPFRAG_ON=media -- "$URL"
+eq "10a skipped fragments with exit 0 -> failure (exit 1)" "$RC" 1
+eq "10a skipped fragments: whisper never run" "$(called whisper.log)" 0
+[[ ! -e "$T/cache/skipfrag/transcript" && ! -e "$T/cache/skipfrag/stages/transcript.done" ]] && ok "10a skipped-fragment download cached nothing" 1 || ok "10a skipped-fragment download cached nothing" 0
+run STUB_CAPS=none STUB_ID=abortfrag -- "$URL"
+eq "10a every yt-dlp call aborts on unavailable fragments" "$(grep -vc -- '--abort-on-unavailable-fragments' "$LOG/ytdlp.argv")" 0
+
+# ---- 10a2. --lang is a cache path component: strict allowlist ----------------------------------
+for bad in '../../escape' 'a/b' '..' 'en;id' '.' 'e'; do
+  run STUB_CAPS=creator STUB_ID=langx -- "$URL" --lang "$bad"
+  eq "10a2 --lang '$bad' rejected (exit 2), no yt-dlp call" "$RC$(called ytdlp.kinds)" 20
+done
+run STUB_CAPS=creator STUB_ID=langok -- "$URL" --lang pt-BR
+eq "10a2 --lang pt-BR accepted" "$RC" 0
+[[ -d "$T/cache/langok/captions/pt-BR" ]] && ok "10a2 caption cache stays under the cache entry" 1 || ok "10a2 caption cache stays under the cache entry" 0
+
+# ---- 10a3. orphan sweep never follows symlinks -------------------------------------------------
+sw="$T/sweep"; rm -rf "$sw"; mkdir -p "$sw/root/real" "$sw/outside/victim/work" "$sw/outside2/work"
+echo keep > "$sw/outside/victim/work/f"; echo keep > "$sw/outside2/work/f"; echo keep > "$sw/outside/x.tmp"
+ln -s "$sw/outside/victim" "$sw/root/linkdir"      # entry is a symlink to a dir holding work/
+ln -s "$sw/outside2" "$sw/root/real/work"          # a work "dir" that is a symlink out of the cache
+ln -s "$sw/outside" "$sw/root/real/evil.tmp"
+python3 -I - "$HELPER" "$sw" <<'PY' && ok "10a3 sweep_orphans/cache_admit never traverse or delete through symlinks" 1 || ok "10a3 sweep_orphans/cache_admit never traverse or delete through symlinks" 0
+import importlib.util, sys
+from pathlib import Path
+spec = importlib.util.spec_from_file_location("vf", sys.argv[1]); vf = importlib.util.module_from_spec(spec); spec.loader.exec_module(vf)
+sw = Path(sys.argv[2]); root = sw / "root"
+vf.sweep_orphans(root)
+assert (sw / "outside/victim/work/f").read_text() == "keep\n", "followed a symlinked entry"
+assert (sw / "outside2/work/f").read_text() == "keep\n", "followed a symlinked work dir"
+assert (sw / "outside/x.tmp").exists()
+assert not (root / "real/work").is_symlink() and not (root / "real/evil.tmp").exists(), "links themselves are unlinked"
+assert vf.cache_admit(root, 1, 10**9) == 0
+assert (sw / "outside/victim/work/f").exists() and (sw / "outside2/work/f").exists()
+vf.cache_admit(root, 10**9 - 1, 10**9)  # force pruning: a symlinked entry is unlinked, target untouched
+assert (sw / "outside/victim/work/f").exists()
+PY
 
 # ---- 10b. global lock, single metadata call, local exempt -------------------------------
 mk whisper 'echo "whisper $*" >> "$LOG/whisper.log"
@@ -367,7 +433,7 @@ eq "10b local fixture makes no yt-dlp call" "$(called ytdlp.kinds)" 0
 
 # ---- 10c. host-derived limits logged in run.json; env wins --------------------------------
 run AQ_TRANSCRIBE_CPU_QUOTA_PCT=300 STUB_CAPS=none STUB_ID=lim1 -- "$URL"
-eq "10c env CPU quota override reaches systemd-run" "$(grep -c 'CPUQuota=300%' "$LOG/quota.log")" 1
+eq "10c env CPU quota override reaches systemd-run" "$(grep -c 'CPUQuota=300%' "$LOG/quota.log")" 2
 eq "10c run.json logs source=env for the override" "$(python3 -I -c 'import json,sys;print(json.load(open(sys.argv[1]))["limits"]["cpu_quota_pct"]["source"])' "$OUTD/run.json")" env:AQ_TRANSCRIBE_CPU_QUOTA_PCT
 eq "10c run.json logs derived source for the rest" "$(python3 -I -c 'import json,sys;print(json.load(open(sys.argv[1]))["limits"]["tasks_max"]["source"])' "$OUTD/run.json")" derived
 
@@ -389,8 +455,15 @@ assert vf.fingerprint(["a=1", "subs_sha256=x"]) != vf.fingerprint(["a=1", "subs_
 assert vf.media_relative(606.0, 600.0) == 6.0 and vf.media_relative(6.0, 0.0) == 6.0
 rolling = vf.parse_vtt("WEBVTT\n\n00:00:00.000 --> 00:00:02.000\nhello world\n\n00:00:02.000 --> 00:00:04.000\nhello world\nsecond line\n\n00:00:04.000 --> 00:00:04.010\nhello world\nsecond line\n")
 whisper = vf.parse_whisper_json({"segments": [{"start": 0.0, "end": 2.0, "text": "hello world"}, {"start": 2.0, "end": 4.01, "text": "second line"}]})[0]
+rolling = vf.parse_vtt("WEBVTT\n\n00:00:00.000 --> 00:00:02.000\nhello world\n\n00:00:02.000 --> 00:00:04.000\nhello world\nsecond line\n\n00:00:04.000 --> 00:00:04.010\nhello world\nsecond line\n", rolling=True)
 ra, rb = vf.finalize(rolling, "k", "en")["segments"], vf.finalize(whisper, "k", "en")["segments"]
 assert [(s["text"]) for s in ra] == [s["text"] for s in rb]
+rep = "WEBVTT\n\n00:00:01.000 --> 00:00:02.000\nthank you\n\n00:00:30.000 --> 00:00:31.000\nthank you\n"
+for roll in (False, True):  # a genuine repeat 28 s later keeps both occurrences and their timing
+    r2 = vf.parse_vtt(rep, rolling=roll)
+    assert [(x["start_s"], x["end_s"]) for x in r2] == [(1.0, 2.0), (30.0, 31.0)], (roll, r2)
+assert len(vf.parse_vtt("WEBVTT\n\n00:00:00.000 --> 00:00:02.000\nhi\n\n00:00:02.000 --> 00:00:04.000\nhi\n")) == 2, "non-rolling keeps every cue"
+assert len(vf.parse_vtt("WEBVTT\n\n00:00:00.000 --> 00:00:02.000\nhi\n\n00:00:02.000 --> 00:00:04.000\nhi\n", rolling=True)) == 1, "adjacent rolling cue collapses"
 assert all(abs(x["start_s"] - y["start_s"]) < 0.01 and abs(x["end_s"] - y["end_s"]) < 0.01 for x, y in zip(ra, rb)), (ra, rb)
 
 # ---- resource_limits: host-derived defaults, env wins, floors/ceilings hold ------------------
