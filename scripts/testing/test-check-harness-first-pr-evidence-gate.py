@@ -26,7 +26,7 @@ class TestHarnessFirstPREvidenceGate(unittest.TestCase):
         config_dir = self.repo / "config"
         config_dir.mkdir(parents=True, exist_ok=True)
         (config_dir / "harness-first-high-impact-paths.txt").write_text(
-            "nix/modules/core/options.nix\nscripts/ai/aq-report\n",
+            "nix/modules/core/options.nix\nscripts/ai/aq-report\nrequirements.txt\n",
             encoding="utf-8",
         )
         policy = {
@@ -39,7 +39,11 @@ class TestHarnessFirstPREvidenceGate(unittest.TestCase):
                 "## Rollback Plan",
                 "## Residual Risk",
                 "## Hint Feedback",
-            ]
+            ],
+            "dependabot_manifest_exemption": {
+                "author": "dependabot[bot]",
+                "manifest_globs": ["requirements*.txt", "*.lock", ".github/workflows/*.yml"],
+            },
         }
         (config_dir / "harness-first-policy.json").write_text(json.dumps(policy), encoding="utf-8")
 
@@ -125,6 +129,39 @@ OK
         res = self._run_gate({"BASE_REF": "main"})
         self.assertEqual(res.returncode, 0)
         self.assertIn("harness-first PR evidence gate satisfied", res.stdout)
+
+    def _commit_files(self, branch, files):
+        subprocess.run(["git", "checkout", "-b", branch], cwd=self.repo, check=True)
+        for rel in files:
+            f = self.repo / rel
+            f.parent.mkdir(parents=True, exist_ok=True)
+            f.write_text("change", encoding="utf-8")
+        subprocess.run(["git", "add", "."], cwd=self.repo, check=True)
+        subprocess.run(["git", "commit", "-m", "bump"], cwd=self.repo, check=True, capture_output=True)
+
+    def test_dependabot_manifest_only_passes(self):
+        self._commit_files("dependabot/pip/x", ["requirements.txt", ".github/workflows/test.yml"])
+        res = self._run_gate({"BASE_REF": "main", "PR_AUTHOR": "dependabot[bot]"})
+        self.assertEqual(res.returncode, 0, res.stderr)
+        self.assertIn("dependabot manifest-only exemption", res.stdout)
+
+    def test_dependabot_with_non_manifest_file_fails(self):
+        self._commit_files("dependabot/pip/y", ["requirements.txt", "scripts/ai/aq-report"])
+        res = self._run_gate({"BASE_REF": "main", "PR_AUTHOR": "dependabot[bot]"})
+        self.assertEqual(res.returncode, 1)
+        self.assertIn("no new evidence file was added", res.stderr)
+
+    def test_human_manifest_only_fails(self):
+        self._commit_files("feat/human-bump", ["requirements.txt"])
+        res = self._run_gate({"BASE_REF": "main", "PR_AUTHOR": "someone"})
+        self.assertEqual(res.returncode, 1)
+        res = self._run_gate({"BASE_REF": "main"})
+        self.assertEqual(res.returncode, 1)
+
+    def test_lookalike_author_fails(self):
+        self._commit_files("feat/spoof", ["requirements.txt"])
+        res = self._run_gate({"BASE_REF": "main", "PR_AUTHOR": "dependabot"})
+        self.assertEqual(res.returncode, 1)
 
 
 if __name__ == "__main__":

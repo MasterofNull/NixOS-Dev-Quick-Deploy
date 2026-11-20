@@ -2382,6 +2382,26 @@
         "curl"
       ],
       "ci_workflow": ".github/workflows/test.yml#manifest-tests"
+    },
+    {
+      "id": "gemini-quota-fallback-tests",
+      "cmd": "scripts/testing/test-gemini-quota-fallback.py",
+      "paths": [],
+      "needs": [
+        "python3",
+        "bash"
+      ],
+      "ci_workflow": ".github/workflows/test.yml#manifest-tests"
+    },
+    {
+      "id": "gemini-model-guard-tests",
+      "cmd": "scripts/testing/test-gemini-model-guard.py",
+      "paths": [],
+      "needs": [
+        "python3",
+        "bash"
+      ],
+      "ci_workflow": ".github/workflows/test.yml#manifest-tests"
     }
   ],
   "ci_exempt": [
@@ -2573,7 +2593,7 @@
     {
       "script": "scripts/testing/test-agent-status-integration.py",
       "class": "known-failing",
-      "reason": "fails on main (rc=1): ❌ Some tests failed, tracked in backlog"
+      "reason": "fails on main (rc=1): \u274c Some tests failed, tracked in backlog"
     },
     {
       "script": "scripts/testing/test-ai-coordinator.py",
@@ -2583,7 +2603,7 @@
     {
       "script": "scripts/testing/test-ai-insights-dashboard.py",
       "class": "live-service",
-      "reason": "host-only: needs a live local service (switchboard/dashboard/coordinator/AIDB); last output: ✗ 11 test(s) FAILED"
+      "reason": "host-only: needs a live local service (switchboard/dashboard/coordinator/AIDB); last output: \u2717 11 test(s) FAILED"
     },
     {
       "script": "scripts/testing/test-ai-insights-roadmap-surfaces.py",
@@ -2593,7 +2613,7 @@
     {
       "script": "scripts/testing/test-ai-service-health-monitoring.py",
       "class": "live-service",
-      "reason": "host-only: needs a live local service (switchboard/dashboard/coordinator/AIDB); last output: ✗ 11 test(s) FAILED"
+      "reason": "host-only: needs a live local service (switchboard/dashboard/coordinator/AIDB); last output: \u2717 11 test(s) FAILED"
     },
     {
       "script": "scripts/testing/test-ai-stack-health-monitor.py",
@@ -2663,7 +2683,7 @@
     {
       "script": "scripts/testing/test-chat-intent.py",
       "class": "known-failing",
-      "reason": "fails on main (rc=1): FAIL  single word 'hello' → agentic (conservative default), tracked in backlog"
+      "reason": "fails on main (rc=1): FAIL  single word 'hello' \u2192 agentic (conservative default), tracked in backlog"
     },
     {
       "script": "scripts/testing/test-check-mcp-health-defaults.sh",
@@ -2878,7 +2898,7 @@
     {
       "script": "scripts/testing/test-llm-router-integration.py",
       "class": "known-failing",
-      "reason": "known-failing (2026-11-07): imports and config now load (path + AI_STRICT_ENV fixed), but the script only prints PASS/FAIL and exits 0, so it cannot gate; its Test 2 expects a 'free' tier for 'implement a new REST API endpoint' while the router now returns local (visible '✗ FAIL'). Needs a routing-policy decision, then conversion to real asserts"
+      "reason": "known-failing (2026-11-07): imports and config now load (path + AI_STRICT_ENV fixed), but the script only prints PASS/FAIL and exits 0, so it cannot gate; its Test 2 expects a 'free' tier for 'implement a new REST API endpoint' while the router now returns local (visible '\u2717 FAIL'). Needs a routing-policy decision, then conversion to real asserts"
     },
     {
       "script": "scripts/testing/test-local-agent-offline-resilience.py",

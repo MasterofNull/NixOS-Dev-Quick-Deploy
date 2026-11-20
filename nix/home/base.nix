@@ -26,6 +26,8 @@ let
     else config;
   repoPath = lib.attrByPath ["mySystem" "mcpServers" "repoPath"] "${config.home.homeDirectory}/Documents/NixOS-Dev-Quick-Deploy" systemConfig;
   sharedSkillsDir = "${repoPath}/.agent/skills";
+  # Codex CLI default model: openai.balanced tier of the version SSOT (no literal id here).
+  codexDefaultModel = (builtins.fromJSON (builtins.readFile ../../config/model-coordinator.json)).tiers.openai.balanced;
   # SSOT: mySystem.aiStack.mcpTimeoutScale (options.nix); read by mcp-bridge-hybrid.py.
   mcpTimeoutScale = toString (lib.attrByPath ["mySystem" "aiStack" "mcpTimeoutScale"] 1 systemConfig);
   defaultPortRegistry = {
@@ -2050,6 +2052,7 @@ if changed:
           | .sandbox_workspace_write.exclude_tmpdir_env_var = false
         )
       | .features.hooks = true
+      | .model = "${codexDefaultModel}"
       | .model_auto_compact_token_limit = 50000
       | .model_auto_compact_token_limit_scope = "total"
       | .mcp_servers."hybrid-coordinator" = {
