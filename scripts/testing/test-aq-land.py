@@ -1154,5 +1154,29 @@ class Friction(Base):
         self.land(expect=0)
 
 
+def _flatten(suite):
+    for t in suite:
+        if isinstance(t, unittest.TestSuite):
+            yield from _flatten(t)
+        else:
+            yield t
+
+
+def _run_sharded():
+    """Each test owns a private tempdir/bare origin and shares nothing, so the ~80 subprocess-heavy tests run in parallel
+    shards; serially they exceed the 120 s per-file CI limit (run-test-group.py). AQ_LAND_TEST_JOBS=1 runs serially."""
+    shard = os.environ.get("AQ_LAND_TEST_SHARD")
+    if shard:
+        k, n = map(int, shard.split("/"))
+        tests = sorted(_flatten(unittest.defaultTestLoader.loadTestsFromModule(sys.modules["__main__"])), key=lambda t: t.id())
+        res = unittest.TextTestRunner(verbosity=1).run(unittest.TestSuite(tests[k::n]))
+        sys.exit(0 if res.wasSuccessful() else 1)
+    jobs = int(os.environ.get("AQ_LAND_TEST_JOBS", "0")) or min(8, os.cpu_count() or 1)
+    if jobs <= 1:
+        unittest.main()
+    procs = [subprocess.Popen([sys.executable, __file__], env={**os.environ, "AQ_LAND_TEST_SHARD": f"{k}/{jobs}"}) for k in range(jobs)]
+    sys.exit(1 if any(p.wait() for p in procs) else 0)
+
+
 if __name__ == "__main__":
-    unittest.main()
+    _run_sharded()
