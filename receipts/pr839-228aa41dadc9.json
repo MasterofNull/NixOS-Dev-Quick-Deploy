@@ -1,0 +1,18 @@
+{
+  "schema": 2,
+  "pr": 839,
+  "reviewed_head_sha": "228aa41dadc910d8590fe74a1c5d4a509921dbbf",
+  "run_id": "codex-20261119-163311-guvhw6",
+  "reviewer_lane": "codex",
+  "author_lane": "claude",
+  "verdict": "PASS_WITH_FOLLOWUPS",
+  "reviewer_instance": "Simurg@codex/unknown#codex-20",
+  "author_instance": "Simurg@claude/unknown",
+  "output_file": ".agents/delegation/outputs/codex-20261119-163311-guvhw6.log",
+  "output_sha256": "fe32bf7dc8db856b9fce55fd0c0e0640e6418071ec663b51ba70a90a41cf0a38",
+  "created_at": "2026-11-20T00:35:48Z",
+  "repo": "MasterofNull/NixOS-Dev-Quick-Deploy",
+  "policy_version": "review-receipts/1",
+  "tree": "733a2bb68d66f4ff78e6667958732ce519b20dfe",
+  "base_commit": "60df2e0bef09c4a3ae8ca803447daa33009a7528"
+}
