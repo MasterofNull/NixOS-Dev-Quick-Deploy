@@ -1,0 +1,10 @@
+{
+  "_comment": "Slice-brief cap tiers (read by scripts/ai/lib/brief_caps.py). Override the whole file with AQ_BRIEF_TIERS_FILE. A per-brief caps: block still wins over these. When the lane context size is known (AQ_BRIEF_LANE_CTX, or AQ_BRIEF_LANE_MODEL naming a models entry in config/model-coordinator.json) input caps are clamped to input_fraction of it and output caps to output_fraction.",
+  "default_tier": "medium",
+  "tiers": {
+    "small": {"input_tokens": 2000, "output_tokens": 500, "max_turns": 4},
+    "medium": {"input_tokens": 12000, "output_tokens": 4000, "max_turns": 8},
+    "large": {"input_tokens": 24000, "output_tokens": 8000, "max_turns": 12}
+  },
+  "lane_clamp": {"input_fraction": 0.5, "output_fraction": 0.25}
+}

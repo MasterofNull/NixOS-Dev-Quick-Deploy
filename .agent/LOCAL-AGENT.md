@@ -165,7 +165,7 @@ Enforcement, injection variants and the `FABLE_PARITY=0` kill switch: `.agent/FA
 - Land via `aq-land` (PR only; body Details then What/How/Why), never push `main`; docs ship inside their code PR, never alone; evidence `docs/harness-first/evidence/<date>-<slug>.md`.
 - Resumable trail: RESUME.json + PULSE.log + HANDOFF.md; down lanes catch up via AGENT-CATCHUP-QUEUE.md.
 - sudo/nrs/systemctl = owner acts: give exact copy-paste cmds; no rebuild during DB jobs.
-- Done = enable -> rebuild (`aq-deploy-current`) -> validate live -> peer review -> owner grant; no derelict capabilities; archive only with parity. Dormant features found during work (implemented, never enabled): enable, validate end to end, test, fix what enabling breaks, as an activation slice (Rule 15); owner acts (rebuild/sudo/repo settings) are asked for; risky or contested enables get a recommendation.
+- Done = enable -> rebuild (`aq-deploy-current`) -> validate live -> peer review -> owner grant; no derelict capabilities; archive only with parity. Dormant features found during work (implemented, never enabled): enable, validate end to end, test, fix what enabling breaks, as an activation slice (Rule 15); owner acts (rebuild/sudo/repo settings) are asked for; risky or contested enables get a recommendation. New agents/models/lanes: probe and validate on synthetic data first, start restricted, widen on measured results (`probe-reviewer-lane`).
 - Discover first: CAPABILITY-INDEX.md, `aq-graph-query`, `aq-wiki --section`, `aq-hints`; friction -> `aq-rsi report`.
 - Full text: `canon/blocks/delivery-workflow.md`
 <!-- canon:end delivery-workflow -->
@@ -182,7 +182,7 @@ Enforcement, injection variants and the `FABLE_PARITY=0` kill switch: `.agent/FA
 <!-- canon:begin dependency-hygiene -->
 ## Dependency Hygiene (Canonical — all agents)
 
-- **Security ladder** (trigger: ONLY a failing security gate, scoped to the implicated package; no broad churn): (1) Fixed release -> raise floor; (2) Active upstream, fix unreleased -> mitigate + time-boxed exception (<=90d); (3) Abandoned/stale (>18m no commits) -> migrate to maintained replacement/stdlib; (4) Upstream PRs are owner-authored (propose-not-push).
+- **Security ladder** — **Trigger**: ONLY a failing security gate, scoped to the implicated package; no broad churn. **Ladder**: (1) Fixed release -> raise floor; (2) Active upstream, fix unreleased -> mitigate + time-boxed exception (<=90d); (3) Abandoned/stale (>18m no commits) -> migrate to maintained replacement/stdlib; (4) Upstream PRs are owner-authored (propose-not-push).
 - **Release notes on EVERY version change** (pin bump, flake refresh, package/model swap; owner 2026-11-19): before landing and before rebuild/reboot, diff what moved, read upstream release notes/changelogs for the full range (removed/renamed flags, default changes, config/schema/data migrations), adapt our Nix/flags/configs in the same PR, validate with the real live config (not a stand-in), and list "Upstream changes reviewed" in the PR body.
 <!-- canon:end dependency-hygiene -->
 <!-- canon:begin language-by-role -->
@@ -195,6 +195,6 @@ Enforcement, injection variants and the `FABLE_PARITY=0` kill switch: `.agent/FA
 ## Persona: Simurg (Canonical — all agents)
 
 - One persona, many instances; label `Simurg@<lane>/<model>#<session>` in PULSE, receipts, memory facts. Grounded, candid, kind, skeptical of own output; owner safety > truth > collective > craft.
-- Shared persona never permits self-review: reviewer lane differs from author lane. Not one mind; provider identity stays underneath.
+- Shared persona never permits self-review: reviewer lane differs from author lane. Not one mind. Facts: `.agent/memory/facts/<subject>.md` with the slice; another lane's claim changes only via `owner_reply:`.
 - Full text: `canon/blocks/persona.md`
 <!-- canon:end persona -->

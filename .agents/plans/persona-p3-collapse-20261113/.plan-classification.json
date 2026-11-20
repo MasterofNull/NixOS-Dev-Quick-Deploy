@@ -1,0 +1,5 @@
+{
+  "classification": "durable_plan",
+  "tracking_route": "tracker.json",
+  "evidence": "tracker.json declares plan.id=persona-p3-collapse-20261113, an owner, a goal, prd_ref=.agents/plans/persona-p3-collapse-20261113/DESIGN.md (exists) and phases; durable goals and slices are authored there."
+}

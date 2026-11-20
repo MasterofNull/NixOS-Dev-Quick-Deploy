@@ -107,6 +107,15 @@ fl = st.get("flaky")
 if fl and cmd == fl["cmd"] and bump("n_flaky") <= fl["times"]:
     sys.stderr.write(fl["msg"] + "\n")
     sys.exit(1)
+def move_main(msg):
+    c = f"{S}/cm-{st.get('n_moves', 0)}"
+    st["n_moves"] = st.get("n_moves", 0) + 1
+    save()
+    subprocess.run(["git", "clone", "-q", f"{S}/origin.git", c], check=True)
+    open(f"{c}/moved{st['n_moves']}.txt", "w").write("m\n")
+    subprocess.run(["git", "-C", c, "add", "."], check=True)
+    subprocess.run(["git", "-C", c, "-c", "user.name=x", "-c", "user.email=x@x", "commit", "-q", "-m", msg], check=True)
+    subprocess.run(["git", "-C", c, "push", "-q", "origin", "HEAD:main"], check=True)
 branch_head = lambda b: subprocess.run(["git", "--git-dir", f"{S}/origin.git", "rev-parse", f"refs/heads/{b}"], capture_output=True, text=True).stdout.strip()
 if cmd == "pr list":
     if bump("n_list") == 2:
@@ -122,9 +131,30 @@ elif cmd == "pr create":
 elif cmd == "pr view":
     pr = [p for p in st["prs"] if p["number"] == int(a[2])][0]
     seq = st.get("rollups", [[]])
-    roll = seq.pop(0) if len(seq) > 1 else seq[0]
-    save()
+    roll = seq[0]
+    if "statusCheckRollup" in flag("--json") and len(seq) > 1:
+        seq.pop(0)  # only a status poll consumes the rollup sequence, never a head-only view
+        save()
+    if "mergeStateStatus" in flag("--json"):
+        print(json.dumps({"headRefOid": branch_head(pr["branch"]), "mergeStateStatus": st.get("merge_state", "CLEAN"), "baseRefOid": branch_head("main")}), flush=True)
+        if st.get("move_after_state_view") == bump("n_state"):
+            move_main("main moved between the freshness check and the merge")
+        sys.exit(0)
+    if st.get("main_moves_at_wait") and "statusCheckRollup" in flag("--json") and bump("n_wait") == 1:
+        move_main("main moved after CI")
     print(json.dumps({"headRefOid": st.get("head_override") or branch_head(pr["branch"]), "state": pr["state"], "body": pr["body"], "statusCheckRollup": roll}))
+elif cmd == "pr update-branch":
+    bump("updates")
+    pr = [p for p in st["prs"] if p["number"] == int(a[2])][0]
+    c = f"{S}/c3-{st['updates']}"
+    subprocess.run(["git", "clone", "-q", "-b", pr["branch"], f"{S}/origin.git", c], check=True)
+    subprocess.run(["git", "-C", c, "-c", "user.name=x", "-c", "user.email=x@x", "merge", "-q", "--no-ff", "-m", "Merge main", "origin/main"], check=True)
+    subprocess.run(["git", "-C", c, "push", "-q", "origin", "HEAD"], check=True)
+    if st.get("after_update_rollups"):
+        st["rollups"] = st.pop("after_update_rollups")
+        save()
+    if st.get("keep_moving"):
+        move_main("main moved again")
 elif cmd == "pr edit":
     [p for p in st["prs"] if p["number"] == int(a[2])][0]["body"] = open(flag("--body-file")).read()
     save()
@@ -143,7 +173,7 @@ elif a[0] == "api":
     if "required_status_checks" in a[1]:
         if st.get("required") is None:
             sys.exit(1)
-        print(json.dumps({"contexts": st["required"]}))
+        print(json.dumps({"contexts": st["required"], "strict": st.get("strict", False)}))
     else:
         print(json.dumps(st["jobs"][a[1].rsplit("/", 1)[1]]))
 else:
@@ -914,6 +944,123 @@ class Checks(Base):
         self.assertEqual(self.ghs()["merges"], 1)
 
 
+class MergeFreshness(Base):
+    """G0: a PR whose CI ran on an older main is updated and re-checked, never merged on stale results."""
+    OK = [{"name": "test", "status": "COMPLETED", "conclusion": "SUCCESS"}, RD_OK]
+
+    def jsonl(self):
+        p = self.S / "deleg/outputs/aq-land/merge-freshness.jsonl"
+        return [json.loads(l) for l in p.read_text().splitlines()] if p.exists() else []
+
+    def test_up_to_date_pr_merges_without_update(self):
+        self.gh_state({})
+        self.land(expect=0)
+        st = self.ghs()
+        self.assertEqual((st["merges"], st.get("updates", 0)), (1, 0))
+        row = self.jsonl()[0]
+        self.assertEqual((row["pr"], row["was_behind"], row["updates"], row["extra_ci_wait_s"], row["merged"]), (77, False, 0, 0, True))
+
+    def test_behind_pr_is_updated_rechecked_then_merged(self):
+        self.gh_state({"main_moves_at_wait": True, "after_update_rollups": [[{"name": "test", "status": "IN_PROGRESS", "detailsUrl": "https://x/nojob"}, RD_OK], self.OK]})
+        r = self.land(expect=0)
+        st = self.ghs()
+        self.assertEqual((st["updates"], st["merges"]), (1, 1))
+        self.assertIn("is behind origin/main; updating", r.stdout)
+        calls = st["calls"]
+        self.assertLess(calls.index("pr update-branch 77"), len(calls) - 1 - calls[::-1].index("pr merge 77"))
+        row = self.jsonl()[0]
+        self.assertEqual((row["was_behind"], row["updates"], row["merged"]), (True, 1, True))
+        self.assertGreater(row["extra_ci_wait_s"], 0)
+
+    def test_resumed_settled_path_also_updates_when_behind(self):
+        self.gh_state({"required": ["never-reported"]})
+        self.land(expect=1)  # PR pushed, reviewed, receipted; stops at checks
+        g = self.ghs()
+        g.update({"required": ["test"], "main_moves_at_wait": True, "after_update_rollups": [self.OK]})
+        (self.S / "gh.json").write_text(json.dumps(g))
+        r = self.land(expect=0)
+        self.assertIn("resuming PR #77", r.stdout)
+        st = self.ghs()
+        self.assertEqual((st["updates"], st["merges"], st["creates"]), (1, 1, 1))
+        self.assertEqual(len(self.calls("gemini")), 1)  # the update kept the review; no second one
+
+    def test_update_bound_exhausted_stops_without_merging(self):
+        self.gh_state({"main_moves_at_wait": True, "keep_moving": True, "after_update_rollups": [self.OK]})
+        r = self.land("--max-updates", "1", expect=1)
+        self.assertIn("still behind origin/main after 1 update(s)", self.stop_line(r))
+        st = self.ghs()
+        self.assertEqual(st["updates"], 1)
+        self.assertNotIn("merges", st)
+        row = self.jsonl()[0]
+        self.assertEqual((row["was_behind"], row["merged"]), (True, False))
+
+    def test_main_advancing_after_the_check_is_caught_by_the_final_recheck(self):
+        self.gh_state({"move_after_state_view": 1, "after_update_rollups": [self.OK]})
+        self.land(expect=0)
+        st = self.ghs()
+        self.assertEqual((st["updates"], st["merges"]), (1, 1))
+
+    def test_non_strict_protection_is_flagged_and_logged(self):
+        self.gh_state({})
+        r = self.land(expect=0)
+        self.assertIn("main protection is not strict", r.stdout)
+        self.assertIs(self.jsonl()[0]["strict"], False)
+
+    def test_strict_protection_has_no_warning(self):
+        self.gh_state({"strict": True})
+        r = self.land(expect=0)
+        self.assertNotIn("not strict", r.stdout)
+        self.assertIs(self.jsonl()[0]["strict"], True)
+
+    def test_resume_adopts_a_github_update_instead_of_a_second_merge(self):
+        self.gh_state({"required": ["never-reported"]})
+        self.land(expect=1)  # PR pushed, reviewed, receipted; stops at checks
+        c = self.S / "c9"
+        gi = ["git", "-C", str(c), "-c", "user.name=x", "-c", "user.email=x@x"]
+        subprocess.run(["git", "clone", "-q", str(self.S / "origin.git"), str(c)], check=True)
+        (c / "m.txt").write_text("m\n")
+        subprocess.run([*gi, "add", "."], check=True)
+        subprocess.run([*gi, "commit", "-qm", "main moves"], check=True)
+        subprocess.run([*gi, "push", "-q", "origin", "HEAD:main"], check=True)
+        subprocess.run([*gi, "checkout", "-q", "-b", "pr", "origin/" + self.g("rev-parse", "--abbrev-ref", "HEAD")], check=True)
+        subprocess.run([*gi, "merge", "-q", "--no-ff", "-m", "Merge main", "origin/main"], check=True)
+        subprocess.run([*gi, "push", "-q", "origin", "HEAD:" + self.g("rev-parse", "--abbrev-ref", "HEAD")], check=True)  # what GitHub update-branch did
+        g = self.ghs()
+        g.update({"required": ["test"]})
+        (self.S / "gh.json").write_text(json.dumps(g))
+        r = self.land(expect=0)
+        self.assertIn("adopted the PR branch update", r.stdout)
+        st = self.ghs()
+        self.assertEqual((st.get("updates", 0), st["merges"]), (0, 1))
+        self.assertEqual(len(self.calls("gemini")), 1)
+        merges = self.g("rev-list", "--merges", "--count", "origin/main..HEAD")
+        self.assertEqual(merges, "1")
+
+    def test_after_an_update_the_ordinary_checks_must_reappear(self):
+        self.env["AQ_LAND_CHECKS_TIMEOUT_S"] = "4"
+        # protection requires ONLY review-disposition: the wait for "test" can come solely from the carry-forward
+        self.gh_state({"required": ["review-disposition"], "main_moves_at_wait": True, "after_update_rollups": [[RD_OK]]})
+        r = self.land(expect=1)
+        self.assertIn("timed out waiting for: test", self.stop_line(r))
+        self.assertNotIn("merges", self.ghs())
+
+    def test_carried_checks_survive_an_interrupted_run(self):
+        self.env["AQ_LAND_CHECKS_TIMEOUT_S"] = "3"
+        self.gh_state({"required": ["review-disposition"], "main_moves_at_wait": True, "after_update_rollups": [[RD_OK]]})
+        self.land(expect=1)  # updated, then stopped waiting for the ordinary check
+        cp = json.loads(next(self.S.glob("**/checkpoint.json")).read_text())
+        self.assertEqual(cp["expected_checks"]["names"], ["test"])
+        g = self.ghs()
+        g.update({"rollups": [[RD_OK], [RD_OK], self.OK]})  # a rerun's first polls still lack "test"
+        (self.S / "gh.json").write_text(json.dumps(g))
+        self.land(expect=0)
+        st = self.ghs()
+        self.assertEqual(st["merges"], 1)
+        self.assertEqual(st["rollups"], [self.OK])  # the rerun polled past both review-only rollups instead of merging on the first
+        cp = json.loads(next(self.S.glob("**/checkpoint.json")).read_text())
+        self.assertIsNone(cp.get("expected_checks"))
+
+
 class Friction(Base):
     """aq-land delivery-friction fixes of 2026-11-14 (issues-backlog, AQ-LAND)."""
 
@@ -978,5 +1125,29 @@ class Friction(Base):
         self.land(expect=0)
 
 
+def _flatten(suite):
+    for t in suite:
+        if isinstance(t, unittest.TestSuite):
+            yield from _flatten(t)
+        else:
+            yield t
+
+
+def _run_sharded():
+    """Each test owns a private tempdir/bare origin and shares nothing, so the ~80 subprocess-heavy tests run in parallel
+    shards; serially they exceed the 120 s per-file CI limit (run-test-group.py). AQ_LAND_TEST_JOBS=1 runs serially."""
+    shard = os.environ.get("AQ_LAND_TEST_SHARD")
+    if shard:
+        k, n = map(int, shard.split("/"))
+        tests = sorted(_flatten(unittest.defaultTestLoader.loadTestsFromModule(sys.modules["__main__"])), key=lambda t: t.id())
+        res = unittest.TextTestRunner(verbosity=1).run(unittest.TestSuite(tests[k::n]))
+        sys.exit(0 if res.wasSuccessful() else 1)
+    jobs = int(os.environ.get("AQ_LAND_TEST_JOBS", "0")) or min(8, os.cpu_count() or 1)
+    if jobs <= 1 or len(sys.argv) > 1:  # selectors and unittest flags need plain unittest semantics
+        unittest.main()
+    procs = [subprocess.Popen([sys.executable, __file__], env={**os.environ, "AQ_LAND_TEST_SHARD": f"{k}/{jobs}"}) for k in range(jobs)]
+    sys.exit(1 if any(p.wait() for p in procs) else 0)
+
+
 if __name__ == "__main__":
-    unittest.main()
+    _run_sharded()
