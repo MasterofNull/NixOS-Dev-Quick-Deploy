@@ -2127,6 +2127,7 @@
         "scripts/testing/test-worktree-write-guard.py",
         "scripts/testing/test-write-region.py",
         "scripts/testing/test-safety-layer.py",
+        "scripts/testing/test-safety-proposals-repo-root.py",
         "scripts/testing/test-search-router-collection-timeouts.py",
         "scripts/testing/test-security-workflow-integration.py",
         "scripts/testing/test-task-classifier-local-continuation.py",
@@ -2146,6 +2147,7 @@
       "tests": [
         "scripts/testing/test-safety-gate.py",
         "scripts/testing/test-safety-layer.py",
+        "scripts/testing/test-safety-proposals-repo-root.py",
         "scripts/testing/test-scheduler-context-issuer.py",
         "scripts/testing/test-scheduler-context-ledger.py",
         "scripts/testing/test-scheduler-lease-gate.py",
