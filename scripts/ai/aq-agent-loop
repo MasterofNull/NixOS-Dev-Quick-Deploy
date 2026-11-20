@@ -381,6 +381,7 @@ async def run_task(
     role: str | None = None,
     tool_manifest: str = "full",
     task_type: str | None = None,
+    max_tokens: int | None = None,
 ) -> int:
     """Run the agent loop. Returns 0 on success, 1 on failure."""
     del max_calls
@@ -404,11 +405,12 @@ async def run_task(
         # (30 min) still bounds a true single-slot wedge. Warm cache -> first token ~1s.
         str(max(420.0, min(1800.0, float(timeout_secs) * 0.5))),
     )
-    # Token budget per LLM call. Tool-call JSON fits in 512; analysis/research output
-    # needs 1200+ to produce a complete artifact (ranked lists, summaries, COMPLETED: signal).
-    # research/deep_reasoning tasks get 2048 to avoid truncated final reports.
-    # Slot-lock risk: 2048 @ 1-2 tok/s ≈ 17-34 min worst case — acceptable for overnight runs.
-    if not os.environ.get("LLAMA_MAX_TOKENS"):
+    # Token budget per LLM call. Explicit --max-tokens overrides ambient LLAMA_MAX_TOKENS.
+    # Otherwise tool-call JSON fits in 512; analysis/research output needs 1200+ (2048 for
+    # research/deep_reasoning) to avoid truncated final reports.
+    if max_tokens is not None and max_tokens > 0:
+        os.environ["LLAMA_MAX_TOKENS"] = str(max_tokens)
+    elif not os.environ.get("LLAMA_MAX_TOKENS"):
         _task_type_default = task_type or ""
         if _task_type_default in ("research", "deep_reasoning"):
             os.environ["LLAMA_MAX_TOKENS"] = "2048"
@@ -453,6 +455,7 @@ async def run_task(
         quality_critical=False,
         role=role,       # None = auto-assign from AGENT_TYPE_DEFAULT_ROLE mapping
         task_type=task_type,  # None = default agent profile; "research"/"deep_reasoning" enable thinking
+        max_tokens=max_tokens,
         context={
             "local_skill_projection_status": skill_projection.status,
             "local_skill_names": list(skill_projection.skill_names),
@@ -677,6 +680,8 @@ def main() -> int:
     parser.add_argument("--task",       help="Coding task objective")
     parser.add_argument("--output",     help="Write JSON result to this file")
     parser.add_argument("--max-calls",  type=int, default=0, help="Deprecated compatibility flag; ignored")
+    parser.add_argument("--max-tokens", type=int, default=None,
+                        help="Output token budget per generation (overrides LLAMA_MAX_TOKENS)")
     parser.add_argument("--fallback",   action="store_true", help="Allow remote fallback if local fails")
     parser.add_argument("--llama-url", default=None,
                         help="Explicit inference endpoint (overrides the default + --direct).")
@@ -721,6 +726,8 @@ def main() -> int:
 
     if not args.task:
         parser.error("--task is required (or use --list-tools)")
+    if args.max_tokens is not None and args.max_tokens <= 0:
+        parser.error("--max-tokens must be positive")
 
     # Orphan reaper backstop: absolute self-kill deadline (env-tunable). Generous so
     # legitimate long runs are not cut, but finite so an orphaned/wedged run cannot
@@ -757,6 +764,7 @@ def main() -> int:
         role=args.role,
         tool_manifest=args.tool_manifest,
         task_type=args.task_type,
+        max_tokens=args.max_tokens,
     ))
 
 
