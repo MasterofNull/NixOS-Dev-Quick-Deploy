@@ -42,6 +42,7 @@ ignore:
     reason: "RedHat-specific packaging repackage flaw; not upstream OpenSSH [WR-SEC-12] expires=2027-02-15"
 
   - vulnerability: CVE-2026-3497
+    fix-state: not-fixed
     package:
       name: openssh
     reason: "No upstream fix published; installed OpenSSH 10.5p1 is latest upstream [WR-SEC-11] expires=2027-02-15"
@@ -56,71 +57,85 @@ ignore:
   - vulnerability: CVE-2011-3045
     package:
       name: libpng
+      version: "1.2.59"
     reason: "Legacy libpng 1.2.59 contained strictly to appimage-run bubblewrap sandbox; system libpng is 1.6.58 [WR-SEC-10] expires=2027-02-15"
 
   - vulnerability: CVE-2013-6954
     package:
       name: libpng
+      version: "1.2.59"
     reason: "Legacy libpng 1.2.59 contained strictly to appimage-run bubblewrap sandbox; system libpng is 1.6.58 [WR-SEC-10] expires=2027-02-15"
 
   - vulnerability: CVE-2013-7353
     package:
       name: libpng
+      version: "1.2.59"
     reason: "Legacy libpng 1.2.59 contained strictly to appimage-run bubblewrap sandbox; system libpng is 1.6.58 [WR-SEC-10] expires=2027-02-15"
 
   - vulnerability: CVE-2013-7354
     package:
       name: libpng
+      version: "1.2.59"
     reason: "Legacy libpng 1.2.59 contained strictly to appimage-run bubblewrap sandbox; system libpng is 1.6.58 [WR-SEC-10] expires=2027-02-15"
 
   - vulnerability: CVE-2014-9495
     package:
       name: libpng
+      version: "1.2.59"
     reason: "Legacy libpng 1.2.59 contained strictly to appimage-run bubblewrap sandbox; system libpng is 1.6.58 [WR-SEC-10] expires=2027-02-15"
 
   - vulnerability: CVE-2015-0973
     package:
       name: libpng
+      version: "1.2.59"
     reason: "Legacy libpng 1.2.59 contained strictly to appimage-run bubblewrap sandbox; system libpng is 1.6.58 [WR-SEC-10] expires=2027-02-15"
 
   - vulnerability: CVE-2016-3751
     package:
       name: libpng
+      version: "1.2.59"
     reason: "Legacy libpng 1.2.59 contained strictly to appimage-run bubblewrap sandbox; system libpng is 1.6.58 [WR-SEC-10] expires=2027-02-15"
 
   - vulnerability: CVE-2017-12652
     package:
       name: libpng
+      version: "1.2.59"
     reason: "Legacy libpng 1.2.59 contained strictly to appimage-run bubblewrap sandbox; system libpng is 1.6.58 [WR-SEC-10] expires=2027-02-15"
 
   - vulnerability: CVE-2025-64505
     package:
       name: libpng
+      version: "1.2.59"
     reason: "Legacy libpng 1.2.59 contained strictly to appimage-run bubblewrap sandbox; system libpng is 1.6.58 [WR-SEC-10] expires=2027-02-15"
 
   - vulnerability: CVE-2026-22695
     package:
       name: libpng
+      version: "1.2.59"
     reason: "Legacy libpng 1.2.59 contained strictly to appimage-run bubblewrap sandbox; system libpng is 1.6.58 [WR-SEC-10] expires=2027-02-15"
 
   - vulnerability: CVE-2026-22801
     package:
       name: libpng
+      version: "1.2.59"
     reason: "Legacy libpng 1.2.59 contained strictly to appimage-run bubblewrap sandbox; system libpng is 1.6.58 [WR-SEC-10] expires=2027-02-15"
 
   - vulnerability: CVE-2026-25646
     package:
       name: libpng
+      version: "1.2.59"
     reason: "Legacy libpng 1.2.59 contained strictly to appimage-run bubblewrap sandbox; system libpng is 1.6.58 [WR-SEC-10] expires=2027-02-15"
 
   - vulnerability: CVE-2026-33416
     package:
       name: libpng
+      version: "1.2.59"
     reason: "Legacy libpng 1.2.59 contained strictly to appimage-run bubblewrap sandbox; system libpng is 1.6.58 [WR-SEC-10] expires=2027-02-15"
 
   - vulnerability: CVE-2026-34757
     package:
       name: libpng
+      version: "1.2.59"
     reason: "Legacy libpng 1.2.59 contained strictly to appimage-run bubblewrap sandbox; system libpng is 1.6.58 [WR-SEC-10] expires=2027-02-15"
 
 
@@ -128,71 +143,85 @@ ignore:
   - vulnerability: CVE-2024-11403
     package:
       name: libjxl
+      version: "0.8.2"
     reason: "Contained WebKit browser test runner dependency bundled by upstream Playwright; system libjxl is modern [WR-SEC-10] expires=2027-02-15"
 
   - vulnerability: CVE-2024-11498
     package:
       name: libjxl
+      version: "0.8.2"
     reason: "Contained WebKit browser test runner dependency bundled by upstream Playwright; system libjxl is modern [WR-SEC-10] expires=2027-02-15"
 
   - vulnerability: CVE-2025-12474
     package:
       name: libjxl
+      version: "0.8.2"
     reason: "Contained WebKit browser test runner dependency bundled by upstream Playwright; system libjxl is modern [WR-SEC-10] expires=2027-02-15"
 
   - vulnerability: CVE-2025-7425
     package:
       name: libxml2
+      version: "2.13.9"
     reason: "Contained WebKit browser test runner dependency bundled by upstream Playwright; system libxml2 is modern [WR-SEC-10] expires=2027-02-15"
 
   - vulnerability: CVE-2025-8732
     package:
       name: libxml2
+      version: "2.13.9"
     reason: "Contained WebKit browser test runner dependency bundled by upstream Playwright; system libxml2 is modern [WR-SEC-10] expires=2027-02-15"
 
   - vulnerability: CVE-2026-6732
     package:
       name: libxml2
+      version: "2.13.9"
     reason: "Contained WebKit browser test runner dependency bundled by upstream Playwright; system libxml2 is modern [WR-SEC-10] expires=2027-02-15"
 
   - vulnerability: CVE-2026-86137
     package:
       name: libxml2
+      version: "2.13.9"
     reason: "Contained WebKit browser test runner dependency bundled by upstream Playwright; system libxml2 is modern [WR-SEC-10] expires=2027-02-15"
 
   - vulnerability: CVE-2026-86138
     package:
       name: libxml2
+      version: "2.13.9"
     reason: "Contained WebKit browser test runner dependency bundled by upstream Playwright; system libxml2 is modern [WR-SEC-10] expires=2027-02-15"
 
   - vulnerability: CVE-2026-86139
     package:
       name: libxml2
+      version: "2.13.9"
     reason: "Contained WebKit browser test runner dependency bundled by upstream Playwright; system libxml2 is modern [WR-SEC-10] expires=2027-02-15"
 
   - vulnerability: CVE-2026-86140
     package:
       name: libxml2
+      version: "2.13.9"
     reason: "Contained WebKit browser test runner dependency bundled by upstream Playwright; system libxml2 is modern [WR-SEC-10] expires=2027-02-15"
 
   - vulnerability: CVE-2026-86141
     package:
       name: libxml2
+      version: "2.13.9"
     reason: "Contained WebKit browser test runner dependency bundled by upstream Playwright; system libxml2 is modern [WR-SEC-10] expires=2027-02-15"
 
   - vulnerability: CVE-2026-86142
     package:
       name: libxml2
+      version: "2.13.9"
     reason: "Contained WebKit browser test runner dependency bundled by upstream Playwright; system libxml2 is modern [WR-SEC-10] expires=2027-02-15"
 
   - vulnerability: CVE-2026-86143
     package:
       name: libxml2
+      version: "2.13.9"
     reason: "Contained WebKit browser test runner dependency bundled by upstream Playwright; system libxml2 is modern [WR-SEC-10] expires=2027-02-15"
 
   - vulnerability: CVE-2026-86144
     package:
       name: libxml2
+      version: "2.13.9"
     reason: "Contained WebKit browser test runner dependency bundled by upstream Playwright; system libxml2 is modern [WR-SEC-10] expires=2027-02-15"
 
 
