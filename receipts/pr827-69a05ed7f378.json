@@ -1,0 +1,18 @@
+{
+  "schema": 2,
+  "pr": 827,
+  "reviewed_head_sha": "69a05ed7f3781e209a52a96497ef967f7adbf9c7",
+  "run_id": "claude-20261119-193157-irestm",
+  "reviewer_lane": "claude",
+  "author_lane": "gemini",
+  "verdict": "PASS_WITH_FOLLOWUPS",
+  "reviewer_instance": "Simurg@claude/claude-sonnet-5-5#claude-2",
+  "author_instance": "Simurg@gemini/unknown",
+  "output_file": ".agents/delegation/outputs/claude-20261119-193157-irestm.log",
+  "output_sha256": "26fe5ea808508e28d9847822e85d75ab64ba07f5d330d820d6abb471ad761f9e",
+  "created_at": "2026-11-20T03:35:15Z",
+  "repo": "MasterofNull/NixOS-Dev-Quick-Deploy",
+  "policy_version": "review-receipts/1",
+  "tree": "407886c8fb2377f18c50d2c12d36a33fcba56983",
+  "base_commit": "09e2b6da1a8626405a3c1bda20ce3ab9a3119318"
+}
