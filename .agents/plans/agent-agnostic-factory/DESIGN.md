@@ -6,7 +6,7 @@ agent agnostic; no roles/funnels/gates permanently tied through one model/agent,
 progresses even when one model/agent is unavailable. A cache/queue lets a returning model/agent play
 catch-up and add its inputs to the dev changes it missed. Fully agentic software factory, model/agent
 agnostic, locally-hosted focused."
-**SSOT principle:** `memory/feedback-agent-agnostic-roles-and-catchup.md`.
+**SSOT principle:** auto-memory note `feedback-agent-agnostic-roles-and-catchup` (outside the repo).
 
 ## 1. Problem
 
@@ -20,10 +20,10 @@ is down (quota, sandbox, degraded route), the pipeline stalls or scrambles. The 
 ### 2.1 Role-eligibility routing (no permanent binding)
 
 For each role instance, an **eligibility router** picks the agent at dispatch time:
-- **Availability:** lane reachable, not quota-exhausted, route healthy (probe/cooldown-aware).
+- **Availability:** tracked per MODEL (quota, token limits, session windows), not per lane/provider: lane reachable, model not quota-exhausted, route healthy (probe/cooldown-aware). One model out never marks its lane or other models unavailable; re-scope prompt/scope/task/payload to a still-available model without lowering quality. Known gaps (owner directive 2026-11-19): the Codex quota cooldown is lane-wide and the Gemini fallback skips the Neon family; tracked as LANE-AVAILABILITY-NOT-PER-MODEL in `.agent/memory/issues-backlog.md`; until fixed, check per-model availability by hand (delegate-to-* `--model`/`--model-tier`).
 - **Capability + tier:** role-matrix role × `config/model-coordinator.json` tier ladder.
 - **Independence:** never self-review; a fresh session distinct from the producer.
-- **Cost:** cheapest eligible (Rule 17).
+- **Cost:** most cost-effective correct lane (Rule 17): correctness first, then cost-effectiveness; a cheap result that must be redone is not cost-effective.
 The router outputs `{role, chosen_agent, reason, alternates[]}`. If the first choice is down, it selects
 the next eligible and **records the substitution + a catch-up entry** for the down agent. Local Qwen is
 the always-available floor (never-skip-local): it always gets a parallel advisory slot even when a
