@@ -26,6 +26,8 @@ let
     else config;
   repoPath = lib.attrByPath ["mySystem" "mcpServers" "repoPath"] "${config.home.homeDirectory}/Documents/NixOS-Dev-Quick-Deploy" systemConfig;
   sharedSkillsDir = "${repoPath}/.agent/skills";
+  # Codex CLI default model: openai.balanced tier of the version SSOT (no literal id here).
+  codexDefaultModel = (builtins.fromJSON (builtins.readFile ../../config/model-coordinator.json)).tiers.openai.balanced;
   # SSOT: mySystem.aiStack.mcpTimeoutScale (options.nix); read by mcp-bridge-hybrid.py.
   mcpTimeoutScale = toString (lib.attrByPath ["mySystem" "aiStack" "mcpTimeoutScale"] 1 systemConfig);
   defaultPortRegistry = {
@@ -100,6 +102,8 @@ let
   # can find their respective CLIs (gemini, codex) when VSCodium is launched
   # from the desktop (where the shell profile may not have run yet).
   terminfoDir = "/run/current-system/sw/share/terminfo";
+  claudeCodeStateDir = "${config.xdg.stateHome}/claude-code";
+  claudeCodeTmpDir = "${claudeCodeStateDir}/tmp";
   vscodiumPathValue = "${config.home.homeDirectory}/.local/bin:${config.home.homeDirectory}/.npm-global/bin:${config.home.homeDirectory}/.nix-profile/bin:/run/current-system/sw/bin:\${env:PATH}";
   vscodiumAiEnv = [
     {
@@ -866,7 +870,21 @@ in {
     # Playwright — use nix-installed chromium; never download browsers at runtime
     PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD = "1";
     CHROMIUM_PATH = "${pkgs.chromium}/bin/chromium";
+    # Claude Code defaults its temp root to os.tmpdir() (/tmp, tmpfs here), which
+    # wipes subagent transcripts and task outputs on reboot.
+    CLAUDE_CODE_TMPDIR = claudeCodeTmpDir;
   };
+
+  # Same value for GUI terminals and user units (environment.d), not only login shells.
+  systemd.user.sessionVariables.CLAUDE_CODE_TMPDIR = claudeCodeTmpDir;
+
+  # Durable Claude Code state dirs. No age field: retention archives before removal
+  # (S0b), so tmpfiles must never delete here.
+  systemd.user.tmpfiles.rules = [
+    "d ${claudeCodeStateDir} 0700 - - -"
+    "d ${claudeCodeTmpDir} 0700 - - -"
+    "d ${claudeCodeStateDir}/archive 0700 - - -"
+  ];
 
   home.sessionPath = [
     "$HOME/.local/bin"
@@ -2034,6 +2052,7 @@ if changed:
           | .sandbox_workspace_write.exclude_tmpdir_env_var = false
         )
       | .features.hooks = true
+      | .model = "${codexDefaultModel}"
       | .model_auto_compact_token_limit = 50000
       | .model_auto_compact_token_limit_scope = "total"
       | .mcp_servers."hybrid-coordinator" = {

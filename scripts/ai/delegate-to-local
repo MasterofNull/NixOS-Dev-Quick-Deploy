@@ -326,6 +326,33 @@ case "${SUBCMD:-}" in
         ID="$(task_id)"
         OUTPUT_FILE="$DELEGATION_DIR/outputs/${ID}.log"
 
+        # Frugal-SOTA S1: attach a deterministic context packet for repo files the prompt names, so the
+        # small local window gets signatures and target bodies instead of whole files. Fail-open: any
+        # error, empty result or oversize prompt leaves the prompt untouched. Kill switch AQ_CONTEXT_PACKET=0.
+        if [[ "${AQ_CONTEXT_PACKET:-1}" != "0" && "${#PROMPT}" -lt 8000 ]]; then
+            _CP_FILES="$(python3 -c '
+import re, sys
+from pathlib import Path
+root = Path(sys.argv[2])
+seen = []
+for tok in re.findall(r"[A-Za-z0-9_./-]+", sys.argv[1]):
+    if "/" not in tok or tok in seen:
+        continue
+    f = (root / tok).resolve()
+    if f.is_file() and root in f.parents and f.stat().st_size < 400000:
+        seen.append(tok)
+print("\n".join(seen[:3]))
+' "$PROMPT" "$REPO_ROOT" 2>/dev/null || true)"
+            if [[ -n "$_CP_FILES" ]]; then
+                mapfile -t _CP_ARR <<<"$_CP_FILES"
+                _CP_OUT="$(cd "$REPO_ROOT" && timeout 10 python3 "$SCRIPT_DIR/aq-context-packet" "${_CP_ARR[@]}" 2>/dev/null)" || _CP_OUT=""
+                if [[ -n "$_CP_OUT" ]]; then
+                    PROMPT="${PROMPT}"$'\n\n'"--- context packet (aq-context-packet) ---"$'\n'"${_CP_OUT}"
+                    info "Context packet attached: ${#_CP_ARR[@]} file(s)"
+                fi
+            fi
+        fi
+
         info "Delegating task: $ID"
         info "Routing mode:    $MODE"
         info "Role:            $ROLE"
@@ -485,7 +512,7 @@ print(classify_mode(sys.argv[1]))
             info "Running in blocking mode (timeout: ${TIMEOUT}s)..."
             DISPATCH_OK=true
             if [[ -n "$WT_PATH" ]]; then
-                ( cd "$WT_PATH" && "${_DISPATCH_ARGS[@]}" ) || DISPATCH_OK=false
+                ( cd "$WT_PATH" && REPO_ROOT="$WT_PATH" "${_DISPATCH_ARGS[@]}" ) || DISPATCH_OK=false
             else
                 "${_DISPATCH_ARGS[@]}" || DISPATCH_OK=false
             fi
@@ -562,7 +589,7 @@ print(classify_mode(sys.argv[1]))
             # background-mode case).
             if source "$SCRIPT_DIR/lib/sleep-inhibit.sh" 2>/dev/null; then aq_sleep_inhibit_prefix "$ID"; else AQ_INHIBIT_PREFIX=(); echo "WARN: sleep-inhibit.sh not sourceable; task runs without an idle inhibitor" >&2; fi
             if [[ -n "$WT_PATH" ]]; then
-                setsid "${AQ_INHIBIT_PREFIX[@]}" bash -c "child_rc=0; cd $(printf '%q' "$WT_PATH") && $(printf '%q ' "${_DISPATCH_ARGS[@]}") || child_rc=\$?; handback_rc=0; $(printf '%q' "$SCRIPT_PATH") --internal-worktree-handback $(printf '%q' "$ID") $(printf '%q' "$WT_PATH") $(printf '%q' "$WT_BRANCH") >/dev/null 2>&1 || handback_rc=\$?; [[ \$handback_rc -eq 0 ]] || exit \$handback_rc; exit \$child_rc" > /dev/null 2>&1 &
+                setsid "${AQ_INHIBIT_PREFIX[@]}" bash -c "child_rc=0; cd $(printf '%q' "$WT_PATH") && REPO_ROOT=$(printf '%q' "$WT_PATH") $(printf '%q ' "${_DISPATCH_ARGS[@]}") || child_rc=\$?; handback_rc=0; $(printf '%q' "$SCRIPT_PATH") --internal-worktree-handback $(printf '%q' "$ID") $(printf '%q' "$WT_PATH") $(printf '%q' "$WT_BRANCH") >/dev/null 2>&1 || handback_rc=\$?; [[ \$handback_rc -eq 0 ]] || exit \$handback_rc; exit \$child_rc" > /dev/null 2>&1 &
             else
                 setsid "${AQ_INHIBIT_PREFIX[@]}" "${_DISPATCH_ARGS[@]}" > /dev/null 2>&1 &
             fi
