@@ -302,8 +302,8 @@ _USER_EVENTS_SPOOL = _HERE.parent.parent.parent / ".agents" / "telemetry" / "hyb
 def _emit_training_event(
     query: str,
     response: str,
-    tokens_in: int,
-    tokens_out: int,
+    tokens_in: Optional[int],
+    tokens_out: Optional[int],
     role: Optional[str],
 ) -> None:
     """Append an agent_step_complete event so training_ingest.py can pick it up.
@@ -699,7 +699,8 @@ class DirectRunner:
         )
         try:
             with _gen_span as _span, urllib.request.urlopen(req, timeout=config.timeout_secs) as resp:
-                tokens_in = tokens_out = 0
+                tokens_in: Optional[int] = None
+                tokens_out: Optional[int] = None
                 _stream_toks = 0  # content-chunk count; proxy for tokens_out mid-stream
                 _finish_reason = None
                 resp.fp.raw._sock.settimeout(config.timeout_secs)
@@ -745,10 +746,12 @@ class DirectRunner:
                                             first_visible_content_observation="output_file_flush",
                                         )
                                     _stream_toks += 1
-                            usage = chunk.get("usage") or {}
-                            if usage:
-                                tokens_in = usage.get("prompt_tokens", tokens_in)
-                                tokens_out = usage.get("completion_tokens", tokens_out)
+                            usage = chunk.get("usage")
+                            if isinstance(usage, dict) and usage:
+                                if usage.get("prompt_tokens") is not None:
+                                    tokens_in = usage.get("prompt_tokens")
+                                if usage.get("completion_tokens") is not None:
+                                    tokens_out = usage.get("completion_tokens")
                             # Progress sidecar: update every 10 content tokens
                             if _stream_toks > 0 and _stream_toks % 10 == 0:
                                 elapsed = time.monotonic() - _start
@@ -762,10 +765,10 @@ class DirectRunner:
 
             _release_queue_slot()
             _request_completed = time.monotonic()
-            final_toks = tokens_out or _stream_toks
+            progress_toks = tokens_out if tokens_out is not None else _stream_toks
             elapsed = time.monotonic() - _start
-            tps = final_toks / elapsed if elapsed > 0 and final_toks > 0 else 0.0
-            _write_progress(progress_file, final_toks, config.max_tokens, elapsed, tps, None, "done",
+            tps = progress_toks / elapsed if elapsed > 0 and progress_toks > 0 else 0.0
+            _write_progress(progress_file, progress_toks, config.max_tokens, elapsed, tps, None, "done",
                             role=config.role, run_id=task_id)
 
             result = output_file.read_text() if output_file.exists() else ""
@@ -777,13 +780,13 @@ class DirectRunner:
                     Path(str(output_file) + ".verdict.json").write_text(result)
                     output_file.write_text(_rendered)
                     result = _rendered
-            if tokens_in or final_toks or _finish_reason:
+            if tokens_in is not None or tokens_out is not None or _finish_reason:
                 Path(str(output_file) + ".usage.json").write_text(
-                    json.dumps({"tokens_in": tokens_in, "tokens_out": final_toks,
+                    json.dumps({"tokens_in": tokens_in, "tokens_out": tokens_out,
                                 "finish_reason": _finish_reason})
                 )
             # Emit agent_step_complete to feed training ingest pipeline.
-            _emit_training_event(prompt, result, tokens_in, final_toks, config.role)
+            _emit_training_event(prompt, result, tokens_in, tokens_out, config.role)
             _write_timing_receipt(
                 output_file,
                 producer="direct_runner",
@@ -1084,6 +1087,10 @@ class AgentRunner:
             cmd += ["--task-type", config.task_type]
         if getattr(config, "tool_manifest", "full") != "full":
             cmd += ["--tool-manifest", config.tool_manifest]
+        child_env = dict(os.environ)
+        if config.max_tokens > 0:
+            cmd += ["--max-tokens", str(config.max_tokens)]
+            child_env["LLAMA_MAX_TOKENS"] = str(config.max_tokens)
         try:
             output_file.parent.mkdir(parents=True, exist_ok=True)
             if not output_file.exists():
@@ -1115,7 +1122,12 @@ class AgentRunner:
             last_heartbeat_at = start
             last_seen_mtime = _artifact_mtime(artifact_paths)
             no_progress_timeout = _compute_agent_no_progress_timeout(config.timeout_secs)
-            proc = subprocess.Popen(cmd, start_new_session=True, stderr=subprocess.PIPE)
+            proc = subprocess.Popen(
+                cmd,
+                start_new_session=True,
+                stderr=subprocess.PIPE,
+                env=child_env,
+            )
             stderr_buffer = bytearray()
             stderr_reader = threading.Thread(
                 target=_capture_stderr_tail,

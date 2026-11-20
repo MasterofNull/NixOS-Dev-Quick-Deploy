@@ -118,6 +118,37 @@ def checks_fail_from() -> Optional[_dt.date]:
 
 
 _KV = re.compile(r"^(\s*)(?:-\s+)?([A-Za-z_][\w-]*):\s*(.*?)\s*$")
+_BRIEF_MARKER_KEYS = frozenset({
+    "slice_objective",
+    "checks",
+    "caps",
+    "check_command",
+    "token_budget",
+    "turn_cap",
+})
+
+
+def is_slice_brief(text: str) -> bool:
+    """True when text declares a top-level slice-brief header/block outside fenced or chunk blocks."""
+    in_fence = False
+    in_chunk = False
+    for line in text.splitlines():
+        stripped = line.strip()
+        if stripped == "--- CHUNK ---":
+            in_chunk = True
+            continue
+        if stripped == "--- END CHUNK ---":
+            in_chunk = False
+            continue
+        if stripped.startswith(("```", "~~~")):
+            in_fence = not in_fence
+            continue
+        if in_chunk or in_fence or not stripped or line.lstrip().startswith("#"):
+            continue
+        m = _KV.match(line)
+        if m and len(m.group(1)) == 0 and m.group(2) in _BRIEF_MARKER_KEYS:
+            return True
+    return False
 
 
 def _scalar(v: str) -> str:
@@ -247,8 +278,16 @@ def measure(delegation_dir: Path, run_id: str, brief_text: str, *, lane: str = "
         pass
     out_file = Path(row.get("output_file") or d / "outputs" / f"{run_id}.log")
     side = _load(Path(str(out_file) + ".usage.json"))
-    tin = row.get("tokens_in") if isinstance(row.get("tokens_in"), int) else side.get("tokens_in")
-    tout = row.get("tokens_out") if isinstance(row.get("tokens_out"), int) else side.get("tokens_out")
+
+    def _int_or_none(val: object) -> Optional[int]:
+        return val if isinstance(val, int) and not isinstance(val, bool) else None
+
+    tin = _int_or_none(row.get("tokens_in"))
+    if tin is None:
+        tin = _int_or_none(side.get("tokens_in"))
+    tout = _int_or_none(row.get("tokens_out"))
+    if tout is None:
+        tout = _int_or_none(side.get("tokens_out"))
     timing = _load(Path(str(out_file) + ".timing.json"))
     b = parse_brief(brief_text)
     try:
@@ -312,6 +351,8 @@ def main(argv: Optional[list[str]] = None) -> int:
     sub = ap.add_subparsers(dest="cmd", required=True)
     v = sub.add_parser("validate", help="WARN/FAIL on a brief file (exit 1 on errors)")
     v.add_argument("file")
+    ib = sub.add_parser("is-brief", help="exit 0 if file looks like a slice brief, 1 otherwise")
+    ib.add_argument("file")
     o = sub.add_parser("output-tokens", help="print the resolved output_tokens cap")
     o.add_argument("file")
     m = sub.add_parser("measure", help="append actual-vs-cap for one run")
@@ -322,6 +363,8 @@ def main(argv: Optional[list[str]] = None) -> int:
     m.add_argument("--turns", type=int)
     a = ap.parse_args(argv)
     text = Path(a.file).read_text(encoding="utf-8")
+    if a.cmd == "is-brief":
+        return 0 if is_slice_brief(text) else 1
     if a.cmd == "validate":
         r = validate(text)
         for w in r["warnings"]:

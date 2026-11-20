@@ -1,10 +1,15 @@
 #!/usr/bin/env python3
 """Tests for brief_caps: parser, validator (WARN->FAIL schedule), cap tiers, measurement record."""
 import datetime as dt
+import http.server
+import importlib.machinery
+import importlib.util
 import json
 import os
+import subprocess
 import sys
 import tempfile
+import threading
 import unittest
 from pathlib import Path
 
@@ -63,10 +68,121 @@ class DelegateGate(unittest.TestCase):
         r = self._run("caps:\n  tier: small\n", {"AQ_BRIEF_CHECKS_FAIL_FROM": "2000-01-01"})
         self.assertIn("failed validation", r.stderr + r.stdout)
 
+    def test_slice_objective_without_checks_blocks_after_deadline(self):
+        r = self._run("slice_objective: build x\n", {"AQ_BRIEF_CHECKS_FAIL_FROM": "2000-01-01"})
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn("failed validation", r.stderr + r.stdout)
+
     def test_script_resolves_prompt_file_absolute(self):
         src = (ROOT / "scripts/ai/delegate-to-local").read_text()
         self.assertLess(src.index('PROMPT_FILE="$(cd "$(dirname "$PROMPT_FILE")"'),
                         src.index('export AQ_BRIEF_FILE'))
+
+    def test_is_slice_brief_classification(self):
+        self.assertTrue(bc.is_slice_brief(GOOD))
+        self.assertTrue(bc.is_slice_brief("slice_objective: build x\n"))
+        self.assertTrue(bc.is_slice_brief("caps:\n  tier: small\n"))
+        self.assertTrue(bc.is_slice_brief("check_command: pytest\n"))
+        self.assertFalse(bc.is_slice_brief("Summarize the diff in one sentence.\n"))
+        self.assertFalse(bc.is_slice_brief(
+            "Reviewing chunk 1 of 2 of SKILL.md for this question: any bug?\n\n"
+            "--- CHUNK ---\ncaps:\n  tier: small\n--- END CHUNK ---\n\n"
+            "Report ONLY findings about THIS chunk.\n"
+        ))
+        self.assertFalse(bc.is_slice_brief("Notes:\n```yaml\ncaps:\n  tier: small\n```\n"))
+
+    def test_ordinary_prompt_file_allowed_on_enforcement_date(self):
+        seen_bodies = []
+
+        class Handler(http.server.BaseHTTPRequestHandler):
+            def do_GET(self):
+                if self.path == "/health":
+                    self.send_response(200)
+                    self.end_headers()
+                    self.wfile.write(b'{"status":"ok"}')
+                elif self.path == "/props":
+                    body = json.dumps({"default_generation_settings": {"n_ctx": 32768}}).encode()
+                    self.send_response(200)
+                    self.send_header("Content-Type", "application/json")
+                    self.end_headers()
+                    self.wfile.write(body)
+                elif self.path == "/slots":
+                    self.send_response(200)
+                    self.send_header("Content-Type", "application/json")
+                    self.end_headers()
+                    self.wfile.write(b'[{"id":0,"is_processing":false}]')
+                else:
+                    self.send_response(404)
+                    self.end_headers()
+
+            def do_POST(self):
+                length = int(self.headers.get("Content-Length", "0"))
+                seen_bodies.append(json.loads(self.rfile.read(length)))
+                if self.path == "/v1/chat/completions":
+                    self.send_response(200)
+                    self.send_header("Content-Type", "text/event-stream")
+                    self.end_headers()
+                    self.wfile.write(
+                        b'data: {"choices":[{"delta":{"content":"NO FINDINGS"}}]}\n\n'
+                        b'data: {"choices":[{"delta":{},"finish_reason":"stop"}]}\n\n'
+                        b'data: [DONE]\n\n'
+                    )
+                else:
+                    self.send_response(404)
+                    self.end_headers()
+
+            def log_message(self, *args):
+                return
+
+        srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        t = threading.Thread(target=srv.serve_forever, daemon=True)
+        t.start()
+        try:
+            with tempfile.TemporaryDirectory() as td:
+                deleg_dir = Path(td) / "sub" / "delegation"
+                prompt_path = Path(td) / "map.prompt.txt"
+                prompt_path.write_text(
+                    "Reviewing chunk 1 of 1 of foo.py for this question: bugs?\n\n"
+                    "--- CHUNK ---\nprint('hi')\n--- END CHUNK ---\n\n"
+                    "Report ONLY findings about THIS chunk.\n",
+                    encoding="utf-8",
+                )
+                env = dict(os.environ)
+                env.update({
+                    "AQ_BRIEF_CHECKS_FAIL_FROM": "2000-01-01",
+                    "AQ_DELEGATION_DIR": str(deleg_dir),
+                    "LLAMA_PORT": str(srv.server_port),
+                    "AQ_CONTEXT_ASSEMBLER": "0",
+                    "AQ_CONTEXT_PACKET": "0",
+                    "AQ_LOCAL_POWER_GATE": "0",
+                    "AQ_NO_CONSULT": "1",
+                    "SLOT_QUEUE": "0",
+                    "SWITCHBOARD_URL": "http://127.0.0.1:1",
+                    "HYBRID_PORT": "1",
+                })
+                r = subprocess.run(
+                    [
+                        str(ROOT / "scripts/ai/delegate-to-local"),
+                        "--mode", "direct",
+                        "--wait",
+                        "--no-consult",
+                        "--ignore-power-gate",
+                        "--prompt-file", str(prompt_path),
+                    ],
+                    cwd=td,
+                    env=env,
+                    capture_output=True,
+                    text=True,
+                    timeout=30,
+                )
+                self.assertEqual(r.returncode, 0, f"stderr={r.stderr}\nstdout={r.stdout}")
+                self.assertIn("NO FINDINGS", r.stdout)
+                self.assertNotIn("failed validation", r.stderr + r.stdout)
+                self.assertFalse((deleg_dir / bc.LOG).exists())
+                self.assertTrue(seen_bodies)
+        finally:
+            srv.shutdown()
+            srv.server_close()
 
 
 class Validate(unittest.TestCase):
@@ -185,6 +301,183 @@ class Measure(unittest.TestCase):
             self.assertEqual(rec["within_caps"]["input_tokens"], None)
             self.assertFalse(rec["checks_declared"])
             self.assertEqual(bc.summarize([rec])["unknown"]["input_tokens"], 1)
+
+
+class AgentCapWiring(unittest.TestCase):
+    """AgentRunner must pass config.max_tokens to aq-agent-loop and reach generation."""
+
+    def test_agent_runner_cap_reaches_llama_generation(self):
+        lib_dir = str(ROOT / "scripts/ai/lib")
+        if lib_dir not in sys.path:
+            sys.path.insert(0, lib_dir)
+        spec = importlib.util.spec_from_file_location("dispatch_test_agent_cap", ROOT / "scripts/ai/lib/dispatch.py")
+        dispatch = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(dispatch)
+
+        seen_payloads = []
+
+        class Handler(http.server.BaseHTTPRequestHandler):
+            def do_GET(self):
+                self.send_response(404)
+                self.end_headers()
+
+            def do_POST(self):
+                length = int(self.headers.get("Content-Length", "0"))
+                seen_payloads.append(json.loads(self.rfile.read(length)))
+                if self.path == "/v1/chat/completions":
+                    self.send_response(200)
+                    self.send_header("Content-Type", "text/event-stream")
+                    self.end_headers()
+                    self.wfile.write(
+                        b'data: {"choices":[{"delta":{"content":"COMPLETED: capped answer"}}]}\n\n'
+                        b'data: {"choices":[{"delta":{},"finish_reason":"stop"}]}\n\n'
+                        b'data: {"choices":[],"usage":{"prompt_tokens":12,"completion_tokens":4,"total_tokens":16}}\n\n'
+                        b'data: [DONE]\n\n'
+                    )
+                else:
+                    self.send_response(404)
+                    self.end_headers()
+
+            def log_message(self, *args):
+                return
+
+        srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        t = threading.Thread(target=srv.serve_forever, daemon=True)
+        t.start()
+        saved = {k: os.environ.get(k) for k in (
+            "SWITCHBOARD_URL", "LLAMA_MAX_TOKENS", "AQ_AGENT_RUN_EVENTS_PATH",
+            "AQ_AGENT_HYBRID_EVENTS_PATH", "AQ_LOCAL_SKILL_PROJECTION",
+        )}
+        try:
+            with tempfile.TemporaryDirectory() as td:
+                os.environ["SWITCHBOARD_URL"] = f"http://127.0.0.1:{srv.server_port}"
+                os.environ["LLAMA_MAX_TOKENS"] = "999"
+                os.environ["AQ_AGENT_RUN_EVENTS_PATH"] = str(Path(td) / "events.jsonl")
+                os.environ["AQ_AGENT_HYBRID_EVENTS_PATH"] = str(Path(td) / "hybrid.jsonl")
+                os.environ["AQ_LOCAL_SKILL_PROJECTION"] = "0"
+                out_file = Path(td) / "agent.log"
+                config = dispatch.TaskConfig(
+                    mode="agent",
+                    role="implementer",
+                    timeout_secs=30,
+                    max_tokens=222,
+                    llama_url=f"http://127.0.0.1:{srv.server_port}",
+                    hybrid_url="http://127.0.0.1:1",
+                    ralph_url="http://127.0.0.1:1",
+                    task_type="agent",
+                )
+                ok = dispatch.AgentRunner(ROOT / "scripts/ai").run(config, "Reply with OK.", out_file, max_calls=1)
+                self.assertTrue(ok, out_file.read_text(encoding="utf-8") if out_file.exists() else "no output")
+                self.assertTrue(seen_payloads, "no /v1/chat/completions request reached generation")
+                self.assertEqual(seen_payloads[0].get("max_tokens"), 222)
+        finally:
+            srv.shutdown()
+            srv.server_close()
+            for k, v in saved.items():
+                if v is None:
+                    os.environ.pop(k, None)
+                else:
+                    os.environ[k] = v
+
+
+class MissingUsage(unittest.TestCase):
+    """A stream returning content without usage must record null, not 0 or chunk count."""
+
+    def test_direct_stream_without_usage_records_null_not_in_budget(self):
+        lib_dir = str(ROOT / "scripts/ai/lib")
+        if lib_dir not in sys.path:
+            sys.path.insert(0, lib_dir)
+        spec = importlib.util.spec_from_file_location("dispatch_test_missing_usage", ROOT / "scripts/ai/lib/dispatch.py")
+        dispatch = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(dispatch)
+
+        class _Socket:
+            def settimeout(self, timeout):
+                return None
+
+        class _Response:
+            def __init__(self, lines):
+                self.lines = lines
+                self.fp = type("FP", (), {"raw": type("Raw", (), {"_sock": _Socket()})()})()
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *unused):
+                return False
+
+            def __iter__(self):
+                return iter(self.lines)
+
+        chunks = [
+            b'data: {"choices":[{"delta":{"content":"hello "}}]}\n',
+            b'data: {"choices":[{"delta":{"content":"world"}}]}\n',
+            b'data: {"choices":[{"delta":{},"finish_reason":"stop"}]}\n',
+            b'data: [DONE]\n',
+        ]
+        orig_urlopen = dispatch.urllib.request.urlopen
+        orig_wait = dispatch.wait_for_slot
+        orig_queue = dispatch._slot_queue
+        orig_emit = dispatch._emit_training_event
+        orig_service = dispatch._wait_for_service
+        orig_asm = dispatch._apply_context_assembler
+        orig_prefetch = dispatch._embedded_assist_prefetch
+        orig_brief = os.environ.get("AQ_BRIEF_FILE")
+        try:
+            dispatch.urllib.request.urlopen = lambda *a, **k: _Response(chunks)
+            dispatch.wait_for_slot = lambda *a: None
+            dispatch._slot_queue = None
+            dispatch._emit_training_event = lambda *a: None
+            dispatch._wait_for_service = lambda *a: True
+            dispatch._apply_context_assembler = lambda p, *a: p
+            dispatch._embedded_assist_prefetch = lambda *a: ""
+
+            with tempfile.TemporaryDirectory() as td:
+                d = Path(td) / "a" / "b" / "delegation"
+                out_direct = d / "outputs" / "direct-only.log"
+                out_direct.parent.mkdir(parents=True)
+                cfg = dispatch.TaskConfig(
+                    mode="direct",
+                    role="implementer",
+                    timeout_secs=5,
+                    max_tokens=500,
+                    llama_url="http://127.0.0.1:1",
+                    hybrid_url="http://127.0.0.1:1",
+                    ralph_url="http://127.0.0.1:1",
+                    task_type="code",
+                )
+                self.assertTrue(dispatch.DirectRunner().run(cfg, "prompt", out_direct, "t-direct"))
+                sidecar = json.loads(Path(str(out_direct) + ".usage.json").read_text(encoding="utf-8"))
+                self.assertIsNone(sidecar["tokens_in"])
+                self.assertIsNone(sidecar["tokens_out"])
+                self.assertEqual(sidecar["finish_reason"], "stop")
+
+                brief_path = d / "brief.md"
+                brief_path.write_text(GOOD, encoding="utf-8")
+                os.environ["AQ_BRIEF_FILE"] = str(brief_path)
+                reg = dispatch.TaskRegistry(d)
+                out_task = d / "outputs" / "t-no-usage.log"
+                self.assertTrue(dispatch.dispatch_task(cfg, "prompt", "t-no-usage", out_task, reg, ROOT / "scripts/ai"))
+                row = reg.get("t-no-usage")
+                self.assertIsNone(row["tokens_in"])
+                self.assertIsNone(row["tokens_out"])
+                line = json.loads((d / bc.LOG).read_text(encoding="utf-8").splitlines()[0])
+                self.assertEqual(line["actual"], {"input_tokens": None, "output_tokens": None, "turns": None})
+                self.assertEqual(line["within_caps"], {"input_tokens": None, "output_tokens": None, "turns": None})
+                summary = bc.summarize([line])
+                self.assertEqual(summary["unknown"], {"input_tokens": 1, "output_tokens": 1, "turns": 1})
+        finally:
+            dispatch.urllib.request.urlopen = orig_urlopen
+            dispatch.wait_for_slot = orig_wait
+            dispatch._slot_queue = orig_queue
+            dispatch._emit_training_event = orig_emit
+            dispatch._wait_for_service = orig_service
+            dispatch._apply_context_assembler = orig_asm
+            dispatch._embedded_assist_prefetch = orig_prefetch
+            if orig_brief is None:
+                os.environ.pop("AQ_BRIEF_FILE", None)
+            else:
+                os.environ["AQ_BRIEF_FILE"] = orig_brief
 
 
 if __name__ == "__main__":
