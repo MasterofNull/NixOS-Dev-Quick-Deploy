@@ -16,7 +16,7 @@ alembic>=1.17.2
 pgvector>=0.4.1
 
 # Vector search
-qdrant-client>=1.16.1
+qdrant-client>=1.20.0
 
 # HTTP clients (httpx only - removed aiohttp duplication)
 httpx>=0.28.1
