@@ -28,7 +28,7 @@ prometheus-client>=0.23.1
 opentelemetry-api>=1.34.0
 opentelemetry-sdk>=1.34.0
 opentelemetry-exporter-otlp>=1.34.0
-opentelemetry-instrumentation-aiohttp-client>=0.55b0
+opentelemetry-instrumentation-aiohttp-client>=0.66b2
 
 # Database (for telemetry storage)
 psycopg[binary]>=3.2.0
