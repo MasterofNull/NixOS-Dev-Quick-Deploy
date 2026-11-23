@@ -27,7 +27,7 @@ sqlalchemy>=2.0.36
 sentence-transformers>=3.3.1
 
 # Caching and utilities
-python-dateutil>=2.9.0.post0
+python-dateutil>=4.0.0
 pyyaml>=6.0.2
 
 # Git for repo cloning
