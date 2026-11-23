@@ -128,15 +128,6 @@ sudo nixos-rebuild switch
 
 These are disabled by default because they're experimental or costly:
 
-### Query Expansion (Experimental)
-
-```bash
-export QUERY_EXPANSION_ENABLED="true"
-sudo nixos-rebuild switch
-```
-
-**Warning:** Can amplify noise. Use for short/ambiguous queries only.
-
 ### Remote LLM Feedback (Requires API Key)
 
 ```bash
@@ -299,7 +290,6 @@ mySystem.aiHarness.memory.retentionDays = 90;
 sudo nixos-rebuild switch
 
 # Opt into experimental feature
-export QUERY_EXPANSION_ENABLED="true"
 sudo nixos-rebuild switch
 
 # Opt out of telemetry

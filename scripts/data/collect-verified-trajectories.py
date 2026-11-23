@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Offline verified-trajectory collector (F3 S5). Never called from aq-land; run by hand after landings.
+"""Offline verified-trajectory collector (F3 S5). Called best-effort by aq-land after a landing (non-fatal); also runnable by hand.
 
 Reads <delegation dir>/outcome-receipts.jsonl, keeps independently reviewed + CI-passing landings, adds
 git-derived path stats (paths and line counts only, no diff bodies) and writes <delegation dir>/trajectories.jsonl (0600).
@@ -188,8 +188,8 @@ def main(argv: list[str] | None = None) -> int:
     repo = Path(a.repo) if a.repo else resolve_main_root(HERE)
     try:
         c = collect(out, Path(a.receipts_dir) if a.receipts_dir else out, repo, set(a.pr) if a.pr else None)
-    except PermissionError as e:
-        print(f"ERROR: {e}", file=sys.stderr)
+    except OSError as e:  # PermissionError, unwritable/missing delegation dir
+        print(f"ERROR: {e.__class__.__name__}: {e}", file=sys.stderr)
         return 2
     print(json.dumps(c, sort_keys=True))
     return 0

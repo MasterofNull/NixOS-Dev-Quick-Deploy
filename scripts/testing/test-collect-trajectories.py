@@ -417,5 +417,25 @@ class Collector(unittest.TestCase):
             self.assertIn("entropy", quar_by_pr[pr]["reasons"])
 
 
+class ScanPathEntropy(unittest.TestCase):
+    """Long paths are exempt only at verified changed-file fields."""
+
+    def test_unverified_long_repo_paths_remain_quarantined(self) -> None:
+        txt = json.dumps({"path": "docs/harness-first/evidence/2026-11-15-deploy-validation"})
+        self.assertEqual(col.scan(txt), ["entropy"])
+        self.assertEqual(col.scan('"agent/PROJECT-DEPLOY-VALIDATION-PRD" "agent/memory/deploy-validation-20261115"'),
+                         ["entropy"])
+
+    def test_real_blobs_still_caught(self) -> None:
+        self.assertEqual(col.scan("k=Zx9Qm3Lp7Tr2Vb8Nc5Kd1Hf6Gj4Sw0Ya+Ue/Ei=="), ["entropy"])
+        self.assertEqual(col.scan("tok Zx9Qm3Lp7Tr2Vb8Nc5Kd1Hf6Gj4Sw0YaUeEi"), ["entropy"])
+
+    def test_aq_land_calls_collector_nonfatally(self) -> None:
+        land = (ROOT / "scripts/ai/aq-land").read_text()
+        self.assertIn("self.collect_trajectory(n)", land)
+        self.assertIn("collect-verified-trajectories.py", land)
+        self.assertIn("WARN trajectory", land)
+
+
 if __name__ == "__main__":
     unittest.main()

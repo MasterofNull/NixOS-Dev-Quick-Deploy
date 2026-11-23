@@ -423,6 +423,7 @@ class Decider:
         if not isinstance(state, dict) or not isinstance(qs, dict) or not qs:
             resp["answers"]["_request"] = self._ans("error", "BAD_REQUEST", None, None)
             return resp
+        incumbent = request.get("incumbent")
         for name, spec in qs.items():
             try:
                 a, extra = self._one(str(name), spec, state)
@@ -430,6 +431,9 @@ class Decider:
                 a, extra = self._ans("error", "INTERNAL", None, None), {}
             resp["answers"][str(name)] = a
             resp["truncated"] = resp["truncated"] or extra.get("truncated", False)
+            inc = incumbent.get(name) if isinstance(incumbent, dict) else None
+            if isinstance(inc, str) and 0 < len(inc) <= 64:
+                extra["incumbent"] = inc  # the caller's own answer, logged beside the shadow for agreement measurement
             self._log(caller, str(name), a, extra, (time.perf_counter() - t0) * 1000.0)
         return resp
 
@@ -555,6 +559,8 @@ class Decider:
             rec["text_len"] = len(text)
             if q and q.get("log_text"):
                 rec["text_redacted"] = redact(text, int(self.cfg.get("log_text_max_chars", 300)))
+        if extra.get("incumbent"):
+            rec["incumbent"] = extra["incumbent"]
         sh = extra.get("shadow")
         if sh:
             rec["shadow"] = {"tier": "T0.5", "answer": sh["answer"], "confidence": sh["confidence"],

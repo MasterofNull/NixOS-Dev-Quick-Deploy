@@ -199,9 +199,7 @@ ensure_experimental_disabled() {
     log "Ensuring experimental features remain disabled (Category B)..."
 
     local experimental_features=(
-        "QUERY_EXPANSION_ENABLED"
         "REMOTE_LLM_FEEDBACK_ENABLED"
-        "MULTI_TURN_QUERY_EXPANSION"
         "PATTERN_EXTRACTION_ENABLED"
     )
 
