@@ -274,7 +274,7 @@ jobs:
 
       - name: Upload flake validation report
         if: always()
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f  # v6
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
         with:
           name: flake-validation-report
           path: .reports/flake-validation-report.*
@@ -356,7 +356,7 @@ jobs:
 
       - name: Upload shellcheck results
         if: always()
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f  # v6
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
         with:
           name: shellcheck-results
           path: shellcheck.log
@@ -499,7 +499,7 @@ jobs:
           python-version: "3.11"
 
       - name: Set up uv
-        uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e  # v6
+        uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d  # v10.4.0
 
       - name: Install activation chain test dependencies
         run: |
@@ -544,7 +544,7 @@ jobs:
           python-version: "3.13"
 
       - name: Set up uv
-        uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e  # v6
+        uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d  # v10.4.0
 
       - name: Install Nix
         # Same pinned action/config as nix-build.yml. Tests evaluate the flake (`nix eval`, `nix build --expr`).
@@ -982,7 +982,7 @@ jobs:
           cat nixos-dev-quick-deploy-${{ github.ref_name }}.tar.gz.sha256
 
       - name: Upload release artifacts
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f  # v6
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
         with:
           name: release-package
           path: |

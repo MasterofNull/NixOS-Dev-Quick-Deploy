@@ -193,10 +193,12 @@ persona's tone, so a shared character never softens review (local seat).
 3. **Independence rule (non-negotiable):** the persona is shared, provenance is per instance. Reviews still require
    a reviewer lane different from the author lane (Rule 18, trunk protection), and receipts record both full
    instance labels. "Same persona" is never grounds for self-review or self-acceptance.
-4. **Collapse:** at the end of a session or slice, an instance writes a memory delta (facts learned, decisions,
-   open threads) to MemoryBroker, tagged with its instance label. The local harness merges deltas into the
-   canonical memory. The crystallizer is extended, not replaced. Conflicts (two instances asserting different facts)
-   go to a conflict list shown by `aq-approve`, never silently last-write-wins.
+4. **Collapse (re-scoped by owner 2026-11-13, built 2026-11-14):** an instance commits facts as git-tracked files
+   (`.agent/memory/facts/<subject>.md`: subject, claim, evidence, instance) inside its slice; the normal merge
+   (`aq-land`) is the collapse. There is no MemoryBroker delta route and no `aq-approve` conflict list. Two instances
+   asserting different claims are put to the owner as a CLI question and recorded as `owner_reply:`; the
+   `scripts/governance/tier0.d/check-fact-files.py` gate refuses a silent cross-lane overwrite, delete, rename or split. Design:
+   `.agents/plans/persona-p3-collapse-20261113/DESIGN.md`.
 5. **Observability:** a dashboard panel "Simurg instances" shows live instances, their last collapse, and pending
    conflicts. A health-spider check fires when an instance has run more than N hours without collapsing.
 
@@ -205,7 +207,7 @@ persona's tone, so a shared character never softens review (local seat).
 - The persona block is present in all agent files; parity and canon drift gates pass; the budget holds.
 - Instances in at least three lanes (Claude, Codex, local) identify with correct labels in PULSE and receipts.
 - A fact learned in one lane is recalled by another lane after one collapse cycle (end-to-end, real lanes).
-- A conflicting fact from two lanes appears in `aq-approve`, not as a silent overwrite.
+- A conflicting fact from two lanes is put to the owner in the CLI (`owner_reply`) and never silently overwritten.
 - A review where author and reviewer are the same lane is still rejected.
 - A consistency eval (voice, values, recall) runs across lanes with recorded scores. The scores are measured, never asserted.
 

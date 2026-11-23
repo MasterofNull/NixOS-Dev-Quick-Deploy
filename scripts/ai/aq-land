@@ -886,7 +886,21 @@ class Land:
                 n = self.locked()
         self.wait_and_merge(n, self.head())
         self.record_outcome(n)
+        self.collect_trajectory(n)
         return 0
+
+    def collect_trajectory(self, n):
+        """F3 S5: derive the verified-trajectory row for this landing; warns, never fails the landing.
+
+        Kill switch AQ_TRAJECTORY_COLLECT=0 (honoured by the collector itself).
+        """
+        try:
+            r = subprocess.run([sys.executable, str(HERE.parent / "data" / "collect-verified-trajectories.py"), "--pr", str(n)],
+                               capture_output=True, text=True, timeout=120)
+            if r.returncode:
+                print(f"aq-land: WARN trajectory collector exit {r.returncode}: {r.stderr.strip()[:120]}", file=sys.stderr)
+        except Exception as e:  # noqa: BLE001
+            print(f"aq-land: WARN trajectory not collected: {e.__class__.__name__}: {str(e)[:120]}", file=sys.stderr)
 
     def record_outcome(self, n):
         """Append the outcome receipt; a failure here warns and never fails the landing."""

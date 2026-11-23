@@ -70,6 +70,7 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 source "${SCRIPT_DIR}/lib/delegation-dir.sh" 2>/dev/null || resolve_delegation_dir() { echo "WARN: delegation-dir.sh not sourceable; delegation dir falls back to script-relative path" >&2; echo "$(cd "$1/../.." && pwd)/.agents/delegation"; }
 DELEGATION_DIR="${AQ_DELEGATION_DIR:-$(resolve_delegation_dir "$SCRIPT_DIR")}"
 export AQ_DELEGATION_DIR="$DELEGATION_DIR"
+export AQ_INSTANCE_LANE="local"
 LIB_DIR="$SCRIPT_DIR/lib"
 DISPATCH="$LIB_DIR/dispatch.py"
 
@@ -310,6 +311,24 @@ case "${SUBCMD:-}" in
         if [[ -n "$PROMPT_FILE" ]]; then
             [[ -f "$PROMPT_FILE" ]] || die "Prompt file not found: $PROMPT_FILE"
             PROMPT="$(cat "$PROMPT_FILE")"
+            # Slice-brief caps: output_tokens becomes the max-tokens budget unless --max-tokens was given;
+            # dispatch.py records actual-vs-cap to brief-caps.jsonl (AQ_BRIEF_FILE).
+            # Absolute before any worktree cd, so post-run measurement reads the same file.
+            PROMPT_FILE="$(cd "$(dirname "$PROMPT_FILE")" && pwd)/$(basename "$PROMPT_FILE")"
+            # Only validate and track slice briefs; ordinary prompt files (e.g. aq-local-review) bypass the checkpoint.
+            _brief_rc=0
+            python3 "$LIB_DIR/brief_caps.py" is-brief "$PROMPT_FILE" >/dev/null || _brief_rc=$?
+            if [[ "$_brief_rc" -eq 0 ]]; then
+                # Invalid caps / missing checks past AQ_BRIEF_CHECKS_FAIL_FROM exit 1 and block; WARNs exit 0.
+                python3 "$LIB_DIR/brief_caps.py" validate "$PROMPT_FILE" >&2 \
+                    || die "Slice brief failed validation: $PROMPT_FILE"
+                if [[ -z "$MAX_TOKENS" ]] && grep -q '^caps:' "$PROMPT_FILE"; then
+                    MAX_TOKENS="$(python3 "$LIB_DIR/brief_caps.py" output-tokens "$PROMPT_FILE" 2>/dev/null || true)"
+                fi
+                export AQ_BRIEF_FILE="$PROMPT_FILE"
+            elif [[ "$_brief_rc" -ne 1 ]]; then
+                die "Slice brief check failed (exit $_brief_rc): $PROMPT_FILE"
+            fi
         fi
         [[ -n "$PROMPT" ]] || die "Provide --prompt TEXT or --prompt-file FILE (or --help)"
 
