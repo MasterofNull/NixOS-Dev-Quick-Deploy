@@ -304,5 +304,24 @@ class Collector(unittest.TestCase):
         self.assertEqual(len(self.lines("trajectories.jsonl")), 1)
 
 
+class ScanPathEntropy(unittest.TestCase):
+    """PR 788 false positive: long lowercase repo paths tripped the entropy heuristic and quarantined a clean row."""
+
+    def test_long_repo_paths_are_clean(self) -> None:
+        txt = json.dumps({"path": "docs/harness-first/evidence/2026-11-15-deploy-validation"})
+        self.assertEqual(col.scan(txt), [])
+        self.assertEqual(col.scan('"agent/PROJECT-DEPLOY-VALIDATION-PRD" "agent/memory/deploy-validation-20261115"'), [])
+
+    def test_real_blobs_still_caught(self) -> None:
+        self.assertEqual(col.scan("k=Zx9Qm3Lp7Tr2Vb8Nc5Kd1Hf6Gj4Sw0Ya+Ue/Ei=="), ["entropy"])
+        self.assertEqual(col.scan("tok Zx9Qm3Lp7Tr2Vb8Nc5Kd1Hf6Gj4Sw0YaUeEi"), ["entropy"])
+
+    def test_aq_land_calls_collector_nonfatally(self) -> None:
+        land = (ROOT / "scripts/ai/aq-land").read_text()
+        self.assertIn("self.collect_trajectory(n)", land)
+        self.assertIn("collect-verified-trajectories.py", land)
+        self.assertIn("WARN trajectory", land)
+
+
 if __name__ == "__main__":
     unittest.main()

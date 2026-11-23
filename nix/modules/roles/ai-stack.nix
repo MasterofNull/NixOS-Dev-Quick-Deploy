@@ -2269,6 +2269,8 @@ in {
           ExecStart = let
             script = "${cfg.mcpServers.repoPath}/scripts/ai/aq-report";
           in "${pkgs.python3}/bin/python3 ${script} --since=7d --format=md --aidb-import";
+          # Weekly skill utility/prune-candidate report to the journal (read-only; "-" = never fails the report).
+          ExecStartPost = "-${pkgs.python3}/bin/python3 ${cfg.mcpServers.repoPath}/scripts/ai/aq-skill-eval";
           StandardOutput = "journal";
           StandardError = "journal";
           NoNewPrivileges = true;

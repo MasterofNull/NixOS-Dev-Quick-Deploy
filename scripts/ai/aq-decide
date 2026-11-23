@@ -66,6 +66,7 @@ def main(argv: list[str]) -> int:
         total = 0
         shadow_count = 0
         agree_count = 0
+        compared = 0  # shadow rows that carry a reference answer (decided answer or the caller's incumbent)
         decisions_by_answer: dict[str, int] = {}
         if dec.log_path.exists():
             for line in dec.log_path.read_text().splitlines():
@@ -81,8 +82,11 @@ def main(argv: list[str]) -> int:
                         sh = row.get("shadow")
                         if sh:
                             shadow_count += 1
-                            if ans and sh.get("answer") == ans:
-                                agree_count += 1
+                            ref = ans or row.get("incumbent")
+                            if ref:
+                                compared += 1
+                                if sh.get("answer") == ref:
+                                    agree_count += 1
                 except Exception:
                     pass
         print(json.dumps({
@@ -90,7 +94,8 @@ def main(argv: list[str]) -> int:
             "total_decisions": total,
             "shadow_decisions": shadow_count,
             "agreement_count": agree_count,
-            "agreement_rate": round(agree_count / shadow_count, 4) if shadow_count else None,
+            "compared_decisions": compared,
+            "agreement_rate": round(agree_count / compared, 4) if compared else None,
             "decisions_by_answer": decisions_by_answer,
         }, indent=2))
         return 0

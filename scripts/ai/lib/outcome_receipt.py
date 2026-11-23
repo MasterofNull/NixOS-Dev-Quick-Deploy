@@ -32,10 +32,21 @@ def _entropy(s: str) -> float:
     return -sum(c / n * math.log2(c / n) for c in Counter(s).values())
 
 
+def _path_like(b: str) -> bool:
+    """Slash-separated repo path whose segments are single-case slugs (agent/PROJECT-DEPLOY-PRD, docs/a/b-2026): not a credential.
+
+    Long repo paths score >4.0 bits only because of their length (PR 788 false positive). Real tokens mix
+    upper and lower case inside a segment or use + and =, so they stay subject to the entropy heuristic.
+    """
+    if "/" not in b or "+" in b or "=" in b:
+        return False
+    return all(seg == seg.lower() or seg == seg.upper() for seg in b.split("/"))
+
+
 def scan(text: str) -> list[str]:
     """Names of fail-closed findings in already-redacted text; empty means clean."""
     hits = [f"pattern{i}" for i, p in enumerate(_HITS) if p.search(text)]
-    if any(not _HEX.fullmatch(b) and _entropy(b) > 4.0 for b in _BLOB.findall(text)):
+    if any(not _HEX.fullmatch(b) and not _path_like(b) and _entropy(b) > 4.0 for b in _BLOB.findall(text)):
         hits.append("entropy")
     return hits
 
