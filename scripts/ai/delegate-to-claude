@@ -41,6 +41,7 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 source "${SCRIPT_DIR}/lib/delegation-dir.sh" 2>/dev/null || resolve_delegation_dir() { echo "WARN: delegation-dir.sh not sourceable; delegation dir falls back to script-relative path" >&2; echo "$(cd "$1/../.." && pwd)/.agents/delegation"; }
 DELEGATION_DIR="${AQ_DELEGATION_DIR:-$(resolve_delegation_dir "$SCRIPT_DIR")}"
 export AQ_DELEGATION_DIR="$DELEGATION_DIR"
+export AQ_INSTANCE_LANE="claude"
 OUTPUTS_DIR="$DELEGATION_DIR/outputs"
 REGISTRY="$DELEGATION_DIR/registry.jsonl"
 CLAUDE_BIN="${CLAUDE_BIN:-$HOME/.local/bin/claude}"

@@ -421,6 +421,19 @@
       "ci_workflow": ".github/workflows/test.yml#syntax"
     },
     {
+      "id": "aq-transcribe-acquisition-tests",
+      "cmd": "scripts/testing/test-aq-transcribe-acquisition.sh",
+      "paths": [
+        "scripts/ai/aq-transcribe",
+        "scripts/ai/lib/video_frames.py",
+        "scripts/testing/test-aq-transcribe-acquisition.sh"
+      ],
+      "needs": [
+        "python3"
+      ],
+      "ci_workflow": ".github/workflows/test.yml#syntax"
+    },
+    {
       "id": "aq-review-request-tests",
       "cmd": "scripts/testing/test-aq-review-request.py",
       "paths": [
@@ -1314,6 +1327,7 @@
         "scripts/testing/test-behavioral-contract-read-limit.py",
         "scripts/testing/test-bitnet-benchmark.py",
         "scripts/testing/test-bitnet-compare.py",
+        "scripts/testing/test-brief-caps.py",
         "scripts/testing/test-bitnet-feasibility.py",
         "scripts/testing/test-blast-radius-classifier.py",
         "scripts/testing/test-boot-stability-regressions.py",
@@ -1337,6 +1351,7 @@
         "scripts/testing/test-ci-checks-manifest.py",
         "scripts/testing/test-ci-merge-parity.py",
         "scripts/testing/test-ci-skill-bundle-smoke.py",
+        "scripts/testing/test-claude-tmpdir-durable.py",
         "scripts/testing/test-cockpit-telemetry.py",
         "scripts/testing/test-collaborative-plan-persistence.py",
         "scripts/testing/test-commit-review-disposition-hook.py",
@@ -1412,6 +1427,7 @@
         "scripts/testing/test-behavioral-contract-read-limit.py",
         "scripts/testing/test-bitnet-benchmark.py",
         "scripts/testing/test-bitnet-compare.py",
+        "scripts/testing/test-brief-caps.py",
         "scripts/testing/test-bitnet-feasibility.py",
         "scripts/testing/test-blast-radius-classifier.py",
         "scripts/testing/test-boot-stability-regressions.py",
@@ -1435,6 +1451,7 @@
         "scripts/testing/test-ci-checks-manifest.py",
         "scripts/testing/test-ci-merge-parity.py",
         "scripts/testing/test-ci-skill-bundle-smoke.py",
+        "scripts/testing/test-claude-tmpdir-durable.py",
         "scripts/testing/test-cockpit-telemetry.py",
         "scripts/testing/test-collaborative-plan-persistence.py",
         "scripts/testing/test-commit-review-disposition-hook.py",
@@ -1661,6 +1678,7 @@
         "scripts/testing/test-insights-security-compliance.py",
         "scripts/testing/test-instruction-budget.py",
         "scripts/testing/test-intake-gateway.py",
+        "scripts/testing/test-install-git-hooks.py",
         "scripts/testing/test-integration-guard.py",
         "scripts/testing/test-intent-classifier-coverage.py",
         "scripts/testing/test-introspection-validate.py",
@@ -1720,6 +1738,7 @@
         "scripts/testing/test-insights-security-compliance.py",
         "scripts/testing/test-instruction-budget.py",
         "scripts/testing/test-intake-gateway.py",
+        "scripts/testing/test-install-git-hooks.py",
         "scripts/testing/test-integration-guard.py",
         "scripts/testing/test-intent-classifier-coverage.py",
         "scripts/testing/test-introspection-validate.py",
@@ -1796,12 +1815,14 @@
         "scripts/testing/test-p14s-gl9750-microsd.py",
         "scripts/testing/test-package-freeze.py",
         "scripts/testing/test-phase0-worktree-state.py",
+        "scripts/testing/test-probe-reviewer-lane.py",
         "scripts/testing/test-phase59-expert-mode-wiring.py",
         "scripts/testing/test-pi-agent-streaming-ui.py",
         "scripts/testing/test-plans-index.py",
         "scripts/testing/test-pm-tracker-acceptance-authority.py",
         "scripts/testing/test-persona-injection.py",
         "scripts/testing/test-persona-instance-labels.py",
+        "scripts/testing/test-persona-fact-files.py",
         "scripts/testing/test-outcome-receipt.py",
         "scripts/testing/test-aq-land-outcome.py",
         "scripts/testing/test-delegate-local-context-packet.py",
@@ -1920,12 +1941,14 @@
         "scripts/testing/test-p14s-gl9750-microsd.py",
         "scripts/testing/test-package-freeze.py",
         "scripts/testing/test-phase0-worktree-state.py",
+        "scripts/testing/test-probe-reviewer-lane.py",
         "scripts/testing/test-phase59-expert-mode-wiring.py",
         "scripts/testing/test-pi-agent-streaming-ui.py",
         "scripts/testing/test-plans-index.py",
         "scripts/testing/test-pm-tracker-acceptance-authority.py",
         "scripts/testing/test-persona-injection.py",
         "scripts/testing/test-persona-instance-labels.py",
+        "scripts/testing/test-persona-fact-files.py",
         "scripts/testing/test-outcome-receipt.py",
         "scripts/testing/test-aq-land-outcome.py",
         "scripts/testing/test-delegate-local-context-packet.py",
@@ -2110,6 +2133,7 @@
         "scripts/testing/test-worktree-write-guard.py",
         "scripts/testing/test-write-region.py",
         "scripts/testing/test-safety-layer.py",
+        "scripts/testing/test-safety-proposals-repo-root.py",
         "scripts/testing/test-search-router-collection-timeouts.py",
         "scripts/testing/test-security-workflow-integration.py",
         "scripts/testing/test-task-classifier-local-continuation.py",
@@ -2129,6 +2153,7 @@
       "tests": [
         "scripts/testing/test-safety-gate.py",
         "scripts/testing/test-safety-layer.py",
+        "scripts/testing/test-safety-proposals-repo-root.py",
         "scripts/testing/test-scheduler-context-issuer.py",
         "scripts/testing/test-scheduler-context-ledger.py",
         "scripts/testing/test-scheduler-lease-gate.py",
@@ -2378,6 +2403,26 @@
         "curl"
       ],
       "ci_workflow": ".github/workflows/test.yml#manifest-tests"
+    },
+    {
+      "id": "gemini-quota-fallback-tests",
+      "cmd": "scripts/testing/test-gemini-quota-fallback.py",
+      "paths": [],
+      "needs": [
+        "python3",
+        "bash"
+      ],
+      "ci_workflow": ".github/workflows/test.yml#manifest-tests"
+    },
+    {
+      "id": "gemini-model-guard-tests",
+      "cmd": "scripts/testing/test-gemini-model-guard.py",
+      "paths": [],
+      "needs": [
+        "python3",
+        "bash"
+      ],
+      "ci_workflow": ".github/workflows/test.yml#manifest-tests"
     }
   ],
   "ci_exempt": [
@@ -2569,7 +2614,7 @@
     {
       "script": "scripts/testing/test-agent-status-integration.py",
       "class": "known-failing",
-      "reason": "fails on main (rc=1): ❌ Some tests failed, tracked in backlog"
+      "reason": "fails on main (rc=1): \u274c Some tests failed, tracked in backlog"
     },
     {
       "script": "scripts/testing/test-ai-coordinator.py",
@@ -2579,7 +2624,7 @@
     {
       "script": "scripts/testing/test-ai-insights-dashboard.py",
       "class": "live-service",
-      "reason": "host-only: needs a live local service (switchboard/dashboard/coordinator/AIDB); last output: ✗ 11 test(s) FAILED"
+      "reason": "host-only: needs a live local service (switchboard/dashboard/coordinator/AIDB); last output: \u2717 11 test(s) FAILED"
     },
     {
       "script": "scripts/testing/test-ai-insights-roadmap-surfaces.py",
@@ -2589,7 +2634,7 @@
     {
       "script": "scripts/testing/test-ai-service-health-monitoring.py",
       "class": "live-service",
-      "reason": "host-only: needs a live local service (switchboard/dashboard/coordinator/AIDB); last output: ✗ 11 test(s) FAILED"
+      "reason": "host-only: needs a live local service (switchboard/dashboard/coordinator/AIDB); last output: \u2717 11 test(s) FAILED"
     },
     {
       "script": "scripts/testing/test-ai-stack-health-monitor.py",
@@ -2659,7 +2704,7 @@
     {
       "script": "scripts/testing/test-chat-intent.py",
       "class": "known-failing",
-      "reason": "fails on main (rc=1): FAIL  single word 'hello' → agentic (conservative default), tracked in backlog"
+      "reason": "fails on main (rc=1): FAIL  single word 'hello' \u2192 agentic (conservative default), tracked in backlog"
     },
     {
       "script": "scripts/testing/test-check-mcp-health-defaults.sh",
@@ -2874,7 +2919,7 @@
     {
       "script": "scripts/testing/test-llm-router-integration.py",
       "class": "known-failing",
-      "reason": "known-failing (2026-11-07): imports and config now load (path + AI_STRICT_ENV fixed), but the script only prints PASS/FAIL and exits 0, so it cannot gate; its Test 2 expects a 'free' tier for 'implement a new REST API endpoint' while the router now returns local (visible '✗ FAIL'). Needs a routing-policy decision, then conversion to real asserts"
+      "reason": "known-failing (2026-11-07): imports and config now load (path + AI_STRICT_ENV fixed), but the script only prints PASS/FAIL and exits 0, so it cannot gate; its Test 2 expects a 'free' tier for 'implement a new REST API endpoint' while the router now returns local (visible '\u2717 FAIL'). Needs a routing-policy decision, then conversion to real asserts"
     },
     {
       "script": "scripts/testing/test-local-agent-offline-resilience.py",

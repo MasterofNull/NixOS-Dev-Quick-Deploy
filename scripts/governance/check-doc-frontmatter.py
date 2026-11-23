@@ -64,6 +64,9 @@ def get_doc_type_from_path(file_path: str) -> Optional[str]:
     return None
 
 def validate_frontmatter(file_path: str, schema: Dict[str, Any], fix_missing: bool = False) -> bool:
+    # Fact files have their own gate (tier0.d/check-fact-files.py) and no doc_type; never auto-fix them.
+    if ".agent/memory/facts/" in file_path.replace(os.sep, "/"):
+        return True
     try:
         with open(file_path, 'r') as f:
             content = f.read()

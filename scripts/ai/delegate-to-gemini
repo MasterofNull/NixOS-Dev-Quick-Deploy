@@ -40,6 +40,8 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 # shellcheck source=lib/delegation-dir.sh
 source "${SCRIPT_DIR}/lib/delegation-dir.sh" 2>/dev/null || resolve_delegation_dir() { echo "WARN: delegation-dir.sh not sourceable; delegation dir falls back to script-relative path" >&2; echo "$(cd "$1/../.." && pwd)/.agents/delegation"; }
 DELEGATION_DIR="${AQ_DELEGATION_DIR:-$(resolve_delegation_dir "$SCRIPT_DIR")}"
+export AQ_DELEGATION_DIR="$DELEGATION_DIR"
+export AQ_INSTANCE_LANE="gemini"
 OUTPUTS_DIR="$DELEGATION_DIR/outputs"
 REGISTRY="$DELEGATION_DIR/registry.jsonl"
 GEMINI_BIN="${GEMINI_BIN:-$(command -v gemini 2>/dev/null || echo "$HOME/.local/bin/gemini")}"
@@ -421,6 +423,8 @@ ${prompt}"
     esac
     local cmd=(env NO_COLOR=1 TERM=dumb "PATH=${_augmented_path}" "$GEMINI_BIN" "-p" "$full_prompt" "--mode" "$cli_mode")
     [[ -n "$model_flag" ]] && cmd+=("--model" "$model_flag")
+    # One logged retry on gemini-4-hydrogen when Argon (the CLI default) is quota-exhausted.
+    cmd=(bash "$SCRIPT_DIR/lib/gemini-quota-fallback.sh" "${cmd[@]}")
 
     # Register before launching so the task is findable even if we die
     registry_append "$id" "$prompt" "$rel_output" "" "$role"
@@ -443,7 +447,7 @@ ${prompt}"
             audit_event_end "gemini" "$id" "success" "0" "completed: ${prompt:0:100}" "$role"
             audit_save_session "gemini" "$id" "$prompt" "$output_file"
             info "Task $id completed successfully."
-        elif [[ "$meaningful_bytes" -gt "$GEMINI_MIN_CONTENT_BYTES" ]]; then
+        elif [[ "$meaningful_bytes" -gt "$GEMINI_MIN_CONTENT_BYTES" ]] && ! grep -q '^GEMINI_LANE_UNAVAILABLE' "$output_file"; then
             # Non-zero exit but model produced real content — treat as partial-success.
             registry_update_status "$id" "partial-success"
             "$SCRIPT_DIR/lib/pending-update" partial-success "$id" 2>/dev/null || true
@@ -456,6 +460,9 @@ ${prompt}"
             audit_event_end "gemini" "$id" "error" "0" "failed exit=${exit_code}: ${prompt:0:100}" "$role"
             audit_save_session "gemini" "$id" "$prompt" "$output_file"
             info "Task $id failed (exit $exit_code, meaningful ${meaningful_bytes}B — below ${GEMINI_MIN_CONTENT_BYTES}B threshold)."
+            if grep -q '^GEMINI_LANE_UNAVAILABLE' "$output_file"; then
+                info "GEMINI_LANE_UNAVAILABLE: both Gemini models quota-exhausted; route this slice to another lane."
+            fi
             if _gemini_sunset_error "$output_file"; then
                 info "SUNSET_ERROR: cloudcode-pa.googleapis.com/onboardUser rejected individual access (2026-06-18 sunset). This is PERMANENT, not a transient quota hit."
                 info "  Re-authenticate (OAuth): run 'gemini' interactively and sign in with your Google account."
@@ -519,6 +526,11 @@ while [[ $# -gt 0 ]]; do
         *) die "Unknown option: $1 (run with --help for usage)" ;;
     esac
 done
+
+# Independence guard: only Gemini ids (SSOT: model-coordinator gemini_lane.required_id_prefix).
+# shellcheck disable=SC1091
+source "$SCRIPT_DIR/lib/gemini-model-guard.sh"
+gemini_model_guard "$MODEL" || exit 2
 
 # Validate approval mode
 case "$MODE" in

@@ -1,0 +1,184 @@
+{
+  "plan": {
+    "id": "agent-work-durability-20261119",
+    "title": "Agent work durability across reboots, restarts and crashes",
+    "prd_ref": ".agents/plans/agent-work-durability-20261119/DESIGN.md",
+    "owner": "hyperd",
+    "goal": "No token-costly agent work lives only in tmpfs or process memory; unfinished dispatches resume from disk after reboot.",
+    "success_criteria": [
+      "J1-J6 in DESIGN.md pass with real reboots/restarts",
+      "aq-reboot-ready gives a correct GO/NO-GO",
+      "no work-state path under /tmp in agent tooling or coordinator"
+    ]
+  },
+  "phases": [
+    {
+      "id": "d",
+      "name": "D: durability MVP",
+      "goal": "S0-S7",
+      "order": 1
+    },
+    {
+      "id": "d2",
+      "name": "D2: coordinator + housekeeping",
+      "goal": "after MVP phase proves out",
+      "order": 2
+    }
+  ],
+  "items": [
+    {
+      "id": "s0a-claude-tmpdir",
+      "name": "CLAUDE_CODE_TMPDIR on persistent disk + 0700 dirs",
+      "phase": "d",
+      "kind": "slice",
+      "goal": "Claude temp root off tmpfs",
+      "validation_goal": "J1",
+      "deps": [],
+      "detection": {
+        "commit_match": [
+          "S0a Claude Code temp root"
+        ]
+      }
+    },
+    {
+      "id": "s0b-retention",
+      "name": "retention: archiver + user timer",
+      "phase": "d",
+      "kind": "slice",
+      "goal": "archive-before-remove retention for the Claude temp root",
+      "validation_goal": "timer archives a verified tarball, then reclaims the source",
+      "deps": [
+        "s0a-claude-tmpdir"
+      ],
+      "detection": {
+        "commit_match": [
+          "S0b "
+        ]
+      }
+    },
+    {
+      "id": "s1-ledger",
+      "name": "work ledger + writer lib",
+      "phase": "d",
+      "kind": "slice",
+      "goal": "one durable record per dispatch",
+      "validation_goal": "schema test + wrappers write entries",
+      "deps": [],
+      "detection": {
+        "commit_match": [
+          "S1-LEDGER "
+        ]
+      }
+    },
+    {
+      "id": "s2-findings",
+      "name": "findings checkpoints in briefs",
+      "phase": "d",
+      "kind": "slice",
+      "goal": "re-dispatch starts from findings",
+      "validation_goal": "J3",
+      "deps": [
+        "s1-ledger"
+      ],
+      "detection": {
+        "commit_match": [
+          "S2-FINDINGS "
+        ]
+      }
+    },
+    {
+      "id": "s3-boot-resume",
+      "name": "aq-work-resume + runner user services + linger",
+      "phase": "d",
+      "kind": "slice",
+      "goal": "resume on boot",
+      "validation_goal": "J2",
+      "deps": [
+        "s1-ledger"
+      ],
+      "detection": {
+        "commit_match": [
+          "S3-BOOT-RESUME "
+        ]
+      }
+    },
+    {
+      "id": "s4-reboot-ready",
+      "name": "aq-reboot-ready",
+      "phase": "d",
+      "kind": "slice",
+      "goal": "pre-reboot go/no-go",
+      "validation_goal": "J4",
+      "deps": [
+        "s1-ledger"
+      ],
+      "detection": {
+        "commit_match": [
+          "S4-REBOOT-READY "
+        ]
+      }
+    },
+    {
+      "id": "s5-no-tmpfs-guard",
+      "name": "extend delegation-dir guard to all work paths",
+      "phase": "d",
+      "kind": "slice",
+      "goal": "refuse /tmp work artifacts",
+      "validation_goal": "J5",
+      "deps": [],
+      "detection": {
+        "commit_match": [
+          "S5-NO-TMPFS-GUARD "
+        ]
+      }
+    },
+    {
+      "id": "s6-coordinator-state",
+      "name": "coordinator state to /var/lib",
+      "phase": "d2",
+      "kind": "slice",
+      "goal": "coordinator state off tmpfs",
+      "validation_goal": "state files survive restart",
+      "deps": [],
+      "detection": {
+        "commit_match": [
+          "S6-COORDINATOR-STATE "
+        ]
+      }
+    },
+    {
+      "id": "s7-coordinator-reconcile",
+      "name": "restart reconcile of runs",
+      "phase": "d2",
+      "kind": "slice",
+      "goal": "no phantom running records",
+      "validation_goal": "J6",
+      "deps": [
+        "s6-coordinator-state",
+        "s1-ledger"
+      ],
+      "detection": {
+        "commit_match": [
+          "S7-COORDINATOR-RECONCILE "
+        ]
+      }
+    },
+    {
+      "id": "s8-archive-compress",
+      "name": "aq-archive (zstd) + worktree retirement",
+      "phase": "d2",
+      "kind": "slice",
+      "goal": "compressed, verifiable, restorable archives; retire clean merged worktrees",
+      "validation_goal": "J7",
+      "deps": [
+        "s1-ledger"
+      ],
+      "detection": {
+        "commit_match": [
+          "S8-ARCHIVE-COMPRESS "
+        ]
+      }
+    }
+  ],
+  "issues": []
+}
