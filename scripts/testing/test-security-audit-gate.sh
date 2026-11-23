@@ -90,9 +90,37 @@ N
 mkdir -p "$T/cov2/ai-stack/mcp-servers/a" "$T/cov2/ai-stack/mcp-servers/b"
 echo "x" > "$T/cov2/ai-stack/mcp-servers/a/requirements.txt"; echo "y" > "$T/cov2/ai-stack/mcp-servers/b/requirements.txt"
 rc=0; out="$(PATH="$T/bin:$PATH" CI=true bash "$ROOT/scripts/security/security-audit.sh" --repo-root "$T/cov2" --output-dir "$T/o11" 2>&1)" || rc=$?
-[[ $rc -ne 0 ]] && grep -q "BLOCKING: pip-audit failed" <<<"$out" || { echo "FAIL: pip failure not blocking in CI rc=$rc"; echo "$out"; exit 1; }
+[[ $rc -ne 0 ]] && grep -Fq "pip-audit failure: ai-stack/mcp-servers/a/requirements.txt (scanner-exit-3)" <<<"$out" \
+  && ! grep -Fq "boom" <<<"$out" && grep -q "BLOCKING: pip-audit failed" <<<"$out" \
+  || { echo "FAIL: pip scanner failure diagnostic not actionable or blocking in CI rc=$rc"; echo "$out"; exit 1; }
 rc=0; out="$(PATH="$T/bin:$PATH" env -u CI bash "$ROOT/scripts/security/security-audit.sh" --repo-root "$T/cov2" --output-dir "$T/o12" 2>&1)" || rc=$?
 [[ $rc -eq 0 ]] && grep -q "WARNING: pip-audit failed" <<<"$out" || { echo "FAIL: pip failure local rc=$rc"; echo "$out"; exit 1; }
+# A manifest path with a newline and Markdown delimiter remains one encoded diagnostic line.
+unsafe_dir=$'unsafe\n`markdown`'
+mkdir -p "$T/cov-unsafe/ai-stack/mcp-servers/${unsafe_dir}"
+echo "z" > "$T/cov-unsafe/ai-stack/mcp-servers/${unsafe_dir}/requirements.txt"
+rc=0; out="$(PATH="$T/bin:$PATH" CI=true bash "$ROOT/scripts/security/security-audit.sh" --repo-root "$T/cov-unsafe" --output-dir "$T/o12-unsafe" 2>&1)" || rc=$?
+unsafe_line='pip-audit failure: ai-stack/mcp-servers/unsafe%0A%60markdown%60/requirements.txt (scanner-exit-3)'
+[[ $rc -ne 0 ]] && [[ "$(grep -Fxc "$unsafe_line" <<<"$out")" -eq 1 ]] \
+  && ! grep -Fq '`markdown`' <<<"$out" && grep -q "BLOCKING: pip-audit failed" <<<"$out" \
+  || { echo "FAIL: unsafe manifest diagnostic was not encoded and blocking rc=$rc"; echo "$out"; exit 1; }
+# A syntactically valid but coverage-insufficient pip report is rejected with a safe diagnostic.
+cat > "$T/bin/pip-audit" <<'N'
+#!/usr/bin/env bash
+echo '{"dependencies":[]}'
+echo report-sentinel >&2
+N
+mkdir -p "$T/cov-report/ai-stack/mcp-servers/rejected"
+echo "x" > "$T/cov-report/ai-stack/mcp-servers/rejected/requirements.txt"
+rc=0; out="$(PATH="$T/bin:$PATH" CI=true bash "$ROOT/scripts/security/security-audit.sh" --repo-root "$T/cov-report" --output-dir "$T/o12-report" 2>&1)" || rc=$?
+[[ $rc -ne 0 ]] && grep -Fq "pip-audit failure: ai-stack/mcp-servers/rejected/requirements.txt (report-rejected)" <<<"$out" \
+  && ! grep -Fq "report-sentinel" <<<"$out" && grep -q "BLOCKING: pip-audit failed" <<<"$out" \
+  || { echo "FAIL: rejected pip report diagnostic not actionable or blocking in CI rc=$rc"; echo "$out"; exit 1; }
+# Restore scanner-exit behavior for the existing coverage regressions below.
+cat > "$T/bin/pip-audit" <<'N'
+#!/usr/bin/env bash
+echo boom >&2; exit 3
+N
 # Zero coverage / tool failure must not report status=ok (false-green regression).
 # $T/bin/pip-audit currently fails (exit 2) from the block above.
 rc=0; out="$(PATH="$T/bin:$PATH" env -u CI bash "$ROOT/scripts/security/security-audit.sh" --repo-root "$T/cov2" --output-dir "$T/o13" 2>&1)" || rc=$?
