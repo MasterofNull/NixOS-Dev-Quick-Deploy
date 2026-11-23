@@ -6,6 +6,7 @@ all-or-nothing outer timeout. A check that does not finish is reported as SKIP w
 (never PASS), so monitors can tell "busy" from "healthy" and from "failed"."""
 from __future__ import annotations
 
+import math
 import os
 import threading
 import time
@@ -19,7 +20,7 @@ DEGRADED = "DEGRADED"
 def _env_float(name: str) -> float | None:
     try:
         v = float(os.environ.get(name, "").strip())
-        return v if v > 0 else None
+        return v if math.isfinite(v) and v > 0 else None
     except ValueError:
         return None
 
@@ -29,13 +30,13 @@ def resolve_limits(n_checks: int) -> tuple[int, float, float]:
     Defaults derive from the host and the plan: budget = 85% of the caller's outer deadline (HARNESS_TIMEOUT_S)
     when known, else 5 s per check; per-check = budget/4; workers = a quarter of the CPUs, 1..4."""
     w = _env_float("AQ_QA_PHASE0_WORKERS")
-    workers = int(w) if w else max(1, min(4, (os.cpu_count() or 2) // 4))
+    workers = max(1, min(4, int(w))) if w is not None else max(1, min(4, (os.cpu_count() or 2) // 4))
     budget = _env_float("AQ_QA_PHASE0_BUDGET_S")
     if budget is None:
         outer = _env_float("HARNESS_TIMEOUT_S")
         budget = outer * 0.85 if outer else 5.0 * n_checks
     per_check = _env_float("AQ_QA_PHASE0_CHECK_TIMEOUT_S") or budget / 4
-    return max(1, workers), per_check, budget
+    return workers, per_check, budget
 
 
 def degraded_result(name: str, reason: str) -> CheckResult:

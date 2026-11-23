@@ -65,6 +65,15 @@ def main() -> int:
     os.environ["AQ_QA_PHASE0_BUDGET_S"] = "40"
     os.environ["AQ_QA_PHASE0_CHECK_TIMEOUT_S"] = "7"
     check(scheduler.resolve_limits(10) == (3, 7.0, 40.0), "explicit env overrides win")
+    adaptive_workers = max(1, min(4, (os.cpu_count() or 2) // 4))
+    os.environ["AQ_QA_PHASE0_WORKERS"] = "99"
+    check(scheduler.resolve_limits(10)[0] == 4, "worker override is capped at four")
+    os.environ["AQ_QA_PHASE0_WORKERS"] = "0.5"
+    check(scheduler.resolve_limits(10)[0] == 1, "low worker override is floored at one")
+    os.environ["AQ_QA_PHASE0_WORKERS"] = "inf"
+    check(scheduler.resolve_limits(10)[0] == adaptive_workers, "non-finite worker override uses adaptive default")
+    os.environ["AQ_QA_PHASE0_WORKERS"] = "2"
+    check(scheduler.resolve_limits(10)[0] == 2, "normal worker override wins")
 
     from harness_qa.phases import phase0
 
