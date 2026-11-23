@@ -266,7 +266,7 @@ This table is the single source of truth for auto-assignment in `agent_executor.
 ## Rule 17 contract detail (moved from the canon block, 2026-11-12)
 
 - The flagship/orchestrator tier (Sonnet, Opus, Fable, or provider-equivalent) does not self-implement a bounded slice and does not default-dispatch a same-tier-or-higher sub-agent for implementer work. Routing follows §"Economical execution plane" and the tier ladder in `config/model-coordinator.json`.
-- Every Agent-tool / `delegate-to-*` dispatch for an implementer role passes an explicit cheap/fast model override unless the task's proven complexity requires a higher tier. Claude lane: `model: "sonnet"` (Sonnet 5.5, balanced tier) is the default implementer; `haiku` only for mechanical single-file edits with a checkable result. Leaving it unset silently inherits the orchestrator's tier.
+- Every Agent-tool / `delegate-to-*` dispatch for an implementer role passes an explicit model override. Proven task complexity can justify choosing a higher tier, but that tier is still selected explicitly (e.g. `--model-tier <tier>` / Agent `model:`), never left to the CLI default. Claude lane: `model: "sonnet"` (Sonnet 5.5, balanced tier) is the default implementer; `haiku` only for mechanical single-file edits with a checkable result. Leaving it unset silently inherits the orchestrator's tier.
 - Prefer Codex or local Qwen first when eligible (Rule 4); Claude's balanced tier is the fallback when those are unavailable or ineligible.
 - Any deviation (flagship implementing directly, or an implementer dispatch at flagship/balanced tier) records a capability-insufficiency reason in the dispatch/PULSE record.
 
