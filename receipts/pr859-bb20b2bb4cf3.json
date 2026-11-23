@@ -1,0 +1,18 @@
+{
+  "schema": 2,
+  "pr": 859,
+  "reviewed_head_sha": "bb20b2bb4cf392b6d89ced8577b072d542342c7f",
+  "run_id": "codex-20261122-220813-vy4tan",
+  "reviewer_lane": "codex",
+  "author_lane": "claude",
+  "verdict": "PASS",
+  "reviewer_instance": "Simurg@codex/unknown#codex-20",
+  "author_instance": "Simurg@claude/unknown",
+  "output_file": ".agents/delegation/outputs/codex-20261122-220813-vy4tan.log",
+  "output_sha256": "39e35295cf011a88f1d9fa01d3f88388dd3ccf4a81b1bd75bddaacdd5e88ab9c",
+  "created_at": "2026-11-23T06:09:17Z",
+  "repo": "MasterofNull/NixOS-Dev-Quick-Deploy",
+  "policy_version": "review-receipts/1",
+  "tree": "5ff3dc441a274843e9314b4554dd207f7178b493",
+  "base_commit": "3fa4afbb2458bf9c1a618d34e21a37b5fcdda2a5"
+}
