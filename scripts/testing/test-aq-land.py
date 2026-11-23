@@ -1118,6 +1118,21 @@ class Friction(Base):
         (self.S / "verify_fail").unlink()
         self.land(expect=0)  # a resume after the receipt verifies merges
 
+    def test_resume_without_local_receipt_verifies_the_published_one_and_fails_closed(self):
+        (self.S / "verify_fail").write_text("1")
+        self.land(expect=1)
+        gone = [f for f in (self.S / "state").rglob("pr*-*.json")]
+        self.assertTrue(gone)
+        for f in gone:
+            f.unlink()
+        (self.S / "receipt.log").write_text("")
+        line = self.stop_line(self.land(expect=1))
+        self.assertIn("receipt verify refused the merge", line)
+        self.assertEqual(self.ghs().get("merges", 0), 0)
+        self.assertRegex((self.S / "receipt.log").read_text(), r"verify --require-revocation-check --pr \d+ --head [0-9a-f]{40}")
+        (self.S / "verify_fail").unlink()
+        self.land(expect=0)
+
     def test_bad_body_format_stops_in_preflight_before_any_review_or_push(self):
         (self.S / "body.md").write_text(BODY.replace("## Details", "## Summary"))
         r = self.land(expect=1)

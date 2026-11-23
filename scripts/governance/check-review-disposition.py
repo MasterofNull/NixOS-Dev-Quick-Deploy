@@ -70,6 +70,7 @@ import re
 import subprocess
 import sys
 import urllib.request
+import uuid
 
 DISPOSITIONS = {"PASS", "PASS_WITH_FOLLOWUPS"}
 RECEIPT_BRANCH = "review-receipts"
@@ -210,9 +211,13 @@ def load_offbranch_receipt(remote, pr_number, rhead):
             return None, f"cannot reach {RECEIPT_BRANCH} on {remote}: {listing.stderr.strip()[:200]}"
         if not listing.stdout.strip():
             return None, None
-        subprocess.run(["git", "fetch", "--no-tags", "-q", remote, f"refs/heads/{RECEIPT_BRANCH}"],
+        tmp = f"refs/aq-receipt-tmp/{os.getpid()}-{uuid.uuid4().hex[:12]}"
+        subprocess.run(["git", "fetch", "--no-tags", "-q", remote, f"+refs/heads/{RECEIPT_BRANCH}:{tmp}"],
                        capture_output=True, text=True, check=True, timeout=180)
-        tip = _git("rev-parse", "FETCH_HEAD")
+        try:
+            tip = _git("rev-parse", "--verify", f"{tmp}^{{commit}}")  # private ref: immune to concurrent FETCH_HEAD rewrites
+        finally:
+            subprocess.run(["git", "update-ref", "-d", tmp], capture_output=True, text=True, timeout=60)
         try:
             mode = _git("ls-tree", tip, "--", path).split()[0]
         except IndexError:

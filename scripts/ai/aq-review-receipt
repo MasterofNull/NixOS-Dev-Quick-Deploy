@@ -25,6 +25,7 @@ import re
 import subprocess
 import sys
 import tempfile
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -236,13 +237,26 @@ def _rkey(pr, head) -> str:
     return f"pr{pr}-{str(head)[:12]}"
 
 
+def _fetch_pinned(root, remote, ref) -> str:
+    """Fetch `ref` into a private per-call ref and return its commit id, so a concurrent fetch in the
+    same repo (which rewrites FETCH_HEAD) cannot change what this call reads."""
+    tmp = f"refs/aq-receipt-tmp/{os.getpid()}-{uuid.uuid4().hex[:12]}"
+    try:
+        _git(root, "fetch", "--no-tags", "-q", remote, f"+{ref}:{tmp}")
+        return _git(root, "rev-parse", "--verify", f"{tmp}^{{commit}}")
+    finally:
+        try:
+            _git(root, "update-ref", "-d", tmp)
+        except (subprocess.SubprocessError, OSError):
+            pass
+
+
 def _branch_tip(root, remote):
     """Tip commit of the receipts branch on `remote`, or "" when the branch does not exist yet."""
     ref = f"refs/heads/{RECEIPT_BRANCH}"
     if not _git(root, "ls-remote", remote, ref):
         return ""
-    _git(root, "fetch", "--no-tags", "-q", remote, ref)
-    return _git(root, "rev-parse", "FETCH_HEAD")
+    return _fetch_pinned(root, remote, ref)
 
 
 def _branch_json(root, tip, prefix) -> dict:
@@ -275,6 +289,17 @@ def load_revocations(root: Path, remote: str):
     return revoked, err
 
 
+def binding_errors(r, entry) -> list[str]:
+    """The integrity binding CI enforces (registry-recorded hash and size on the receipt), so a receipt CI would refuse cannot be published."""
+    errs = []
+    if not (isinstance(r.get("registry_output_sha256"), str) and r["registry_output_sha256"] == r.get("output_sha256")
+            and r["registry_output_sha256"] == entry.get("output_sha256")):
+        errs.append("receipt registry_output_sha256 missing or != output_sha256 / the registry-recorded hash")
+    if type(r.get("output_bytes")) is not int or r["output_bytes"] != entry.get("output_bytes"):
+        errs.append("receipt output_bytes missing or != the registry-recorded size")
+    return errs
+
+
 def verify_data(r, root: Path, registry: Path, revoked=None) -> list[str]:
     if not isinstance(r, dict) or r.get("schema") not in (1, 2):
         return ["not a schema 1 or 2 receipt"]
@@ -305,6 +330,9 @@ def verify_data(r, root: Path, registry: Path, revoked=None) -> list[str]:
             errs += integrity_errors(entry, full, text, rhead, r.get("pr"), r.get("created_at"))
         if r.get("verdict") not in VERDICTS or r.get("verdict") != parse_verdict(text):
             errs.append("receipt verdict != last Review-Disposition in output")
+    legacy = (str(r.get("created_at", ""))[:10] < HASH_ENFORCED_FROM and entry is not None and not entry.get("output_sha256"))
+    if r.get("schema") == 2 and entry and not legacy:
+        errs += binding_errors(r, entry)
     if r.get("schema") == 2:
         for k in ("tree", "base_commit"):
             if not re.fullmatch(r"[0-9a-f]{40}", str(r.get(k, ""))):
@@ -338,8 +366,7 @@ def _publish_file(root: Path, remote: str, path: str, blob_text: str, message: s
         try:
             parent = ""
             if _git(root, "ls-remote", remote, ref):
-                _git(root, "fetch", "--no-tags", "-q", remote, ref)
-                parent = _git(root, "rev-parse", "FETCH_HEAD")
+                parent = _fetch_pinned(root, remote, ref)
             with tempfile.TemporaryDirectory() as td:
                 env = {**os.environ, **env_id, "GIT_INDEX_FILE": os.path.join(td, "index")}
                 existing = None
@@ -389,6 +416,10 @@ def cmd_publish(a) -> int:
         r = {}
     if r.get("schema") != 2:
         errs.append("publish needs a schema 2 receipt (from mint)")
+    else:
+        entry = load_registry(Path(a.registry) if a.registry else DEFAULT_REGISTRY).get(r.get("run_id"))
+        if entry:
+            errs += [e for e in binding_errors(r, entry) if e not in errs]
     if errs:
         for e in errs:
             print(f"publish FAILED: {e}", file=sys.stderr)
@@ -401,7 +432,11 @@ def cmd_publish(a) -> int:
         existing = json.loads(existing_text)
         if {k: v for k, v in existing.items() if k != "created_at"} == {k: v for k, v in r.items() if k != "created_at"}:
             return 0, f"already published: {RECEIPT_BRANCH}:{path}"
-        if existing.get("verdict") != "REQUEST_CHANGES":
+        # A REQUEST_CHANGES receipt, or a legacy one lacking the integrity fields (CI refuses it anyway),
+        # may be superseded by this freshly verified receipt; any other existing receipt is append-only.
+        legacy = (not isinstance(existing, dict) or existing.get("registry_output_sha256") != existing.get("output_sha256")
+                  or type(existing.get("output_bytes")) is not int)
+        if existing.get("verdict") != "REQUEST_CHANGES" and not legacy:
             return 1, f"publish FAILED: {path} already holds a different {existing.get('verdict')} receipt (append-only)"
         return None
     return _publish_file(root, a.remote, path, json.dumps(r, indent=2) + "\n",
@@ -428,11 +463,30 @@ def cmd_revoke(a) -> int:
                          f"revoke PR {a.pr} {a.head[:12]}", guard)
 
 
+def _verify_published(root, reg, revoked, a) -> list[str]:
+    """Verify the receipt published on the receipts branch for --pr/--head; absent or unreadable fails closed."""
+    try:
+        tip = _branch_tip(root, a.remote)
+        data = _branch_json(root, tip, "receipts").get(_rkey(a.pr, a.head)) if tip else None
+    except (subprocess.SubprocessError, OSError) as exc:
+        return [f"cannot read published receipt ({exc.__class__.__name__}); failing closed"]
+    if not data or data.get("_unreadable"):
+        return [f"no readable published receipt for PR {a.pr} head {a.head[:12]} on {RECEIPT_BRANCH}"]
+    if data.get("pr") != a.pr or data.get("reviewed_head_sha") != a.head:
+        return ["published receipt pr/head does not match its path"]
+    return verify_data(data, root, reg, revoked)
+
+
 def cmd_verify(a) -> int:
     root = Path(a.root).resolve()
     reg = Path(a.registry) if a.registry else DEFAULT_REGISTRY
     revoked, rerr = load_revocations(root, a.remote)
-    errs = verify_receipt(Path(a.receipt), root, reg, revoked)
+    if a.receipt:
+        errs = verify_receipt(Path(a.receipt), root, reg, revoked)
+    elif a.pr and re.fullmatch(r"[0-9a-f]{40}", a.head):
+        errs = _verify_published(root, reg, revoked, a)
+    else:
+        errs = ["give a receipt file, or --pr and --head (40 hex) to verify the published receipt"]
     if rerr:
         if a.require_revocation_check:
             errs.append(rerr + "; failing closed")
@@ -569,7 +623,9 @@ def main() -> int:
     rv.add_argument("--remote", default="origin")
     rv.set_defaults(fn=cmd_revoke)
     v = sub.add_parser("verify")
-    v.add_argument("receipt")
+    v.add_argument("receipt", nargs="?", default="", help="local receipt file; omit with --pr/--head to verify the published one")
+    v.add_argument("--pr", type=int, default=0)
+    v.add_argument("--head", default="")
     v.add_argument("--remote", default="origin")
     v.add_argument("--require-revocation-check", action="store_true", help="fail when revocations cannot be read (merge gate)")
     v.set_defaults(fn=cmd_verify)

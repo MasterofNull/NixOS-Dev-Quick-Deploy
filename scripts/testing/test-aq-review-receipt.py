@@ -388,6 +388,88 @@ class T(unittest.TestCase):
         legacy.write_text(json.dumps({**json.loads(f.read_text()), "schema": 1}))
         self.assertNotEqual(self._publish(legacy).returncode, 0)  # schema 1 cannot be published
 
+    def _legacy_publish(self, head):
+        """Put a PASS receipt lacking the integrity fields on the branch, as pre-integrity mints did."""
+        r, f = self._ob(head)
+        rec = json.loads(f.read_text())
+        for k in ("registry_output_sha256", "output_bytes"):
+            rec.pop(k)
+        bare = self.bare
+        env = {**os.environ, "GIT_AUTHOR_NAME": "x", "GIT_AUTHOR_EMAIL": "x@x", "GIT_COMMITTER_NAME": "x", "GIT_COMMITTER_EMAIL": "x@x"}
+        blob = subprocess.run(["git", "-C", str(bare), "hash-object", "-w", "--stdin"], input=json.dumps(rec), capture_output=True, text=True, check=True).stdout.strip()
+        sub = subprocess.run(["git", "-C", str(bare), "mktree"], input=f"100644 blob {blob}\tpr7-{head[:12]}.json\n", capture_output=True, text=True, check=True).stdout.strip()
+        top = subprocess.run(["git", "-C", str(bare), "mktree"], input=f"040000 tree {sub}\treceipts\n", capture_output=True, text=True, check=True).stdout.strip()
+        c = subprocess.run(["git", "-C", str(bare), "commit-tree", top, "-m", "legacy"], capture_output=True, text=True, check=True, env=env).stdout.strip()
+        subprocess.run(["git", "-C", str(bare), "update-ref", "refs/heads/review-receipts", c], check=True)
+
+    def test_fresh_receipt_supersedes_legacy_pass_without_integrity_fields(self):
+        head = self._repo()
+        self._legacy_publish(head)
+        r, f = self._ob(head)
+        p = self._publish(f)
+        self.assertEqual(p.returncode, 0, p.stderr)
+        shown = subprocess.run(["git", "-C", str(self.bare), "show", f"review-receipts:receipts/pr7-{head[:12]}.json"], capture_output=True, text=True).stdout
+        self.assertIn("registry_output_sha256", json.loads(shown))
+        # a receipt that carries the integrity fields is still append-only against a different verdict/run
+        rec = json.loads(f.read_text())
+        rec["run_id"] = "r1"
+        other = self.d / "other.json"
+        other.write_text(json.dumps({**rec, "author_lane": "gemini"}))
+        self.assertNotEqual(self._publish(other).returncode, 0)
+
+    def test_publish_and_verify_refuse_missing_or_mismatched_integrity_fields(self):
+        head = self._repo()
+        r, f = self._ob(head)
+        rec = json.loads(f.read_text())
+        for label, mut in (("missing sha", lambda x: x.pop("registry_output_sha256")),
+                           ("missing bytes", lambda x: x.pop("output_bytes")),
+                           ("bad sha", lambda x: x.update(registry_output_sha256="0" * 64)),
+                           ("bad bytes", lambda x: x.update(output_bytes=rec["output_bytes"] + 1))):
+            bad = json.loads(json.dumps(rec))
+            mut(bad)
+            bf = self.d / "bad.json"
+            bf.write_text(json.dumps(bad))
+            p = self._publish(bf)
+            self.assertNotEqual(p.returncode, 0, label)
+            self.assertTrue("registry_output_sha256" in p.stderr or "output_bytes" in p.stderr, (label, p.stderr))
+            self.assertNotEqual(self.run_tool("verify", str(bf)).returncode, 0, label)
+        self.assertEqual(self._publish(f).returncode, 0)
+
+    def test_verify_published_receipt_without_local_file_and_fails_closed(self):
+        head = self._repo()
+        r, f = self._ob(head)
+        absent = self.run_tool("verify", "--require-revocation-check", "--pr", "7", "--head", head)
+        self.assertNotEqual(absent.returncode, 0)
+        self.assertIn("no readable published receipt", absent.stderr)
+        self.assertEqual(self._publish(f).returncode, 0)
+        ok = self.run_tool("verify", "--require-revocation-check", "--pr", "7", "--head", head)
+        self.assertEqual(ok.returncode, 0, ok.stderr)
+        self.assertEqual(self.run_tool("revoke", "--pr", "7", "--head", head, "--reason", "bad").returncode, 0)
+        shutil.rmtree(self.rev_dir, ignore_errors=True)  # only the published revocation remains
+        v = self.run_tool("verify", "--require-revocation-check", "--pr", "7", "--head", head)
+        self.assertNotEqual(v.returncode, 0)
+        self.assertIn("REVOKED", v.stderr)
+
+    def test_branch_reads_ignore_concurrent_fetch_head(self):
+        head = self._repo()
+        r, f = self._ob(head)
+        self.assertEqual(self._publish(f).returncode, 0)
+        self.assertEqual(self.run_tool("revoke", "--pr", "7", "--head", head, "--reason", "bad").returncode, 0)
+        shutil.rmtree(self.rev_dir, ignore_errors=True)
+        # a concurrent fetch of a ref with no revocations dir lands in FETCH_HEAD during our fetch window
+        hook = self.work / "fetch-shim"
+        real = shutil.which("git")
+        hook.write_text(f"#!/bin/sh\n{real} \"$@\"; rc=$?\ncase \"$*\" in *fetch*aq-receipt-tmp*) {real} -C {self.work} fetch -q origin main >/dev/null 2>&1;; esac\nexit $rc\n")
+        hook.chmod(0o755)
+        env = {**os.environ, "PATH": f"{self.work}/shimbin:{os.environ['PATH']}"}
+        (self.work / "shimbin").mkdir()
+        (self.work / "shimbin/git").write_text(hook.read_text())
+        (self.work / "shimbin/git").chmod(0o755)
+        v = subprocess.run([sys.executable, str(TOOL), "--root", str(self.work), "--registry", str(self.reg), "verify",
+                            "--require-revocation-check", "--pr", "7", "--head", head], capture_output=True, text=True, env=env)
+        self.assertNotEqual(v.returncode, 0)
+        self.assertIn("REVOKED", v.stderr)
+
     def test_push_timeout_is_clean_and_leaves_branch_untouched(self):
         head = self._repo()
         r, f = self._ob(head)
