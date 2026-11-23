@@ -10,7 +10,7 @@ pydantic-settings>=2.7.1
 # HTTP clients
 httpx>=0.28.1
 aiohttp>=3.13.4
-requests>=2.33.0
+requests>=2.34.2
 
 # Documentation parsing
 beautifulsoup4>=4.12.3
@@ -27,7 +27,7 @@ sqlalchemy>=2.0.36
 sentence-transformers>=3.3.1
 
 # Caching and utilities
-python-dateutil>=2.9.0.post0
+python-dateutil>=4.0.0
 pyyaml>=6.0.2
 
 # Git for repo cloning
