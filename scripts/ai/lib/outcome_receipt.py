@@ -33,7 +33,12 @@ def _entropy(s: str) -> float:
 
 
 def _entropy_text(text: str, allowed_paths: set[str] | frozenset[str]) -> str:
-    """Return `text` with verified multi-segment `files[*].path`/`renamed_from` values blanked."""
+    """Return `text` with verified multi-segment `files[*].path`/`renamed_from` values split on `/`.
+
+    Replacing `/` with a space prevents path separators from joining benign directory/filename
+    segments into a single 32+ char `_BLOB` match while keeping every individual path component
+    subject to the entropy check.
+    """
     if not allowed_paths:
         return text
     try:
@@ -50,7 +55,7 @@ def _entropy_text(text: str, allowed_paths: set[str] | frozenset[str]) -> str:
             for key in ("path", "renamed_from"):
                 val = copy.get(key)
                 if isinstance(val, str) and "/" in val and val in allowed_paths:
-                    copy[key] = ""
+                    copy[key] = val.replace("/", " ")
                     changed = True
             masked_files.append(copy)
         else:
@@ -63,10 +68,10 @@ def _entropy_text(text: str, allowed_paths: set[str] | frozenset[str]) -> str:
 def scan(text: str, *, allowed_paths: set[str] | frozenset[str] = frozenset()) -> list[str]:
     """Names of fail-closed findings in already-redacted text; empty means clean.
 
-    `allowed_paths` exempts multi-segment (`/`-containing) verified `files[*].path` and
-    `files[*].renamed_from` field values from the generic entropy heuristic; pattern checks
-    (`_HITS`) and `_redact` still run unconditionally, and matching tokens in any other field
-    remain subject to the entropy check.
+    `allowed_paths` splits multi-segment (`/`-containing) verified `files[*].path` and
+    `files[*].renamed_from` field values on `/` before the generic entropy heuristic so path
+    separators do not join short segments into a 32+ char token. Individual path components,
+    tokens in any other field, pattern checks (`_HITS`), and `_redact` remain checked.
     """
     hits = [f"pattern{i}" for i, p in enumerate(_HITS) if p.search(text)]
     target = _entropy_text(text, allowed_paths)

@@ -368,6 +368,54 @@ class Collector(unittest.TestCase):
         q65 = [x for x in self.lines("trajectories.quarantine.jsonl") if x["pr"] == 65][0]
         self.assertIn("entropy", q65["reasons"])
 
+    def test_l_high_entropy_nested_path_dir_and_renamed_from_quarantine(self) -> None:
+        r = self.repo
+        secret_tok = "AbCdEfGhIjKlMnOpQrStUvWxYz0123456789"
+        # 1) Nested filename containing an opaque high-entropy component must quarantine
+        nested_file = f"docs/nested/{secret_tok}.txt"
+        (r / nested_file).parent.mkdir(parents=True, exist_ok=True)
+        (r / nested_file).write_text("ok\n")
+        _git(r, "add", "-A")
+        _git(r, "commit", "-qm", "nested-secret-filename")
+        h1 = _git(r, "rev-parse", "HEAD")
+        self.set_gh(self.head, h1)
+        self.receipts(_receipt(66))
+        c = self.collect()
+        self.assertEqual((c["collected"], c["quarantined"]), (0, 1), c)
+
+        # 2) Directory component containing an opaque high-entropy token must quarantine
+        secret_dir = f"docs/Dir{secret_tok}/note.md"
+        (r / secret_dir).parent.mkdir(parents=True, exist_ok=True)
+        (r / secret_dir).write_text("ok\n")
+        _git(r, "add", "-A")
+        _git(r, "commit", "-qm", "nested-secret-dirname")
+        h2 = _git(r, "rev-parse", "HEAD")
+        self.set_gh(h1, h2)
+        self.receipts(_receipt(67))
+        c = self.collect()
+        self.assertEqual((c["collected"], c["quarantined"]), (0, 1), c)
+
+        # 3) Rename source (renamed_from) containing a high-entropy component must quarantine
+        rename_src = f"archive/Old{secret_tok}.md"
+        (r / rename_src).parent.mkdir(parents=True, exist_ok=True)
+        (r / rename_src).write_text("".join(f"line{i}\n" for i in range(20)))
+        _git(r, "add", "-A")
+        _git(r, "commit", "-qm", "seed-rename-src")
+        h3 = _git(r, "rev-parse", "HEAD")
+        (r / "docs/moved-clean").mkdir(parents=True, exist_ok=True)
+        _git(r, "mv", rename_src, "docs/moved-clean/target.md")
+        _git(r, "commit", "-qm", "rename-secret-src")
+        h4 = _git(r, "rev-parse", "HEAD")
+        self.set_gh(h3, h4)
+        self.receipts(_receipt(68))
+        c = self.collect()
+        self.assertEqual((c["collected"], c["quarantined"]), (0, 1), c)
+
+        self.assertEqual(self.lines("trajectories.jsonl"), [])
+        quar_by_pr = {x["pr"]: x for x in self.lines("trajectories.quarantine.jsonl")}
+        for pr in (66, 67, 68):
+            self.assertIn("entropy", quar_by_pr[pr]["reasons"])
+
 
 if __name__ == "__main__":
     unittest.main()

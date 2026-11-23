@@ -23,8 +23,8 @@ scripts/governance/tier0-validation-gate.sh --pre-commit
 
 ## Validation Evidence
 - Root cause: `outcome_receipt.scan`'s `_BLOB` regex (`[A-Za-z0-9+/_=-]{32,}`) flagged long changed repo paths such as `docs/harness-first/evidence/2026-11-15-deploy-validation.md` (entropy `4.18 > 4.0`) as `high_entropy_token`, quarantining PR #788.
-- Fix: `scan(text, *, allowed_paths=())` computes `allowed_blobs = {tok for p in allowed_paths for tok in _BLOB.findall(p) if "/" in tok}` from verified `git diff --numstat` `files` and skips only the generic entropy heuristic for those multi-segment path tokens.
-- Tests: `scripts/testing/test-collect-trajectories.py` (`16/16` pass, including `test_j_long_changed_repo_path_exempt_from_entropy_while_slash_secret_quarantines`); live trajectory collection collected `2/2` PRs (`#787` and `#788`).
+- Fix: `scan(text, *, allowed_paths=())` delegates entropy pre-processing to `_entropy_text(text, allowed_paths)`, which replaces `/` with a space only inside verified `files[*].path` and `files[*].renamed_from` entries matching `allowed_paths`. That prevents path separators from merging benign short segments into a 32+ char token while still running the entropy heuristic on every individual path component (directory names, nested filenames, and rename sources) and on all non-file fields, with `_redact` and `_HITS` pattern checks unconditional.
+- Tests: `scripts/testing/test-collect-trajectories.py` (`17/17` pass, including `test_j`, `test_k`, and `test_l_high_entropy_nested_path_dir_and_renamed_from_quarantine`); `scripts/testing/test-outcome-receipt.py` pass; live trajectory collection collected `2/2` PRs (`#787` and `#788`).
 
 ## Rollback Plan
 - `git revert <sha>`. Trigger: false-negative or false-positive quarantine in `collect-verified-trajectories.py`.
