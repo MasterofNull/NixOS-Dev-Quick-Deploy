@@ -29,4 +29,6 @@ Historical PRDs under .agent/PROJECT-*-PRD.md still say "cheapest"; they are dat
 None.
 
 ## Rule 18 per-model windows
-Owner directive 2026-11-19: Rule 18 now requires availability, quota, token limits and session windows to be tracked per model, not per lane/provider (a requirement; current behavior is lane-wide for the Codex cooldown and Gemini fallback, tracked as LANE-AVAILABILITY-NOT-PER-MODEL). One model being out must not make other models unavailable; the orchestrator re-scopes prompt/scope/task/payload to a still-available model without lowering quality (correctness first, Rule 17). Mirrored in docs/architecture/role-matrix.md (Agnostic execution).
+Owner directive 2026-11-19: Rule 18 now requires availability, quota, token limits and session windows to be tracked per model, not per lane/provider (a requirement; known lane-wide gaps are tracked as LANE-AVAILABILITY-NOT-PER-MODEL). One model being out must not make other models unavailable; the orchestrator re-scopes prompt/scope/task/payload to a still-available model without lowering quality (correctness first, Rule 17). Mirrored in docs/architecture/role-matrix.md (Agnostic execution).
+
+Concrete lane capability details (which tools or context a lane/mode has) are intentionally kept out of canon because they drift; verify per dispatch.
