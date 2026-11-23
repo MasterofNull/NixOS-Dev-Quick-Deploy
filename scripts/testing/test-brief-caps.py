@@ -11,7 +11,10 @@ import sys
 import tempfile
 import threading
 import unittest
+from contextlib import ExitStack
 from pathlib import Path
+from typing import Any
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts" / "ai" / "lib"))
@@ -27,6 +30,14 @@ caps:
 """
 BEFORE = dt.date(2026, 11, 18)
 AFTER = dt.date(2026, 12, 2)
+
+
+def _load_dispatch(name: str) -> Any:
+    spec = importlib.util.spec_from_file_location(name, ROOT / "scripts/ai/lib/dispatch.py")
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 
 class Parse(unittest.TestCase):
@@ -131,7 +142,7 @@ class DelegateGate(unittest.TestCase):
                     self.send_response(404)
                     self.end_headers()
 
-            def log_message(self, *args):
+            def log_message(self, format: str, *args: Any) -> None:
                 return
 
         srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Handler)
@@ -310,9 +321,7 @@ class AgentCapWiring(unittest.TestCase):
         lib_dir = str(ROOT / "scripts/ai/lib")
         if lib_dir not in sys.path:
             sys.path.insert(0, lib_dir)
-        spec = importlib.util.spec_from_file_location("dispatch_test_agent_cap", ROOT / "scripts/ai/lib/dispatch.py")
-        dispatch = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(dispatch)
+        dispatch = _load_dispatch("dispatch_test_agent_cap")
 
         seen_payloads = []
 
@@ -338,7 +347,7 @@ class AgentCapWiring(unittest.TestCase):
                     self.send_response(404)
                     self.end_headers()
 
-            def log_message(self, *args):
+            def log_message(self, format: str, *args: Any) -> None:
                 return
 
         srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Handler)
@@ -387,9 +396,7 @@ class MissingUsage(unittest.TestCase):
         lib_dir = str(ROOT / "scripts/ai/lib")
         if lib_dir not in sys.path:
             sys.path.insert(0, lib_dir)
-        spec = importlib.util.spec_from_file_location("dispatch_test_missing_usage", ROOT / "scripts/ai/lib/dispatch.py")
-        dispatch = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(dispatch)
+        dispatch = _load_dispatch("dispatch_test_missing_usage")
 
         class _Socket:
             def settimeout(self, timeout):
@@ -415,69 +422,58 @@ class MissingUsage(unittest.TestCase):
             b'data: {"choices":[{"delta":{},"finish_reason":"stop"}]}\n',
             b'data: [DONE]\n',
         ]
-        orig_urlopen = dispatch.urllib.request.urlopen
-        orig_wait = dispatch.wait_for_slot
-        orig_queue = dispatch._slot_queue
-        orig_emit = dispatch._emit_training_event
-        orig_service = dispatch._wait_for_service
-        orig_asm = dispatch._apply_context_assembler
-        orig_prefetch = dispatch._embedded_assist_prefetch
         orig_brief = os.environ.get("AQ_BRIEF_FILE")
         try:
-            dispatch.urllib.request.urlopen = lambda *a, **k: _Response(chunks)
-            dispatch.wait_for_slot = lambda *a: None
-            dispatch._slot_queue = None
-            dispatch._emit_training_event = lambda *a: None
-            dispatch._wait_for_service = lambda *a: True
-            dispatch._apply_context_assembler = lambda p, *a: p
-            dispatch._embedded_assist_prefetch = lambda *a: ""
-
-            with tempfile.TemporaryDirectory() as td:
-                d = Path(td) / "a" / "b" / "delegation"
-                out_direct = d / "outputs" / "direct-only.log"
-                out_direct.parent.mkdir(parents=True)
-                cfg = dispatch.TaskConfig(
-                    mode="direct",
-                    role="implementer",
-                    timeout_secs=5,
-                    max_tokens=500,
-                    llama_url="http://127.0.0.1:1",
-                    hybrid_url="http://127.0.0.1:1",
-                    ralph_url="http://127.0.0.1:1",
-                    task_type="code",
-                )
-                self.assertTrue(dispatch.DirectRunner().run(cfg, "prompt", out_direct, "t-direct"))
-                sidecar = json.loads(Path(str(out_direct) + ".usage.json").read_text(encoding="utf-8"))
-                self.assertIsNone(sidecar["tokens_in"])
-                self.assertIsNone(sidecar["tokens_out"])
-                self.assertEqual(sidecar["finish_reason"], "stop")
-
-                brief_path = d / "brief.md"
-                brief_path.write_text(GOOD, encoding="utf-8")
-                os.environ["AQ_BRIEF_FILE"] = str(brief_path)
-                reg = dispatch.TaskRegistry(d)
-                out_task = d / "outputs" / "t-no-usage.log"
-                self.assertTrue(dispatch.dispatch_task(cfg, "prompt", "t-no-usage", out_task, reg, ROOT / "scripts/ai"))
-                row = reg.get("t-no-usage")
-                self.assertIsNone(row["tokens_in"])
-                self.assertIsNone(row["tokens_out"])
-                line = json.loads((d / bc.LOG).read_text(encoding="utf-8").splitlines()[0])
-                self.assertEqual(line["actual"], {"input_tokens": None, "output_tokens": None, "turns": None})
-                self.assertEqual(line["within_caps"], {"input_tokens": None, "output_tokens": None, "turns": None})
-                summary = bc.summarize([line])
-                self.assertEqual(summary["unknown"], {"input_tokens": 1, "output_tokens": 1, "turns": 1})
+            with ExitStack() as patches:
+                patches.enter_context(mock.patch.object(dispatch.urllib.request, "urlopen", lambda *a, **k: _Response(chunks)))
+                patches.enter_context(mock.patch.object(dispatch, "wait_for_slot", lambda *a: None))
+                patches.enter_context(mock.patch.object(dispatch, "_slot_queue", None))
+                patches.enter_context(mock.patch.object(dispatch, "_emit_training_event", lambda *a: None))
+                patches.enter_context(mock.patch.object(dispatch, "_wait_for_service", lambda *a: True))
+                patches.enter_context(mock.patch.object(dispatch, "_apply_context_assembler", lambda p, *a: p))
+                patches.enter_context(mock.patch.object(dispatch, "_embedded_assist_prefetch", lambda *a: ""))
+                self._run_direct_checks(dispatch)
         finally:
-            dispatch.urllib.request.urlopen = orig_urlopen
-            dispatch.wait_for_slot = orig_wait
-            dispatch._slot_queue = orig_queue
-            dispatch._emit_training_event = orig_emit
-            dispatch._wait_for_service = orig_service
-            dispatch._apply_context_assembler = orig_asm
-            dispatch._embedded_assist_prefetch = orig_prefetch
             if orig_brief is None:
                 os.environ.pop("AQ_BRIEF_FILE", None)
             else:
                 os.environ["AQ_BRIEF_FILE"] = orig_brief
+
+    def _run_direct_checks(self, dispatch: Any) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            d = Path(td) / "a" / "b" / "delegation"
+            out_direct = d / "outputs" / "direct-only.log"
+            out_direct.parent.mkdir(parents=True)
+            cfg = dispatch.TaskConfig(
+                mode="direct",
+                role="implementer",
+                timeout_secs=5,
+                max_tokens=500,
+                llama_url="http://127.0.0.1:1",
+                hybrid_url="http://127.0.0.1:1",
+                ralph_url="http://127.0.0.1:1",
+                task_type="code",
+            )
+            self.assertTrue(dispatch.DirectRunner().run(cfg, "prompt", out_direct, "t-direct"))
+            sidecar = json.loads(Path(str(out_direct) + ".usage.json").read_text(encoding="utf-8"))
+            self.assertIsNone(sidecar["tokens_in"])
+            self.assertIsNone(sidecar["tokens_out"])
+            self.assertEqual(sidecar["finish_reason"], "stop")
+
+            brief_path = d / "brief.md"
+            brief_path.write_text(GOOD, encoding="utf-8")
+            os.environ["AQ_BRIEF_FILE"] = str(brief_path)
+            reg = dispatch.TaskRegistry(d)
+            out_task = d / "outputs" / "t-no-usage.log"
+            self.assertTrue(dispatch.dispatch_task(cfg, "prompt", "t-no-usage", out_task, reg, ROOT / "scripts/ai"))
+            row = reg.get("t-no-usage")
+            self.assertIsNone(row["tokens_in"])
+            self.assertIsNone(row["tokens_out"])
+            line = json.loads((d / bc.LOG).read_text(encoding="utf-8").splitlines()[0])
+            self.assertEqual(line["actual"], {"input_tokens": None, "output_tokens": None, "turns": None})
+            self.assertEqual(line["within_caps"], {"input_tokens": None, "output_tokens": None, "turns": None})
+            summary = bc.summarize([line])
+            self.assertEqual(summary["unknown"], {"input_tokens": 1, "output_tokens": 1, "turns": 1})
 
 
 if __name__ == "__main__":

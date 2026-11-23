@@ -19,7 +19,7 @@ normal merge; conflicts go to the owner in the CLI. UNVERIFIED marks what I coul
 - **Rules:** `subject` matches `^[a-z0-9_-]+(\.[a-z0-9_-]+)+$` and equals the filename; `claim` and `evidence` required; at most 10 fact
   files added, changed or deleted per commit. `evidence` is a repo `path:line`, a commit sha, a command, or an `https://` URL (8-300 chars).
   `instance` comes from `scripts/ai/lib/instance_label.py`. Lane parser: strip a leading `Simurg@` and a trailing `#<session>`, then take
-  the text before `/` (`Simurg@codex/gpt-6.1#ab12` and PERSONA=0 `codex/gpt-6.1` both give `codex`). Facts are written either way.
+  the text before `/` (`Simurg@codex/gpt-6.1#ab12` and PERSONA=0 label codex/gpt-6.1 both give `codex`). Facts are written either way.
 - **Delta and collapse:** the instance commits fact files on its slice branch, inside the slice's normal commit (no docs-only PRs); collapse
   is the existing merge via `aq-land`. Provenance is `instance:` plus `git log`. No route, daemon, database or service.
 - **Recall:** lanes read files (`rg subject-prefix .agent/memory/facts/`). `aq-session-start` prints up to 20 fact subjects (newest first)
