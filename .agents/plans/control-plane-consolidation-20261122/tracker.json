@@ -1,38 +1,40 @@
 {
   "plan": {
     "id": "control-plane-consolidation-20261122",
-    "title": "Control-plane consolidation (bounded contexts, contracts, single-owner registry)",
+    "title": "Control-plane consolidation (bounded contexts, contracts, single-owner guards)",
     "prd_ref": ".agents/plans/control-plane-consolidation-20261122/DESIGN.md",
     "owner": "hyperd",
-    "goal": "One owner per decision, enforced by a registry and tier0; adopt-vs-build on explicit criteria",
+    "goal": "One owner per decision, enforced on the existing system-state-authorities registry and checker; adopt-vs-build on explicit criteria with sunsets",
     "success_criteria": [
-      "Each of the nine multi-owner decisions has one registered owner",
-      "A new non-owner mutation of an owned decision fails tier0",
-      "No component is replaced without retiring the old one"
+      "Each of the nine multi-owner decisions maps to one owner in one of five contexts (K1-K5) and nine aggregates (A1-A9)",
+      "A new non-owner mutation of an owned decision fails tier0 or its runtime control, with a negative test",
+      "No component is replaced without retiring the old one; every spike has a sunset"
     ]
   },
   "phases": [
-    {"id": "mvp", "name": "MVP S0-S4", "goal": "Registry, durable landing, derived independence, single routing reader, per-model availability", "order": 1},
-    {"id": "followon", "name": "Follow-on S5-S12", "goal": "Deploy, health, loops, memory, learning, audit", "order": 2}
+    {"id": "mvp", "name": "MVP: S0, S1, S2, S1b, S4, S3, S12", "goal": "Guards on the existing registry, derived independence, durable landing, per-model availability, single routing owner, exit audit", "order": 1},
+    {"id": "followon", "name": "Follow-on (after the feature freeze exits)", "goal": "Deploy, health, branch lock, memory, loops, shims, learning", "order": 2}
   ],
   "items": [
-    {"id": "S0", "name": "Freeze PRD and verify research claims", "phase": "mvp", "kind": "milestone", "goal": "Independent review, Codex verification of CVE/OAuth claims, owner decisions D1-D8", "validation_goal": "PLAN_READY recorded", "deps": [], "detection": {"commit_match": ["\\(control-plane\\): .*\\bS0\\b"]}, "pct_hint": 0},
-    {"id": "S1", "name": "decision-ownership registry + DO-2 check", "phase": "mvp", "kind": "slice", "goal": "Registry, schema, tier0 check: only aq-land writes PR branches", "validation_goal": "Fixtures incl. adversarial; today's tree passes", "deps": ["S0"], "detection": {"commit_match": ["\\(control-plane\\): .*\\bS1\\b"]}, "pct_hint": 0},
-    {"id": "S1b", "name": "Durable aq-land runner + Dependabot recreate path", "phase": "mvp", "kind": "slice", "goal": "Retire ad-hoc land runners", "validation_goal": "Kill-and-resume test on a real landing", "deps": ["S1"], "detection": {"commit_match": ["\\(control-plane\\): .*\\bS1b\\b"]}, "pct_hint": 0},
-    {"id": "S2", "name": "Derived reviewer independence (C3)", "phase": "mvp", "kind": "slice", "goal": "Independence from commit authors, not the Author-lane tag", "validation_goal": "Tag/author mismatch fixtures", "deps": ["S1"], "detection": {"commit_match": ["\\(control-plane\\): .*\\bS2\\b"]}, "pct_hint": 0},
-    {"id": "S3", "name": "Single model-coordinator reader + schema (C1)", "phase": "mvp", "kind": "slice", "goal": "One read module, schema, DO-1", "validation_goal": "Readers migrated; direct read fails tier0", "deps": ["S1"], "detection": {"commit_match": ["\\(control-plane\\): .*\\bS3\\b"]}, "pct_hint": 0},
-    {"id": "S4", "name": "Per-model availability API (C2)", "phase": "mvp", "kind": "slice", "goal": "Availability keyed (lane, model)", "validation_goal": "One model down leaves siblings up", "deps": ["S1"], "detection": {"commit_match": ["\\(control-plane\\): .*\\bS4\\b"]}, "pct_hint": 0},
-    {"id": "S5", "name": "aq-update-unified + nh evaluation (C5)", "phase": "followon", "kind": "slice", "goal": "One deploy front door; DO-3", "validation_goal": "aq-update-unified journeys", "deps": ["S1"], "detection": {"commit_match": ["\\(control-plane\\): .*\\bS5\\b"]}, "pct_hint": 0},
-    {"id": "S6", "name": "One remediator + health schema (C7)", "phase": "followon", "kind": "slice", "goal": "Single remediation owner; DO-6", "validation_goal": "One failure, one attempt", "deps": ["S1"], "detection": {"commit_match": ["\\(control-plane\\): .*\\bS6\\b"]}, "pct_hint": 0},
-    {"id": "S7", "name": "Branch-mutation lock, all PR writers via aq-land (C4)", "phase": "followon", "kind": "slice", "goal": "Gemini and Dependabot paths through aq-land", "validation_goal": "Concurrent-mutation test", "deps": ["S1b"], "detection": {"commit_match": ["\\(control-plane\\): .*\\bS7\\b"]}, "pct_hint": 0},
-    {"id": "S8", "name": "Loop retry-budget convergence", "phase": "followon", "kind": "slice", "goal": "One retry budget for six loop families", "validation_goal": "Per-loop parity tests", "deps": ["S4"], "detection": {"commit_match": ["\\(control-plane\\): .*\\bS8\\b"]}, "pct_hint": 0},
-    {"id": "S9", "name": "Shim map, duplicate ratchet, canon zero-net, PRD template sections", "phase": "followon", "kind": "slice", "goal": "single-owner-guards R2-R4 plus the four required PRD sections", "validation_goal": "Zero-net-lines test; PRD missing sections fails", "deps": ["S1"], "detection": {"commit_match": ["\\(control-plane\\): .*\\bS9\\b"]}, "pct_hint": 0},
-    {"id": "S10", "name": "Experience capture and lesson schema (C8)", "phase": "followon", "kind": "slice", "goal": "experience-capture S1-S6c under the Learning context", "validation_goal": "That PRD's journeys", "deps": ["S4"], "detection": {"commit_match": ["\\(control-plane\\): .*\\bS10\\b"]}, "pct_hint": 0},
-    {"id": "S11", "name": "Memory facade + DO-7 (C6)", "phase": "followon", "kind": "slice", "goal": "One memory write path", "validation_goal": "Every writer in the surface registry", "deps": ["S1"], "detection": {"commit_match": ["\\(control-plane\\): .*\\bS11\\b"]}, "pct_hint": 0},
-    {"id": "S12", "name": "MVP-boundary audit + fact-sheet re-run", "phase": "followon", "kind": "milestone", "goal": "Independent audit; re-verify adopt-vs-build", "validation_goal": "Frozen journeys J1-J5 on real dependencies", "deps": ["S1", "S1b", "S2", "S3", "S4"], "detection": {"commit_match": ["\\(control-plane\\): .*\\bS12\\b"]}, "pct_hint": 0}
+    {"id": "S0", "name": "Freeze PRD, verify open claims, owner decisions D1-D10", "phase": "mvp", "kind": "milestone", "goal": "PLAN_READY after review r1 revisions; local Qwen advisory review pending", "validation_goal": "PLAN_READY recorded", "deps": [], "detection": {"commit_match": ["\\(control-plane\\): .*\\bS0\\b"]}, "pct_hint": 0},
+    {"id": "S1", "name": "Guards on the existing registry (DO-2, DO-3) + baseline", "phase": "mvp", "kind": "slice", "goal": "single-owner-guards R1 on check-state-authorities.py; occurrence baseline; external-review disposition", "validation_goal": "Positive, negative and adversarial fixtures; today's tree passes", "deps": ["S0"], "detection": {"commit_match": ["\\(control-plane\\): .*\\bS1\\b"]}, "pct_hint": 0},
+    {"id": "S2", "name": "Derived, authenticated reviewer independence (DO-5)", "phase": "mvp", "kind": "slice", "goal": "Authors from all introduced commits, reviewer identity and candidate binding, grant consumption; both aq-land and aq-review-receipt", "validation_goal": "Negative suite incl. human-only author, stale head, replayed grant", "deps": ["S1"], "detection": {"commit_match": ["\\(control-plane\\): .*\\bS2\\b"]}, "pct_hint": 0},
+    {"id": "S1b", "name": "Durable land runner via aq-land-runner.service", "phase": "mvp", "kind": "slice", "goal": "Verify and wire the agent-work-durability runner; Dependabot recreate path; retire ad-hoc runners", "validation_goal": "Kill-and-resume on a real landing", "deps": ["S2"], "detection": {"commit_match": ["\\(control-plane\\): .*\\bS1b\\b"]}, "pct_hint": 0},
+    {"id": "S4", "name": "Per-model availability API (A2, DO-4)", "phase": "mvp", "kind": "slice", "goal": "Availability keyed (lane, model); retire cooldown-file reads", "validation_goal": "One model down leaves its sibling up", "deps": ["S1"], "detection": {"commit_match": ["\\(control-plane\\): .*\\bS4\\b"]}, "pct_hint": 0},
+    {"id": "S3", "name": "Routing owner: schema, ResolvedRunPlan, route-policy module (A1, DO-1)", "phase": "mvp", "kind": "slice", "goal": "Coordinator owns selection; switchboard executes; migrate readers and hardcoded dicts", "validation_goal": "Real caller verified via execution receipt before fencing old readers", "deps": ["S4"], "detection": {"commit_match": ["\\(control-plane\\): .*\\bS3\\b"]}, "pct_hint": 0},
+    {"id": "S12", "name": "MVP exit audit", "phase": "mvp", "kind": "milestone", "goal": "Independent code and runtime review, adversarial pass, fact-sheet re-run", "validation_goal": "Journeys J1-J5 on real dependencies", "deps": ["S1", "S2", "S1b", "S4", "S3"], "detection": {"commit_match": ["\\(control-plane\\): .*\\bS12\\b"]}, "pct_hint": 0},
+    {"id": "S5", "name": "aq-update-unified + bounded nh spike (A5, DO-3 allowances)", "phase": "followon", "kind": "slice", "goal": "One deploy front door; nh flag with a sunset", "validation_goal": "aq-update-unified journeys; flag cut over or removed in its window", "deps": ["S12"], "detection": {"commit_match": ["\\(control-plane\\): .*\\bS5\\b"]}, "pct_hint": 0},
+    {"id": "S6", "name": "One remediator (provisional) + health schema (A7, DO-6)", "phase": "followon", "kind": "slice", "goal": "Single remediation owner chosen by measurement; add gemini to the probe schema", "validation_goal": "One failure, one attempt", "deps": ["S12"], "detection": {"commit_match": ["\\(control-plane\\): .*\\bS6\\b"]}, "pct_hint": 0},
+    {"id": "S7", "name": "Branch-mutation lock; all PR writers via aq-land", "phase": "followon", "kind": "slice", "goal": "Remove DO-2 bypasses for Gemini and Dependabot paths", "validation_goal": "Concurrent-mutation test", "deps": ["S1b", "S12"], "detection": {"commit_match": ["\\(control-plane\\): .*\\bS7\\b"]}, "pct_hint": 0},
+    {"id": "S11", "name": "Memory facade + DO-7 (A6)", "phase": "followon", "kind": "slice", "goal": "One memory write path", "validation_goal": "Every writer in the surface registry", "deps": ["S12"], "detection": {"commit_match": ["\\(control-plane\\): .*\\bS11\\b"]}, "pct_hint": 0},
+    {"id": "S8", "name": "Loop retry-budget convergence", "phase": "followon", "kind": "slice", "goal": "One retry budget for six loop families", "validation_goal": "Per-loop parity tests", "deps": ["S4", "S12"], "detection": {"commit_match": ["\\(control-plane\\): .*\\bS8\\b"]}, "pct_hint": 0},
+    {"id": "S9", "name": "Shim map, duplicate ratchet, canon zero-net, PRD three-line header", "phase": "followon", "kind": "slice", "goal": "single-owner-guards R2-R4", "validation_goal": "Zero-net-lines test; new PRD missing the header fails", "deps": ["S1"], "detection": {"commit_match": ["\\(control-plane\\): .*\\bS9\\b"]}, "pct_hint": 0},
+    {"id": "S10", "name": "Experience capture (A8), after its REVISE verdicts are resolved", "phase": "followon", "kind": "slice", "goal": "Land experience-capture only once revised and re-reviewed", "validation_goal": "That PRD's journeys on real data", "deps": ["S12"], "detection": {"commit_match": ["\\(control-plane\\): .*\\bS10\\b"]}, "pct_hint": 0}
   ],
   "issues": [
-    {"title": "Research claims (CVE, OAuth, Anthropic citation) not yet independently verified", "sev": "medium", "note": "Codex verification gates any adoption"},
-    {"title": "single-owner-guards and aq-update-unified PRDs are not on main", "sev": "medium", "note": "land with S1"}
+    {"title": "Gemini-sourced external claims (versions, nh/deploy-rs/colmena/devenv facts) still UNVERIFIED", "sev": "medium", "note": "A non-Gemini lane verifies before any adoption"},
+    {"title": "single-owner-guards and aq-update-unified PRDs are not on main", "sev": "medium", "note": "land with S1"},
+    {"title": "Lane eligibility grants expire 2026-11-26", "sev": "high", "note": "owner renewal before S1"},
+    {"title": "Local Qwen S0 review pending", "sev": "low", "note": "advisory only; mapped in the disposition section when it lands"}
   ]
 }
