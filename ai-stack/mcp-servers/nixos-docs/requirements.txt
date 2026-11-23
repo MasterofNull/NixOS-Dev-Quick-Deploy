@@ -21,7 +21,7 @@ markdownify>=0.14.1
 # Database clients
 psycopg2-binary>=2.9.10
 redis>=5.2.1
-sqlalchemy>=2.0.36
+sqlalchemy>=2.1.9
 
 # Vector embeddings
 sentence-transformers>=3.3.1
