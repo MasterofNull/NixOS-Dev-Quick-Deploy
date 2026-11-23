@@ -164,6 +164,7 @@ class CheckResult:
     duration_ms: float = 0.0
     phase: str = "0"
     details: list[dict[str, Any]] | None = None
+    _timed_out: bool = field(default=False, repr=False, compare=False)
 
     def to_dict(self) -> dict:
         d = {

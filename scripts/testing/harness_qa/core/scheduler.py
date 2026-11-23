@@ -61,11 +61,45 @@ def run_checks(
     timed_out_threads: list[threading.Thread] = []
     start = clock()
 
+    hint_lock = threading.Lock()
+    hint_value = ""
+    hint_thread: threading.Thread | None = None
+    hint_at = -1.0
+    # Bound hint probes strictly so a stalled /slots HTTP call cannot push past budget_s or the outer timeout.
+    hint_wait_s = min(0.15, max(0.02, budget_s * 0.05))
+
     def hint() -> str:
-        try:
-            return busy_hint() if busy_hint else ""
-        except Exception:
+        nonlocal hint_value, hint_thread, hint_at
+        probe_fn = busy_hint
+        if probe_fn is None:
             return ""
+        now_real = time.monotonic()
+        with hint_lock:
+            t = hint_thread
+            if t is not None:
+                if t.is_alive():
+                    return hint_value
+                if now_real - hint_at < 2.0:
+                    return hint_value
+
+            def _probe() -> None:
+                nonlocal hint_value, hint_at
+                try:
+                    val = probe_fn() or ""
+                except Exception:
+                    val = ""
+                with hint_lock:
+                    hint_value = val
+                    hint_at = time.monotonic()
+
+            t = threading.Thread(target=_probe, name="qa-busy-hint", daemon=True)
+            hint_thread = t
+            hint_value = ""
+            hint_at = now_real
+            t.start()
+        t.join(hint_wait_s)
+        with hint_lock:
+            return hint_value
 
     def drain_completed() -> None:
         timed_out_threads[:] = [t for t in timed_out_threads if t.is_alive()]

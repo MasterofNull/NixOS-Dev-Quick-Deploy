@@ -298,14 +298,16 @@ def main() -> int:
             }
             for c in failures
         ]
+        incomplete = bool(degraded) or bool(data.get("degraded_confidence"))
         phase_results.append({
             "phase": phase,
-            "status": "failed" if failures else "passed",
+            "status": "failed" if failures else ("degraded" if incomplete else "passed"),
             "failed": len(failures),
             "failures": failure_summaries,
             "total": len(data.get("tests") or data.get("checks") or []),
             "summary": data.get("summary", {}),
             "degraded": len(degraded),
+            "degraded_confidence": bool(data.get("degraded_confidence")),
             "returncode": data.get("_monitor_returncode"),
             "stderr": data.get("_monitor_stderr", ""),
         })

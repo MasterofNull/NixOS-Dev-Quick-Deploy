@@ -423,10 +423,20 @@ def adapter_qa_phase0(progress=None, max_age_s=None, now=None, health_monitor_js
 
             returncode = phase0.get("returncode")
             total = phase0.get("total", 0)
+            degraded = phase0.get("degraded", 0)
+            status = str(phase0.get("status") or "")
+            degraded_confidence = bool(phase0.get("degraded_confidence"))
+            incomplete = (
+                (isinstance(degraded, int) and not isinstance(degraded, bool) and degraded > 0)
+                or status == "degraded"
+                or degraded_confidence
+            )
             failing = {str(fl.get("id") or "") for fl in phase0.get("failures", [])}
             stamp = _iso(now - monitor_age)
 
             def cleared(inc):
+                if incomplete:
+                    return None
                 cid = str(inc.get("path", "")).removeprefix("aq-qa check ")
                 if inc.get("producer") != "aq-qa:phase0" or cid in failing:
                     return None
@@ -436,6 +446,9 @@ def adapter_qa_phase0(progress=None, max_age_s=None, now=None, health_monitor_js
 
             if findings:
                 return "findings", _with_cleared(findings, cleared), f"{len(findings)} failing phase-0 check(s) from health-monitor (source: health-monitor JSON)"
+
+            if incomplete:
+                return "unknown", [], f"health-monitor phase-0 incomplete (status={status or 'unknown'}, degraded={degraded}); cannot confirm recovery"
 
             if returncode == 0:
                 return "ok", _with_cleared([], cleared), f"all {total} phase-0 checks pass/skip (source: health-monitor JSON)"

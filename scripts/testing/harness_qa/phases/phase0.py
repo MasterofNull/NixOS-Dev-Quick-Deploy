@@ -81,7 +81,7 @@ def _demote_timeouts(fn):
         _TIMEOUT_SEEN.hits = []
         try:
             results = fn(ctx)
-            seen_errors = list(getattr(_TIMEOUT_SEEN, "hits", ()))
+            seen_errors: list[str] = list(getattr(_TIMEOUT_SEEN, "hits", ()))
         finally:
             _TIMEOUT_SEEN.hits = []
         from ..core.result import Status
@@ -588,7 +588,13 @@ def _check_flagship_cli(ctx: RunContext) -> list[CheckResult]:
     result = factory(7, "0.6.1", "flagship agent CLI help smokes")
     result.details = aggregate
     results.append(result)
+    return results
 
+
+def _check_gemini_cli_health(ctx: RunContext) -> list[CheckResult]:
+    results = []
+    if not ctx.should_run(7):
+        return results
     gemini_script = ctx.repo_root / "scripts" / "health" / "gemini-cli-health.sh"
     env2 = {
         **os.environ,
@@ -2532,6 +2538,7 @@ def _plan(ctx: RunContext) -> list:
     if not ctx.dashboard_safe:
         plan.append(_check_continue)
         plan.append(_check_flagship_cli)
+        plan.append(_check_gemini_cli_health)
     plan.append(_check_routing)
     plan.append(_check_delegate_rate)
     plan.append(_check_safety_gate)
@@ -2653,15 +2660,16 @@ def _host_only_skips_check(ctx: RunContext) -> list[CheckResult]:
 def _llama_busy_hint_ctx(ctx: RunContext) -> str:
     """Why a slow check is slow: a busy single-slot llama queues health-probe inference behind other work."""
     try:
-        slots = http_json(f"{ctx.llama_url}/slots", timeout=2)
+        load_hint = f"; host load {os.getloadavg()[0]:.1f}"
+    except OSError:
+        load_hint = ""
+    try:
+        slots = http_json(f"{ctx.llama_url}/slots", timeout=0.15)
         if isinstance(slots, list) and any(isinstance(x, dict) and x.get("is_processing") for x in slots):
             return "; local llama busy (slot processing)"
     except Exception:
         pass
-    try:
-        return f"; host load {os.getloadavg()[0]:.1f}"
-    except OSError:
-        return ""
+    return load_hint
 
 
 def run(ctx: RunContext) -> list[CheckResult]:

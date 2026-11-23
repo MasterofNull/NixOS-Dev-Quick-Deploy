@@ -9,6 +9,7 @@ import threading
 import time
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Any
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts" / "testing"))
@@ -102,7 +103,7 @@ def main() -> int:
     check([x.status for x in mixed2] == [Status.SKIP, Status.FAIL],
           f"independent FAIL after timeout must stay FAIL: {[x.status for x in mixed2]}")
 
-    # Finding 1 (_check_flagship_cli): 0.6.1 failure must survive a 0.6.2 gemini probe timeout.
+    # Finding 1 / P1-2: a stalled 0.6.2 gemini probe must not discard a confirmed 0.6.1 failure under the scheduler.
     with tempfile.TemporaryDirectory() as td:
         repo = Path(td)
         probe_path = repo / "scripts" / "testing" / "qa-provider-probe.py"
@@ -113,11 +114,13 @@ def main() -> int:
             encoding="utf-8",
         )
         orig_run = phase0.subprocess.run
+        release_gemini = threading.Event()
 
-        def _fake_gemini_timeout(*args, **kwargs):
+        def _slow_gemini(*args, **kwargs):
+            release_gemini.wait(timeout=5.0)
             raise sp.TimeoutExpired(cmd=args[0], timeout=kwargs.get("timeout", 20))
 
-        phase0.subprocess.run = _fake_gemini_timeout
+        phase0.subprocess.run = _slow_gemini
         try:
             ctx = SimpleNamespace(
                 should_run=lambda _layer: True,
@@ -127,14 +130,28 @@ def main() -> int:
                 primary_home="/tmp",
                 primary_user="test",
             )
-            cli_res = phase0._demote_timeouts(phase0._check_flagship_cli)(ctx)
+            sched_cli = scheduler.run_checks(
+                ctx,
+                [phase0._demote_timeouts(phase0._check_flagship_cli),
+                 phase0._demote_timeouts(phase0._check_gemini_cli_health)],
+                workers=1,
+                per_check_s=0.15,
+                budget_s=1.0,
+            )
+            check(len(sched_cli) == 2, f"split flagship/gemini checks yield 2 results: {len(sched_cli)}")
+            check(sched_cli[0].id == "0.6.1" and sched_cli[0].status == Status.FAIL,
+                  f"0.6.1 CLI smoke failure must survive stalled 0.6.2 under scheduler: {sched_cli[0]}")
+            check(sched_cli[1].status == Status.SKIP and "DEGRADED:" in sched_cli[1].reason,
+                  f"stalled 0.6.2 must degrade independently: {sched_cli[1]}")
+
+            release_gemini.set()
+            direct_gemini = phase0._demote_timeouts(phase0._check_gemini_cli_health)(ctx)
+            check(len(direct_gemini) == 1 and direct_gemini[0].id == "0.6.2"
+                  and direct_gemini[0].status == Status.SKIP and "DEGRADED:" in direct_gemini[0].reason,
+                  f"0.6.2 TimeoutExpired must demote to DEGRADED SKIP: {direct_gemini}")
         finally:
+            release_gemini.set()
             phase0.subprocess.run = orig_run
-        check(len(cli_res) == 2, f"_check_flagship_cli yields 2 results: {len(cli_res)}")
-        check(cli_res[0].id == "0.6.1" and cli_res[0].status == Status.FAIL,
-              f"0.6.1 CLI smoke failure must stay FAIL when 0.6.2 times out: {cli_res[0]}")
-        check(cli_res[1].id == "0.6.2" and cli_res[1].status == Status.SKIP and "DEGRADED:" in cli_res[1].reason,
-              f"0.6.2 gemini timeout must demote to DEGRADED SKIP: {cli_res[1]}")
 
     # Finding 2: timed-out still-alive threads count against the concurrency cap.
     lock = threading.Lock()
@@ -202,7 +219,7 @@ def main() -> int:
     # Monitor: DEGRADED skips are surfaced, are not failures, and never count as clean.
     mspec = importlib.util.spec_from_file_location("mon", ROOT / "scripts/health/ai-stack-health-monitor.py")
     assert mspec is not None and mspec.loader is not None
-    mon = importlib.util.module_from_spec(mspec)
+    mon: Any = importlib.util.module_from_spec(mspec)
     mspec.loader.exec_module(mon)
     data = {"phase": "0", "passed": 1, "failed": 0, "skipped": 1, "degraded_confidence": False,
             "_monitor_returncode": 0,
@@ -240,6 +257,99 @@ def main() -> int:
             os.environ.pop("AQ_QA_PHASE0_BUDGET_S", None)
         else:
             os.environ["AQ_QA_PHASE0_BUDGET_S"] = orig_budget_env
+
+    # P1-1: stalled busy_hint (/slots hanging) must never stall per-check timeouts or blow outer deadline.
+    hint_release = threading.Event()
+    hint_calls = 0
+
+    def _stalled_hint():
+        nonlocal hint_calls
+        hint_calls += 1
+        hint_release.wait(timeout=5.0)
+        return "; late hint"
+
+    t0 = time.monotonic()
+    try:
+        r_stalled = scheduler.run_checks(
+            None, [_hang, _hang, _hang, _ok], workers=2, per_check_s=0.1, budget_s=0.6,
+            busy_hint=_stalled_hint,
+        )
+    finally:
+        hint_release.set()
+    elapsed_stalled = time.monotonic() - t0
+    check(elapsed_stalled < 1.3,
+          f"stalled busy_hint must be bounded well below 2s monitor timeout (took {elapsed_stalled:.2f}s)")
+    check(len(r_stalled) == 4 and all(x.status == Status.SKIP for x in r_stalled),
+          f"stalled busy_hint still returns degraded partial rows: {r_stalled}")
+    check(hint_calls == 1, f"stalled busy_hint must not re-invoke per timed-out check (calls={hint_calls})")
+
+    # Also test phase0._llama_busy_hint_ctx wired into scheduler.run_checks with a stalled /slots http_json.
+    slots_release = threading.Event()
+    orig_http_json = phase0.http_json
+
+    def _stalled_slots(*args, **kwargs):
+        slots_release.wait(timeout=5.0)
+        return None
+
+    phase0.http_json = _stalled_slots
+    fake_ctx: Any = SimpleNamespace(llama_url="http://127.0.0.1:1")
+    t0 = time.monotonic()
+    try:
+        r_slots = scheduler.run_checks(
+            fake_ctx,
+            [_hang, _hang],
+            workers=1,
+            per_check_s=0.1,
+            budget_s=0.5,
+            busy_hint=lambda: phase0._llama_busy_hint_ctx(fake_ctx),
+        )
+    finally:
+        slots_release.set()
+        phase0.http_json = orig_http_json
+    check(time.monotonic() - t0 < 1.2, "stalled /slots probe in _llama_busy_hint_ctx must not blow deadline")
+    check(len(r_slots) == 2 and all("DEGRADED:" in x.to_dict()["description"] for x in r_slots),
+          f"stalled /slots still yields DEGRADED rows: {r_slots}")
+
+    # P2-3: monitor publishes status="degraded" (never "passed") when degraded checks exist and failures=0.
+    import attention_queue as aq
+    aq_tmp = Path(tempfile.mkdtemp(prefix="qa-phase0-mon-"))
+    aq._ATTENTION_DIR = aq_tmp
+    aq._QUEUE_FILE = aq_tmp / "ATTENTION.json"
+    aq._ARCHIVE_FILE = aq_tmp / "ATTENTION_ARCHIVE.jsonl"
+    aq._STATE_FILE = aq_tmp / "notify-state.json"
+    aq._MIRROR_PATH = aq_tmp / "mirror.json"
+    orig_phases = mon._PHASES
+    orig_run_qa = mon.run_aq_qa
+    orig_write = mon.write_status
+    orig_audit = mon.run_payload_audit
+    orig_push = mon.push
+    statuses = []
+    try:
+        mon._PHASES = ["0"]
+        mon.run_payload_audit = lambda: {"state": "ok", "findings": []}
+        mon.push = lambda **kw: None
+        mon.write_status = statuses.append
+        mon.run_aq_qa = lambda _p: {
+            "phase": "0",
+            "degraded_confidence": False,
+            "_monitor_returncode": 0,
+            "tests": [
+                {"id": "0.1.1", "status": "PASS", "description": "ok"},
+                {"id": "0.degraded.hang", "status": "SKIP", "description": "hang check (DEGRADED: still running)"},
+            ],
+        }
+        mon.main()
+    finally:
+        mon._PHASES = orig_phases
+        mon.run_aq_qa = orig_run_qa
+        mon.write_status = orig_write
+        mon.run_payload_audit = orig_audit
+        mon.push = orig_push
+    check(len(statuses) == 1 and statuses[0]["phase_results"][0]["status"] == "degraded",
+          f"monitor must publish status='degraded' when degraded checks exist: {statuses}")
+    check(statuses[0]["phase_results"][0]["degraded"] == 1,
+          f"monitor must record degraded count: {statuses}")
+
     print("PASS: phase 0 bounded scheduler (partial results, DEGRADED semantics, env limits, monitor)")
     return 0
 

@@ -611,6 +611,29 @@ class ResolveTests(unittest.TestCase):
         self.assertEqual(self.sweep(ad)["resolved"], [])
         self.assertEqual(self.status("aq-qa:phase0"), {"aq-qa check 0.2.1": "open"})
 
+    def test_qa_health_monitor_degraded_incomplete_does_not_clear_incidents(self):
+        m = self.root / "m.json"
+        ad = lambda: sw.adapter_qa_phase0(self.root / "missing.jsonl", max_age_s=3600, health_monitor_json=m)
+        def write(**ph): m.write_text(json.dumps({"phase_results": [dict(phase=0, **ph)]}))
+        write(status="failed", returncode=1, total=5, degraded=0,
+              failures=[{"id": "0.2.1", "label": "aidb"}, {"id": "0.4.1", "label": "llama"}])
+        self.sweep(ad)
+        # Degraded run with returncode=0 and no listed failures must NOT resolve open incidents
+        write(status="degraded", returncode=0, total=5, degraded=2, failures=[])
+        state, f, _ = ad()
+        self.assertEqual((state, f), ("unknown", []))
+        self.assertEqual(self.sweep(ad)["resolved"], [])
+        self.assertEqual(self.status("aq-qa:phase0"), {"aq-qa check 0.2.1": "open", "aq-qa check 0.4.1": "open"})
+        # Partial degraded run with 1 confirmed failure surfaces that failure without clearing other open checks
+        write(status="failed", returncode=1, total=5, degraded=1, failures=[{"id": "0.4.1", "label": "llama"}])
+        s = self.sweep(ad)
+        self.assertEqual(s["resolved"], [])
+        self.assertEqual(self.status("aq-qa:phase0"), {"aq-qa check 0.2.1": "open", "aq-qa check 0.4.1": "open"})
+        # Even if an older monitor producer wrote status="passed" with degraded > 0, refuse to clear
+        write(status="passed", returncode=0, total=5, degraded=1, failures=[])
+        self.assertEqual(ad()[0], "unknown")
+        self.assertEqual(self.sweep(ad)["resolved"], [])
+
     def test_service_error_rate_resolve_requires_read_unit(self):
         bad = "\n".join(json.dumps({"level": "error", "event": "boom"}) for _ in range(6))
         run = lambda out, rc=0: (lambda u: _proc(out, rc))
