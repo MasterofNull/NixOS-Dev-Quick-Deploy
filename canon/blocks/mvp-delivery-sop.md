@@ -18,7 +18,7 @@ Record unavailable lanes honestly; never manufacture their consensus.
 ### Build the working MVP
 
 Once the plan is frozen, prioritize implementation and end-to-end operation.
-Use bounded slices, the cheapest eligible implementers, and focused regression,
+Use bounded slices, the most cost-effective correct implementers, and focused regression,
 integration, and live checks. Fix ordinary defects directly within the frozen
 scope. Do not require a fresh full expert round, debate, or all-model consensus
 for each implementation slice, fix, or commit. Collect non-blocking critique for
