@@ -126,7 +126,7 @@ pip_results_dir="${tmp_root}/pip"
 npm_results_dir="${tmp_root}/npm"
 mkdir -p "${pip_results_dir}" "${npm_results_dir}"
 
-mapfile -t requirements_files < <(find "${REPO_ROOT}/ai-stack/mcp-servers" -type f -name 'requirements.txt' | sort)
+mapfile -d '' -t requirements_files < <(find "${REPO_ROOT}/ai-stack/mcp-servers" -type f -name 'requirements.txt' -print0 | sort -z)
 if git -C "${REPO_ROOT}" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
   mapfile -t package_files < <(
     {
@@ -152,6 +152,14 @@ fi
 pip_total_vulns=0
 pip_files_scanned=0
 pip_errors=0
+pip_failure_diagnostics=()
+
+# Scanner diagnostics are rendered in CI logs and PR Markdown. Keep ordinary repository-relative
+# paths unchanged while percent-encoding control and markup characters without splitting records.
+safe_repo_path() {
+  local rel="${1#"${REPO_ROOT}/"}"
+  jq -nr --arg path "${rel}" '$path | @uri' | sed 's/%2F/\//g'
+}
 
 # Time-boxed exceptions: applied only while unexpired, valid YYYY-MM-DD (UTC) and <= 90 days out,
 # and only to a finding whose package name matches the exception's package.
@@ -220,7 +228,9 @@ count_requirements() {
 
 if [[ "${pip_audit_available}" == true ]]; then
   for req in "${requirements_files[@]}"; do
-    base="$(echo "${req#"${REPO_ROOT}/"}" | tr '/' '_')"
+    req_rel="${req#"${REPO_ROOT}/"}"
+    req_display="$(safe_repo_path "${req}")"
+    base="$(echo "${req_rel}" | tr '/' '_')"
     out_json="${pip_results_dir}/${base}.json"
     # A requirements file with >=1 requirement line must yield >=1 actually audited (non-skipped) dependency.
     count_requirements_seen=""
@@ -232,6 +242,11 @@ if [[ "${pip_audit_available}" == true ]]; then
     rc=$?
     set -e
     if [[ ${rc} -ne 0 && ${rc} -ne 1 ]] || ! validate_scanner_report "pip-audit" "${out_json}" "${pip_schema}" '"ok"' 'ok'; then
+      if [[ ${rc} -ne 0 && ${rc} -ne 1 ]]; then
+        pip_failure_diagnostics+=("${req_display} (scanner-exit-${rc})")
+      else
+        pip_failure_diagnostics+=("${req_display} (report-rejected)")
+      fi
       jq -n --arg req "${req}" --arg err "$(cat "${out_json}.stderr")" \
         '{dependencies: [], error: $err, requirements: $req}' > "${out_json}"
       pip_errors=$((pip_errors + 1))
@@ -601,6 +616,9 @@ if [[ ${pip_skip_files} -gt 0 ]]; then
   fi
 fi
 if [[ ${pip_errors} -gt 0 ]]; then
+  for diagnostic in "${pip_failure_diagnostics[@]}"; do
+    echo "pip-audit failure: ${diagnostic}"
+  done
   if [[ "${ci}" == "true" ]]; then
     echo "BLOCKING: pip-audit failed on ${pip_errors} requirements files in CI"; blocking=$((blocking + 1))
   else

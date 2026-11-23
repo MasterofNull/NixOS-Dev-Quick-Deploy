@@ -20,9 +20,11 @@ role authority. Model capability/cost and workflow authority remain orthogonal.
   local. Passes provide angle diversity; agents provide model diversity. Dissent and unavailable
   lanes are recorded rather than collapsed into consensus.
 - **Economical execution plane:** after the PRD, plan, contracts, acceptance criteria, and exact slice
-  are frozen, the orchestrator routes implementation to the cheapest healthy model whose measured
-  capability, tools, context envelope, hardware budget, and task eligibility satisfy the slice.
-  Cost never overrides eligibility, authorization, monitoring, or stop conditions.
+  are frozen, the orchestrator routes implementation to the most cost-effective model that is also correct for the
+  task: measured capability, tools, context envelope, hardware budget, and task eligibility must satisfy
+  the slice (a gate goes only to a lane that can actually perform it), and among such lanes the most
+  cost-effective wins; a cheap result that must be redone is not cost-effective. Cost never overrides
+  correctness, eligibility, authorization, monitoring, or stop conditions.
 - **Flagship acceptance plane:** risk-tier policy selects independent flagship reviewers. A flagship
   that implemented or materially rewrote the candidate cannot provide its binding acceptance.
   Reviewers may request changes; changes become a new bounded implementation/revision slice with new
@@ -46,8 +48,8 @@ this is a model/agent-agnostic, locally-hosted software factory that keeps progr
 agent is unavailable. For every role instance (orchestrator, architect, implementer, reviewer,
 binding-acceptance), the orchestrator selects the filler at dispatch time by **availability** (lane
 reachable, not quota-exhausted, route healthy) × **capability/tier** (this matrix ×
-`config/model-coordinator.json`) × **independence** (never self-review) × **cost** (cheapest eligible).
-The filler is never hardcoded. Binding acceptance in particular may be Codex OR a fresh Claude flagship
+`config/model-coordinator.json`) × **independence** (never self-review) × **cost-effectiveness** (most cost-effective correct lane).
+The filler is never hardcoded. Availability, quota, token limits and session windows MUST be tracked per model, not per lane/provider (requirement, not current behavior: known lane-wide gaps are tracked as LANE-AVAILABILITY-NOT-PER-MODEL in `.agent/memory/issues-backlog.md`, with the manual retry procedure in Rule 18); when one model is out, re-scope the prompt, scope, task or payload to fit a still-available model (same or other provider) without lowering quality (owner directive 2026-11-19). Binding acceptance in particular may be Codex OR a fresh Claude flagship
 OR Gemini/Antigravity OR local Qwen (bounded) — whichever is up, eligible, and independent; if the
 first choice is down, route to the next eligible, proceed, and record the substitution in the receipt's
 unavailable-lane reason. Local Qwen is the always-available floor (never skipped). Work committed while
@@ -264,7 +266,7 @@ This table is the single source of truth for auto-assignment in `agent_executor.
 ## Rule 17 contract detail (moved from the canon block, 2026-11-12)
 
 - The flagship/orchestrator tier (Sonnet, Opus, Fable, or provider-equivalent) does not self-implement a bounded slice and does not default-dispatch a same-tier-or-higher sub-agent for implementer work. Routing follows §"Economical execution plane" and the tier ladder in `config/model-coordinator.json`.
-- Every Agent-tool / `delegate-to-*` dispatch for an implementer role passes an explicit cheap/fast model override unless the task's proven complexity requires a higher tier. Claude lane: `model: "sonnet"` (Sonnet 5.5, balanced tier) is the default implementer; `haiku` only for mechanical single-file edits with a checkable result. Leaving it unset silently inherits the orchestrator's tier.
+- Every Agent-tool / `delegate-to-*` dispatch for an implementer role passes an explicit model override. Proven task complexity can justify choosing a higher tier, but that tier is still selected explicitly (e.g. `--model-tier <tier>` / Agent `model:`), never left to the CLI default. Claude lane: `model: "sonnet"` (Sonnet 5.5, balanced tier) is the default implementer; `haiku` only for mechanical single-file edits with a checkable result. Leaving it unset silently inherits the orchestrator's tier.
 - Prefer Codex or local Qwen first when eligible (Rule 4); Claude's balanced tier is the fallback when those are unavailable or ineligible.
 - Any deviation (flagship implementing directly, or an implementer dispatch at flagship/balanced tier) records a capability-insufficiency reason in the dispatch/PULSE record.
 
