@@ -197,7 +197,7 @@ persona's tone, so a shared character never softens review (local seat).
    (`.agent/memory/facts/<subject>.md`: subject, claim, evidence, instance) inside its slice; the normal merge
    (`aq-land`) is the collapse. There is no MemoryBroker delta route and no `aq-approve` conflict list. Two instances
    asserting different claims are put to the owner as a CLI question and recorded as `owner_reply:`; the
-   `tier0.d/check-fact-files.py` gate refuses a silent cross-lane overwrite, delete, rename or split. Design:
+   `scripts/governance/tier0.d/check-fact-files.py` gate refuses a silent cross-lane overwrite, delete, rename or split. Design:
    `.agents/plans/persona-p3-collapse-20261113/DESIGN.md`.
 5. **Observability:** a dashboard panel "Simurg instances" shows live instances, their last collapse, and pending
    conflicts. A health-spider check fires when an instance has run more than N hours without collapsing.
