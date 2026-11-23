@@ -1,0 +1,18 @@
+{
+  "schema": 2,
+  "pr": 822,
+  "reviewed_head_sha": "0d684a6e9d0d0a08c9421fb51486cb68fd281a57",
+  "run_id": "gemini-20261123-010139-txhrsp",
+  "reviewer_lane": "gemini",
+  "author_lane": "dependabot",
+  "verdict": "PASS",
+  "reviewer_instance": "Simurg@gemini/unknown#gemini-2",
+  "author_instance": "Simurg@dependabot/unknown",
+  "output_file": ".agents/delegation/outputs/gemini-20261123-010139-txhrsp.log",
+  "output_sha256": "b0c6879b183cca9f2ea83a029b1f677b5fb80a65850681ed837130f94637f02f",
+  "created_at": "2026-11-23T09:04:06Z",
+  "repo": "MasterofNull/NixOS-Dev-Quick-Deploy",
+  "policy_version": "review-receipts/1",
+  "tree": "0b7138a073e45193f87d02a56a643f566b9dc3b0",
+  "base_commit": "555e4b17c5b2d2f9d83cbae8d0bff8604797021d"
+}
