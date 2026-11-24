@@ -152,6 +152,12 @@ elif cmd == "pr create":
     suicide("after_create")
 elif cmd == "pr view":
     pr = [p for p in st["prs"] if p["number"] == int(a[2])][0]
+    if flag("--json") == "state,headRefOid" and st.get("post_merge_views"):
+        view = st["post_merge_views"].pop(0)
+        pr["state"] = view["state"]
+        save()
+        print(json.dumps({"headRefOid": branch_head(pr["branch"]), **view}))
+        sys.exit(0)
     seq = st.get("rollups", [[]])
     roll = seq[0]
     if "statusCheckRollup" in flag("--json") and len(seq) > 1:
@@ -183,6 +189,10 @@ elif cmd == "pr edit":
 elif cmd == "pr merge":
     st["merges"] = st.get("merges", 0) + 1
     assert flag("--match-head-commit")
+    if st.get("merge_error"):
+        save()
+        print(st["merge_error"], file=sys.stderr)
+        sys.exit(1)
     [p for p in st["prs"] if p["number"] == int(a[2])][0]["state"] = "MERGED"
     save()
     suicide("after_merge")
@@ -774,6 +784,30 @@ class DepFastLane(Base):
         self.assert_upstream_review(preamble + incomplete + self.UNCHANGED_EVIDENCE, accepted=True)
         self.assert_upstream_review(preamble + incomplete, accepted=False)
 
+    def test_closure_comparison_rejects_flag_operands(self):
+        self.dep_branch()
+        for comparison in (
+            "diff -u /tmp/only-one",
+            "diff -u -r /tmp/only-one",
+            "git diff --stat --cached HEAD",
+            "nix store diff-closures --help /nix/store/a",
+            "nix-store --diff-closures -v /nix/store/a",
+        ):
+            with self.subTest(comparison=comparison):
+                body = self.UPSTREAM_HEADING + self.UPSTREAM_FIELDS + "- Closure: unchanged\n"
+                self.assert_upstream_review(body + f"- Closure evidence: {comparison}; no differences.\n", accepted=False)
+
+    def test_closure_comparison_accepts_two_operands(self):
+        self.dep_branch()
+        for comparison in (
+            "diff -u /tmp/a /tmp/b",
+            "git diff --stat main HEAD",
+            "nix store diff-closures /nix/store/a /nix/store/b",
+        ):
+            with self.subTest(comparison=comparison):
+                body = self.UPSTREAM_HEADING + self.UPSTREAM_FIELDS + "- Closure: unchanged\n"
+                self.assert_upstream_review(body + f"- Closure evidence: {comparison}; no differences.\n", accepted=True)
+
     def test_output_file_supplies_evidence_when_stdout_differs(self):
         self.dep_branch()
         complete = self.UPSTREAM_HEADING + self.UPSTREAM_FIELDS + "- Closure: unchanged\n" + self.UNCHANGED_EVIDENCE
@@ -1247,6 +1281,7 @@ class Checks(Base):
 class MergeFreshness(Base):
     """G0: a PR whose CI ran on an older main is updated and re-checked, never merged on stale results."""
     OK = [{"name": "test", "status": "COMPLETED", "conclusion": "SUCCESS"}, RD_OK]
+    MERGE_IN_PROGRESS = "GraphQL: Merge already in progress (mergePullRequest)"
 
     def jsonl(self):
         p = self.S / "deleg/outputs/aq-land/merge-freshness.jsonl"
@@ -1259,6 +1294,42 @@ class MergeFreshness(Base):
         self.assertEqual((st["merges"], st.get("updates", 0)), (1, 0))
         row = self.jsonl()[0]
         self.assertEqual((row["pr"], row["was_behind"], row["updates"], row["extra_ci_wait_s"], row["merged"]), (77, False, 0, 0, True))
+
+    def test_merge_in_progress_completes_on_expected_head(self):
+        self.gh_state({"merge_error": self.MERGE_IN_PROGRESS, "post_merge_views": [{"state": "OPEN"}, {"state": "MERGED"}]})
+        result = self.land(expect=0)
+        self.assertIn("merge already in progress; waiting for merge completion", result.stdout)
+        state = self.ghs()
+        self.assertEqual(state["merges"], 1)
+        self.assertEqual(state["post_merge_views"], [])
+        self.assertIs(self.jsonl()[0]["merged"], True)
+        checkpoint = next((self.S / "state").glob("*/checkpoint.json"))
+        self.assertIsNone(json.loads(checkpoint.read_text())["expected_checks"])
+        receipts = (self.S / "deleg" / "outcome-receipts.jsonl").read_text().splitlines()
+        self.assertEqual([json.loads(line)["pr"] for line in receipts], [77])
+
+    def test_merge_in_progress_stops_if_head_changes(self):
+        self.gh_state({"merge_error": self.MERGE_IN_PROGRESS, "post_merge_views": [{"state": "MERGED", "headRefOid": "e" * 40}]})
+        result = self.land(expect=1)
+        self.assertIn("STOP merge: PR #77 head changed", self.stop_line(result))
+        self.assertFalse((self.S / "deleg" / "outcome-receipts.jsonl").exists())
+
+    def test_merge_in_progress_stops_on_timeout_or_closure(self):
+        self.env["AQ_LAND_MERGE_POLL_TIMEOUT_S"] = "0"
+        for state, message in (("OPEN", "is still OPEN after merge-in-progress"), ("CLOSED", "is CLOSED after merge-in-progress")):
+            with self.subTest(state=state):
+                self.tearDown_state()
+                self.gh_state({"merge_error": self.MERGE_IN_PROGRESS, "post_merge_views": [{"state": state}]})
+                result = self.land(expect=1)
+                self.assertIn(f"STOP merge: PR #77 {message}", self.stop_line(result))
+                self.assertFalse((self.S / "deleg" / "outcome-receipts.jsonl").exists())
+
+    def test_non_race_merge_error_stops_without_polling(self):
+        views = [{"state": "MERGED"}]
+        self.gh_state({"merge_error": "Pull Request is not mergeable", "post_merge_views": views})
+        result = self.land(expect=1)
+        self.assertIn("STOP gh: gh pr merge failed: Pull Request is not mergeable", self.stop_line(result))
+        self.assertEqual(self.ghs()["post_merge_views"], views)
 
     def test_behind_pr_is_updated_rechecked_then_merged(self):
         self.gh_state({"main_moves_at_wait": True, "after_update_rollups": [[{"name": "test", "status": "IN_PROGRESS", "detailsUrl": "https://x/nojob"}, RD_OK], self.OK]})
