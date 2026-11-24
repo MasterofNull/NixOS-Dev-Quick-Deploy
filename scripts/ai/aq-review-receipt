@@ -80,20 +80,73 @@ def load_registry(path: Path) -> dict:
     return rows
 
 
-def _rel(root: Path, p: str) -> tuple[Path, str]:
-    full = Path(p) if Path(p).is_absolute() else root / p
-    if not full.exists() and not Path(p).is_absolute() and (MAIN_ROOT / p).exists():
-        full = MAIN_ROOT / p
-    full = full.resolve()
-    for base in (root.resolve(), MAIN_ROOT.resolve()):
-        try:
-            return full, str(full.relative_to(base))
-        except ValueError:
+def _git_common_root(root: Path) -> Path | None:
+    try:
+        common = _git(root, "rev-parse", "--path-format=absolute", "--git-common-dir")
+    except (subprocess.SubprocessError, OSError):
+        return None
+    common_path = Path(common).resolve()
+    return common_path.parent if common_path.name == ".git" else None
+
+
+def _is_within(path: Path, root: Path) -> bool:
+    try:
+        path.relative_to(root)
+    except ValueError:
+        return False
+    return True
+
+
+def _allowed_scopes(root: Path, registry: Path | None = None) -> list[tuple[Path, Path]]:
+    scopes = []
+    if registry is not None:
+        reg_dir = registry.resolve().parent
+        if reg_dir.name == "delegation" and reg_dir.parent.name == ".agents":
+            scopes.append((reg_dir.parent.parent, reg_dir))
+        scopes.append((reg_dir, reg_dir))
+    root_resolved = root.resolve()
+    scopes.append((root_resolved, root_resolved))
+    common_root = _git_common_root(root_resolved)
+    if common_root is not None:
+        scopes.append((common_root, common_root))
+    elif root_resolved == ROOT.resolve():
+        scopes.append((MAIN_ROOT, MAIN_ROOT))
+    return list(dict.fromkeys(scopes))
+
+
+def _rel(root: Path, p: str, registry: Path | None = None) -> tuple[Path, str]:
+    scopes = _allowed_scopes(root, registry)
+    raw = Path(p)
+    if raw.is_absolute():
+        full = raw.resolve()
+        for rel_base, contain_root in scopes:
+            if _is_within(full, contain_root):
+                return full, str(full.relative_to(rel_base))
+        raise SystemExit(f"output_file {full} is outside the repo or registry root")
+
+    fallback: tuple[Path, str] | None = None
+    escaped: Path | None = None
+    for rel_base, contain_root in scopes:
+        joined = rel_base / raw
+        candidate = joined.resolve()
+        if not _is_within(candidate, contain_root):
+            if escaped is None and (joined.is_symlink() or joined.exists()):
+                escaped = candidate
             continue
-    raise SystemExit(f"output_file {full} is outside the repo")
+        rel = str(candidate.relative_to(rel_base))
+        if candidate.exists():
+            return candidate, rel
+        if fallback is None:
+            fallback = candidate, rel
+    if escaped is not None:
+        raise SystemExit(f"output_file {escaped} is outside the repo or registry root")
+    if fallback is not None:
+        return fallback
+    full = (root.resolve() / raw).resolve()
+    raise SystemExit(f"output_file {full} is outside the repo or registry root")
 
 
-def _run_checks(entry, root: Path):
+def _run_checks(entry, root: Path, registry: Path | None = None):
     """Return (errors, output_path, rel, text) for a registry entry."""
     errs = []
     if not entry:
@@ -104,7 +157,7 @@ def _run_checks(entry, root: Path):
         errs.append(f"registry role {entry.get('role')!r} is not a review role")
     if not entry.get("output_file"):
         return errs + ["registry entry has no output_file"], None, None, ""
-    full, rel = _rel(root, entry["output_file"])
+    full, rel = _rel(root, entry["output_file"], registry)
     if not full.is_file():
         return errs + [f"output_file missing: {rel}"], full, rel, ""
     return errs, full, rel, full.read_text(encoding="utf-8", errors="replace")
@@ -173,9 +226,10 @@ def integrity_errors(entry: dict, full: Path, text: str, head: str, pr, created=
 
 def cmd_mint(a) -> int:
     root = Path(a.root).resolve()
-    reg = load_registry(Path(a.registry) if a.registry else DEFAULT_REGISTRY)
+    reg_path = Path(a.registry) if a.registry else DEFAULT_REGISTRY
+    reg = load_registry(reg_path)
     entry = reg.get(a.run_id)
-    errs, full, rel, text = _run_checks(entry, root)
+    errs, full, rel, text = _run_checks(entry, root, reg_path)
     if not re.fullmatch(r"[0-9a-f]{40}", a.head):
         errs.append("--head must be 40 lowercase hex")
     if entry and norm(entry.get("agent")) == norm(a.author_lane):
@@ -314,7 +368,7 @@ def verify_data(r, root: Path, registry: Path, revoked=None) -> list[str]:
         rec = revoked[_rkey(r.get("pr"), r.get("reviewed_head_sha"))]
         return [f"receipt REVOKED: {str(rec.get('reason', 'no reason recorded'))[:200]}"]
     entry = load_registry(registry).get(r.get("run_id"))
-    errs, full, rel, text = _run_checks(entry, root)
+    errs, full, rel, text = _run_checks(entry, root, registry)
     if entry and norm(entry.get("agent")) != norm(r.get("reviewer_lane")):
         errs.append("registry agent != receipt reviewer_lane")
     if norm(r.get("reviewer_lane")) == norm(r.get("author_lane")):
@@ -674,7 +728,7 @@ def cmd_audit(a) -> int:
             e = entries.get(r.get("run_id")) or {}
             if e.get("output_file"):
                 try:
-                    full = _rel(root, e["output_file"])[0]
+                    full = _rel(root, e["output_file"], reg)[0]
                 except SystemExit:
                     full = None
                 if full is not None and full.is_file():
