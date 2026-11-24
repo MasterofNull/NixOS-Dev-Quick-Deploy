@@ -74,11 +74,33 @@ body = {"cantrun": "I am unable to proceed: every command timed out. Please chec
         "finding": "scripts/ai/aq-land:365 drops valid rejections when a command timed out.\n",
         "prose": "The lock is released twice, which corrupts state. I was also unable to access one file.\n",
         "mixed": "The lock is released twice, which corrupts state. I am unable to proceed because subsequent commands timed out.\n",
-        "bullet": "- The retry loop never stops after the command timed out.\n"}.get(mode, "looks fine\n")
-text = f"{body}Reviewed-head-sha: {shown}\nReview-Disposition: {verdict}\n"
-open(out, "w").write(text)
+        "bullet": "- The retry loop never stops after the command timed out.\n",
+        "missing_upstream_evidence": "## Upstream changes reviewed\n- package and range reviewed; looks fine.\n",
+        "missing_package": "## Upstream changes reviewed\n- Release notes: https://example.test/pkg/releases/2.0\n- Authority: Nix\n- Input path: flake.lock\n- Closure: unchanged\n- Closure evidence: lock input matched the deployed closure.\n",
+        "missing_old": "## Upstream changes reviewed\n- Package and range: pkg -> 2.0\n- Release notes: https://example.test/pkg/releases/2.0\n- Authority: Nix\n- Input path: flake.lock\n- Closure: unchanged\n- Closure evidence: git diff --no-index /tmp/closure-before /tmp/closure-after; exit 0 (no differences).\n",
+        "multi_package": "## Upstream changes reviewed\n- Package and range: pkg 1.0 -> 2.0; other 1.0 -> 2.0\n- Release notes: https://example.test/pkg/releases/2.0\n- Authority: Nix\n- Input path: flake.lock\n- Closure: unchanged\n- Closure evidence: git diff --no-index /tmp/closure-before /tmp/closure-after; exit 0 (no differences).\n",
+        "negated_runtime": "## Upstream changes reviewed\n- Package and range: pkg 1.0 -> 2.0\n- Release notes: https://example.test/pkg/releases/2.0\n- Authority: Nix\n- Input path: flake.lock\n- Closure: changed\n- Closure evidence: nix store diff-closures /nix/store/old /nix/store/new; differences found.\n- Deployed runtime: no deployed service was run.\n- Runtime result: passed\n",
+        "no_deployed_runtime": "## Upstream changes reviewed\n- Package and range: pkg 1.0 -> 2.0\n- Release notes: https://example.test/pkg/releases/2.0\n- Authority: Nix\n- Input path: flake.lock\n- Closure: changed\n- Closure evidence: nix store diff-closures /nix/store/old /nix/store/new; differences found.\n- Runtime result: passed\n",
+        "placeholder_authority": "## Upstream changes reviewed\n- Package and range: pkg 1.0 -> 2.0\n- Release notes: https://example.test/pkg/releases/2.0\n- Authority: <Nix or manifest>\n- Input path: flake.lock\n- Closure: unchanged\n- Closure evidence: lock input matched the deployed closure.\n",
+        "negated_authority": "## Upstream changes reviewed\n- Package and range: pkg 1.0 -> 2.0\n- Release notes: https://example.test/pkg/releases/2.0\n- Authority: not Nix\n- Input path: flake.lock\n- Closure: unchanged\n- Closure evidence: lock input matched the deployed closure.\n",
+        "placeholder_closure": "## Upstream changes reviewed\n- Package and range: pkg 1.0 -> 2.0\n- Release notes: https://example.test/pkg/releases/2.0\n- Authority: Nix\n- Input path: flake.lock\n- Closure: <changed or unchanged>\n- Closure evidence: lock input matched the deployed closure.\n",
+        "negated_closure": "## Upstream changes reviewed\n- Package and range: pkg 1.0 -> 2.0\n- Release notes: https://example.test/pkg/releases/2.0\n- Authority: Nix\n- Input path: flake.lock\n- Closure: unchanged\n- Closure evidence: no closure evidence was collected.\n",
+        "failed_active": "## Upstream changes reviewed\n- Package and range: pkg 1.0 -> 2.0\n- Release notes: https://example.test/pkg/releases/2.0\n- Authority: Nix\n- Input path: flake.lock\n- Closure: changed\n- Closure evidence: nix store diff-closures /nix/store/old /nix/store/new; differences found.\n- Deployed runtime: systemctl is-active pkg.service\n- Runtime result: failed but active\n",
+        "unhealthy_active": "## Upstream changes reviewed\n- Package and range: pkg 1.0 -> 2.0\n- Release notes: https://example.test/pkg/releases/2.0\n- Authority: Nix\n- Input path: flake.lock\n- Closure: changed\n- Closure evidence: nix store diff-closures /nix/store/old /nix/store/new; differences found.\n- Deployed runtime: systemctl is-active pkg.service\n- Runtime result: active but unhealthy\n",
+        "changed_without_operands": "## Upstream changes reviewed\n- Package and range: pkg 1.0 -> 2.0\n- Release notes: https://example.test/pkg/releases/2.0\n- Authority: Nix\n- Input path: flake.lock\n- Closure: changed\n- Closure evidence: nix store diff-closures; differences found.\n- Deployed runtime: systemctl is-active pkg.service\n- Runtime result: active\n",
+        "changed_exit_zero": "## Upstream changes reviewed\n- Package and range: pkg 1.0 -> 2.0\n- Release notes: https://example.test/pkg/releases/2.0\n- Authority: Nix\n- Input path: flake.lock\n- Closure: changed\n- Closure evidence: nix store diff-closures /nix/store/old /nix/store/new; exit 0, differences found.\n- Deployed runtime: systemctl is-active pkg.service\n- Runtime result: active\n",
+        "changed_operand_only": "## Upstream changes reviewed\n- Package and range: pkg 1.0 -> 2.0\n- Release notes: https://example.test/pkg/releases/2.0\n- Authority: Nix\n- Input path: flake.lock\n- Closure: changed\n- Closure evidence: nix store diff-closures /nix/store/old-changed /nix/store/new\n- Deployed runtime: systemctl is-active pkg.service\n- Runtime result: active\n",
+        "timed_out_active": "## Upstream changes reviewed\n- Package and range: pkg 1.0 -> 2.0\n- Release notes: https://example.test/pkg/releases/2.0\n- Authority: Nix\n- Input path: flake.lock\n- Closure: changed\n- Closure evidence: nix store diff-closures /nix/store/old /nix/store/new; exit 0, differences found.\n- Deployed runtime: systemctl is-active pkg.service\n- Runtime result: timed out but active\n",
+        "unchanged_operand_only": "## Upstream changes reviewed\n- Package and range: pkg 1.0 -> 2.0\n- Release notes: https://example.test/pkg/releases/2.0\n- Authority: Nix\n- Input path: flake.lock\n- Closure: unchanged\n- Closure evidence: git diff --no-index /tmp/unchanged /tmp/closure-after\n",
+        "changed_no_differences": "## Upstream changes reviewed\n- Package and range: pkg 1.0 -> 2.0\n- Release notes: https://example.test/pkg/releases/2.0\n- Authority: Nix\n- Input path: flake.lock\n- Closure: changed\n- Closure evidence: nix store diff-closures /nix/store/old /nix/store/new; no differences found.\n- Deployed runtime: systemctl is-active pkg.service\n- Runtime result: active\n",
+        "unchanged_explicitly_changed": "## Upstream changes reviewed\n- Package and range: pkg 1.0 -> 2.0\n- Release notes: https://example.test/pkg/releases/2.0\n- Authority: Nix\n- Input path: flake.lock\n- Closure: unchanged\n- Closure evidence: git diff --no-index /tmp/closure-before /tmp/closure-after; differences found.\n",
+        "arbitrary_closure": "## Upstream changes reviewed\n- Package and range: pkg 1.0 -> 2.0\n- Release notes: https://example.test/pkg/releases/2.0\n- Authority: Nix\n- Input path: flake.lock\n- Closure: unchanged\n- Closure evidence: lock input matched the deployed closure.\n",
+        "wrong_package_range": "## Upstream changes reviewed\n- Package and range: other 1.0 -> 2.0\n- Release notes: https://example.test/pkg/releases/2.0\n- Authority: Nix\n- Input path: flake.lock\n- Closure: unchanged\n- Closure evidence: git diff --no-index /tmp/closure-before /tmp/closure-after; exit 0 (no differences).\n"}.get(mode, "## Upstream changes reviewed\n- Package and range: pkg 1.0 -> 2.0\n- Release notes: https://example.test/pkg/releases/2.0\n- Authority: Nix\n- Input path: flake.lock\n- Closure: unchanged\n- Closure evidence: git diff --no-index /tmp/closure-before /tmp/closure-after; exit 0 (no differences).\n")
+body = c.get("body", body)
+trailers = f"Reviewed-head-sha: {shown}\nReview-Disposition: {verdict}\n"
+open(out, "w").write(body + trailers)
 print(f"Output file: {out}")
-print(text)
+print(c.get("stdout_body", body) + trailers)
 '''
 
 STUB_GH = r'''#!/usr/bin/env python3
@@ -235,6 +257,7 @@ class Base(unittest.TestCase):
             self.g("config", k, v)
         self.g("remote", "add", "origin", str(self.origin))
         (self.wd / "shared.txt").write_text("base\n")
+        (self.wd / "requirements.txt").write_text("pkg>=1.0\n")
         self.g("add", "."); self.g("commit", "-qm", "base"); self.g("push", "-q", "origin", "main")
         self.g("checkout", "-qb", "feat/x")
         self.change("scripts/foo.py", "print(1)\n")
@@ -686,6 +709,250 @@ class Lanes(Base):
         r = self.land(expect=1)
         self.assertIn("over the small-diff limit", self.stop_line(r))
         self.assertEqual(self.calls("local"), [])
+
+
+class DepFastLane(Base):
+    UPSTREAM_HEADING = "## Upstream changes reviewed\n"
+    UPSTREAM_FIELDS = (
+        "- Package and range: pkg 1.0 -> 2.0\n"
+        "- Release notes: https://example.test/pkg/releases/2.0\n"
+        "- Authority: Nix\n"
+        "- Input path: flake.lock\n"
+    )
+    UNCHANGED_EVIDENCE = (
+        "- Closure evidence: git diff --no-index /tmp/closure-before /tmp/closure-after; exit 0 (no differences).\n"
+    )
+
+    def dep_branch(self, path="requirements.txt"):
+        self.g("reset", "-q", "--hard", "origin/main")
+        self.change(path, "pkg>=2.0\n")
+
+    def cp(self):
+        return json.loads(next((self.S / "state").glob("*/checkpoint.json")).read_text())
+
+    def assert_upstream_review(self, body, *, accepted, **delegate_options):
+        self.tearDown_state()
+        self.gh_state({})
+        self.cfg({"gemini": {"mode": "ok", "body": body, **delegate_options}, "codex": {"mode": "ok"}})
+        self.land("--author-lane", "dependabot", expect=0)
+        self.assertEqual(self.cp()["fast_lane"], "dependency-bump")
+        self.assertEqual(len(self.calls("gemini")), 1)
+        self.assertEqual(len(self.calls("codex")), 0 if accepted else 1)
+
+    def test_duplicated_reply_keeps_preamble_out_of_upstream_evidence(self):
+        self.dep_branch()
+        preamble = "Authority: Nix\n" + self.UNCHANGED_EVIDENCE.removeprefix("- ")
+        incomplete = self.UPSTREAM_HEADING + self.UPSTREAM_FIELDS + "- Closure: unchanged\n"
+        self.assert_upstream_review(preamble + incomplete + self.UNCHANGED_EVIDENCE, accepted=True)
+        self.assert_upstream_review(preamble + incomplete, accepted=False)
+
+    def test_output_file_supplies_evidence_when_stdout_differs(self):
+        self.dep_branch()
+        complete = self.UPSTREAM_HEADING + self.UPSTREAM_FIELDS + "- Closure: unchanged\n" + self.UNCHANGED_EVIDENCE
+        self.assert_upstream_review("Summary only.\n", accepted=False, stdout_body=complete)
+
+    def test_last_upstream_section_includes_subheadings(self):
+        self.dep_branch()
+        incomplete = self.UPSTREAM_HEADING + self.UPSTREAM_FIELDS + "- Closure: unchanged\n"
+        complete = (
+            self.UPSTREAM_HEADING + "### pkg 1.0 -> 2.0\n" + self.UPSTREAM_FIELDS
+            + "- Closure: unchanged\n" + self.UNCHANGED_EVIDENCE
+        )
+        self.assert_upstream_review(complete, accepted=True)
+        self.assert_upstream_review(incomplete + complete, accepted=True)
+        self.assert_upstream_review(complete + incomplete, accepted=False)
+
+    def test_upstream_evidence_stops_at_heading_trailer_or_wrapper(self):
+        self.dep_branch()
+        incomplete = self.UPSTREAM_HEADING + self.UPSTREAM_FIELDS + "- Closure: unchanged\n"
+        for boundary in ("## Findings", "Reviewed-by: Gemini", "[delegate-to-gemini] done", "Output file: review.log"):
+            with self.subTest(boundary=boundary):
+                self.assert_upstream_review(incomplete + boundary + "\n" + self.UNCHANGED_EVIDENCE, accepted=False)
+
+    def test_deployed_runtime_distinguishes_flags_and_names_from_negation(self):
+        self.dep_branch()
+        changed = self.UPSTREAM_HEADING + self.UPSTREAM_FIELDS + (
+            "- Closure: changed\n"
+            "- Closure evidence: nix store diff-closures /nix/store/old /nix/store/new; differences found.\n"
+        )
+        for runtime, accepted in (
+            ("systemctl --no-pager is-active ai-hybrid-coordinator.service", True),
+            ("nix build --no-write-lock-file .#runtime", True),
+            ("systemctl --no-legend is-active ai-no-cache-not-ready.service", True),
+            ("no deployed service was run", False),
+            ("systemctl is-active pkg.service (no check performed)", False),
+            ("not run", False),
+        ):
+            with self.subTest(runtime=runtime):
+                self.assert_upstream_review(
+                    changed + f"- Deployed runtime: {runtime}\n- Runtime result: passed\n",
+                    accepted=accepted,
+                )
+
+    def test_empty_dependency_lanes_uses_default_remote_order(self):
+        self.dep_branch()
+        self.env["AQ_LAND_DEP_LANES"] = ""
+        self.cfg({"gemini": {"mode": "cap"}, "codex": {"mode": "ok"}, "local": {"mode": "ok"}})
+        self.land("--author-lane", "dependabot", expect=0)
+        self.assertEqual(self.cp()["fast_lane"], "dependency-bump")
+        self.assertEqual(len(self.calls("gemini")), 1)
+        self.assertEqual(len(self.calls("codex")), 1)
+        self.assertEqual(self.calls("local"), [])
+
+    def test_dependency_lane_exhaustion_stops_without_local(self):
+        self.dep_branch()
+        self.env["AQ_LAND_DEP_LANES"] = ""
+        self.cfg({"gemini": {"mode": "cap"}, "codex": {"mode": "cap"}, "local": {"mode": "ok"}})
+        r = self.land("--author-lane", "dependabot", expect=1)
+        self.assertIn("STOP review: no eligible independent lane", self.stop_line(r))
+        self.assertEqual(self.cp()["fast_lane"], "dependency-bump")
+        self.assertEqual(len(self.calls("gemini")), 1)
+        self.assertEqual(len(self.calls("codex")), 1)
+        self.assertEqual(self.calls("local"), [])
+
+    def test_dependabot_manifest_only_uses_fast_lane(self):
+        self.dep_branch()
+        self.cfg({"gemini": {"mode": "ok"}, "codex": {"mode": "ok"}})
+        r = self.land("--author-lane", "Dependabot", expect=0)
+        self.assertIn("fast-lane: dependency-bump (pkg 1.0 -> 2.0)", r.stdout)
+        self.assertEqual(self.cp()["fast_lane"], "dependency-bump")
+        self.assertEqual(len(self.calls("gemini")), 1)
+        self.assertEqual(self.calls("local"), [])
+        self.assertIn("Upstream changes reviewed", (self.S / "prompt-gemini.txt").read_text())
+
+    def test_fast_lane_malformed_pass_tries_next_lane(self):
+        self.dep_branch()
+        self.cfg({"gemini": {"mode": "missing_upstream_evidence"}, "codex": {"mode": "ok"}})
+        self.land("--author-lane", "dependabot", expect=0)
+        self.assertEqual(self.cp().get("rc_rounds", 0), 0)
+        self.assertEqual(len(self.calls("codex")), 1)
+        self.assertTrue(any(note.startswith("gemini: malformed PASS") for note in self.cp()["review"]["notes"]))
+
+    def test_fast_lane_malformed_dependency_evidence_tries_next_lane(self):
+        for mode in ("missing_package", "negated_runtime", "no_deployed_runtime", "placeholder_authority",
+                     "negated_authority", "placeholder_closure", "negated_closure", "missing_old",
+                     "multi_package", "failed_active", "unhealthy_active", "changed_without_operands",
+                     "changed_no_differences", "unchanged_explicitly_changed", "arbitrary_closure",
+                     "changed_operand_only", "unchanged_operand_only", "timed_out_active"):
+            with self.subTest(mode=mode):
+                self.tearDown_state(); self.gh_state({})
+                self.dep_branch()
+                self.cfg({"gemini": {"mode": mode}, "codex": {"mode": "ok"}})
+                self.land("--author-lane", "dependabot", expect=0)
+                self.assertEqual(len(self.calls("codex")), 1)
+
+    def test_multi_package_diff_uses_normal_review_path(self):
+        self.dep_branch()
+        self.change("requirements.txt", "pkg>=2.0\nother>=2.0\n")
+        self.cfg({"gemini": {"mode": "ok"}, "codex": {"mode": "ok"}})
+        r = self.land("--author-lane", "dependabot", expect=0)
+        self.assertIn("fast-lane: ambiguous or unsupported dependency diff, normal review path", r.stdout)
+        self.assertEqual(self.cp().get("fast_lane", ""), "")
+        self.assertNotIn("Upstream changes reviewed", (self.S / "prompt-gemini.txt").read_text())
+
+    def test_header_like_lines_in_hunk_use_normal_review_path(self):
+        self.g("checkout", "-q", "main")
+        self.change("requirements.txt", "pkg>=1.0\n-- extra\n")
+        self.g("push", "-q", "origin", "main")
+        self.g("checkout", "-q", "feat/x")
+        for updated in ("pkg>=2.0\n", "pkg>=2.0\n++ extra\n-- extra\n"):
+            with self.subTest(requirements=updated):
+                self.tearDown_state()
+                self.gh_state({})
+                self.g("reset", "-q", "--hard", "origin/main")
+                self.change("requirements.txt", updated)
+                self.cfg({"gemini": {"mode": "ok"}})
+                r = self.land("--author-lane", "dependabot", expect=0)
+                self.assertIn("fast-lane: ambiguous or unsupported dependency diff, normal review path", r.stdout)
+                self.assertEqual(self.cp()["fast_lane"], "")
+
+    def test_evidence_package_and_range_must_match_actual_diff(self):
+        self.dep_branch()
+        self.cfg({"gemini": {"mode": "wrong_package_range"}, "codex": {"mode": "ok"}})
+        self.land("--author-lane", "dependabot", expect=0)
+        self.assertEqual(len(self.calls("codex")), 1)
+
+    def test_criteria_file_help_is_additive(self):
+        r = subprocess.run([sys.executable, str(TOOL), "--help"], capture_output=True, text=True, timeout=10)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("added to dependency-bump criteria", r.stdout)
+
+    def test_fast_lane_accepts_explicit_unchanged_closure_evidence(self):
+        self.dep_branch()
+        self.cfg({"gemini": {"mode": "ok"}, "codex": {"mode": "ok"}})
+        self.land("--author-lane", "dependabot", expect=0)
+        self.assertEqual(len(self.calls("gemini")), 1)
+        self.assertEqual(self.calls("codex"), [])
+
+    def test_fast_lane_accepts_changed_closure_reported_with_successful_comparison(self):
+        self.dep_branch()
+        self.cfg({"gemini": {"mode": "changed_exit_zero"}, "codex": {"mode": "ok"}})
+        self.land("--author-lane", "dependabot", expect=0)
+        self.assertEqual(self.calls("codex"), [])
+
+    def test_unsupported_version_constraint_uses_normal_review_path(self):
+        for requirement in ("pkg==2.0", "pkg>=2.0,<3"):
+            with self.subTest(requirement=requirement):
+                self.tearDown_state()
+                self.gh_state({})
+                self.dep_branch()
+                self.change("requirements.txt", requirement + "\n")
+                self.cfg({"gemini": {"mode": "ok"}})
+                self.land("--author-lane", "dependabot", expect=0)
+                self.assertEqual(self.cp()["fast_lane"], "")
+
+    def test_non_manifest_file_means_normal_path(self):
+        self.dep_branch()
+        self.change("scripts/foo2.py", "print(2)\n")
+        self.cfg({"gemini": {"mode": "ok"}, "codex": {"mode": "ok"}})
+        r = self.land("--author-lane", "dependabot", expect=0)
+        self.assertNotIn("fast-lane", r.stdout)
+        self.assertEqual(self.cp().get("fast_lane", ""), "")
+        self.assertNotIn("Upstream changes reviewed", (self.S / "prompt-gemini.txt").read_text())
+
+    def test_non_dependabot_author_is_not_fast_laned(self):
+        self.dep_branch()
+        self.cfg({"gemini": {"mode": "ok"}, "codex": {"mode": "ok"}})
+        r = self.land("--author-lane", "claude", expect=0)
+        self.assertNotIn("fast-lane", r.stdout)
+        self.assertEqual(self.cp().get("fast_lane", ""), "")
+
+    def test_explicit_lanes_win_and_custom_criteria_retains_dependency_baseline(self):
+        self.dep_branch()
+        crit = self.S / "crit.md"
+        crit.write_text("MY CRITERIA\n")
+        self.cfg({"gemini": {"mode": "ok"}, "codex": {"mode": "ok"}, "local": {"mode": "ok"}})
+        r = self.land("--author-lane", "dependabot", "--lanes", "local", "--criteria-file", str(crit), expect=0)
+        self.assertIn("fast-lane: dependency-bump", r.stdout)
+        self.assertEqual(self.calls("gemini"), [])
+        self.assertEqual(len(self.calls("local")), 1)
+        text = (self.S / "prompt-local.txt").read_text()
+        self.assertIn("MY CRITERIA", text)
+        self.assertIn("Upstream changes reviewed", text)
+
+    def test_staged_non_manifest_change_committed_before_review_means_normal_path(self):
+        self.dep_branch()
+        self.change("scripts/foo3.py", "print(3)\n", commit=False)
+        msg = self.S / "msg.txt"
+        msg.write_text("feat: x\n")
+        self.cfg({"gemini": {"mode": "ok"}, "codex": {"mode": "ok"}})
+        r = self.land("--author-lane", "dependabot", "--commit-msg-file", str(msg), expect=0)
+        self.assertNotIn("fast-lane: dependency-bump", r.stdout)
+        self.assertEqual(self.cp()["fast_lane"], "")
+        self.assertNotIn("Upstream changes reviewed", (self.S / "prompt-gemini.txt").read_text())
+
+    def test_malformed_policy_globs_use_the_normal_path(self):
+        for bad in (None, "*", ["*"], [""]):
+            with self.subTest(globs=bad):
+                self.tearDown_state(); self.gh_state({})
+                pol = self.S / "policy.json"
+                pol.write_text(json.dumps({"dependabot_manifest_exemption": {"author": "dependabot[bot]", "manifest_globs": bad}}))
+                self.env["AQ_LAND_POLICY_FILE"] = str(pol)
+                self.dep_branch()
+                self.cfg({"gemini": {"mode": "ok"}, "codex": {"mode": "ok"}})
+                r = self.land("--author-lane", "dependabot", expect=0)
+                self.assertIn("fast-lane: policy invalid, normal review path", r.stdout)
+                self.assertEqual(self.cp()["fast_lane"], "")
 
 
 class Preflight(Base):

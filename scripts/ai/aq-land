@@ -11,6 +11,12 @@ Replaces .agents/delegation/outputs/landing/land.sh (design: delivery-loop-simpl
   aq-land --title T --body-file F [--commit-msg-file M] [--criteria-file C] [--author-lane claude]
           [--allow-docs-only] [--lanes gemini,codex,local] [--optional-check NAME]... [--owned PATHFILE]
 
+Dependency-bump fast lane: with --author-lane dependabot and a net diff (vs origin/main) made only of files matching
+dependabot_manifest_exemption.manifest_globs in config/harness-first-policy.json and one supported package-version
+replacement, aq-land reviews with config/review-criteria/dependency-bump.md plus any --criteria-file and defaults the lanes to
+gemini,codex (env AQ_LAND_DEP_LANES; local cannot read release notes). An explicit --lanes or AQ_LAND_LANES always wins.
+Any non-manifest file in the diff means the normal path. Receipt, review record, CI wait and merge are unchanged.
+
 --owned PATHFILE (default: .agents/delegation/owned/<branch-slug>.txt in the worktree) lists the globs
 the slice owns, one per line ('#' comments; a trailing '/' means a whole directory; '*' also crosses '/').
 A changed file outside them stops the landing in preflight, before any review, and is logged to
@@ -89,6 +95,82 @@ def reviewer_could_not_run(text):
     sentences = [x for x in re.split(r"(?<=[.!?])\s+|\n+", body) if x.strip()]
     return (len(body) <= COULD_NOT_RUN_MAX and bool(COULD_NOT_RUN.search(body)) and not LOCATION.search(body)
             and not FINDING_MARK.search(body) and all(ENV_SENTENCE.search(x) for x in sentences))  # every sentence is about the environment
+
+
+def has_dependency_upstream_evidence(text, expected_change=None):
+    """Check the required evidence shape; the trusted reviewer still validates facts."""
+    matches = list(re.finditer(r"^(#{1,6})[ \t]+Upstream changes reviewed[ \t]*$", text, re.M | re.I))
+    if not matches:
+        return False
+    last = matches[-1]
+    level = len(last.group(1))
+    rest = text[last.end():]
+    stop = re.search(
+        rf"^(?:#{{1,{level}}}[ \t]+|(?:Reviewed-head-sha|Review-Disposition|Author-lane|Reviewed-by|Review-Receipt):|\[delegate-to-[^\]]*\]|Output file:)",
+        rest,
+        re.M | re.I,
+    )
+    evidence = rest[:stop.start()] if stop else rest
+
+    def field(name):
+        matches = re.findall(rf"^[ \t>*-]*{re.escape(name)}:[ \t]*(\S.*?)[ \t]*$", evidence, re.M | re.I)
+        if len(matches) != 1:
+            return None
+        value = matches[0]
+        if re.search(r"<[^>\n]+>|\b(?:tbd|todo|n/?a|unknown|unavailable|missing|placeholder|not reviewed|not run)\b", value, re.I):
+            return None
+        return value
+
+    def failed(value):
+        return bool(re.search(
+            r"\b(?:fail(?:ed|ure)?|error|exit(?:ed)? [1-9]|non-?zero|unhealthy|degraded|inactive|dead|not healthy|not running)\b",
+            value,
+            re.I,
+        ))
+
+    package = field("Package and range")
+    release_notes = field("Release notes")
+    authority = field("Authority")
+    input_path = field("Input path")
+    closure = field("Closure")
+    closure_evidence = field("Closure evidence")
+    package_match = package and re.fullmatch(r"(@?[A-Za-z0-9][A-Za-z0-9._+/@-]*)\s+(\S+)\s+(?:->|→)\s+(\S+)", package)
+    if not package_match:
+        return False
+    if expected_change:
+        expected_package, expected_old, expected_new = expected_change
+        seen_package = re.sub(r"[-_.]+", "-", package_match.group(1)).lower()
+        if (seen_package, package_match.group(2), package_match.group(3)) != (expected_package, expected_old, expected_new):
+            return False
+    if not release_notes or not re.search(r"https://[^\s<>()]+", release_notes):
+        return False
+    if not authority or not re.fullmatch(r"(?:Nix|manifest)", authority, re.I):
+        return False
+    if not input_path or not re.fullmatch(r"(?:\.?/)?(?:[A-Za-z0-9_.-]+/)*[A-Za-z0-9_.-]+", input_path):
+        return False
+    comparison = (
+        r"(?:git\s+diff(?:\s+--[A-Za-z0-9][A-Za-z0-9=-]*)*\s+\S+\s+\S+|"
+        r"nix\s+store\s+diff-closures\s+\S+\s+\S+|"
+        r"nix-store\s+--?diff-closures\s+\S+\s+\S+|"
+        r"(?:diff|cmp|comm)(?:\s+-[A-Za-z0-9]+)*\s+\S+\s+\S+)"
+    )
+    command, separator, outcome = (closure_evidence or "").partition(";")
+    if not separator or not re.fullmatch(comparison, command.strip()):
+        return False
+    if not closure or not re.fullmatch(r"(?:changed|unchanged)", closure, re.I):
+        return False
+    if closure.lower() == "unchanged":
+        return bool(re.fullmatch(r"(?:no differences|exit 0 \(no differences\))\.?", outcome.strip(), re.I))
+    if not re.fullmatch(r"(?:exit 0, )?differences found\.?", outcome.strip(), re.I):
+        return False
+    runtime = field("Deployed runtime")
+    result = field("Runtime result")
+    return bool(runtime and not failed(runtime) and not re.search(r"(?<![\w-])(?:no|not)(?![\w-])", runtime, re.I) and re.search(
+        r"(?:\b[A-Za-z0-9_.-]+\.service\b|\b(?:systemctl|service|nix(?:os-rebuild)?|docker|podman|kubectl|curl|pytest|python(?:3)?|bash)\b|(?:^|\s)/(?:[A-Za-z0-9_.-]+/)*[A-Za-z0-9_.-]+)",
+        runtime, re.I
+    ) and result and re.fullmatch(
+        r"(?:passed|success|ok|healthy|running|active|exit 0)\.?", result, re.I
+    ))
 
 
 FAILLINE = re.compile(r"FAIL|ERROR|error:|not ok|Traceback|\bfatal\b", re.I)
@@ -392,11 +474,91 @@ class Land:
         ok, _ = self.crd.merge_only_update(rec["head"], head, self.git("rev-parse", "refs/remotes/origin/main"))
         return ok
 
+    def detect_fast_lane(self, head):
+        """Dependabot + manifest-only net diff of base...head -> 'dependency-bump'.
+
+        Called from review() with the same pinned range the reviewer's diff is built from, on every round.
+        Glob semantics match the harness-first evidence gate.
+        """
+        self.fast_lane = ""
+        self.dependency_change = None
+        if (self.a.author_lane or "").strip().lower() != "dependabot":
+            self.save(fast_lane="")
+            return
+        try:
+            ex = json.loads(Path(os.environ.get("AQ_LAND_POLICY_FILE") or ROOT / "config/harness-first-policy.json").read_text())["dependabot_manifest_exemption"]
+            globs = ex["manifest_globs"]
+        except (OSError, ValueError, KeyError, TypeError):
+            say("fast-lane: policy unreadable, normal review path")
+            self.save(fast_lane="")
+            return
+        if (not isinstance(ex.get("author"), str) or not isinstance(globs, list) or not globs
+                or not all(isinstance(g, str) and g.strip() not in ("", "*", "**") for g in globs)):
+            say("fast-lane: policy invalid, normal review path")
+            self.save(fast_lane="")
+            return
+        names = [n for n in self.nul_names(f"refs/remotes/origin/main...{head}") if n]
+
+        def is_manifest(n):
+            return any(fnmatch.fnmatchcase(n if "/" in g else n.rsplit("/", 1)[-1], g) for g in globs)
+
+        if names and all(is_manifest(n) for n in names):
+            change = self.dependency_change_from_diff(head)
+            if change:
+                package, old, new = change
+                self.fast_lane = "dependency-bump"
+                self.dependency_change = change
+                say(f"fast-lane: dependency-bump ({package} {old} -> {new})")
+            else:
+                say("fast-lane: ambiguous or unsupported dependency diff, normal review path")
+        self.save(fast_lane=self.fast_lane)
+
+    def dependency_change_from_diff(self, head):
+        """Return one simple requirements-style replacement, otherwise use normal review."""
+        subject = f"refs/remotes/origin/main...{head}"
+        metadata = self.git("diff", "--raw", "-z", "--no-renames", subject).split("\0")
+        if (len(metadata) != 3 or not re.fullmatch(r":100(644|755) 100\1 \w+ \w+ M", metadata[0])
+                or not fnmatch.fnmatchcase(Path(metadata[1]).name, "requirements*.txt")):
+            return None
+        patch = self.git("diff", "--no-ext-diff", "--no-textconv", "--unified=0", subject)
+        removed, added = [], []
+        in_hunk = False
+        for line in patch.splitlines():
+            if line.startswith("@@"):
+                in_hunk = True
+                continue
+            if not in_hunk or line.startswith("\\"):
+                continue
+            if line.startswith("-"):
+                removed.append(line[1:])
+            elif line.startswith("+"):
+                added.append(line[1:])
+        if len(removed) != 1 or len(added) != 1:
+            return None
+
+        def requirement(line):
+            match = re.fullmatch(
+                r"[ \t]*([A-Za-z0-9][A-Za-z0-9_.-]*)[ \t]*(==|>=)[ \t]*([0-9]+(?:\.[0-9]+)*)[ \t]*(?:#.*)?",
+                line,
+            )
+            if not match:
+                return None
+            return re.sub(r"[-_.]+", "-", match.group(1)).lower(), match.group(2), match.group(3)
+
+        old, new = requirement(removed[0]), requirement(added[0])
+        if not old or not new or old[:2] != new[:2] or old[2] == new[2]:
+            return None
+        return old[0], old[2], new[2]
+
     def lane_plan(self, diff_bytes):
         author = (self.a.author_lane or "").strip().lower()
         author = "local" if author.startswith("local") else author
         order, skipped = [], []
-        for lane in [x for x in self.a.lanes.split(",") if x]:
+        lanes = self.a.lanes or (
+            (os.environ.get("AQ_LAND_DEP_LANES") or "gemini,codex")
+            if getattr(self, "fast_lane", "") else "gemini,codex,local"
+        )
+        for lane in [x for x in lanes.split(",") if x]:
             if lane not in LANES:
                 raise Stop("review", f"unknown lane {lane!r}")
             if lane == author:
@@ -410,7 +572,9 @@ class Land:
         return order, skipped
 
     def prompt(self, lane, head, diff_file, diff_text):
-        crit = Path(self.a.criteria_file).read_text() if self.a.criteria_file else "Check correctness, tests, and security of the change."
+        dep_crit = (ROOT / "config/review-criteria/dependency-bump.md").read_text() if getattr(self, "fast_lane", "") else ""
+        custom_crit = Path(self.a.criteria_file).read_text() if self.a.criteria_file else ""
+        crit = "\n\n".join(x for x in (dep_crit, custom_crit) if x) or "Check correctness, tests, and security of the change."
         p = [f"Independent review (you are not the author). Subject: branch {self.branch}, head {head}, base origin/main."]
         if lane == "local":
             p += ["Answer from the diff below alone.", "", crit, "", "```diff", diff_text, "```"]
@@ -485,10 +649,11 @@ class Land:
                     except (OSError, subprocess.TimeoutExpired):
                         os.killpg(proc.pid, signal.SIGKILL)
                     return "unavailable", why, "", ""
-        text = out.read_text(errors="replace")
-        m = re.search(r"Output file:\s+(\S+)", text)
-        if m and Path(m.group(1)).is_file():
-            text += "\n" + Path(m.group(1)).read_text(errors="replace")
+        stdout_text = out.read_text(errors="replace")
+        m = re.search(r"Output file:\s+(\S+)", stdout_text)
+        out_file_text = Path(m.group(1)).read_text(errors="replace") if m and Path(m.group(1)).is_file() else ""
+        text = stdout_text + ("\n" + out_file_text if out_file_text else "")
+        reply_text = out_file_text if out_file_text.strip() else stdout_text
         verdicts = re.findall(rf"^Review-Disposition:[ \t]*({'|'.join(VERDICTS)})[ \t]*$", text, re.M)
         heads = re.findall(r"^Reviewed-head-sha:[ \t]*([0-9a-f]{40})[ \t]*$", text, re.M)
         rid = re.search(rf"\b({lane}-\d{{8}}-\d{{6}}-[a-z0-9]+)", text)
@@ -508,13 +673,14 @@ class Land:
             return "unavailable", f"review covers head {(heads or ['none'])[-1][:12]}, not {head[:12]}", "", ""
         if not rid:
             return "unavailable", "no run id in the delegate output", "", ""
-        return ("ok" if verdicts[-1].startswith("PASS") else "negative"), verdicts[-1], rid.group(1), text
+        return ("ok" if verdicts[-1].startswith("PASS") else "negative"), verdicts[-1], rid.group(1), reply_text
 
     def review(self, head):
         base = "refs/remotes/origin/main"
         diff = self.git("diff", f"{base}...{head}")
         diff_file = self.dir / f"subject-{head[:12]}.diff"
         diff_file.write_text(diff + "\n")
+        self.detect_fast_lane(head)
         order, notes = self.lane_plan(len(diff.encode()))
         if not order:
             raise Stop("review", "no eligible independent lane: " + "; ".join(notes))
@@ -526,6 +692,9 @@ class Land:
         for lane in order:
             say(f"review of {head[:9]} by {lane}")
             kind, detail, rid, rtext = self.run_lane(lane, head, pfiles[lane], notes)
+            if kind == "ok" and self.fast_lane == "dependency-bump" and not has_dependency_upstream_evidence(rtext, self.dependency_change):
+                kind = "unavailable"
+                detail = "malformed PASS: missing substantive Upstream changes reviewed evidence"
             if kind == "unavailable":
                 notes.append(f"{lane}: {detail}")
                 say(f"lane {lane} unavailable ({detail}); trying the next eligible lane")
@@ -920,9 +1089,11 @@ def main():
     ap.add_argument("--title", default="")
     ap.add_argument("--body-file", default="")
     ap.add_argument("--commit-msg-file", default="")
-    ap.add_argument("--criteria-file", default="")
+    ap.add_argument("--criteria-file", default="",
+                    help="additional criteria (added to dependency-bump criteria on that fast lane)")
     ap.add_argument("--author-lane", default="claude")
-    ap.add_argument("--lanes", default=os.environ.get("AQ_LAND_LANES", "gemini,codex,local"))
+    ap.add_argument("--lanes", default=os.environ.get("AQ_LAND_LANES", ""),
+                    help="review lanes in order (default gemini,codex,local; gemini,codex on the dependency-bump fast lane)")
     ap.add_argument("--allow-docs-only", action="store_true")
     ap.add_argument("--max-updates", type=int, default=env_int("AQ_LAND_MAX_UPDATES", 3),
                     help="max gh pr update-branch rounds when main moves past the PR before merge (env AQ_LAND_MAX_UPDATES)")
