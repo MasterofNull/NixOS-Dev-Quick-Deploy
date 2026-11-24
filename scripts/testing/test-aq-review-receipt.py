@@ -431,6 +431,108 @@ class T(unittest.TestCase):
         return subprocess.run([sys.executable, str(TOOL), "--root", str(self.work), "--registry", str(self.reg), "publish", str(f)],
                               capture_output=True, text=True)
 
+    def _standalone_clone(self):
+        clone = self.bare.parent / "clone"
+        self.g("clone", "-q", "--branch", "pr", str(self.work), str(clone))
+        self.g("remote", "set-url", "origin", str(self.bare), cwd=clone)
+        self.assertEqual(self.g("rev-parse", "--path-format=absolute", "--git-common-dir", cwd=clone), str(clone / ".git"))
+        return clone
+
+    def _shared_review(self, delegation_dir, output_file):
+        review = self.log.read_text()
+        self.reg = delegation_dir / "registry.jsonl"
+        self.log = delegation_dir / "outputs/rev.log"
+        self.log.parent.mkdir(parents=True)
+        self.write_log(review + "CI passed.\n")
+        self.set_entry(output_file=output_file)
+
+    def _checkout_tool(self, checkout, *args, use_env=False):
+        env = dict(os.environ)
+        command = [sys.executable, str(TOOL), "--root", str(checkout)]
+        if use_env:
+            env["AQ_DELEGATION_DIR"] = str(self.reg.parent)
+        else:
+            command.extend(("--registry", str(self.reg)))
+        return subprocess.run([*command, *args], cwd=checkout, env=env, capture_output=True, text=True)
+
+    def _checkout_mint(self, checkout, *, use_env=False):
+        receipt = self.bare.parent / "receipt.json"
+        result = self._checkout_tool(checkout, "mint", "--run-id", "r1", "--pr", "7", "--head", self.head,
+                                     "--author-lane", "claude", "--repo", "o/r", "--out", str(receipt), use_env=use_env)
+        return result, receipt
+
+    def _assert_shared_receipt_lifecycle(self, checkout, *, use_env=False):
+        output_file = ".agents/delegation/outputs/rev.log"
+        self._shared_review(self.work / ".agents/delegation", output_file)
+        self.assertFalse((checkout / output_file).exists())
+        minted, receipt = self._checkout_mint(checkout, use_env=use_env)
+        self.assertEqual(minted.returncode, 0, minted.stderr)
+        self.assertEqual(json.loads(receipt.read_text())["output_file"], output_file)
+
+        published_args = ("verify", "--pr", "7", "--head", self.head, "--require-revocation-check")
+        for root, args in (
+            (checkout, ("publish", str(receipt))),
+            (checkout, ("verify", str(receipt))),
+            (checkout, published_args),
+            (checkout, ("audit", "--branch")),
+            (self.work, ("verify", str(receipt))),
+            (self.work, published_args),
+        ):
+            with self.subTest(checkout=root, command=args):
+                result = self._checkout_tool(root, *args, use_env=use_env)
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                if args[0] == "audit":
+                    self.assertIn("OK  WARN: review text asserts CI state", result.stdout)
+
+    def test_shared_registry_from_linked_worktree(self):
+        checkout = self.bare.parent / "linked"
+        self.g("worktree", "add", "--detach", str(checkout), self.head)
+        self._assert_shared_receipt_lifecycle(checkout)
+
+    def test_shared_registry_from_standalone_clone_with_flag(self):
+        self._assert_shared_receipt_lifecycle(self._standalone_clone())
+
+    def test_shared_registry_from_standalone_clone_with_env(self):
+        self._assert_shared_receipt_lifecycle(self._standalone_clone(), use_env=True)
+
+    def test_custom_registry_from_standalone_clone(self):
+        clone = self._standalone_clone()
+        output_file = "outputs/rev.log"
+        self._shared_review(self.bare.parent / "shared", output_file)
+        minted, receipt = self._checkout_mint(clone)
+        self.assertEqual(minted.returncode, 0, minted.stderr)
+        self.assertEqual(json.loads(receipt.read_text())["output_file"], output_file)
+        verified = self._checkout_tool(clone, "verify", str(receipt))
+        self.assertEqual(verified.returncode, 0, verified.stderr)
+
+    def test_standalone_clone_rejects_registry_path_escapes(self):
+        clone = self._standalone_clone()
+        delegation_dir = self.work / ".agents/delegation"
+        self._shared_review(delegation_dir, ".agents/delegation/outputs/rev.log")
+        external = self.bare.parent / "external.log"
+        secret = self.work / "secret.txt"
+        for path in (external, secret, delegation_dir.parent / "outside.log"):
+            path.write_bytes(self.log.read_bytes())
+
+        symlink_paths = []
+        for name, target in (
+            ("evil.log", external),
+            ("evil-local.log", secret),
+            ("evil-broken.log", self.bare.parent / "missing.log"),
+        ):
+            link = delegation_dir / "outputs" / name
+            link.symlink_to(target)
+            symlink_paths.append(str(link.relative_to(self.work)))
+
+        for output_file in ("../outside.log", "secret.txt", ".agents/delegation/../../secret.txt",
+                            *symlink_paths, str(external)):
+            with self.subTest(output_file=output_file):
+                self.set_entry(output_file=output_file)
+                result, receipt = self._checkout_mint(clone)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn("outside the repo", result.stderr)
+                self.assertFalse(receipt.exists())
+
     def test_offbranch_mint_publish_idempotent_and_branch_untouched(self):
         head = self._repo()
         r, f = self._ob(head)
