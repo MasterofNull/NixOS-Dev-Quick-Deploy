@@ -53,6 +53,7 @@ _STOP_TERMINAL = frozenset({"done", "completed", "failed", "cancelled", "stale",
 _MAX_COMPLETED = 750    # max completed/failed entries in PENDING.json
 _MAX_HANDOFF_LINES = 300  # max delegation tracking lines in HANDOFF.md
 _LOCAL_DIRECT_ANSWER_INSPECTION_BYTES = 64 * 1024
+_OUTPUT_STAMP_MAX_BYTES = 16 * 1024 * 1024
 _LOCAL_DIRECT_PROGRESS_RECEIPT_BYTES = 64 * 1024
 _LOCAL_PRODUCER_TIMING_RECEIPT_BYTES = 4096
 _LOCAL_PRODUCER_TIMING_SCHEMA = "aq.local-producer-timing/v1"
@@ -160,7 +161,8 @@ def _read_bounded_regular_file(path: Path | str, maximum_bytes: int) -> Optional
         initial = path.lstat()
         if not _stat.S_ISREG(initial.st_mode):
             return None
-        flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
+        # A regular file can be replaced by a FIFO between lstat and open.
+        flags = os.O_RDONLY | os.O_NONBLOCK | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
         descriptor = os.open(path, flags)
     except OSError:
         return None
@@ -172,7 +174,16 @@ def _read_bounded_regular_file(path: Path | str, maximum_bytes: int) -> Optional
             or before.st_size > maximum_bytes
         ):
             return None
-        data = os.read(descriptor, maximum_bytes + 1)
+        chunks: list[bytes] = []
+        total = 0
+        limit = maximum_bytes + 1
+        while total < limit:
+            chunk = os.read(descriptor, limit - total)
+            if not chunk:
+                break
+            chunks.append(chunk)
+            total += len(chunk)
+        data = b"".join(chunks)
         after = os.fstat(descriptor)
         if (
             len(data) > maximum_bytes
@@ -417,7 +428,7 @@ class TaskRegistry:
             _atomic_write_bytes(self.registry_file, ("\n".join(lines) + "\n").encode("utf-8"))
 
     def _output_stamp(self, entry: dict) -> dict:
-        """sha256 + byte length of the finished output, recorded when a wrapper marks a run done.
+        """sha256 + byte length of bounded regular output when a wrapper marks a run done.
 
         `aq-review-receipt mint` recomputes it, so a hand-appended row must also carry the hash of a
         real log. Tamper-evident only: any lane on this Unix user can still write a matching hash.
@@ -426,9 +437,8 @@ class TaskRegistry:
         if not rel:
             return {}
         path = Path(rel) if Path(rel).is_absolute() else self.repo_root / rel
-        try:
-            data = path.read_bytes()
-        except OSError:
+        data = _read_bounded_regular_file(path, _OUTPUT_STAMP_MAX_BYTES)
+        if data is None:
             return {}
         return {"output_sha256": hashlib.sha256(data).hexdigest(), "output_bytes": len(data), "output_recorded_at": _now()}
 

@@ -10,6 +10,7 @@ import hashlib
 import tempfile
 import time
 import unittest
+from unittest.mock import patch
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 TOOL = ROOT / "scripts/ai/aq-review-receipt"
@@ -76,6 +77,37 @@ class T(unittest.TestCase):
         self.assertEqual((rec["reviewer_lane"], rec["verdict"], rec["output_file"]), ("codex", "PASS", "out/rev.log"))
         self.assertEqual(self.run_tool("verify", str(self.rfile)).returncode, 0)
         self.assertEqual(self.run_tool("audit").returncode, 0)
+
+    def test_verify_local_receipt_binds_pr_and_head(self):
+        minted = self.mint()
+        self.assertEqual(minted.returncode, 0, minted.stderr)
+        cases = (
+            ("7", self.head, ""),
+            ("8", self.head, "receipt pr does not match --pr"),
+            ("7", "0" * 40, "receipt reviewed_head_sha does not match --head"),
+            ("0", self.head, "positive"),
+            ("-1", self.head, "positive"),
+            ("7", "A" * 40, "lowercase hex"),
+        )
+        for pr, head, error in cases:
+            with self.subTest(pr=pr, head=head):
+                result = self.run_tool("verify", str(self.rfile), "--pr", pr, "--head", head)
+                self.assertEqual(result.returncode, int(bool(error)), result.stderr)
+                if error:
+                    self.assertIn(error, result.stderr)
+
+        receipt = json.loads(self.rfile.read_text())
+        receipt["pr"] = True
+        self.rfile.write_text(json.dumps(receipt))
+        result = self.run_tool("verify", str(self.rfile), "--pr", "1")
+        self.assertEqual(result.returncode, 1, result.stderr)
+        self.assertIn("receipt pr does not match --pr 1", result.stderr)
+
+        for pr in ("0", "-1"):
+            with self.subTest(revoke_pr=pr):
+                result = self.run_tool("revoke", "--pr", pr, "--head", self.head, "--reason", "bad")
+                self.assertEqual(result.returncode, 1, result.stderr)
+                self.assertIn("--pr must be positive", result.stderr)
 
     def test_mint_rejections(self):
         self.assertNotEqual(self.mint(author="Codex").returncode, 0)
@@ -188,7 +220,7 @@ class T(unittest.TestCase):
         r, f = self._ob(head)
         self.assertEqual(self._publish(f).returncode, 0)
         self.assertEqual(self.run_tool("verify", str(f)).returncode, 0)
-        rv = self.run_tool("revoke", "--pr", "7", "--head", head, "--reason", "hand-minted, no real review")
+        rv = self.run_tool("revoke", "--no-rerun", "--pr", "7", "--head", head, "--reason", "hand-minted, no real review")
         self.assertEqual(rv.returncode, 0, rv.stderr)
         shown = subprocess.run(["git", "-C", str(self.bare), "show", f"review-receipts:revocations/pr7-{head[:12]}.json"],
                                capture_output=True, text=True).stdout
@@ -201,8 +233,64 @@ class T(unittest.TestCase):
         a = self.run_tool("audit", "--branch")
         self.assertIn("REVOKED", a.stdout)
         self.assertEqual(a.returncode, 0, a.stdout)  # revoked receipts are dealt with, not a standing failure
-        again = self.run_tool("revoke", "--pr", "7", "--head", head, "--reason", "again")
+        again = self.run_tool("revoke", "--no-rerun", "--pr", "7", "--head", head, "--reason", "again")
         self.assertIn("already revoked", again.stdout)
+
+    def test_revoke_reruns_matching_open_pr_checks_after_publish(self):
+        gh = self.d / "gh-stub"
+        gh.write_text(
+            f"#!{sys.executable}\n"
+            "import json, pathlib, subprocess, sys\n"
+            "args = sys.argv[1:]\n"
+            "subprocess.run(['git', 'ls-remote', '--exit-code', 'origin', 'refs/heads/review-receipts'],\n"
+            "               check=True, stdout=subprocess.DEVNULL)\n"
+            "with pathlib.Path('gh-calls.jsonl').open('a') as log:\n"
+            "    print(json.dumps(args), file=log)\n"
+            "fixture = json.loads(pathlib.Path('gh-fixture.json').read_text())\n"
+            "if args[:2] == ['pr', 'view']:\n"
+            "    print(json.dumps(fixture['pr']))\n"
+            "    sys.exit(fixture['failure'] == 'view')\n"
+            "sys.exit(fixture['failure'] == 'rerun')\n"
+        )
+        gh.chmod(0o755)
+        view = ["pr", "view", "7", "--json", "state,headRefOid,body,statusCheckRollup"]
+        reruns = [["run", "rerun", "123"], ["run", "rerun", "456"]]
+        checks = [
+            {"name": "review-disposition", "detailsUrl": "/actions/runs/123/job/71", "databaseId": 71},
+            {"name": "review-disposition", "detailsUrl": "/actions/runs/123/job/72", "databaseId": 72},
+            {"name": "review-disposition", "detailsUrl": "/actions/runs/456/job/73"},
+            {"name": "review-disposition", "databaseId": 74},
+            {"name": "other", "detailsUrl": "/actions/runs/789/job/75"},
+        ]
+        cases = (
+            ("matching", [view, *reruns], ""),
+            ("merge-only-body", [view, *reruns], ""),
+            ("merged", [view], "skipping check rerun"),
+            ("changed", [view], "skipping check rerun"),
+            ("no-rerun", [], ""),
+            ("view", [view], "cannot inspect PR"),
+            ("rerun", [view, *reruns], "cannot rerun workflow"),
+            ("missing", [], "cannot inspect PR"),
+        )
+        calls = self.d / "gh-calls.jsonl"
+        for mode, expected_calls, note in cases:
+            with self.subTest(mode=mode):
+                calls.write_text("")
+                pr = {"state": "MERGED" if mode == "merged" else "OPEN",
+                      "headRefOid": "0" * 40 if mode in ("changed", "merge-only-body") else self.head,
+                      "body": f"Reviewed-head-sha: {self.head}\r\n" if mode == "merge-only-body" else "",
+                      "statusCheckRollup": checks}
+                (self.d / "gh-fixture.json").write_text(json.dumps({"pr": pr, "failure": mode}))
+                executable = self.d / "missing-gh" if mode == "missing" else gh
+                flags = ["--no-rerun"] if mode == "no-rerun" else []
+                with patch.dict(os.environ, {"AQ_REVIEW_RECEIPT_GH": str(executable)}):
+                    result = self.run_tool("revoke", "--pr", "7", "--head", self.head, "--reason", "bad", *flags)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                published = self.g("show", f"review-receipts:revocations/pr7-{self.head[:12]}.json", cwd=self.bare)
+                self.assertEqual(json.loads(published)["reviewed_head_sha"], self.head)
+                self.assertEqual([json.loads(line) for line in calls.read_text().splitlines()], expected_calls)
+                if note:
+                    self.assertIn(note, result.stderr)
 
     def test_revoke_validates_input_and_verify_fails_closed_when_required(self):
         self.assertNotEqual(self.run_tool("revoke", "--pr", "7", "--head", "abc", "--reason", "x").returncode, 0)
@@ -287,6 +375,28 @@ class T(unittest.TestCase):
         reg.append("t2", "d", ".agents/delegation/outputs/o.log", "direct", "review")
         subprocess.run([sys.executable, str(ROOT / "scripts/ai/lib/registry-update.py"), "stamp", str(dd / "registry.jsonl"), "t2"], check=True)
         self.assertEqual(reg.get("t2")["output_bytes"], 12)
+
+    def test_task_registry_stamps_only_bounded_regular_outputs(self):
+        sys.path.insert(0, str(ROOT / "scripts/ai/lib"))
+        import task_registry
+
+        registry = task_registry.TaskRegistry(self.d / ".agents/delegation", self.d)
+        self.log.write_bytes(b"ok")
+        (self.d / "out/link").symlink_to(self.log)
+        (self.d / "out/large").write_bytes(b"big")
+        os.mkfifo(self.d / "out/fifo")
+        read = os.read
+        with (
+            patch.object(task_registry, "_OUTPUT_STAMP_MAX_BYTES", 2),
+            patch.object(task_registry.os, "read", side_effect=lambda fd, size: read(fd, min(size, 1))),
+        ):
+            stamp = registry._output_stamp({"output_file": "out/rev.log"})
+            self.assertEqual(stamp["output_sha256"], hashlib.sha256(b"ok").hexdigest())
+            self.assertEqual(stamp["output_bytes"], 2)
+            self.assertTrue(stamp["output_recorded_at"])
+            for name in ("link", "large", "fifo"):
+                with self.subTest(output=name):
+                    self.assertEqual(registry._output_stamp({"output_file": f"out/{name}"}), {})
 
     # --- off-branch receipts: mint --offbranch + publish (local bare origin) ---
     def _repo(self):
@@ -472,7 +582,7 @@ class T(unittest.TestCase):
         self.assertEqual(self._publish(f).returncode, 0)
         ok = self.run_tool("verify", "--require-revocation-check", "--pr", "7", "--head", head)
         self.assertEqual(ok.returncode, 0, ok.stderr)
-        self.assertEqual(self.run_tool("revoke", "--pr", "7", "--head", head, "--reason", "bad").returncode, 0)
+        self.assertEqual(self.run_tool("revoke", "--no-rerun", "--pr", "7", "--head", head, "--reason", "bad").returncode, 0)
         shutil.rmtree(self.rev_dir, ignore_errors=True)  # only the published revocation remains
         v = self.run_tool("verify", "--require-revocation-check", "--pr", "7", "--head", head)
         self.assertNotEqual(v.returncode, 0)
@@ -482,7 +592,7 @@ class T(unittest.TestCase):
         head = self._repo()
         r, f = self._ob(head)
         self.assertEqual(self._publish(f).returncode, 0)
-        self.assertEqual(self.run_tool("revoke", "--pr", "7", "--head", head, "--reason", "bad").returncode, 0)
+        self.assertEqual(self.run_tool("revoke", "--no-rerun", "--pr", "7", "--head", head, "--reason", "bad").returncode, 0)
         shutil.rmtree(self.rev_dir, ignore_errors=True)
         # a concurrent fetch of a ref with no revocations dir lands in FETCH_HEAD during our fetch window
         hook = self.work / "fetch-shim"
@@ -502,7 +612,7 @@ class T(unittest.TestCase):
         head = self._repo()
         r, f = self._ob(head)
         self.assertEqual(self._publish(f).returncode, 0)
-        self.assertEqual(self.run_tool("revoke", "--pr", "9", "--head", "a" * 40, "--reason", "unrelated").returncode, 0)
+        self.assertEqual(self.run_tool("revoke", "--no-rerun", "--pr", "9", "--head", "a" * 40, "--reason", "unrelated").returncode, 0)
         real = shutil.which("git")
         shim = self.work / "git-read-failure"
         shim.write_text(f"#!/bin/sh\ncase \"$*\" in *show*revocations/*) exit 1;; esac\nexec {real} \"$@\"\n")

@@ -1404,12 +1404,15 @@ class Friction(Base):
         self.assertEqual(len(self.published()), 2)
 
     def test_merge_is_refused_when_receipt_verify_fails(self):
+        head = self.g("rev-parse", "HEAD")
         (self.S / "verify_fail").write_text("1")
         line = self.stop_line(self.land(expect=1))
         self.assertIn("merge", line)
         self.assertIn("receipt verify refused the merge", line)
         self.assertEqual(self.ghs().get("merges", 0), 0)
-        self.assertIn("verify --require-revocation-check", (self.S / "receipt.log").read_text())
+        receipt, = (self.S / "state").rglob(f"pr77-{head[:12]}.json")
+        self.assertIn(f"verify --require-revocation-check {receipt} --pr 77 --head {head}",
+                      (self.S / "receipt.log").read_text().splitlines())
         (self.S / "verify_fail").unlink()
         self.land(expect=0)  # a resume after the receipt verifies merges
 
