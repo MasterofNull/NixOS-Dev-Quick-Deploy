@@ -219,6 +219,11 @@ record_terminal() {
     reg_update "$CURRENT_TASK_ID" "status=$status" "exit_code=$code" "finished_at=$ts" \
         "terminal_reason=${reason:-provider_exit_$code}" "heartbeat_at=$ts" \
         || echo "[delegate-to-claude] WARN: terminal registry write failed for $CURRENT_TASK_ID" >&2
+    # Review receipts bind to this hash (aq-review-receipt mint recomputes it).
+    if [[ "$status" == "done" ]]; then
+        python3 "$SCRIPT_DIR/lib/registry-update.py" stamp "$REGISTRY" "$CURRENT_TASK_ID" \
+            || echo "[delegate-to-claude] WARN: output hash not recorded for $CURRENT_TASK_ID" >&2
+    fi
 }
 
 on_exit_reconcile() {

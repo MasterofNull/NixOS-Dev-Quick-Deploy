@@ -2,6 +2,7 @@
 """Persona P2: instance labels in PULSE, a2a events and review receipts (additive)."""
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import subprocess
@@ -93,10 +94,12 @@ class Receipts(unittest.TestCase):
         _git(self.d, "init", "-q")
         _git(self.d, "-c", "user.name=t", "-c", "user.email=t@x.io", "commit", "--allow-empty", "-q", "-m", "x")
         self.head = _git(self.d, "rev-parse", "HEAD")
-        (self.d / "out/rev.log").write_text(f"reviewed {self.head[:12]}\nReview-Disposition: PASS\n")
+        log = f"reviewed {self.head[:12]}\n## Findings\nnone in a/b.py\nReview-Disposition: PASS\n"
+        (self.d / "out/rev.log").write_text(log)
         self.reg = self.d / "registry.jsonl"
         entry = {"id": "run12345678", "agent": "codex", "role": "reviewer", "output_file": "out/rev.log",
-                 "status": "done", "model_effective": "gpt-5"}
+                 "status": "done", "model_effective": "gpt-5", "output_sha256": hashlib.sha256(log.encode()).hexdigest(),
+                 "output_bytes": len(log.encode()), "output_recorded_at": "2999-01-01T00:00:00Z"}
         self.reg.write_text(json.dumps(entry) + "\n")
 
     def tearDown(self) -> None:

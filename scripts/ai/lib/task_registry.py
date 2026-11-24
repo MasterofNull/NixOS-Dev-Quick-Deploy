@@ -17,6 +17,7 @@ parallel.
 import contextlib
 import errno
 import fcntl
+import hashlib
 import json
 import math
 import os
@@ -391,7 +392,7 @@ class TaskRegistry:
                 fcntl.flock(fh, fcntl.LOCK_UN)
         return entries
 
-    def _update_registry(self, task_id: str, updates: dict) -> None:
+    def _update_registry(self, task_id: str, updates: dict, stamp: bool = False) -> None:
         """Apply updates dict to the entry matching task_id."""
         self.registry_file.parent.mkdir(parents=True, exist_ok=True)
         # Read under shared lock, then rewrite under exclusive lock
@@ -409,13 +410,35 @@ class TaskRegistry:
                     continue
                 if isinstance(e, dict) and e.get("id") == task_id:
                     e.update(updates)
+                    if stamp or updates.get("status") in ("done", "completed"):
+                        e.update(self._output_stamp(e))
                     line = json.dumps(e)
                 lines.append(line)
             _atomic_write_bytes(self.registry_file, ("\n".join(lines) + "\n").encode("utf-8"))
 
+    def _output_stamp(self, entry: dict) -> dict:
+        """sha256 + byte length of the finished output, recorded when a wrapper marks a run done.
+
+        `aq-review-receipt mint` recomputes it, so a hand-appended row must also carry the hash of a
+        real log. Tamper-evident only: any lane on this Unix user can still write a matching hash.
+        """
+        rel = entry.get("output_file")
+        if not rel:
+            return {}
+        path = Path(rel) if Path(rel).is_absolute() else self.repo_root / rel
+        try:
+            data = path.read_bytes()
+        except OSError:
+            return {}
+        return {"output_sha256": hashlib.sha256(data).hexdigest(), "output_bytes": len(data), "output_recorded_at": _now()}
+
     def update_fields_atomic(self, task_id: str, updates: dict) -> None:
         """Public transactional field update (shared lock + atomic replace) for shell wrappers."""
         self._update_registry(task_id, updates)
+
+    def stamp_output(self, task_id: str) -> None:
+        """Record the output hash of an already-terminal row (for wrappers with their own status writer)."""
+        self._update_registry(task_id, {}, stamp=True)
 
     def append_row_atomic(self, row: dict) -> None:
         """Public append under the same sibling lock the rewriters use."""
