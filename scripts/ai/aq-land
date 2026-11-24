@@ -65,8 +65,26 @@ CODE_SUFFIXES = (".py", ".sh", ".nix", ".yml", ".yaml")
 # progress text in them. A stall limit would kill a valid long review, so gemini and local rely on the
 # hard limit alone. Codex exec prints its tool activity as it goes, so it keeps a stall limit.
 LANES = {"gemini": ("gemini", 1800, 0), "codex": ("codex", 2400, 900), "local": ("local-direct", 2400, 0)}
-GEMINI_MODEL = "gemini-3.8-flash-high"
-GEMINI_FALLBACK_MODEL = "gemini-3.8-flash-medium"
+
+
+def _gemini_model_chain() -> tuple[str, ...]:
+    defaults = ("gemini-4-neon-high", "gemini-4-hydrogen", "gemini-3.8-flash-medium")
+    try:
+        gl = json.loads((ROOT / "config/model-coordinator.json").read_text())["tiers"]["google"]["gemini_lane"]
+        prefix = gl.get("required_id_prefix") or "gemini-"
+        if not isinstance(prefix, str):
+            return defaults
+        prefix = prefix.lower()
+        configured = (gl.get("role_map", {}).get("reviewer"), gl.get("fallback"), gl.get("baseline_fallback"))
+    except (OSError, ValueError, KeyError, TypeError, AttributeError):
+        return defaults
+    models = (model.strip() for model in configured if isinstance(model, str))
+    return tuple(dict.fromkeys(model for model in models if model and model.lower().startswith(prefix))) or defaults
+
+
+GEMINI_MODEL_CHAIN = _gemini_model_chain()
+GEMINI_MODEL = GEMINI_MODEL_CHAIN[0]
+GEMINI_FALLBACK_MODEL = GEMINI_MODEL_CHAIN[1] if len(GEMINI_MODEL_CHAIN) > 1 else GEMINI_MODEL_CHAIN[0]
 QUOTA = re.compile(r"quota|usage limit|rate.?limit|RESOURCE_EXHAUSTED|\b429\b|exhausted|capacity", re.I)
 STRONG_QUOTA = re.compile(r"\b429\b|usage limit|RESOURCE_EXHAUSTED|quota (?:exceeded|exhausted)|cooldown active", re.I)
 LOCAL_CAP = re.compile(r"local headless cap reached", re.I)
@@ -597,16 +615,24 @@ class Land:
         return res
 
     def _run_lane(self, lane, head, pfile, notes=None):
-        """kind is ok|negative|unavailable. Gemini retries once on another model after a quota error."""
+        """Gemini advances through up to three models on quota errors."""
         if lane != "gemini":
             return self.run_once(lane, head, pfile)
-        model = os.environ.get("AQ_LAND_GEMINI_MODEL") or GEMINI_MODEL
-        res = self.run_once(lane, head, pfile, model)
-        if res[0] == "unavailable" and res[1] == "quota error" and model != GEMINI_FALLBACK_MODEL:
+        primary = os.environ.get("AQ_LAND_GEMINI_MODEL") or GEMINI_MODEL
+        override = os.environ.get("AQ_LAND_GEMINI_FALLBACK_MODELS")
+        fallbacks = [model.strip() for model in override.split(",")] if override else GEMINI_MODEL_CHAIN
+        candidates = list(dict.fromkeys([primary, *(model for model in fallbacks if model and model != primary)]))
+        candidates = candidates[:3]
+        cur = candidates[0]
+        res = self.run_once(lane, head, pfile, cur)
+        for nxt in candidates[1:]:
+            if res[:2] != ("unavailable", "quota error"):
+                break
             if notes is not None:
-                notes.append(f"gemini: model {model} quota error; retried with {GEMINI_FALLBACK_MODEL}")
-            say(f"gemini model {model} hit a quota error; retrying once with {GEMINI_FALLBACK_MODEL}")
-            res = self.run_once(lane, head, pfile, GEMINI_FALLBACK_MODEL)
+                notes.append(f"gemini: model {cur} quota error; retried with {nxt}")
+            say(f"gemini model {cur} hit a quota error; retrying with {nxt}")
+            res = self.run_once(lane, head, pfile, nxt)
+            cur = nxt
         return res
 
     def run_once(self, lane, head, pfile, model=""):
