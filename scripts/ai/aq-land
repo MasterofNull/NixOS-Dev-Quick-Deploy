@@ -167,10 +167,10 @@ def has_dependency_upstream_evidence(text, expected_change=None):
     if not input_path or not re.fullmatch(r"(?:\.?/)?(?:[A-Za-z0-9_.-]+/)*[A-Za-z0-9_.-]+", input_path):
         return False
     comparison = (
-        r"(?:git\s+diff(?:\s+--[A-Za-z0-9][A-Za-z0-9=-]*)*\s+\S+\s+\S+|"
-        r"nix\s+store\s+diff-closures\s+\S+\s+\S+|"
-        r"nix-store\s+--?diff-closures\s+\S+\s+\S+|"
-        r"(?:diff|cmp|comm)(?:\s+-[A-Za-z0-9]+)*\s+\S+\s+\S+)"
+        r"(?:git\s+diff(?:\s+--[A-Za-z0-9][A-Za-z0-9=-]*)*\s+[^\s-]\S*\s+[^\s-]\S*|"
+        r"nix\s+store\s+diff-closures\s+[^\s-]\S*\s+[^\s-]\S*|"
+        r"nix-store\s+--?diff-closures\s+[^\s-]\S*\s+[^\s-]\S*|"
+        r"(?:diff|cmp|comm)(?:\s+-[A-Za-z0-9]+)*\s+[^\s-]\S*\s+[^\s-]\S*)"
     )
     command, separator, outcome = (closure_evidence or "").partition(";")
     if not separator or not re.fullmatch(comparison, command.strip()):
@@ -926,10 +926,31 @@ class Land:
                 raise Stop("checks", "timed out waiting for: " + ", ".join(pending) + "; re-run aq-land to resume")
             time.sleep(poll)
         self.verify_receipt_before_merge(n, head)
-        self.gh("pr", "merge", str(n), "--squash", "--match-head-commit", head)
-        v = self.ghjson_poll(deadline, "pr", "view", str(n), "--json", "state")
-        if v["state"] != "MERGED":
-            raise Stop("merge", f"PR #{n} is {v['state']} after gh pr merge")
+        r = self.gh("pr", "merge", str(n), "--squash", "--match-head-commit", head, check=False)
+        if r.returncode != 0:
+            err = (r.stderr or r.stdout).strip()
+            if not re.search(r"merge already in progress", err, re.I):
+                raise Stop("gh", f"gh pr merge failed: {err[:200]}")
+            say(f"PR #{n} merge already in progress; waiting for merge completion")
+            merge_deadline = min(deadline, time.time() + env_int("AQ_LAND_MERGE_POLL_TIMEOUT_S", 60))
+            merge_poll = min(poll, 2.0)
+            while True:
+                v = self.ghjson_poll(merge_deadline, "pr", "view", str(n), "--json", "state,headRefOid")
+                if v.get("headRefOid") != head:
+                    raise Stop("merge", f"PR #{n} head changed to {(v.get('headRefOid') or 'none')[:12]} during merge-in-progress; expected {head[:12]}")
+                if v.get("state") == "MERGED":
+                    break
+                if v.get("state") != "OPEN":
+                    raise Stop("merge", f"PR #{n} is {v.get('state')} after merge-in-progress")
+                if time.time() >= merge_deadline:
+                    raise Stop("merge", f"PR #{n} is still OPEN after merge-in-progress; re-run aq-land to resume")
+                time.sleep(merge_poll)
+        else:
+            v = self.ghjson_poll(deadline, "pr", "view", str(n), "--json", "state,headRefOid")
+            if v.get("state") != "MERGED":
+                raise Stop("merge", f"PR #{n} is {v.get('state')} after gh pr merge")
+            if v.get("headRefOid") != head:
+                raise Stop("merge", f"PR #{n} merged head {(v.get('headRefOid') or 'none')[:12]} differs from expected {head[:12]}")
         self.save(expected_checks=None)
         self.log_freshness(n, fresh, True)
         say(f"PR #{n} merged")
