@@ -36,7 +36,7 @@ Usage:
   aqd workflows list
   aqd workflows project-init [--target <dir>] [--name <project-name>] [--goal <goal>] [--stack <stack>] [--owner <owner>] [--force]
   aqd workflows factory-gate-status [--target <dir>]
-  aqd workflows factory-gate-preflight [--target <dir>]     -- metadata-only readiness verdict (FT-5)
+  aqd workflows factory-gate-preflight [--target <dir>]     -- verified portable .factory installation-target readiness only (FT-5); native harness work uses Tier0 and GitHub checks
   aqd workflows primer [--target <dir>] [--objective <text>] [--output <file>]
   aqd workflows brownfield [--target <dir>] [--objective <text>] [--constraints <text>] [--out-of-scope <text>] [--acceptance <text>] [--force]
   aqd workflows retrofit [--target <dir>] [--name <project-name>] [--goal <goal>] [--stack <stack>] [--owner <owner>] [--confirm-retrofit <preview-digest>]

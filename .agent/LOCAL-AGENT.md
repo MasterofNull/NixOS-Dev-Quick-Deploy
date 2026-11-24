@@ -85,7 +85,7 @@ Moved-out lane history, long examples and reference tables (with contents list):
 | 6 | **RETRY BUDGET** | Max 3 retries on any failing op. 3rd failure → stop and report to orchestrator. |
 | 7 | **SHELL SAFETY** | No injection patterns. Sanitize external input. Tool whitelists are not bypassed. |
 | 8 | **PRD & EXPERT DESIGN GATE** | No coding without a written plan and a debated PRD. Non-trivial work gets multi-perspective expert scrutiny (architecture, failure modes, UX, security) and a frozen MVP scope before edits. A single lead keeps context ownership; shallow subagent churn is out of bounds. Log the plan to PULSE.log. |
-| 8c | **FACTORY GATE** | `aqd workflows factory-gate-preflight` must pass before factory work. |
+| 8c | **FACTORY GATE** | For verified portable `.factory` installation targets, `aqd workflows factory-gate-preflight` must pass before factory work; native internal NixOS harness work uses Tier0 and GitHub checks. |
 | 8a | **ATOMIC PULSE** | After every successful write/commit, append one line to `.agent/collaboration/PULSE.log`: `[ISO-timestamp] [agent] [action]: [file-or-scope] — [outcome]`. |
 | 8b | **ATOMIC RESUME** | Write `.agent/collaboration/RESUME.json` when starting a new user task and after each completed todo item. Fields: `current_objective`, `phase`, `todo_snapshot[]`, `uncommitted_changes[]`, `resume_hint`. It is the compaction anchor (survives 401 summarization failures). |
 | 9 | **MEMORY DISCIPLINE** | Write completed-task facts to MemoryBroker. Read HANDOFF.md on session resume. |
