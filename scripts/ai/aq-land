@@ -94,7 +94,7 @@ VERDICTS = ("PASS_WITH_FOLLOWUPS", "PASS", "REQUEST_CHANGES", "FAIL")
 # Network and server blips gh reports while polling; anything else (404, auth, bad request) stops at once.
 TRANSIENT = re.compile(r"error connecting|could not resolve host|no such host|temporary failure|connection (?:reset|refused|timed out)|"
                        r"timed? ?out|\bEOF\b|TLS handshake|network is unreachable|HTTP 5\d\d|\b50[234]\b|bad gateway|service unavailable|"
-                       r"i/o timeout", re.I)
+                       r"i/o timeout|Something went wrong while executing your query", re.I)
 # A REQUEST_CHANGES/FAIL always stops the landing; text cannot prove a reviewer did not mean it. This heuristic only decides whether the
 # STOP message adds a re-run hint: an explicit could-not-proceed phrase, no path or location token, no finding marker, a short body.
 # The real Gemini sandbox-timeout reply is ~513 chars with both copies of its text, so 800 leaves headroom.
@@ -423,13 +423,19 @@ class Land:
             raise Stop("preflight", self.blocker("harness-first static gates", r))
 
     # ---- stages
+    def tier0_failure(self, r):
+        self.save(tier0_failures=self.cp.get("tier0_failures", 0) + 1)
+        msg = self.blocker("tier0", r)
+        log_path = msg.rsplit("; full output ", 1)[-1]
+        self.record_failure("tier0", "tier0_failed", head=self.head(), detail=f"exit {r.returncode}", log_path=log_path)
+        return Stop("tier0", msg)
+
     def stage_commit(self):
         if not self.a.commit_msg_file or not self.git("diff", "--cached", "--name-only"):
             return False
         r = run([self.tier0, "--pre-commit"], cwd=self.W, timeout=3600, check=False, stage="tier0")
         if r.returncode != 0:
-            self.save(tier0_failures=self.cp.get("tier0_failures", 0) + 1)
-            raise Stop("tier0", self.blocker("tier0", r))
+            raise self.tier0_failure(r)
         r = run(["git", "-C", self.W, "commit", "-q", "-F", self.a.commit_msg_file], timeout=900, check=False, stage="commit")
         if r.returncode != 0:
             raise Stop("commit", self.blocker("commit", r))
@@ -454,7 +460,7 @@ class Land:
             r = run([self.tier0, "--pre-commit"], cwd=str(wt), timeout=3600, check=False, stage="tier0")
             say(f"tier0 on the branch diff against {base[:9]}: exit {r.returncode} in {time.time() - t0:.0f}s")
             if r.returncode != 0:
-                raise Stop("tier0", self.blocker("tier0", r))
+                raise self.tier0_failure(r)
             self.save(tier0="pass", tier0_head=self.head())
         finally:
             shutil.rmtree(wt, ignore_errors=True)  # ours; `worktree remove` needs a force flag the source-guard test bans
@@ -709,6 +715,7 @@ class Land:
         self.detect_fast_lane(head)
         order, notes = self.lane_plan(len(diff.encode()))
         if not order:
+            self.record_failure("review", "review_exhausted", head=head, detail="; ".join(notes))
             raise Stop("review", "no eligible independent lane: " + "; ".join(notes))
         pfiles = {}
         for lane in order:
@@ -728,6 +735,7 @@ class Land:
             if kind == "negative":
                 if detail.startswith("REQUEST_CHANGES"):
                     self.save(rc_rounds=self.cp.get("rc_rounds", 0) + 1)
+                self.record_failure("review", "review_negative", head=head, lane=lane, run_id=rid, detail=detail)
                 if reviewer_could_not_run(rtext):
                     rest = ",".join(order[order.index(lane) + 1:])
                     hint = (f"if that is right, re-run with --lanes {rest}" if rest else "no other eligible lane is left")
@@ -740,6 +748,7 @@ class Land:
             self.save(review=rec)
             say(f"review {rid}: {detail}")
             return rec
+        self.record_failure("review", "review_exhausted", head=head, detail="; ".join(notes))
         raise Stop("review", "no eligible independent lane left: " + "; ".join(notes))
 
     def stage_push(self, head, rec):
@@ -882,6 +891,7 @@ class Land:
             required |= set(carried["names"]) - optional  # a resumed run still owes the ordinary checks the interrupted update reset
         poll = float(os.environ.get("AQ_LAND_POLL_S", "30"))
         fresh = {"was_behind": False, "updates": 0, "t0": None}
+        rank = {"pass": 0, "pending": 1, "fail": 2}
         while True:
             v = self.ghjson_poll(deadline, "pr", "view", str(n), "--json", "headRefOid,state,statusCheckRollup")
             if v["state"] == "MERGED":
@@ -895,7 +905,9 @@ class Land:
             seen = {}
             for c in v.get("statusCheckRollup") or []:
                 name, st, run_id = self.classify(c, repo)
-                seen[name] = (st, run_id)
+                prev = seen.get(name)
+                if prev is None or rank[st] >= rank[prev[0]]:
+                    seen[name] = (st, run_id)
             pending, failed = [], []
             for name in sorted(set(seen) | required):
                 if name in optional and name not in required:
@@ -908,7 +920,10 @@ class Land:
                 (failed if st == "fail" else pending if st == "pending" else []).append(name)
             if failed:
                 self.save(ci_failures=self.cp.get("ci_failures", 0) + 1)
-                raise Stop("checks", "failed: " + ", ".join(failed))
+                detail = "failed: " + ", ".join(failed)
+                checks = [{"name": name, "run_id": seen.get(name, ("", ""))[1] or "", "status": "fail"} for name in failed]
+                self.record_failure("checks", "ci_checks_failed", pr=n, head=head, checks=checks, detail=detail)
+                raise Stop("checks", detail)
             if not pending and seen.get(REVIEW_CHECK, ("pending",))[0] == "pass":
                 owed = sorted((required | set(seen)) - optional - {REVIEW_CHECK})
                 self.save(expected_checks={"head": head, "names": owed})  # persisted before the update so an interrupted run cannot merge the new head on review-disposition alone
@@ -923,7 +938,10 @@ class Land:
             if not pending:
                 pending = [REVIEW_CHECK]
             if time.time() > deadline:
-                raise Stop("checks", "timed out waiting for: " + ", ".join(pending) + "; re-run aq-land to resume")
+                detail = "timed out waiting for: " + ", ".join(pending)
+                checks = [{"name": name, "run_id": seen.get(name, ("", ""))[1] or "", "status": "pending"} for name in pending]
+                self.record_failure("checks", "ci_checks_timeout", pr=n, head=head, checks=checks, detail=detail)
+                raise Stop("checks", detail + "; re-run aq-land to resume")
             time.sleep(poll)
         self.verify_receipt_before_merge(n, head)
         r = self.gh("pr", "merge", str(n), "--squash", "--match-head-commit", head, check=False)
@@ -954,6 +972,37 @@ class Land:
         self.save(expected_checks=None)
         self.log_freshness(n, fresh, True)
         say(f"PR #{n} merged")
+
+    def record_failure(self, stage, kind, *, pr=None, head=None, checks=None, lane="", run_id="", detail="", log_path=""):
+        try:
+            sys.path.insert(0, str(HERE / "lib"))
+            from delegation_dir import resolve_delegation_dir
+
+            d = resolve_delegation_dir(HERE) / "outputs" / "aq-land"
+            d.mkdir(parents=True, exist_ok=True)
+            row = {
+                "schema": 1,
+                "at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                "stage": stage,
+                "kind": kind,
+                "branch": self.branch,
+                "pr": pr if pr is not None else self.cp.get("pr"),
+                "head_sha": head or "",
+                "author_lane": self.a.author_lane,
+                "checks": list(checks or []),
+                "lane": lane,
+                "run_id": run_id,
+                "detail": str(detail)[:240],
+                "log_path": str(log_path) if log_path else "",
+            }
+            line = (json.dumps(row, sort_keys=True) + "\n").encode()
+            fd = os.open(d / "failure-events.jsonl", os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o600)
+            try:
+                os.write(fd, line)
+            finally:
+                os.close(fd)
+        except Exception as e:
+            print(f"aq-land: WARN failure-events not logged: {type(e).__name__}", file=sys.stderr)
 
     def log_freshness(self, n, fresh, merged):
         """One line per merge: what main-freshness cost, for comparing against strict branch protection. Never fails a landing."""

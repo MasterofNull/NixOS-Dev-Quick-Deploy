@@ -243,7 +243,7 @@ else:
         os.kill(os.getppid(), 9)
 '''
 
-STUB_TIER0 = '#!/bin/sh\necho tier0 >> "$STUB_DIR/tier0.log"\n[ -e "$STUB_DIR/tier0.fail" ] && { echo "FAIL: stub gate"; exit 1; }\nexit 0\n'
+STUB_TIER0 = '#!/bin/sh\necho tier0 >> "$STUB_DIR/tier0.log"\n[ -e "$STUB_DIR/tier0.fail" ] && { echo "FAIL: stub gate"; echo "stub-secret-stderr" >&2; exit 1; }\nexit 0\n'
 
 RD_OK = {"name": "review-disposition", "status": "COMPLETED", "conclusion": "SUCCESS"}
 BODY = "## Details\n- scope\n\n## What\nw\n\n## How\nh\n\n## Why\ny\n"
@@ -287,6 +287,7 @@ class Base(unittest.TestCase):
                     "AQ_LAND_REVIEW_TIMEOUT_S": "4", "AQ_LAND_CHECKS_TIMEOUT_S": "5", "AQ_LAND_LOCK_WAIT_S": "1"}
         self.env.pop("AQ_LAND_GEMINI_MODEL", None)
         self.env.pop("AQ_LAND_GEMINI_FALLBACK_MODELS", None)
+        self.env.pop("AQ_LAND_MERGE_POLL_TIMEOUT_S", None)
 
     def tearDown_state(self):
         for n in ("calls.log", "published", "receipt.log"):
@@ -313,6 +314,10 @@ class Base(unittest.TestCase):
 
     def ghs(self):
         return json.loads((self.S / "gh.json").read_text())
+
+    def failure_events(self):
+        journal = self.S / "deleg/outputs/aq-land/failure-events.jsonl"
+        return [json.loads(line) for line in journal.read_text().splitlines()]
 
     def calls(self, lane):
         p = self.S / "calls.log"
@@ -690,6 +695,11 @@ class Lanes(Base):
         with open(self.S / "state/lock", "a+") as fh:
             fcntl.flock(fh, fcntl.LOCK_EX | fcntl.LOCK_NB)  # raises if still held
         self.assertEqual(self.ghs()["prs"], [])
+        event, = self.failure_events()
+        self.assertEqual((event["stage"], event["kind"]), ("review", "review_exhausted"))
+        self.assertIn("gemini: quota error", event["detail"])
+        self.assertIn("codex: budget refused (exit 3)", event["detail"])
+        self.assertIn("local: quota error", event["detail"])
 
     def test_never_the_authors_lane(self):
         r = self.land("--author-lane", "gemini", "--lanes", "gemini", expect=1)
@@ -701,6 +711,9 @@ class Lanes(Base):
         r = self.land(expect=1)
         self.assertIn("returned REQUEST_CHANGES", self.stop_line(r))
         self.assertEqual(self.calls("codex") + self.calls("local"), [])
+        event, = self.failure_events()
+        self.assertEqual((event["stage"], event["kind"]), ("review", "review_negative"))
+        self.assertEqual((event["lane"], event["run_id"], event["detail"]), ("gemini", "gemini-20261106-120001-abc1", "REQUEST_CHANGES"))
 
     def test_could_not_run_request_changes_stops_with_a_rerun_hint_never_falls_through(self):
         self.cfg({"gemini": {"mode": "real"}, "codex": {"mode": "ok"}, "local": {"mode": "ok"}})
@@ -1060,6 +1073,8 @@ class Preflight(Base):
         self.assertIn("FAIL: stub gate", line)  # the blocker, never just "tier0 failed"
         log = line.split("full output ")[1]
         self.assertIn("FAIL: stub gate", pathlib.Path(log).read_text())
+        event, = self.failure_events()
+        self.assertEqual((event["kind"], event["head_sha"], event["log_path"]), ("tier0_failed", before, log))
         self.assertEqual(self.g("rev-parse", "HEAD"), before)
         (self.S / "tier0.fail").unlink()
         hook = self.wd / ".git/hooks/pre-commit"
@@ -1068,6 +1083,28 @@ class Preflight(Base):
         self.land("--commit-msg-file", str(msg), expect=0)
         self.assertNotEqual(self.g("rev-parse", "HEAD"), before)
         self.assertTrue((self.S / "hook.log").exists())  # hooks ran: no --no-verify
+
+    def test_failed_gate_on_committed_head_reaches_the_outcome_receipt(self):
+        marker = self.S / "tier0.fail"
+        marker.write_text("")
+        head = self.g("rev-parse", "HEAD")
+        r = self.land(expect=1)
+        line = self.stop_line(r)
+        self.assertIn("STOP tier0", line)
+        journal = self.S / "deleg/outputs/aq-land/failure-events.jsonl"
+        self.assertEqual(journal.stat().st_mode & 0o777, 0o600)
+        event, = self.failure_events()
+        self.assertEqual((event["schema"], event["stage"], event["kind"]), (1, "tier0", "tier0_failed"))
+        self.assertEqual((event["head_sha"], event["detail"]), (head, "exit 1"))
+        self.assertEqual(event["log_path"], line.split("full output ")[1])
+        output = pathlib.Path(event["log_path"]).read_text()
+        for marker_text in ("FAIL: stub gate", "stub-secret-stderr"):
+            self.assertIn(marker_text, output)
+            self.assertNotIn(marker_text, journal.read_text())
+        marker.rename(self.S / "tier0.fixed")
+        self.land(expect=0)
+        receipts = (self.S / "deleg/outcome-receipts.jsonl").read_text().splitlines()
+        self.assertEqual([json.loads(receipt)["tier0_failures"] for receipt in receipts], [1])
 
     def test_failing_commit_hook_shows_its_output_and_a_log(self):
         self.change("scripts/bar.py", "print(2)\n", commit=False)
@@ -1203,6 +1240,14 @@ class Checks(Base):
         self.assertEqual(self.ghs()["merges"], 1)
         self.assertEqual(r.stdout.count("transient gh error"), 1)  # one line for the whole outage
 
+    def test_transient_graphql_query_error_is_retried(self):
+        self.env["AQ_LAND_RETRY_S"] = "0.05"
+        ok = {"name": "test", "status": "COMPLETED", "conclusion": "SUCCESS"}
+        r = self.run_checks([[ok]], flaky={"cmd": "pr view", "times": 2,
+                                         "msg": "GraphQL: Something went wrong while executing your query"})
+        self.assertEqual(r.stdout.count("transient gh error"), 1)
+        self.assertEqual(self.ghs()["merges"], 1)
+
     def test_persistent_network_failure_stops_at_the_deadline(self):
         self.env.update({"AQ_LAND_RETRY_S": "0.05", "AQ_LAND_CHECKS_TIMEOUT_S": "1"})
         r = self.run_checks([[]], flaky={"cmd": "pr view", "times": 100000, "msg": "error connecting to api.github.com"}, expect=1)
@@ -1248,6 +1293,29 @@ class Checks(Base):
         ok = {"name": "test", "status": "COMPLETED", "conclusion": "SUCCESS"}
         self.run_checks([[pend], [pend], [ok]])
         self.assertEqual(self.ghs()["merges"], 1)
+
+    def test_success_duplicate_cannot_mask_a_pending_check(self):
+        self.env["AQ_LAND_CHECKS_TIMEOUT_S"] = "1"
+        pending = {"name": "test", "status": "IN_PROGRESS", "detailsUrl": "https://x/actions/runs/45"}
+        ok = {"name": "test", "status": "COMPLETED", "conclusion": "SUCCESS", "detailsUrl": "https://x/actions/runs/46"}
+        r = self.run_checks([[pending, ok]], expect=1)
+        self.assertIn("timed out waiting for: test", self.stop_line(r))
+        self.assertNotIn("merges", self.ghs())
+        event, = self.failure_events()
+        self.assertEqual((event["stage"], event["kind"], event["pr"]), ("checks", "ci_checks_timeout", 77))
+        self.assertEqual(event["detail"], "timed out waiting for: test")
+        self.assertEqual(event["checks"], [{"name": "test", "run_id": "45", "status": "pending"}])
+
+    def test_success_duplicate_cannot_mask_a_failed_check(self):
+        bad = {"name": "test", "status": "COMPLETED", "conclusion": "FAILURE", "detailsUrl": "https://x/actions/runs/47"}
+        ok = {"name": "test", "status": "COMPLETED", "conclusion": "SUCCESS", "detailsUrl": "https://x/actions/runs/48"}
+        r = self.run_checks([[bad, ok]], expect=1)
+        self.assertIn("failed: test", self.stop_line(r))
+        self.assertNotIn("merges", self.ghs())
+        event, = self.failure_events()
+        self.assertEqual((event["stage"], event["kind"], event["pr"]), ("checks", "ci_checks_failed", 77))
+        self.assertEqual(event["detail"], "failed: test")
+        self.assertEqual(event["checks"], [{"name": "test", "run_id": "47", "status": "fail"}])
 
     def test_failed_and_missing_required_checks_block_the_merge(self):
         bad = {"name": "test", "status": "COMPLETED", "conclusion": "FAILURE"}
