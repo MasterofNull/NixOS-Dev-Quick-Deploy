@@ -354,14 +354,14 @@ def verify_data(r, root: Path, registry: Path, revoked=None) -> list[str]:
 
 
 def verify_receipt(path: Path, root: Path, registry: Path, revoked=None,
-                   expected_pr: int = 0, expected_head: str = "") -> list[str]:
+                   expected_pr: int | None = None, expected_head: str = "") -> list[str]:
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError) as exc:
         return [f"unreadable receipt: {exc.__class__.__name__}"]
     errs = verify_data(data, root, registry, revoked)
     if isinstance(data, dict):
-        if expected_pr and data.get("pr") != expected_pr:
+        if expected_pr is not None and (type(data.get("pr")) is not int or data.get("pr") != expected_pr):
             errs.append(f"receipt pr does not match --pr {expected_pr}")
         if expected_head and data.get("reviewed_head_sha") != expected_head:
             errs.append(f"receipt reviewed_head_sha does not match --head {expected_head}")
@@ -477,13 +477,25 @@ def cmd_publish(a) -> int:
 def _maybe_rerun_open_pr_check(pr: int, head: str, *, root: Path) -> None:
     gh = os.environ.get("AQ_REVIEW_RECEIPT_GH", "gh")
     try:
-        result = subprocess.run([gh, "pr", "view", str(pr), "--json", "state,headRefOid,statusCheckRollup"],
+        result = subprocess.run([gh, "pr", "view", str(pr), "--json", "state,headRefOid,body,statusCheckRollup"],
                                 cwd=root, capture_output=True, text=True, check=True, timeout=30)
         data = json.loads(result.stdout)
     except (subprocess.SubprocessError, OSError, ValueError) as exc:
         print(f"revoke WARN: cannot inspect PR {pr} for check reruns ({exc.__class__.__name__})", file=sys.stderr)
         return
-    if not isinstance(data, dict) or data.get("state") != "OPEN" or data.get("headRefOid") != head:
+    body = data.get("body") if isinstance(data, dict) else None
+    body = body if isinstance(body, str) else ""
+    reviewed_heads = re.findall(
+        r"^Reviewed-head-sha:[ \t]*(.*?)[ \t]*$",
+        body.replace("\r\n", "\n").replace("\r", "\n"),
+        re.M,
+    )
+    reviewed_head = reviewed_heads[-1] if reviewed_heads else ""
+    if (
+        not isinstance(data, dict)
+        or data.get("state") != "OPEN"
+        or (data.get("headRefOid") != head and reviewed_head != head)
+    ):
         print(f"revoke INFO: skipping check rerun for PR {pr}; expected an open PR at {head}", file=sys.stderr)
         return
     checks = data.get("statusCheckRollup")
@@ -507,6 +519,9 @@ def _maybe_rerun_open_pr_check(pr: int, head: str, *, root: Path) -> None:
 def cmd_revoke(a) -> int:
     """Publish a revocation record; verify/audit and the review-disposition check then reject that receipt."""
     root = Path(a.root).resolve()
+    if a.pr <= 0:
+        print("revoke FAILED: --pr must be positive", file=sys.stderr)
+        return 1
     if not re.fullmatch(r"[0-9a-f]{40}", a.head) or not a.reason.strip():
         print("revoke FAILED: --head must be 40 lowercase hex and --reason non-empty", file=sys.stderr)
         return 1
@@ -543,16 +558,16 @@ def _verify_published(root, reg, revoked, tip, a) -> list[str]:
 def cmd_verify(a) -> int:
     root = Path(a.root).resolve()
     reg = Path(a.registry) if a.registry else DEFAULT_REGISTRY
+    if a.pr is not None and a.pr <= 0:
+        print("verify FAILED: --pr must be positive", file=sys.stderr)
+        return 1
     if a.receipt:
-        if a.pr < 0:
-            print("verify FAILED: --pr must not be negative", file=sys.stderr)
-            return 1
         if a.head and not re.fullmatch(r"[0-9a-f]{40}", a.head):
             print("verify FAILED: --head must be 40 lowercase hex", file=sys.stderr)
             return 1
         revoked, rerr = load_revocations(root, a.remote)
         errs = verify_receipt(Path(a.receipt), root, reg, revoked, expected_pr=a.pr, expected_head=a.head)
-    elif a.pr and re.fullmatch(r"[0-9a-f]{40}", a.head):
+    elif a.pr is not None and a.pr > 0 and re.fullmatch(r"[0-9a-f]{40}", a.head):
         try:
             tip = _branch_tip(root, a.remote)
         except (subprocess.SubprocessError, OSError) as exc:
@@ -570,7 +585,7 @@ def cmd_verify(a) -> int:
         revoked, rerr = load_revocations(root, a.remote)
         errs = ["give a receipt file, or --pr and --head (40 hex) to verify the published receipt"]
     if rerr:
-        if a.require_revocation_check or (not a.receipt and a.pr):
+        if a.require_revocation_check or (not a.receipt and a.pr is not None and a.pr > 0):
             errs.append(rerr + "; failing closed")
         else:
             print(f"verify WARN: {rerr}", file=sys.stderr)
@@ -707,7 +722,7 @@ def main() -> int:
     rv.set_defaults(fn=cmd_revoke)
     v = sub.add_parser("verify")
     v.add_argument("receipt", nargs="?", default="", help="local receipt file; omit with --pr/--head to verify the published one")
-    v.add_argument("--pr", type=int, default=0)
+    v.add_argument("--pr", type=int, default=None)
     v.add_argument("--head", default="")
     v.add_argument("--remote", default="origin")
     v.add_argument("--require-revocation-check", action="store_true", help="fail when revocations cannot be read (merge gate)")

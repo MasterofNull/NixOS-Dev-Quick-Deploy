@@ -174,7 +174,16 @@ def _read_bounded_regular_file(path: Path | str, maximum_bytes: int) -> Optional
             or before.st_size > maximum_bytes
         ):
             return None
-        data = os.read(descriptor, maximum_bytes + 1)
+        chunks: list[bytes] = []
+        total = 0
+        limit = maximum_bytes + 1
+        while total < limit:
+            chunk = os.read(descriptor, limit - total)
+            if not chunk:
+                break
+            chunks.append(chunk)
+            total += len(chunk)
+        data = b"".join(chunks)
         after = os.fstat(descriptor)
         if (
             len(data) > maximum_bytes

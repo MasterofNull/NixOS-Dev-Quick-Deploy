@@ -85,7 +85,8 @@ class T(unittest.TestCase):
             ("7", self.head, ""),
             ("8", self.head, "receipt pr does not match --pr"),
             ("7", "0" * 40, "receipt reviewed_head_sha does not match --head"),
-            ("-1", self.head, "negative"),
+            ("0", self.head, "positive"),
+            ("-1", self.head, "positive"),
             ("7", "A" * 40, "lowercase hex"),
         )
         for pr, head, error in cases:
@@ -94,6 +95,19 @@ class T(unittest.TestCase):
                 self.assertEqual(result.returncode, int(bool(error)), result.stderr)
                 if error:
                     self.assertIn(error, result.stderr)
+
+        receipt = json.loads(self.rfile.read_text())
+        receipt["pr"] = True
+        self.rfile.write_text(json.dumps(receipt))
+        result = self.run_tool("verify", str(self.rfile), "--pr", "1")
+        self.assertEqual(result.returncode, 1, result.stderr)
+        self.assertIn("receipt pr does not match --pr 1", result.stderr)
+
+        for pr in ("0", "-1"):
+            with self.subTest(revoke_pr=pr):
+                result = self.run_tool("revoke", "--pr", pr, "--head", self.head, "--reason", "bad")
+                self.assertEqual(result.returncode, 1, result.stderr)
+                self.assertIn("--pr must be positive", result.stderr)
 
     def test_mint_rejections(self):
         self.assertNotEqual(self.mint(author="Codex").returncode, 0)
@@ -239,7 +253,7 @@ class T(unittest.TestCase):
             "sys.exit(fixture['failure'] == 'rerun')\n"
         )
         gh.chmod(0o755)
-        view = ["pr", "view", "7", "--json", "state,headRefOid,statusCheckRollup"]
+        view = ["pr", "view", "7", "--json", "state,headRefOid,body,statusCheckRollup"]
         reruns = [["run", "rerun", "123"], ["run", "rerun", "456"]]
         checks = [
             {"name": "review-disposition", "detailsUrl": "/actions/runs/123/job/71", "databaseId": 71},
@@ -250,6 +264,7 @@ class T(unittest.TestCase):
         ]
         cases = (
             ("matching", [view, *reruns], ""),
+            ("merge-only-body", [view, *reruns], ""),
             ("merged", [view], "skipping check rerun"),
             ("changed", [view], "skipping check rerun"),
             ("no-rerun", [], ""),
@@ -262,7 +277,8 @@ class T(unittest.TestCase):
             with self.subTest(mode=mode):
                 calls.write_text("")
                 pr = {"state": "MERGED" if mode == "merged" else "OPEN",
-                      "headRefOid": "0" * 40 if mode == "changed" else self.head,
+                      "headRefOid": "0" * 40 if mode in ("changed", "merge-only-body") else self.head,
+                      "body": f"Reviewed-head-sha: {self.head}\r\n" if mode == "merge-only-body" else "",
                       "statusCheckRollup": checks}
                 (self.d / "gh-fixture.json").write_text(json.dumps({"pr": pr, "failure": mode}))
                 executable = self.d / "missing-gh" if mode == "missing" else gh
@@ -369,7 +385,11 @@ class T(unittest.TestCase):
         (self.d / "out/link").symlink_to(self.log)
         (self.d / "out/large").write_bytes(b"big")
         os.mkfifo(self.d / "out/fifo")
-        with patch.object(task_registry, "_OUTPUT_STAMP_MAX_BYTES", 2):
+        read = os.read
+        with (
+            patch.object(task_registry, "_OUTPUT_STAMP_MAX_BYTES", 2),
+            patch.object(task_registry.os, "read", side_effect=lambda fd, size: read(fd, min(size, 1))),
+        ):
             stamp = registry._output_stamp({"output_file": "out/rev.log"})
             self.assertEqual(stamp["output_sha256"], hashlib.sha256(b"ok").hexdigest())
             self.assertEqual(stamp["output_bytes"], 2)
