@@ -271,8 +271,8 @@ def _branch_json(root, tip, prefix) -> dict:
     return out
 
 
-def load_revocations(root: Path, remote: str):
-    """(revoked {key: record}, error|None). Merges the receipts branch with the local revocation dir."""
+def load_revocations(root: Path, remote: str, tip=None):
+    """(revoked {key: record}, error|None), optionally pinned to a receipts-branch commit."""
     revoked, err = {}, None
     ld = _local_rev_dir()
     for f in sorted(ld.glob("*.json")) if ld.is_dir() else []:
@@ -280,10 +280,17 @@ def load_revocations(root: Path, remote: str):
             revoked[f.stem] = json.loads(f.read_text(encoding="utf-8"))
         except (OSError, ValueError):
             revoked[f.stem] = {"_unreadable": True}
+            err = f"cannot read local revocation {f.name}"
     try:
-        tip = _branch_tip(root, remote)
+        if tip is None:
+            tip = _branch_tip(root, remote)
         if tip:
-            revoked.update(_branch_json(root, tip, REVOCATION_DIR))
+            branch_revocations = _branch_json(root, tip, REVOCATION_DIR)
+            unreadable = [key for key, record in branch_revocations.items()
+                          if not isinstance(record, dict) or record.get("_unreadable")]
+            if unreadable:
+                err = f"cannot read revocations from {RECEIPT_BRANCH} on {remote} (unreadable {unreadable[0]}.json)"
+            revoked.update(branch_revocations)
     except (subprocess.SubprocessError, OSError) as exc:
         err = f"cannot read revocations from {RECEIPT_BRANCH} on {remote} ({exc.__class__.__name__})"
     return revoked, err
@@ -354,10 +361,11 @@ def verify_receipt(path: Path, root: Path, registry: Path, revoked=None) -> list
     return verify_data(r, root, registry, revoked)
 
 
-def _publish_file(root: Path, remote: str, path: str, blob_text: str, message: str, guard) -> int:
+def _publish_file(root: Path, remote: str, path: str, blob_text: str, message: str, guard, check_parent=None) -> int:
     """Append one file to the receipts branch with plumbing only (idempotent, retried on non-fast-forward).
 
-    guard(existing_text|None) returns None to proceed, or (exit_code, message) to stop."""
+    Both guard(existing_text|None) and check_parent(parent) return None to proceed,
+    or (exit_code, message) to stop."""
     env_id = {"GIT_AUTHOR_NAME": "aq-review-receipt", "GIT_AUTHOR_EMAIL": RECEIPT_EMAIL,
               "GIT_COMMITTER_NAME": "aq-review-receipt", "GIT_COMMITTER_EMAIL": RECEIPT_EMAIL}
     ref = f"refs/heads/{RECEIPT_BRANCH}"
@@ -367,6 +375,11 @@ def _publish_file(root: Path, remote: str, path: str, blob_text: str, message: s
             parent = ""
             if _git(root, "ls-remote", remote, ref):
                 parent = _fetch_pinned(root, remote, ref)
+            if check_parent:
+                stop = check_parent(parent)
+                if stop is not None:
+                    print(stop[1], file=sys.stderr if stop[0] else sys.stdout)
+                    return stop[0]
             with tempfile.TemporaryDirectory() as td:
                 env = {**os.environ, **env_id, "GIT_INDEX_FILE": os.path.join(td, "index")}
                 existing = None
@@ -408,8 +421,10 @@ def cmd_publish(a) -> int:
     """Append a verified schema 2 receipt to the review-receipts branch (plumbing only; idempotent)."""
     root = Path(a.root).resolve()
     src = Path(a.receipt)
-    revoked, _ = load_revocations(root, a.remote)
+    revoked, rerr = load_revocations(root, a.remote, "")
     errs = verify_receipt(src, root, Path(a.registry) if a.registry else DEFAULT_REGISTRY, revoked)
+    if rerr:
+        errs.append(rerr + "; failing closed")
     try:
         r = json.loads(src.read_text(encoding="utf-8"))
     except (OSError, ValueError):
@@ -439,8 +454,17 @@ def cmd_publish(a) -> int:
         if existing.get("verdict") != "REQUEST_CHANGES" and not legacy:
             return 1, f"publish FAILED: {path} already holds a different {existing.get('verdict')} receipt (append-only)"
         return None
+
+    def check_parent(parent):
+        parent_revoked, parent_err = load_revocations(root, a.remote, parent)
+        if parent_err:
+            return 1, f"publish FAILED: {parent_err}; failing closed"
+        parent_errs = verify_data(r, root, Path(a.registry) if a.registry else DEFAULT_REGISTRY, parent_revoked)
+        if parent_errs:
+            return 1, f"publish FAILED: {parent_errs[0]}"
+        return None
     return _publish_file(root, a.remote, path, json.dumps(r, indent=2) + "\n",
-                         f"receipt PR {r['pr']} {r['reviewed_head_sha'][:12]} {r['verdict']}", guard)
+                         f"receipt PR {r['pr']} {r['reviewed_head_sha'][:12]} {r['verdict']}", guard, check_parent)
 
 
 def cmd_revoke(a) -> int:
@@ -463,10 +487,9 @@ def cmd_revoke(a) -> int:
                          f"revoke PR {a.pr} {a.head[:12]}", guard)
 
 
-def _verify_published(root, reg, revoked, a) -> list[str]:
+def _verify_published(root, reg, revoked, tip, a) -> list[str]:
     """Verify the receipt published on the receipts branch for --pr/--head; absent or unreadable fails closed."""
     try:
-        tip = _branch_tip(root, a.remote)
         data = _branch_json(root, tip, "receipts").get(_rkey(a.pr, a.head)) if tip else None
     except (subprocess.SubprocessError, OSError) as exc:
         return [f"cannot read published receipt ({exc.__class__.__name__}); failing closed"]
@@ -480,15 +503,28 @@ def _verify_published(root, reg, revoked, a) -> list[str]:
 def cmd_verify(a) -> int:
     root = Path(a.root).resolve()
     reg = Path(a.registry) if a.registry else DEFAULT_REGISTRY
-    revoked, rerr = load_revocations(root, a.remote)
     if a.receipt:
+        revoked, rerr = load_revocations(root, a.remote)
         errs = verify_receipt(Path(a.receipt), root, reg, revoked)
     elif a.pr and re.fullmatch(r"[0-9a-f]{40}", a.head):
-        errs = _verify_published(root, reg, revoked, a)
+        try:
+            tip = _branch_tip(root, a.remote)
+        except (subprocess.SubprocessError, OSError) as exc:
+            tip = None
+            rerr = f"cannot read {RECEIPT_BRANCH} from {a.remote} ({exc.__class__.__name__})"
+            revoked, _ = load_revocations(root, a.remote, "")
+        else:
+            revoked, rerr = load_revocations(root, a.remote, tip)
+        if tip is None:
+            errs = [rerr + "; failing closed"]
+            rerr = None
+        else:
+            errs = _verify_published(root, reg, revoked, tip, a)
     else:
+        revoked, rerr = load_revocations(root, a.remote)
         errs = ["give a receipt file, or --pr and --head (40 hex) to verify the published receipt"]
     if rerr:
-        if a.require_revocation_check:
+        if a.require_revocation_check or (not a.receipt and a.pr):
             errs.append(rerr + "; failing closed")
         else:
             print(f"verify WARN: {rerr}", file=sys.stderr)

@@ -88,3 +88,11 @@ Integrated: wrappers stamp on done; mint/verify/publish/audit and aq-land use th
 ## 8. Rollback
 
 Revert the commit. Registry rows with the extra hash fields are harmless to older code. Revocation records on `review-receipts` remain (append-only) and are ignored by older checkers. Set `AQ_RECEIPT_HASH_ENFORCED_FROM` to a far-future date to relax the hash requirement without reverting.
+
+### Review receipt snapshot consistency
+
+Publication now reads receipts and revocations from the same fetched commit.
+On a push retry, it checks revocation again against the commit that would
+become the new receipt commit's parent. A failed fetch blocks publication.
+The 36 focused receipt tests passed, including snapshot and retry regressions.
+Production validation requires the updated receipt publisher.

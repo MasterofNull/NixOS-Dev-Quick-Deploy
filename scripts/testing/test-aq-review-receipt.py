@@ -370,6 +370,34 @@ class T(unittest.TestCase):
         files = subprocess.run(["git", "-C", str(self.bare), "ls-tree", "-r", "--name-only", "review-receipts"], capture_output=True, text=True).stdout.split()
         self.assertEqual(sorted(files), sorted(["other.txt", f"receipts/pr8-{head[:12]}.json", f"receipts/pr7-{head[:12]}.json"]))  # rebuilt on the new tip, nothing lost
 
+    def test_publish_retry_rechecks_revocations_at_new_parent(self):
+        head = self._repo()
+        r, f = self._ob(head)
+        seed = self.d / "seed.json"
+        seed.write_text(json.dumps({**json.loads(f.read_text()), "pr": 8}))
+        self.assertEqual(self._publish(seed).returncode, 0)
+        subprocess.run(["git", "-C", str(self.bare), "config", "receive.denyNonFastForwards", "true"], check=True)
+        hook = self.bare / "hooks/pre-receive"
+        marker = self.d / "revocation-raced"
+        key = f"pr7-{head[:12]}"
+        hook.write_text(
+            "#!/bin/sh\nunset GIT_QUARANTINE_PATH GIT_OBJECT_DIRECTORY GIT_ALTERNATE_OBJECT_DIRECTORIES\n"
+            f"if [ ! -e {marker} ]; then : > {marker}\n"
+            f"  b=$(printf '%s\\n' '{{\"reason\": \"raced revocation\"}}' | git hash-object -w --stdin)\n"
+            "  old=$(git rev-parse refs/heads/review-receipts)\n"
+            "  i=$(mktemp)\nGIT_INDEX_FILE=$i git read-tree $old\n"
+            f"  GIT_INDEX_FILE=$i git update-index --add --cacheinfo 100644,$b,revocations/{key}.json\n"
+            "  t=$(GIT_INDEX_FILE=$i git write-tree)\n"
+            "  c=$(GIT_AUTHOR_NAME=x GIT_AUTHOR_EMAIL=x@x GIT_COMMITTER_NAME=x GIT_COMMITTER_EMAIL=x@x git commit-tree $t -p $old -m revoke)\n"
+            "  git update-ref refs/heads/review-receipts $c\nfi\nexit 0\n")
+        hook.chmod(0o755)
+        p = self._publish(f)
+        self.assertNotEqual(p.returncode, 0)
+        self.assertTrue(marker.exists())
+        self.assertIn("REVOKED", p.stderr)
+        files = subprocess.run(["git", "-C", str(self.bare), "ls-tree", "-r", "--name-only", "review-receipts"], capture_output=True, text=True).stdout.split()
+        self.assertNotIn(f"receipts/pr7-{head[:12]}.json", files)
+
     def test_publish_rejects_invalid_and_never_overwrites_pass(self):
         head = self._repo()
         r, f = self._ob(head)
@@ -469,6 +497,24 @@ class T(unittest.TestCase):
                             "--require-revocation-check", "--pr", "7", "--head", head], capture_output=True, text=True, env=env)
         self.assertNotEqual(v.returncode, 0)
         self.assertIn("REVOKED", v.stderr)
+
+    def test_published_verify_fails_closed_on_revocation_read_error(self):
+        head = self._repo()
+        r, f = self._ob(head)
+        self.assertEqual(self._publish(f).returncode, 0)
+        self.assertEqual(self.run_tool("revoke", "--pr", "9", "--head", "a" * 40, "--reason", "unrelated").returncode, 0)
+        real = shutil.which("git")
+        shim = self.work / "git-read-failure"
+        shim.write_text(f"#!/bin/sh\ncase \"$*\" in *show*revocations/*) exit 1;; esac\nexec {real} \"$@\"\n")
+        shim.chmod(0o755)
+        (self.work / "readfail-bin").mkdir()
+        (self.work / "readfail-bin/git").write_text(shim.read_text())
+        (self.work / "readfail-bin/git").chmod(0o755)
+        env = {**os.environ, "PATH": f"{self.work}/readfail-bin:{os.environ['PATH']}"}
+        v = subprocess.run([sys.executable, str(TOOL), "--root", str(self.work), "--registry", str(self.reg), "verify",
+                            "--pr", "7", "--head", head], capture_output=True, text=True, env=env)
+        self.assertNotEqual(v.returncode, 0)
+        self.assertIn("cannot read revocations", v.stderr)
 
     def test_push_timeout_is_clean_and_leaves_branch_untouched(self):
         head = self._repo()
