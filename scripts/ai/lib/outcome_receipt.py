@@ -32,21 +32,50 @@ def _entropy(s: str) -> float:
     return -sum(c / n * math.log2(c / n) for c in Counter(s).values())
 
 
-def _path_like(b: str) -> bool:
-    """Slash-separated repo path whose segments are single-case slugs (agent/PROJECT-DEPLOY-PRD, docs/a/b-2026): not a credential.
+def _entropy_text(text: str, allowed_paths: set[str] | frozenset[str]) -> str:
+    """Return `text` with verified multi-segment `files[*].path`/`renamed_from` values split on `/`.
 
-    Long repo paths score >4.0 bits only because of their length (PR 788 false positive). Real tokens mix
-    upper and lower case inside a segment or use + and =, so they stay subject to the entropy heuristic.
+    Replacing `/` with a space prevents path separators from joining benign directory/filename
+    segments into a single 32+ char `_BLOB` match while keeping every individual path component
+    subject to the entropy check.
     """
-    if "/" not in b or "+" in b or "=" in b:
-        return False
-    return all(seg == seg.lower() or seg == seg.upper() for seg in b.split("/"))
+    if not allowed_paths:
+        return text
+    try:
+        obj = json.loads(text)
+    except ValueError:
+        return text
+    if not isinstance(obj, dict) or not isinstance(obj.get("files"), list):
+        return text
+    masked_files = []
+    changed = False
+    for entry in obj["files"]:
+        if isinstance(entry, dict):
+            copy = dict(entry)
+            for key in ("path", "renamed_from"):
+                val = copy.get(key)
+                if isinstance(val, str) and "/" in val and val in allowed_paths:
+                    copy[key] = val.replace("/", " ")
+                    changed = True
+            masked_files.append(copy)
+        else:
+            masked_files.append(entry)
+    if not changed:
+        return text
+    return json.dumps(dict(obj, files=masked_files), sort_keys=True)
 
 
-def scan(text: str) -> list[str]:
-    """Names of fail-closed findings in already-redacted text; empty means clean."""
+def scan(text: str, *, allowed_paths: set[str] | frozenset[str] = frozenset()) -> list[str]:
+    """Names of fail-closed findings in already-redacted text; empty means clean.
+
+    `allowed_paths` splits multi-segment (`/`-containing) verified `files[*].path` and
+    `files[*].renamed_from` field values on `/` before the generic entropy heuristic so path
+    separators do not join short segments into a 32+ char token. Individual path components,
+    tokens in any other field, pattern checks (`_HITS`), and `_redact` remain checked.
+    """
     hits = [f"pattern{i}" for i, p in enumerate(_HITS) if p.search(text)]
-    if any(not _HEX.fullmatch(b) and not _path_like(b) and _entropy(b) > 4.0 for b in _BLOB.findall(text)):
+    target = _entropy_text(text, allowed_paths)
+    if any(not _HEX.fullmatch(b) and _entropy(b) > 4.0 for b in _BLOB.findall(target)):
         hits.append("entropy")
     return hits
 
