@@ -117,13 +117,11 @@ def _bad_alnum_span(run: list[str], *, require_entropy_gt4: bool = False) -> boo
         if span_len < 32:
             break
         nseg = j - i
-        is_single_hex = nseg == 1 and bool(_HEX.fullmatch(run[i]))
-        if not is_single_hex:
-            ent = _counter_entropy(counts, span_len)
-            if (not require_entropy_gt4 or ent > 4.0) and (
-                upper_n > 0 or nseg < 3 or ent > 4.2 or digit_n > 1
-            ):
-                return True
+        ent = _counter_entropy(counts, span_len)
+        if (not require_entropy_gt4 or ent > 4.0) and (
+            upper_n > 0 or nseg < 3 or ent > 4.2 or digit_n > 1
+        ):
+            return True
         if j < n:
             ext_counts = counts.copy()
             ext_counts["/"] += 1
@@ -271,7 +269,7 @@ def _high_entropy_blob(b: str) -> bool:
     """
     if _HEX.fullmatch(b):
         return False
-    if _entropy(b) > 4.0:
+    if _has_high_entropy_window(b):
         return True
     if "/" not in b:
         return any(_has_high_entropy_window(tok) for tok in _iter_hyphen_hex(b.lower()))

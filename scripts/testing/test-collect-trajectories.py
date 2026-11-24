@@ -703,14 +703,21 @@ class Collector(unittest.TestCase):
         c = self.collect()
         self.assertEqual((c["collected"], c["quarantined"]), (0, 1), c)
 
-        # Low-entropy parent directory dilution must not pull credential blobs below 4.0
+        # Low-entropy prefixes and parent directories can dilute whole-blob entropy.
         long_parent = "a" * 80
+        self.assertEqual(
+            col.scan(json.dumps({"id": long_parent + "-Zx9Qm3Lp7Tr2Vb8Nc5Kd1Hf6Gj4Sw0YaUeEi"})),
+            ["entropy"],
+        )
         diluted_uuid = f"{long_parent}/{dot_uuid_tok}.txt"
         self.assertLess(receipt_mod._entropy(diluted_uuid.rsplit(".", 1)[0]), 4.0)
         diluted_added_uuid = f"{long_parent}/added-{dot_uuid_tok}.txt"
         for p in (
             diluted_uuid,
             diluted_added_uuid,
+            f"{long_parent}AbCdEfGhIjKlMnOpQrStUvWxYz0123456789.txt",
+            f"{long_parent}/ABCDEFGH-X/ijklmnop-y/QRSTUVWX-Z/yz012345-a",
+            f"{long_parent}/abcdefghij0/123456789xy/klmn+qrst=1",
             f"{long_parent}/{'a' * 32}AbCdEfGhIjKlMnOpQrStUvWxYz0123456789.txt",
             f"{long_parent}/ABCDEFGHIJKLMNOP/qrstuvwxyz012345",
             f"{long_parent}/qxjfzpwnrt/vmkdhyclbg/tsgkvbnmqu/sxwrjhfpdz",

@@ -42,6 +42,19 @@ candidate bare=['entropy'] verified=[]
   scanning over N characters. The long-value regression checks a 16 KiB plain hex
   value in under 50 ms and all four fixtures in under 500 ms.
 
+### Gemini review Round 2
+
+- `_high_entropy_blob` now calls `_has_high_entropy_window(b)` in place of the
+  whole-blob entropy check. This catches credentials after low-entropy
+  slash-less prefixes and credentials spanning segments shorter than 12
+  characters after a low-entropy parent directory. The plain-hex short-circuit
+  and the slash-less hyphenated-hex fallback still apply.
+- `_bad_alnum_span` removes the unreachable `is_single_hex` branch. Both callers
+  exclude plain-hex segments before adding them to the alphanumeric run.
+- The collector regressions check a slash-less JSON field, a verified
+  single-segment filename, and two verified paths with short credential
+  segments joined by slashes. One uses hyphens and the other uses `+` and `=`.
+
 ## Verification
 
 ```text
@@ -62,27 +75,36 @@ WARN: outcome receipt for PR #12 quarantined (bearer_token)
 WARN: outcome receipt for PR #13 quarantined (entropy)
 ..
 ----------------------------------------------------------------------
-Ran 32 tests in 2.897s
+Ran 32 tests in 2.863s
 
 OK
 ```
 
-The sweep used every path from `git ls-files -z` before staging this note. For
-each path `p` it evaluated `bool(scan(json.dumps({"files": [{"path": p}]},
-sort_keys=True), ...))` with the full scanner from each revision. The bare scans
-used no allowlist and the verified scans supplied `allowed_paths={p}`. `base`
-counts bare `origin/main` flags and `new_flags` counts candidate verified flags
-absent from that baseline.
+The sweep compared the Round 2 candidate with `origin/main` (`f09150349`) over
+every path returned by `git ls-files -z` in the worktree, including this tracked
+note. For each path `p` it evaluated
+`bool(scan(json.dumps({"files": [{"path": p}]}, sort_keys=True), ...))`
+with the full scanner from each revision. Bare scans used no allowlist.
+Verified scans supplied `allowed_paths={p}`.
 
 ```text
-total=7917 base=4370 head_bare=4370 head_verified=429 new_flags=0
-base_verified=474 newly_flagged_vs_base_verified=371 cleared_vs_base_verified=416
-7a5697afd_verified=429 round11_verified_path_changes=0 bare_path_changes=0
+total=7918 base_bare=4371 head_bare=4495
+base_verified=474 head_verified=432
+new_flags_vs_base_bare=3
+newly_flagged_vs_base_verified=374
+cleared_vs_base_verified=416
 ```
 
-The hardening at `7a5697afd` accounts for all 371 newly flagged and 416 cleared
-paths in the verified-to-verified comparison. Round 11 leaves that flag set
-unchanged. This sweep measures scanner decisions for individual tracked paths.
+The three paths flagged by `head_verified` and absent from `base_bare` are
+mixed-case CamelCase font filenames:
+
+- `ai-stack/agents/skills/canvas-design/canvas-fonts/NationalPark-Bold.ttf`
+- `ai-stack/agents/skills/canvas-design/canvas-fonts/Outfit-Bold.ttf`
+- `ai-stack/agents/skills/canvas-design/canvas-fonts/WorkSans-Italic.ttf`
+
+Like sibling fonts, all three already failed `_path_like` before Round 2.
+The low-entropy parent prefix had diluted their whole-blob entropy below the
+threshold. The window check now flags each path even when it is verified.
 
 ## Rule 15 activation attestation
 
