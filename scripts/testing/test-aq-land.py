@@ -275,6 +275,8 @@ class Base(unittest.TestCase):
                     "AQ_DELEGATION_DIR": str(self.S / "deleg"),
                     "AQ_LAND_WORKTREE_DIR": str(self.S / "wts"), "AQ_LAND_POLL_S": "0.05", "AQ_LAND_STALL_S": "2",
                     "AQ_LAND_REVIEW_TIMEOUT_S": "4", "AQ_LAND_CHECKS_TIMEOUT_S": "5", "AQ_LAND_LOCK_WAIT_S": "1"}
+        self.env.pop("AQ_LAND_GEMINI_MODEL", None)
+        self.env.pop("AQ_LAND_GEMINI_FALLBACK_MODELS", None)
 
     def tearDown_state(self):
         for n in ("calls.log", "published", "receipt.log"):
@@ -553,6 +555,12 @@ class Manifests(Base):
 
 
 class Lanes(Base):
+    gemini_lane = json.loads((ROOT / "config/model-coordinator.json").read_text())["tiers"]["google"]["gemini_lane"]
+    gemini_models = (gemini_lane["role_map"]["reviewer"], gemini_lane["fallback"], gemini_lane["baseline_fallback"])
+
+    def gemini_model_calls(self):
+        return [call.split("--model ", 1)[1].split()[0] for call in self.calls("gemini")]
+
     def test_stall_and_budget_fall_through_to_local_and_are_recorded(self):
         self.cfg({"codex": {"mode": "silent"}, "local": {"mode": "ok"}})
         self.land("--lanes", "codex,local", expect=0)
@@ -576,31 +584,51 @@ class Lanes(Base):
 
     def test_gemini_gets_an_explicit_model_default_and_override(self):
         self.land(expect=0)
-        self.assertIn("--model gemini-3.8-flash-high", self.calls("gemini")[0])
+        self.assertEqual(self.gemini_model_calls(), [self.gemini_models[0]])
         self.tearDown_state(); self.gh_state({})
         self.env["AQ_LAND_GEMINI_MODEL"] = "gemini-x-custom"
         self.land(expect=0)
-        self.assertIn("--model gemini-x-custom", self.calls("gemini")[-1])
+        self.assertEqual(self.gemini_model_calls(), ["gemini-x-custom"])
 
     def test_gemini_quota_retries_once_on_the_fallback_model_and_records_it(self):
-        self.cfg({"gemini": {"mode": "ok", "quota_models": ["gemini-3.8-flash-high"]}})
+        primary, fallback, _ = self.gemini_models
+        self.cfg({"gemini": {"mode": "ok", "quota_models": [primary]}})
         self.land(expect=0)
-        calls = self.calls("gemini")
-        self.assertEqual(len(calls), 2, calls)
-        self.assertIn("--model gemini-3.8-flash-high", calls[0])
-        self.assertIn("--model gemini-3.8-flash-medium", calls[1])
+        self.assertEqual(self.gemini_model_calls(), [primary, fallback])
         body = self.pr_body()
-        self.assertIn("gemini: model gemini-3.8-flash-high quota error; retried with gemini-3.8-flash-medium", body)
+        self.assertIn(f"gemini: model {primary} quota error; retried with {fallback}", body)
         self.assertIn("Reviewed-by: gemini", body)
 
-    def test_gemini_quota_on_both_models_leaves_the_lane_after_one_retry(self):
+    def test_gemini_quota_on_all_models_falls_through_to_local(self):
+        primary, fallback, baseline = self.gemini_models
         self.cfg({"gemini": {"mode": "quota"}, "local": {"mode": "ok"}})
         self.land("--lanes", "gemini,local", expect=0)
-        self.assertEqual(len(self.calls("gemini")), 2)
+        self.assertEqual(self.gemini_model_calls(), list(self.gemini_models))
         body = self.pr_body()
-        self.assertIn("retried with gemini-3.8-flash-medium", body)
+        self.assertIn(f"gemini: model {primary} quota error; retried with {fallback}", body)
+        self.assertIn(f"gemini: model {fallback} quota error; retried with {baseline}", body)
         self.assertIn("gemini: quota error", body)
         self.assertIn("Reviewed-by: local-direct", body)
+
+    def test_gemini_quota_walks_all_configured_pools_before_leaving_lane(self):
+        primary, fallback, baseline = self.gemini_models
+        self.cfg({"gemini": {"mode": "ok", "quota_models": [primary, fallback]}})
+        self.land("--lanes", "gemini", expect=0)
+        self.assertEqual(self.gemini_model_calls(), list(self.gemini_models))
+        body = self.pr_body()
+        self.assertIn(f"gemini: model {primary} quota error; retried with {fallback}", body)
+        self.assertIn(f"gemini: model {fallback} quota error; retried with {baseline}", body)
+        self.assertIn("Reviewed-by: gemini", body)
+
+    def test_gemini_fallback_override_is_ordered_deduplicated_and_capped(self):
+        self.env["AQ_LAND_GEMINI_MODEL"] = "gemini-custom-primary"
+        self.env["AQ_LAND_GEMINI_FALLBACK_MODELS"] = (
+            " gemini-custom-primary, gemini-custom-first, , gemini-custom-first, gemini-custom-second, gemini-custom-third "
+        )
+        self.cfg({"gemini": {"mode": "quota"}, "local": {"mode": "ok"}})
+        self.land("--lanes", "gemini,local", expect=0)
+        self.assertEqual(self.gemini_model_calls(), ["gemini-custom-primary", "gemini-custom-first", "gemini-custom-second"])
+        self.assertIn("Reviewed-by: local-direct", self.pr_body())
 
     def test_reviewer_prompt_points_at_the_worktree_and_runs_there(self):
         self.cfg({"gemini": {"mode": "ok"}, "codex": {"mode": "ok"}})
