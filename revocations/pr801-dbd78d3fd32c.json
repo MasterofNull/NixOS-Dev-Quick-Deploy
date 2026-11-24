@@ -1,0 +1,7 @@
+{
+  "schema": 1,
+  "pr": 801,
+  "reviewed_head_sha": "dbd78d3fd32c478e5880dc91a177cf00d78a7c84",
+  "reason": "hand-minted receipt: no real review run, notes claimed CI green while CI was red (incident 2026-11-19)",
+  "revoked_at": "2026-11-24T11:46:42Z"
+}
