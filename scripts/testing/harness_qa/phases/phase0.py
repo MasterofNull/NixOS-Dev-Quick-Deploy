@@ -11,6 +11,7 @@ import os
 import re
 import subprocess as _subprocess
 import sys
+import threading
 import time
 from pathlib import Path
 
@@ -45,10 +46,56 @@ class _LoadScaledSubprocess:
     def run(self, *args, **kwargs):
         if kwargs.get("timeout"):
             kwargs["timeout"] = kwargs["timeout"] * _timeout_scale()
-        return _subprocess.run(*args, **kwargs)
+        try:
+            return _subprocess.run(*args, **kwargs)
+        except _subprocess.TimeoutExpired as exc:
+            hits = getattr(_TIMEOUT_SEEN, "hits", None)
+            if hits is None:
+                hits = []
+                _TIMEOUT_SEEN.hits = hits
+            hits.append(str(exc))
+            raise
 
 
 subprocess = _LoadScaledSubprocess()
+_TIMEOUT_SEEN = threading.local()
+_TIMEOUT_REASON_RE = re.compile(r"\btimed out\b|^(?:probe |subprocess )?timeout\b", re.IGNORECASE)
+
+
+def _is_timeout_failure(result: CheckResult, seen_errors: list[str]) -> bool:
+    """Return True only when this CheckResult failed because of a subprocess timeout."""
+    if getattr(result, "_timed_out", False):
+        return True
+    reason = (result.reason or "").strip()
+    if not reason:
+        return False
+    if any(err and (err in reason or (len(reason) >= 12 and reason in err)) for err in seen_errors):
+        return True
+    return bool(_TIMEOUT_REASON_RE.search(reason))
+
+
+def _demote_timeouts(fn):
+    """A check whose subprocess timed out has no verdict: only the FAIL row(s) caused by that timeout become
+    DEGRADED SKIPs (busy host), not outage alerts. Unrelated FAILs in the same check stay FAIL."""
+    def wrapped(ctx):
+        _TIMEOUT_SEEN.hits = []
+        try:
+            results = fn(ctx)
+            seen_errors: list[str] = list(getattr(_TIMEOUT_SEEN, "hits", ()))
+        finally:
+            _TIMEOUT_SEEN.hits = []
+        from ..core.result import Status
+        out = []
+        for r in results:
+            if r.status == Status.FAIL and (
+                getattr(r, "_timed_out", False)
+                or (seen_errors and _is_timeout_failure(r, seen_errors))
+            ):
+                r = skipped(r.layer, r.id, r.description, f"DEGRADED: subprocess timed out, no verdict ({r.reason})")
+            out.append(r)
+        return out
+    wrapped.__name__ = fn.__name__
+    return wrapped
 
 # ---------------------------------------------------------------------------
 # 0.1 Systemd service checks
@@ -541,7 +588,13 @@ def _check_flagship_cli(ctx: RunContext) -> list[CheckResult]:
     result = factory(7, "0.6.1", "flagship agent CLI help smokes")
     result.details = aggregate
     results.append(result)
+    return results
 
+
+def _check_gemini_cli_health(ctx: RunContext) -> list[CheckResult]:
+    results = []
+    if not ctx.should_run(7):
+        return results
     gemini_script = ctx.repo_root / "scripts" / "health" / "gemini-cli-health.sh"
     env2 = {
         **os.environ,
@@ -550,6 +603,7 @@ def _check_flagship_cli(ctx: RunContext) -> list[CheckResult]:
         "PATH": f"{ctx.primary_home}/.local/bin:{ctx.primary_home}/.npm-global/bin:{os.environ.get('PATH', '')}",
     }
     # exit 0 = healthy -> pass; anything else (missing script, script/config broken) -> fail.
+    gemini_timed_out = False
     try:
         gemini_proc = subprocess.run(
             ["bash", str(gemini_script), "--check"],
@@ -557,7 +611,11 @@ def _check_flagship_cli(ctx: RunContext) -> list[CheckResult]:
         )
         gemini_rc = gemini_proc.returncode
         gemini_out = gemini_proc.stdout + gemini_proc.stderr
-    except (subprocess.TimeoutExpired, OSError) as exc:
+    except subprocess.TimeoutExpired as exc:
+        gemini_rc = None
+        gemini_out = str(exc)
+        gemini_timed_out = True
+    except OSError as exc:
         gemini_rc = None
         gemini_out = str(exc)
 
@@ -566,6 +624,13 @@ def _check_flagship_cli(ctx: RunContext) -> list[CheckResult]:
 
     if gemini_rc == 0:
         results.append(passed(7, "0.6.2", "gemini CLI live-state health check"))
+    elif gemini_timed_out:
+        detail = f"probe timed out: {gemini_out}"[:160]
+        if reason:
+            detail = f"{detail}: {reason}"
+        res = failed(7, "0.6.2", "gemini CLI live-state health check", detail)
+        res._timed_out = True
+        results.append(res)
     else:
         detail = f"exit {gemini_rc}" if gemini_rc is not None else "probe error"
         if reason:
@@ -2456,135 +2521,165 @@ def _check_network_dns_policy(ctx: RunContext) -> list[CheckResult]:
     return results
 
 
-def run(ctx: RunContext) -> list[CheckResult]:
-    """Run all phase 0 checks and return a flat list of CheckResult."""
-    results: list[CheckResult] = []
-    results.extend(_check_services(ctx))
-    results.extend(_check_no_failed_units(ctx))
-    results.extend(_check_timers(ctx))
-    results.extend(_check_ports(ctx))
-    results.extend(_check_grafana_port(ctx))
-    results.extend(_check_qdrant_docs(ctx))
+def _plan(ctx: RunContext) -> list:
+    """Ordered phase 0 check functions (conditional on ctx); each takes ctx and returns list[CheckResult]."""
+    plan: list = []
+    plan.append(_check_services)
+    plan.append(_check_no_failed_units)
+    plan.append(_check_timers)
+    plan.append(_check_ports)
+    plan.append(_check_grafana_port)
+    plan.append(_check_qdrant_docs)
     if not ctx.dashboard_safe:
-        results.extend(_check_postgres_tables(ctx))
-        results.extend(_check_redis_keys(ctx))
-    results.extend(_check_apparmor(ctx))
-    results.extend(_check_inference(ctx))
+        plan.append(_check_postgres_tables)
+        plan.append(_check_redis_keys)
+    plan.append(_check_apparmor)
+    plan.append(_check_inference)
     if not ctx.dashboard_safe:
-        results.extend(_check_continue(ctx))
-        results.extend(_check_flagship_cli(ctx))
-    results.extend(_check_routing(ctx))
-    results.extend(_check_delegate_rate(ctx))
-    results.extend(_check_safety_gate(ctx))
-    results.extend(_check_uag_replay(ctx))
-    results.extend(_check_dag_executor(ctx))
-    results.extend(_check_safety_policy(ctx))
-    results.extend(_check_trust_roots(ctx))
-    results.extend(_check_workspace_isolation(ctx))
-    results.extend(_check_fleet_control(ctx))
-    results.extend(_check_benchmark_harness(ctx))
-    results.extend(_check_harness_runner(ctx))
-    results.extend(_check_budget_guardrail(ctx))
-    results.extend(_check_rollback_drill(ctx))
-    results.extend(_check_aqd_ergonomics(ctx))
-    results.extend(_check_mcp_blueprints(ctx))
-    results.extend(_check_graph_runner(ctx))
-    results.extend(_check_ide_adapter(ctx))
-    results.extend(_check_ablation_profiles(ctx))
-    results.extend(_check_aqd_reasoning(ctx))
-    results.extend(_check_logic_indexer(ctx))
-    results.extend(_check_aqd_logic(ctx))
-    results.extend(_check_topology_api(ctx))
-    results.extend(_check_local_model_config(ctx))
+        plan.append(_check_continue)
+        plan.append(_check_flagship_cli)
+        plan.append(_check_gemini_cli_health)
+    plan.append(_check_routing)
+    plan.append(_check_delegate_rate)
+    plan.append(_check_safety_gate)
+    plan.append(_check_uag_replay)
+    plan.append(_check_dag_executor)
+    plan.append(_check_safety_policy)
+    plan.append(_check_trust_roots)
+    plan.append(_check_workspace_isolation)
+    plan.append(_check_fleet_control)
+    plan.append(_check_benchmark_harness)
+    plan.append(_check_harness_runner)
+    plan.append(_check_budget_guardrail)
+    plan.append(_check_rollback_drill)
+    plan.append(_check_aqd_ergonomics)
+    plan.append(_check_mcp_blueprints)
+    plan.append(_check_graph_runner)
+    plan.append(_check_ide_adapter)
+    plan.append(_check_ablation_profiles)
+    plan.append(_check_aqd_reasoning)
+    plan.append(_check_logic_indexer)
+    plan.append(_check_aqd_logic)
+    plan.append(_check_topology_api)
+    plan.append(_check_local_model_config)
     if not ctx.dashboard_safe:
-        results.extend(_check_local_payload_discipline(ctx))
+        plan.append(_check_local_payload_discipline)
     if not ctx.dashboard_safe:
-        results.extend(_check_discovery_agent(ctx))
-        results.extend(_check_model_catalog_freshness(ctx))
-        results.extend(_check_flat_prd_gate(ctx))
-        results.extend(_check_agent_artifact_policy(ctx))
-        results.extend(_check_agent_memory_surface_registry(ctx))
-    results.extend(_check_ragas_eval(ctx))
-    results.extend(_check_clm(ctx))
-    results.extend(_check_nsjail_sandbox(ctx))
-    results.extend(_check_graphrag(ctx))
-    results.extend(_check_s2_tool_auth_policy(ctx))
-    results.extend(_check_local_agent_docs(ctx))
-    results.extend(_check_phase67_dashboard(ctx))
-    results.extend(_check_phase66_wasmtime(ctx))
+        plan.append(_check_discovery_agent)
+        plan.append(_check_model_catalog_freshness)
+        plan.append(_check_flat_prd_gate)
+        plan.append(_check_agent_artifact_policy)
+        plan.append(_check_agent_memory_surface_registry)
+    plan.append(_check_ragas_eval)
+    plan.append(_check_clm)
+    plan.append(_check_nsjail_sandbox)
+    plan.append(_check_graphrag)
+    plan.append(_check_s2_tool_auth_policy)
+    plan.append(_check_local_agent_docs)
+    plan.append(_check_phase67_dashboard)
+    plan.append(_check_phase66_wasmtime)
     if not ctx.dashboard_safe:
-        results.extend(_check_phase83_dag_context(ctx))
-        results.extend(_check_phase85_drop_zone(ctx))
-        results.extend(_check_phase86_attention_queue(ctx))
-    results.extend(_check_phase87_training_ingest(ctx))
-    results.extend(_check_security_center(ctx))
-    results.extend(_check_phase146_identity_coverage(ctx))
+        plan.append(_check_phase83_dag_context)
+        plan.append(_check_phase85_drop_zone)
+        plan.append(_check_phase86_attention_queue)
+    plan.append(_check_phase87_training_ingest)
+    plan.append(_check_security_center)
+    plan.append(_check_phase146_identity_coverage)
     if not ctx.dashboard_safe:
-        results.extend(_check_local_delegation_artifact(ctx))
-    results.extend(_check_intent_classifier_coverage(ctx))
-    results.extend(_check_ragas_faithfulness_guard(ctx))
-    results.extend(_check_token_usage_coverage(ctx))
-    results.extend(_check_modal_task_profiles(ctx))
-    results.extend(_check_local_inference_contract(ctx))
-    results.extend(_check_local_inference_l2a(ctx))
-    results.extend(_check_local_inference_l2b(ctx))
+        plan.append(_check_local_delegation_artifact)
+    plan.append(_check_intent_classifier_coverage)
+    plan.append(_check_ragas_faithfulness_guard)
+    plan.append(_check_token_usage_coverage)
+    plan.append(_check_modal_task_profiles)
+    plan.append(_check_local_inference_contract)
+    plan.append(_check_local_inference_l2a)
+    plan.append(_check_local_inference_l2b)
     if not ctx.dashboard_safe:
-        results.extend(_check_local_inference_budget(ctx))
-        results.extend(_check_local_agent_store_memory_contract(ctx))
-        results.extend(_check_phase171_throughput_calibration(ctx))
-        results.extend(_check_osint_active_recon_gate(ctx))
-        results.extend(_check_analysis_only_stagnation_mode(ctx))
-        results.extend(_check_phase172_delegation_health(ctx))
-        results.extend(_check_local_agent_monitor_visibility(ctx))
-        results.extend(_check_candidate_lifecycle(ctx))
-    results.extend(_check_eval_sandbox(ctx))
-    results.extend(_check_aq_eval_harness(ctx))
-    results.extend(_check_context_compaction_sandwich(ctx))
-    results.extend(_check_round_decision_authorization(ctx))
-    results.extend(_check_immutable_qa_effectiveness(ctx))
-    results.extend(_check_state_authorities(ctx))
-    results.extend(_check_registry_lookup_compatibility(ctx))
-    results.extend(_check_local_direct_health_contract(ctx))
-    results.extend(_check_local_direct_health_card(ctx))
-    results.extend(_check_dashboard_program_progress(ctx))
-    results.extend(_check_workflow_shadow_contract(ctx))
-    results.extend(_check_execution_cell_adapter_service_coverage(ctx))
-    results.extend(_check_factory_gate_install(ctx))
-    results.extend(_check_factory_gate_retrofit(ctx))
-    results.extend(_check_factory_readiness_preflight(ctx))
-    results.extend(_check_capability_outcome_resolver(ctx))
-    results.extend(_check_lifecycle_event_adapter(ctx))
-    results.extend(_check_worktree_isolation_safety(ctx))
-    results.extend(_check_integration_guard(ctx))
-    results.extend(_check_golden_eval_parity(ctx))
-    results.extend(_check_agentic_parity(ctx))
-    results.extend(_check_delegation_feedback_contract(ctx))
-    results.extend(_check_cross_model_critique(ctx))
-    results.extend(_check_adopt_workflow(ctx))
-    results.extend(_check_phase173_training_health(ctx))
-    results.extend(_check_revocation_epoch_recovery(ctx))
-    results.extend(_check_revocation_launch_socket_topology(ctx))
-    results.extend(_check_c6a_authorize_launch_coverage(ctx))
-    results.extend(_check_c6c_owner_submission_coverage(ctx))
-    results.extend(_check_provider_projection(ctx))
-    results.extend(_check_ecc_diagnostics(ctx))
-    results.extend(_check_factory_ci_pack(ctx))
-    results.extend(_check_understand_graph_freshness(ctx))
-    results.extend(_check_aq_eval_static_suites(ctx))
-    results.extend(_check_herdr_presentation_projection(ctx))
-    results.extend(_check_hermetic_candidate_eval(ctx))
-    results.extend(_check_ecc_p2_approval_gated_cd(ctx))
-    results.extend(_check_frontier_fe2a_functional_eval(ctx))
-    results.extend(_check_aq_confine_behavioral(ctx))
-    results.extend(_check_frontier_fe2b_prompt_compile(ctx))
-    results.extend(_check_durable_triage_engine(ctx))
-    results.extend(_check_pi_agent_streaming_canvas(ctx))
-    results.extend(_check_durable_runtime_engine(ctx))
-    results.extend(_check_autonomous_oncall_daemon(ctx))
-    results.extend(_check_network_dns_policy(ctx))
+        plan.append(_check_local_inference_budget)
+        plan.append(_check_local_agent_store_memory_contract)
+        plan.append(_check_phase171_throughput_calibration)
+        plan.append(_check_osint_active_recon_gate)
+        plan.append(_check_analysis_only_stagnation_mode)
+        plan.append(_check_phase172_delegation_health)
+        plan.append(_check_local_agent_monitor_visibility)
+        plan.append(_check_candidate_lifecycle)
+    plan.append(_check_eval_sandbox)
+    plan.append(_check_aq_eval_harness)
+    plan.append(_check_context_compaction_sandwich)
+    plan.append(_check_round_decision_authorization)
+    plan.append(_check_immutable_qa_effectiveness)
+    plan.append(_check_state_authorities)
+    plan.append(_check_registry_lookup_compatibility)
+    plan.append(_check_local_direct_health_contract)
+    plan.append(_check_local_direct_health_card)
+    plan.append(_check_dashboard_program_progress)
+    plan.append(_check_workflow_shadow_contract)
+    plan.append(_check_execution_cell_adapter_service_coverage)
+    plan.append(_check_factory_gate_install)
+    plan.append(_check_factory_gate_retrofit)
+    plan.append(_check_factory_readiness_preflight)
+    plan.append(_check_capability_outcome_resolver)
+    plan.append(_check_lifecycle_event_adapter)
+    plan.append(_check_worktree_isolation_safety)
+    plan.append(_check_integration_guard)
+    plan.append(_check_golden_eval_parity)
+    plan.append(_check_agentic_parity)
+    plan.append(_check_delegation_feedback_contract)
+    plan.append(_check_cross_model_critique)
+    plan.append(_check_adopt_workflow)
+    plan.append(_check_phase173_training_health)
+    plan.append(_check_revocation_epoch_recovery)
+    plan.append(_check_revocation_launch_socket_topology)
+    plan.append(_check_c6a_authorize_launch_coverage)
+    plan.append(_check_c6c_owner_submission_coverage)
+    plan.append(_check_provider_projection)
+    plan.append(_check_ecc_diagnostics)
+    plan.append(_check_factory_ci_pack)
+    plan.append(_check_understand_graph_freshness)
+    plan.append(_check_aq_eval_static_suites)
+    plan.append(_check_herdr_presentation_projection)
+    plan.append(_check_hermetic_candidate_eval)
+    plan.append(_check_ecc_p2_approval_gated_cd)
+    plan.append(_check_frontier_fe2a_functional_eval)
+    plan.append(_check_aq_confine_behavioral)
+    plan.append(_check_frontier_fe2b_prompt_compile)
+    plan.append(_check_durable_triage_engine)
+    plan.append(_check_pi_agent_streaming_canvas)
+    plan.append(_check_durable_runtime_engine)
+    plan.append(_check_autonomous_oncall_daemon)
+    plan.append(_check_network_dns_policy)
     if ctx.dashboard_safe:
-        results.extend(_dashboard_safe_host_only_skips())
-    return results
+        plan.append(_host_only_skips_check)
+    return plan
+
+
+def _host_only_skips_check(ctx: RunContext) -> list[CheckResult]:
+    return _dashboard_safe_host_only_skips()
+
+
+def _llama_busy_hint_ctx(ctx: RunContext) -> str:
+    """Why a slow check is slow: a busy single-slot llama queues health-probe inference behind other work."""
+    try:
+        load_hint = f"; host load {os.getloadavg()[0]:.1f}"
+    except OSError:
+        load_hint = ""
+    try:
+        slots = http_json(f"{ctx.llama_url}/slots", timeout=0.15)
+        if isinstance(slots, list) and any(isinstance(x, dict) and x.get("is_processing") for x in slots):
+            return "; local llama busy (slot processing)"
+    except Exception:
+        pass
+    return load_hint
+
+
+def run(ctx: RunContext) -> list[CheckResult]:
+    """Run all phase 0 checks under per-check and whole-phase deadlines; always returns a partial result."""
+    from ..core.scheduler import resolve_limits, run_checks
+    plan = [_demote_timeouts(fn) for fn in _plan(ctx)]
+    workers, per_check_s, budget_s = resolve_limits(len(plan))
+    return run_checks(ctx, plan, workers=workers, per_check_s=per_check_s, budget_s=budget_s,
+                      busy_hint=lambda: _llama_busy_hint_ctx(ctx))
+
 
 
 def _check_phase173_training_health(ctx: RunContext) -> list[CheckResult]:
@@ -2987,8 +3082,12 @@ def _check_local_direct_health_contract(ctx: RunContext) -> list[CheckResult]:
                 ["python3", str(checker)], cwd=ctx.repo_root,
                 capture_output=True, text=True, timeout=180,
             )
+        except subprocess.TimeoutExpired as exc:
+            res = failed(5, "0.10.42", description, str(exc)[:240])
+            res._timed_out = True
+            return [res]
         except Exception as exc:
-            return [failed(5, "0.10.42", description)]
+            return [failed(5, "0.10.42", description, str(exc)[:240])]
         if run.returncode != 0:
             detail = (run.stderr or run.stdout or f"exit {run.returncode}").strip()[-500:]
             return [failed(5, "0.10.42", description)]

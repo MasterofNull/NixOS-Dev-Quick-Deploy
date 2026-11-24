@@ -149,7 +149,7 @@ def port_bound(port: int, retries: int = 4, delay: float = 1.0) -> bool:
     return False
 
 
-def http_get(url: str, timeout: int = 5, headers: dict | None = None) -> tuple[int, str]:
+def http_get(url: str, timeout: float = 5, headers: dict | None = None) -> tuple[int, str]:
     """Return (status_code, body) for a GET request, or (-1, '') on error."""
     try:
         req = Request(url, headers=headers or {})
@@ -172,7 +172,7 @@ def http_health_ok(url: str, timeout: int = 5) -> bool:
         return False
 
 
-def http_json(url: str, timeout: int = 5, headers: dict | None = None) -> Any:
+def http_json(url: str, timeout: float = 5, headers: dict | None = None) -> Any:
     """Return parsed JSON from GET url, or None on error."""
     _, body = http_get(url, timeout=timeout, headers=headers)
     try:

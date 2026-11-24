@@ -32,7 +32,7 @@ def test_aq_eval_check_parity():
     sh = (ROOT / "scripts/ai/_aq-qa-bash").read_text()
     ids = lambda t: set(re.findall(r'"(0\.10\.60)"', t))
     assert ids(p0) == ids(sh) == {"0.10.60"}
-    assert "_check_aq_eval_static_suites(ctx)" in p0
+    assert "plan.append(_check_aq_eval_static_suites)" in p0
     assert "aq-eval" in sh.split('"0.10.60"', 1)[1][:400]
     # WARN-class: both harnesses downgrade failure to skip, never fail, for the suite run
     assert 'skipped(1, "0.10.60"' in p0 and '_skip 1 "0.10.60"' in sh

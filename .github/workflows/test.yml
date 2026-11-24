@@ -591,6 +591,7 @@ jobs:
             --only gemini-quota-fallback-tests \
             --only gemini-model-guard-tests \
             --only timer-stagger-regression-tests \
+            --only qa-phase0-bounded-tests \
             --only llama-post-switch-validate-tests \
             --only activation-manifest-tests \
             --only lean-ctx-shell-security \
