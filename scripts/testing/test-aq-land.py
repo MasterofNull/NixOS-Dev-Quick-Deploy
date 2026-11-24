@@ -126,7 +126,8 @@ def bump(k):
 st.setdefault("calls", []).append(" ".join(a[:3]))
 cmd = " ".join(a[:2])
 fl = st.get("flaky")
-if fl and cmd == fl["cmd"] and bump("n_flaky") <= fl["times"]:
+is_check_poll = "statusCheckRollup" in (flag("--json") or "")
+if fl and cmd == fl["cmd"] and (not fl.get("poll_only") or is_check_poll) and bump("n_flaky") <= fl["times"]:
     sys.stderr.write(fl["msg"] + "\n")
     sys.exit(1)
 def move_main(msg):
@@ -145,7 +146,7 @@ if cmd == "pr list":
     print(json.dumps([{"number": p["number"], "state": p["state"]} for p in st["prs"] if p["branch"] == flag("--head")]))
 elif cmd == "pr create":
     n = 77
-    st["prs"].append({"number": n, "state": "OPEN", "branch": flag("--head"), "body": open(flag("--body-file")).read()})
+    st["prs"].append({"number": n, "state": "OPEN", "branch": flag("--head"), "body": open(flag("--body-file")).read(), "draft": "--draft" in a})
     st["creates"] = st.get("creates", 0) + 1
     save()
     print(f"https://github.com/o/r/pull/{n}")
@@ -170,7 +171,10 @@ elif cmd == "pr view":
         sys.exit(0)
     if st.get("main_moves_at_wait") and "statusCheckRollup" in flag("--json") and bump("n_wait") == 1:
         move_main("main moved after CI")
-    print(json.dumps({"headRefOid": st.get("head_override") or branch_head(pr["branch"]), "state": pr["state"], "body": pr["body"], "statusCheckRollup": roll}))
+    head_override = st.get("head_override")
+    if is_check_poll:
+        head_override = st.get("check_head_override") or head_override
+    print(json.dumps({"headRefOid": head_override or branch_head(pr["branch"]), "state": pr["state"], "isDraft": pr.get("draft", False), "body": pr["body"], "statusCheckRollup": roll}))
 elif cmd == "pr update-branch":
     bump("updates")
     pr = [p for p in st["prs"] if p["number"] == int(a[2])][0]
@@ -185,6 +189,11 @@ elif cmd == "pr update-branch":
         move_main("main moved again")
 elif cmd == "pr edit":
     [p for p in st["prs"] if p["number"] == int(a[2])][0]["body"] = open(flag("--body-file")).read()
+    save()
+elif cmd == "pr ready":
+    pr = [p for p in st["prs"] if p["number"] == int(a[2])][0]
+    assert pr["draft"]
+    pr["draft"] = False
     save()
 elif cmd == "pr merge":
     st["merges"] = st.get("merges", 0) + 1
@@ -223,7 +232,15 @@ if a[0] == "mint":
     json.dump({"run_id": rid, "reviewer_lane": "local-direct" if lane == "local" else lane, "reviewed_head_sha": a[a.index("--head") + 1]},
               open(a[a.index("--out") + 1], "w"))
 elif a[0] == "verify":
-    if os.path.exists(f"{S}/verify_fail"):
+    g = json.load(open(f"{S}/gh.json"))
+    draft = g["prs"][0].get("draft")
+    if draft:
+        assert a[1:] == ["--require-revocation-check", "--pr", "77", "--head", a[-1]]
+        g.setdefault("calls", []).append("RECEIPT verify")
+        if g.get("move_head_on_verify"):
+            g["head_override"] = "f" * 40
+        json.dump(g, open(f"{S}/gh.json", "w"))
+    if os.path.exists(f"{S}/draft_verify_fail" if draft else f"{S}/verify_fail"):
         sys.stderr.write("verify FAILED: receipt REVOKED: test\\n")
         sys.exit(1)
     sys.exit(0)
@@ -367,12 +384,13 @@ class Landing(Base):
         edits = lambda: [c for c in self.ghs()["calls"] if c.startswith("pr edit")]
         self.gh_state({"required": ["never-reported"]})
         self.land(expect=1)
-        self.assertEqual(edits(), [])
+        publication_edits = edits()
+        self.assertEqual(len(publication_edits), 1)
         self.land(expect=1)
-        self.assertEqual(edits(), [])  # unchanged body: no edit
+        self.assertEqual(edits(), publication_edits)
         (self.S / "body.md").write_text(BODY.replace("- scope", "- scope corrected"))
         self.land(expect=1)
-        self.assertEqual(len(edits()), 1)
+        self.assertEqual(len(edits()), len(publication_edits) + 1)
         self.assertIn("scope corrected", self.pr_body())
 
     def test_resume_after_kill_never_duplicates(self):
@@ -1236,7 +1254,7 @@ class Checks(Base):
     def test_transient_network_error_is_retried_within_the_deadline(self):
         self.env["AQ_LAND_RETRY_S"] = "0.05"
         r = self.run_checks([[{"name": "test", "status": "COMPLETED", "conclusion": "SUCCESS"}]],
-                            flaky={"cmd": "pr view", "times": 3, "msg": "error connecting to api.github.com\nCheck your internet connection"})
+                            flaky={"cmd": "pr view", "poll_only": True, "times": 3, "msg": "error connecting to api.github.com\nCheck your internet connection"})
         self.assertEqual(self.ghs()["merges"], 1)
         self.assertEqual(r.stdout.count("transient gh error"), 1)  # one line for the whole outage
 
@@ -1250,12 +1268,12 @@ class Checks(Base):
 
     def test_persistent_network_failure_stops_at_the_deadline(self):
         self.env.update({"AQ_LAND_RETRY_S": "0.05", "AQ_LAND_CHECKS_TIMEOUT_S": "1"})
-        r = self.run_checks([[]], flaky={"cmd": "pr view", "times": 100000, "msg": "error connecting to api.github.com"}, expect=1)
+        r = self.run_checks([[]], flaky={"cmd": "pr view", "poll_only": True, "times": 100000, "msg": "error connecting to api.github.com"}, expect=1)
         self.assertIn("still failing", self.stop_line(r))
         self.assertNotIn("merges", self.ghs())
 
     def test_non_transient_gh_error_stops_at_once(self):
-        r = self.run_checks([[]], flaky={"cmd": "pr view", "times": 100000, "msg": "HTTP 404: Not Found"}, expect=1)
+        r = self.run_checks([[]], flaky={"cmd": "pr view", "poll_only": True, "times": 100000, "msg": "HTTP 404: Not Found"}, expect=1)
         self.assertIn("STOP gh: gh pr view failed: HTTP 404", self.stop_line(r))
         self.assertEqual(self.ghs()["n_flaky"], 1)
 
@@ -1334,7 +1352,7 @@ class Checks(Base):
         self.land("--optional-check", "flaky", expect=0)
 
     def test_head_that_is_not_the_one_landed_never_reuses_a_green(self):
-        r = self.run_checks([[{"name": "test", "status": "COMPLETED", "conclusion": "SUCCESS"}]], head_override="e" * 40, expect=1)
+        r = self.run_checks([[{"name": "test", "status": "COMPLETED", "conclusion": "SUCCESS"}]], check_head_override="e" * 40, expect=1)
         self.assertIn("refusing to reuse checks for another head", self.stop_line(r))
         self.assertNotIn("merges", self.ghs())
 
@@ -1538,9 +1556,42 @@ class Friction(Base):
         (self.S / "body.md").write_text(BODY.replace("- scope", "- scope v2"))
         self.land(expect=1)
         calls = self.ghs()["calls"]
-        edit = calls.index("pr edit 77")
-        self.assertEqual([i for i, c in enumerate(calls) if c == "RECEIPT publish"][-1] < edit, True, calls)
+        publication = ["RECEIPT publish", "pr edit 77"]
+        self.assertEqual([call for call in calls if call in publication], publication * 2)
         self.assertEqual(len(self.published()), 2)
+
+    def test_draft_resumes_only_after_published_receipt_verifies(self):
+        failure = self.S / "draft_verify_fail"
+        failure.write_text("1")
+        line = self.stop_line(self.land(expect=1))
+        self.assertIn("published receipt could not be verified", line)
+        state = self.ghs()
+        self.assertTrue(state["prs"][0]["draft"])
+        self.assertNotIn("pr ready 77", state["calls"])
+        self.assertEqual(len(self.published()), 1)
+        published_body = state["prs"][0]["body"]
+        self.assertNotIn("Review receipt publication is in progress.", published_body)
+        failure.unlink()
+        result = self.raw()
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        state = self.ghs()
+        self.assertEqual(state["prs"][0]["body"], published_body)
+        calls = state["calls"]
+        self.assertEqual(calls.count("pr edit 77"), 1)
+        self.assertEqual(state["creates"], 1)
+        self.assertEqual(calls.count("RECEIPT publish"), 1)
+        self.assertLess(calls.index("RECEIPT publish"), calls.index("RECEIPT verify"))
+        self.assertLess(calls.index("RECEIPT verify"), calls.index("pr ready 77"))
+        self.assertEqual(calls.count("RECEIPT verify"), 2)
+        self.assertEqual(len(self.calls("gemini")), 1)
+
+    def test_changed_head_during_published_receipt_verification_stays_draft(self):
+        self.gh_state({"move_head_on_verify": True})
+        line = self.stop_line(self.land(expect=1))
+        self.assertIn("changed during receipt verification", line)
+        state = self.ghs()
+        self.assertTrue(state["prs"][0]["draft"])
+        self.assertNotIn("pr ready 77", state["calls"])
 
     def test_merge_is_refused_when_receipt_verify_fails(self):
         head = self.g("rev-parse", "HEAD")
