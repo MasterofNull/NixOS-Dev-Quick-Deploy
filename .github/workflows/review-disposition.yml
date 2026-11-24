@@ -15,7 +15,7 @@ name: review-disposition
 # checker reads the PR body and the receipts branch, not GitHub reviews.
 on:
   pull_request_target:
-    types: [opened, edited, synchronize, reopened]
+    types: [opened, edited, synchronize, reopened, ready_for_review]
 
 permissions:
   contents: read

@@ -789,30 +789,60 @@ class Land:
         i = next((n for n, l in enumerate(keep) if l.strip() == "## What"), None)
         if i is None:
             raise Stop("pr", "body file has no '## What' heading")
-        return "\n".join(keep[:i] + block + keep[i:]) + "\n"
+        prefix = "\n".join(keep[:i]).rstrip()
+        return "\n\n".join(part for part in (prefix, "\n".join(block + keep[i:])) if part) + "\n"
 
-    def stage_pr(self, rec, edit=True):
+    def stage_pr(self, rec):
         pr = self.find_pr()
-        bf = self.dir / "body.md"
-        bf.write_text(self.body(rec))
-        self.pr_created = pr is None
         if pr is None:
             if not self.a.title or not self.a.body_file:
                 raise Stop("pr", "no open PR: --title and --body-file are required to create one")
-            out = self.gh("pr", "create", "--base", "main", "--head", self.branch, "--title", self.a.title, "--body-file", str(bf)).stdout
+            bf = self.dir / "body.md"
+            body = self.body(rec)
+            bf.write_text(body)
+            draft_body = self.dir / "draft-body.md"
+            # The base workflow also needs an edited event during rollout, before it knows about ready_for_review.
+            draft_body.write_text(body + "\nReview receipt publication is in progress.\n")
+            out = self.gh("pr", "create", "--draft", "--base", "main", "--head", self.branch,
+                          "--title", self.a.title, "--body-file", str(draft_body)).stdout
             m = re.search(r"/pull/(\d+)", out) or re.search(r"(\d+)\s*$", out.strip())
             if not m:
                 raise Stop("pr", "could not read the PR number from gh pr create")
             n = int(m.group(1))
-            say(f"PR #{n} created")
+            say(f"PR #{n} created as draft")
         else:
             n = pr["number"]
-            live = self.ghjson("pr", "view", str(n), "--json", "body").get("body") or ""
-            if edit and live.strip() != bf.read_text().strip():
-                self.gh("pr", "edit", str(n), "--body-file", str(bf))
-                say(f"PR #{n} body updated for reviewed head {rec['head'][:9]}")
         self.save(pr=n)
         return n
+
+    def stage_ready(self, n, rec, head):
+        fields = "state,isDraft,headRefOid,body"
+        deadline = time.time() + min(300, env_int("AQ_LAND_CHECKS_TIMEOUT_S", 14400))
+        live = self.ghjson_poll(deadline, "pr", "view", str(n), "--json", fields)
+        if live["state"] == "MERGED":
+            return
+        if live["state"] != "OPEN" or live["headRefOid"] != head:
+            raise Stop("pr", f"PR #{n} is no longer open at expected head {head[:12]}")
+        body = self.body(rec)
+        bf = self.dir / "body.md"
+        if not bf.is_file() or bf.read_text() != body:
+            bf.write_text(body)
+        if (live.get("body") or "").strip() != body.strip():
+            self.gh("pr", "edit", str(n), "--body-file", str(bf))
+            say(f"PR #{n} body updated for reviewed head {rec['head'][:9]}")
+        if not live["isDraft"]:
+            return
+        r = run([self.receipt_tool, "verify", "--require-revocation-check", "--pr", str(n), "--head", rec["head"]],
+                cwd=self.W, check=False, stage="receipt", timeout=300)
+        if r.returncode != 0:
+            raise Stop("receipt", f"published receipt could not be verified for PR #{n}: {(r.stderr or r.stdout).strip()[:300]}")
+        live = self.ghjson_poll(deadline, "pr", "view", str(n), "--json", fields)
+        if (live["state"] != "OPEN" or live["headRefOid"] != head
+                or (live.get("body") or "").strip() != body.strip()):
+            raise Stop("pr", f"PR #{n} changed during receipt verification; resume aq-land to recheck it")
+        if live["isDraft"]:
+            self.gh("pr", "ready", str(n))
+            say(f"PR #{n} marked ready with verified published receipt")
 
     def stage_receipt(self, n, rec):
         key = f"{n}:{rec['head']}"
@@ -1103,9 +1133,10 @@ class Land:
             raise Stop("merge", "origin/main or the branch kept moving; re-run aq-land")
         self.check_owned(self.changed_paths(), recheck=True)
         self.stage_push(head, rec)
-        n = self.stage_pr(rec, edit=False)
+        n = self.stage_pr(rec)
         self.stage_receipt(n, rec)  # a body edit triggers review-disposition, which needs the receipt already published
-        return n if self.pr_created else self.stage_pr(rec)
+        self.stage_ready(n, rec, head)
+        return n
 
     def go(self):
         self.preflight()
@@ -1117,7 +1148,8 @@ class Land:
             self.adopt_remote_update()
         if self.settled(pr):
             say(f"resuming PR #{pr['number']}: pushed, reviewed and receipted")
-            n = self.stage_pr(self.cp["review"])
+            n = pr["number"]
+            self.stage_ready(n, self.cp["review"], self.head())
         else:
             with Lock(self.state_root / "lock", env_int("AQ_LAND_LOCK_WAIT_S", 7200), self.branch):
                 n = self.locked()
