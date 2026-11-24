@@ -157,8 +157,9 @@ def collect(delegation_dir: Path, receipts_dir: Path, repo: Path, only: set[int]
             c["quarantined"] += 1
             continue
         row = dict(rec, rejected_rounds=rec.get("request_changes_rounds", 0), files=files, merge_sha=meta["merge_sha"])
+        allowed_paths = {f["path"] for f in files} | {f["renamed_from"] for f in files if "renamed_from" in f}
         redacted, found = _redact(json.dumps(row, sort_keys=True))
-        found = found + scan(redacted)
+        found = found + scan(redacted, allowed_paths=allowed_paths)
         if found:
             reasons = sorted(set(found))
             q = {"pr": pr, "recorded_at": stamp, "reasons": reasons}

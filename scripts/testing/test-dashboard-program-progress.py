@@ -529,7 +529,7 @@ class StaticContractTests(unittest.TestCase):
     def test_phase0_registration(self) -> None:
         doc = text(PHASE0)
         self.assertIn('"0.10.40"', doc)
-        self.assertIn("results.extend(_check_dashboard_program_progress(ctx))", doc)
+        self.assertIn("plan.append(_check_dashboard_program_progress)", doc)
         self.assertIn('"--static-only"', doc)
 
     def test_live_verifier_regressions(self) -> None:

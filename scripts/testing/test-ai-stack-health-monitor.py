@@ -144,12 +144,23 @@ def main() -> int:
         captured["env"] = dict(env or {})
         return subprocess.CompletedProcess(cmd, 0, stdout='{"tests":[]}', stderr="")
 
+    import os
     original_run = monitor.subprocess.run
+    original_budget = os.environ.get("AQ_QA_PHASE0_BUDGET_S")
     try:
         monitor.subprocess.run = fake_run
         payload = monitor.run_aq_qa("0")
+        os.environ["AQ_QA_PHASE0_BUDGET_S"] = str(monitor._HARNESS_TIMEOUT_S + 200)
+        monitor.run_aq_qa("0")
+        clamped_budget = float(captured["env"]["AQ_QA_PHASE0_BUDGET_S"])
+        assert_true(0 < clamped_budget < monitor._HARNESS_TIMEOUT_S,
+                    f"oversized AQ_QA_PHASE0_BUDGET_S must clamp below {monitor._HARNESS_TIMEOUT_S}, got {clamped_budget}")
     finally:
         monitor.subprocess.run = original_run
+        if original_budget is None:
+            os.environ.pop("AQ_QA_PHASE0_BUDGET_S", None)
+        else:
+            os.environ["AQ_QA_PHASE0_BUDGET_S"] = original_budget
 
     assert_true(payload["tests"] == [], "run_aq_qa should parse JSON output")
     assert_true(payload["_monitor_returncode"] == 0, "run_aq_qa should preserve subprocess return code")

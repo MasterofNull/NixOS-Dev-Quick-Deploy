@@ -303,14 +303,128 @@ class Collector(unittest.TestCase):
         self.assertEqual((c["collected"], c["already_done"]), (1, 1), c)
         self.assertEqual(len(self.lines("trajectories.jsonl")), 1)
 
+    def test_j_long_changed_repo_path_exempt_from_entropy_while_slash_secret_quarantines(self) -> None:
+        r = self.repo
+        long_rel = "docs/harness-first/evidence/2026-11-15-deploy-validation.md"
+        self.assertEqual(col.scan(json.dumps({"path": long_rel})), ["entropy"],
+                         "precondition: bare scan flags this 59-char path as entropy > 4.0")
+        (r / long_rel).parent.mkdir(parents=True, exist_ok=True)
+        (r / long_rel).write_text("ok\n")
+        _git(r, "add", "-A")
+        _git(r, "commit", "-qm", "long-path")
+        long_head = _git(r, "rev-parse", "HEAD")
+        self.set_gh(self.head, long_head)
+        self.receipts(_receipt(60))
+        c = self.collect()
+        self.assertEqual((c["collected"], c["quarantined"]), (1, 0), c)
+        # A real base64-like secret containing '/' in another field still quarantines with entropy
+        slash_secret = "AbCdEfGhIjKlMnOpQrStUvWxYz012345/789+AbCdEf"
+        self.receipts(_receipt(61, author_lane=slash_secret))
+        c = self.collect()
+        self.assertEqual((c["collected"], c["quarantined"]), (0, 1), c)
+        q = [x for x in self.lines("trajectories.quarantine.jsonl") if x["pr"] == 61][0]
+        self.assertIn("entropy", q["reasons"])
+        # A matching high-entropy token in an unrelated field must NOT be exempted by changed files
+        self.receipts(_receipt(62, author_lane=long_rel))
+        c = self.collect()
+        self.assertEqual((c["collected"], c["quarantined"]), (0, 1), c)
+        q62 = [x for x in self.lines("trajectories.quarantine.jsonl") if x["pr"] == 62][0]
+        self.assertIn("entropy", q62["reasons"])
+        # Single-segment high-entropy filename (no '/') remains subject to entropy even when in allowed_paths
+        single_seg = "AbCdEfGhIjKlMnOpQrStUvWxYz0123456789"
+        self.assertEqual(col.scan(json.dumps({"files": [{"path": single_seg}]}), allowed_paths={single_seg}), ["entropy"])
+
+    def test_k_long_unicode_changed_path_and_renamed_from_exempt_while_unrelated_field_quarantines(self) -> None:
+        r = self.repo
+        uni_long = "caf\u00e9/docs/harness-first/evidence/2026-11-15-deploy-validation.md"
+        self.assertEqual(col.scan(json.dumps({"path": uni_long})), ["entropy"],
+                         "precondition: JSON escaping produces u00e9/docs/... with entropy > 4.0")
+        (r / uni_long).parent.mkdir(parents=True, exist_ok=True)
+        (r / uni_long).write_text("".join(f"line{i}\n" for i in range(20)))
+        _git(r, "add", "-A")
+        _git(r, "commit", "-qm", "unicode-long-path")
+        uni_head = _git(r, "rev-parse", "HEAD")
+        self.set_gh(self.head, uni_head)
+        self.receipts(_receipt(63))
+        c = self.collect()
+        self.assertEqual((c["collected"], c["quarantined"]), (1, 0), c)
+        row63 = [x for x in self.lines("trajectories.jsonl") if x["pr"] == 63][0]
+        self.assertEqual(row63["files"][0]["path"], uni_long)
+        # Same Unicode path in renamed_from must also be exempt at the verified field occurrence
+        (r / "docs/moved").mkdir(parents=True, exist_ok=True)
+        _git(r, "mv", uni_long, "docs/moved/note.md")
+        _git(r, "commit", "-qm", "rename-unicode-long-path")
+        rename_head = _git(r, "rev-parse", "HEAD")
+        self.set_gh(uni_head, rename_head)
+        self.receipts(_receipt(64))
+        c = self.collect()
+        self.assertEqual((c["collected"], c["quarantined"]), (1, 0), c)
+        row64 = [x for x in self.lines("trajectories.jsonl") if x["pr"] == 64][0]
+        self.assertEqual(row64["files"][0]["renamed_from"], uni_long)
+        # Same Unicode path appearing in an unrelated field must still be quarantined
+        self.receipts(_receipt(65, author_lane=uni_long))
+        c = self.collect()
+        self.assertEqual((c["collected"], c["quarantined"]), (0, 1), c)
+        q65 = [x for x in self.lines("trajectories.quarantine.jsonl") if x["pr"] == 65][0]
+        self.assertIn("entropy", q65["reasons"])
+
+    def test_l_high_entropy_nested_path_dir_and_renamed_from_quarantine(self) -> None:
+        r = self.repo
+        secret_tok = "AbCdEfGhIjKlMnOpQrStUvWxYz0123456789"
+        # 1) Nested filename containing an opaque high-entropy component must quarantine
+        nested_file = f"docs/nested/{secret_tok}.txt"
+        (r / nested_file).parent.mkdir(parents=True, exist_ok=True)
+        (r / nested_file).write_text("ok\n")
+        _git(r, "add", "-A")
+        _git(r, "commit", "-qm", "nested-secret-filename")
+        h1 = _git(r, "rev-parse", "HEAD")
+        self.set_gh(self.head, h1)
+        self.receipts(_receipt(66))
+        c = self.collect()
+        self.assertEqual((c["collected"], c["quarantined"]), (0, 1), c)
+
+        # 2) Directory component containing an opaque high-entropy token must quarantine
+        secret_dir = f"docs/Dir{secret_tok}/note.md"
+        (r / secret_dir).parent.mkdir(parents=True, exist_ok=True)
+        (r / secret_dir).write_text("ok\n")
+        _git(r, "add", "-A")
+        _git(r, "commit", "-qm", "nested-secret-dirname")
+        h2 = _git(r, "rev-parse", "HEAD")
+        self.set_gh(h1, h2)
+        self.receipts(_receipt(67))
+        c = self.collect()
+        self.assertEqual((c["collected"], c["quarantined"]), (0, 1), c)
+
+        # 3) Rename source (renamed_from) containing a high-entropy component must quarantine
+        rename_src = f"archive/Old{secret_tok}.md"
+        (r / rename_src).parent.mkdir(parents=True, exist_ok=True)
+        (r / rename_src).write_text("".join(f"line{i}\n" for i in range(20)))
+        _git(r, "add", "-A")
+        _git(r, "commit", "-qm", "seed-rename-src")
+        h3 = _git(r, "rev-parse", "HEAD")
+        (r / "docs/moved-clean").mkdir(parents=True, exist_ok=True)
+        _git(r, "mv", rename_src, "docs/moved-clean/target.md")
+        _git(r, "commit", "-qm", "rename-secret-src")
+        h4 = _git(r, "rev-parse", "HEAD")
+        self.set_gh(h3, h4)
+        self.receipts(_receipt(68))
+        c = self.collect()
+        self.assertEqual((c["collected"], c["quarantined"]), (0, 1), c)
+
+        self.assertEqual(self.lines("trajectories.jsonl"), [])
+        quar_by_pr = {x["pr"]: x for x in self.lines("trajectories.quarantine.jsonl")}
+        for pr in (66, 67, 68):
+            self.assertIn("entropy", quar_by_pr[pr]["reasons"])
+
 
 class ScanPathEntropy(unittest.TestCase):
-    """PR 788 false positive: long lowercase repo paths tripped the entropy heuristic and quarantined a clean row."""
+    """Long paths are exempt only at verified changed-file fields."""
 
-    def test_long_repo_paths_are_clean(self) -> None:
+    def test_unverified_long_repo_paths_remain_quarantined(self) -> None:
         txt = json.dumps({"path": "docs/harness-first/evidence/2026-11-15-deploy-validation"})
-        self.assertEqual(col.scan(txt), [])
-        self.assertEqual(col.scan('"agent/PROJECT-DEPLOY-VALIDATION-PRD" "agent/memory/deploy-validation-20261115"'), [])
+        self.assertEqual(col.scan(txt), ["entropy"])
+        self.assertEqual(col.scan('"agent/PROJECT-DEPLOY-VALIDATION-PRD" "agent/memory/deploy-validation-20261115"'),
+                         ["entropy"])
 
     def test_real_blobs_still_caught(self) -> None:
         self.assertEqual(col.scan("k=Zx9Qm3Lp7Tr2Vb8Nc5Kd1Hf6Gj4Sw0Ya+Ue/Ei=="), ["entropy"])

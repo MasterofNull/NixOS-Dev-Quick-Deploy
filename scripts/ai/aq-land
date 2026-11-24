@@ -814,6 +814,17 @@ class Land:
                     return name, "pass" if job.get("conclusion") in ("success", "neutral", "skipped") else "fail", run_id
         return name, "pending", run_id
 
+    def verify_receipt_before_merge(self, n, head):
+        """Re-verify the receipt against its recorded run (hash, content, lanes) and the revocation list; refuse on failure."""
+        rh = (self.cp.get("review") or {}).get("head") or head
+        f = self.dir / f"pr{n}-{rh[:12]}.json"
+        # No local receipt (resumed run): verify the published one; absent/unreadable/revoked fails closed.
+        target = [str(f)] if f.is_file() else ["--pr", str(n), "--head", rh]
+        r = run([self.receipt_tool, "verify", "--require-revocation-check", *target], cwd=self.W, check=False,
+                stage="merge", timeout=300)
+        if r.returncode != 0:
+            raise Stop("merge", f"receipt verify refused the merge: {(r.stderr or r.stdout).strip()[:300]}")
+
     def wait_and_merge(self, n, head):
         deadline = time.time() + env_int("AQ_LAND_CHECKS_TIMEOUT_S", 14400)
         repo = self.ghjson_poll(deadline, "repo", "view", "--json", "nameWithOwner")["nameWithOwner"]
@@ -871,6 +882,7 @@ class Land:
             if time.time() > deadline:
                 raise Stop("checks", "timed out waiting for: " + ", ".join(pending) + "; re-run aq-land to resume")
             time.sleep(poll)
+        self.verify_receipt_before_merge(n, head)
         self.gh("pr", "merge", str(n), "--squash", "--match-head-commit", head)
         v = self.ghjson_poll(deadline, "pr", "view", str(n), "--json", "state")
         if v["state"] != "MERGED":
