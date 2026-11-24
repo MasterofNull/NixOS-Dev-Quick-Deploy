@@ -25,6 +25,8 @@ The fast lane derives the package and version range from the manifest diff. For 
 
 Missing or malformed evidence makes the lane unavailable and sends the review to the next eligible lane. A substantive rejection still blocks. Multiple-package changes and unsupported manifest changes use the regular review path. Keep remediation that changes Nix deployment inputs on a maintainer branch so Dependabot can continue to manage its manifest branch.
 
+The fixes from `gemini-20261123-235136-a8wtgq` use one copy of the reviewer reply and parse its final upstream evidence section. Nested headings stay within the section. A heading at the same or higher level, a review trailer, or wrapper output ends it. Runtime validation accepts hyphenated flags and names while rejecting standalone negation. Dependency detection counts changed lines inside diff hunks, and an empty `AQ_LAND_DEP_LANES` defaults to Gemini followed by Codex. All 106 tests in `test-aq-land.py` passed.
+
 Hosted review and deployment acceptance are pending.
 
 ## Rollback Plan

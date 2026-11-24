@@ -96,10 +96,11 @@ body = {"cantrun": "I am unable to proceed: every command timed out. Please chec
         "unchanged_explicitly_changed": "## Upstream changes reviewed\n- Package and range: pkg 1.0 -> 2.0\n- Release notes: https://example.test/pkg/releases/2.0\n- Authority: Nix\n- Input path: flake.lock\n- Closure: unchanged\n- Closure evidence: git diff --no-index /tmp/closure-before /tmp/closure-after; differences found.\n",
         "arbitrary_closure": "## Upstream changes reviewed\n- Package and range: pkg 1.0 -> 2.0\n- Release notes: https://example.test/pkg/releases/2.0\n- Authority: Nix\n- Input path: flake.lock\n- Closure: unchanged\n- Closure evidence: lock input matched the deployed closure.\n",
         "wrong_package_range": "## Upstream changes reviewed\n- Package and range: other 1.0 -> 2.0\n- Release notes: https://example.test/pkg/releases/2.0\n- Authority: Nix\n- Input path: flake.lock\n- Closure: unchanged\n- Closure evidence: git diff --no-index /tmp/closure-before /tmp/closure-after; exit 0 (no differences).\n"}.get(mode, "## Upstream changes reviewed\n- Package and range: pkg 1.0 -> 2.0\n- Release notes: https://example.test/pkg/releases/2.0\n- Authority: Nix\n- Input path: flake.lock\n- Closure: unchanged\n- Closure evidence: git diff --no-index /tmp/closure-before /tmp/closure-after; exit 0 (no differences).\n")
-text = f"{body}Reviewed-head-sha: {shown}\nReview-Disposition: {verdict}\n"
-open(out, "w").write(text)
+body = c.get("body", body)
+trailers = f"Reviewed-head-sha: {shown}\nReview-Disposition: {verdict}\n"
+open(out, "w").write(body + trailers)
 print(f"Output file: {out}")
-print(text)
+print(c.get("stdout_body", body) + trailers)
 '''
 
 STUB_GH = r'''#!/usr/bin/env python3
@@ -711,12 +712,103 @@ class Lanes(Base):
 
 
 class DepFastLane(Base):
+    UPSTREAM_HEADING = "## Upstream changes reviewed\n"
+    UPSTREAM_FIELDS = (
+        "- Package and range: pkg 1.0 -> 2.0\n"
+        "- Release notes: https://example.test/pkg/releases/2.0\n"
+        "- Authority: Nix\n"
+        "- Input path: flake.lock\n"
+    )
+    UNCHANGED_EVIDENCE = (
+        "- Closure evidence: git diff --no-index /tmp/closure-before /tmp/closure-after; exit 0 (no differences).\n"
+    )
+
     def dep_branch(self, path="requirements.txt"):
         self.g("reset", "-q", "--hard", "origin/main")
         self.change(path, "pkg>=2.0\n")
 
     def cp(self):
         return json.loads(next((self.S / "state").glob("*/checkpoint.json")).read_text())
+
+    def assert_upstream_review(self, body, *, accepted, **delegate_options):
+        self.tearDown_state()
+        self.gh_state({})
+        self.cfg({"gemini": {"mode": "ok", "body": body, **delegate_options}, "codex": {"mode": "ok"}})
+        self.land("--author-lane", "dependabot", expect=0)
+        self.assertEqual(self.cp()["fast_lane"], "dependency-bump")
+        self.assertEqual(len(self.calls("gemini")), 1)
+        self.assertEqual(len(self.calls("codex")), 0 if accepted else 1)
+
+    def test_duplicated_reply_keeps_preamble_out_of_upstream_evidence(self):
+        self.dep_branch()
+        preamble = "Authority: Nix\n" + self.UNCHANGED_EVIDENCE.removeprefix("- ")
+        incomplete = self.UPSTREAM_HEADING + self.UPSTREAM_FIELDS + "- Closure: unchanged\n"
+        self.assert_upstream_review(preamble + incomplete + self.UNCHANGED_EVIDENCE, accepted=True)
+        self.assert_upstream_review(preamble + incomplete, accepted=False)
+
+    def test_output_file_supplies_evidence_when_stdout_differs(self):
+        self.dep_branch()
+        complete = self.UPSTREAM_HEADING + self.UPSTREAM_FIELDS + "- Closure: unchanged\n" + self.UNCHANGED_EVIDENCE
+        self.assert_upstream_review("Summary only.\n", accepted=False, stdout_body=complete)
+
+    def test_last_upstream_section_includes_subheadings(self):
+        self.dep_branch()
+        incomplete = self.UPSTREAM_HEADING + self.UPSTREAM_FIELDS + "- Closure: unchanged\n"
+        complete = (
+            self.UPSTREAM_HEADING + "### pkg 1.0 -> 2.0\n" + self.UPSTREAM_FIELDS
+            + "- Closure: unchanged\n" + self.UNCHANGED_EVIDENCE
+        )
+        self.assert_upstream_review(complete, accepted=True)
+        self.assert_upstream_review(incomplete + complete, accepted=True)
+        self.assert_upstream_review(complete + incomplete, accepted=False)
+
+    def test_upstream_evidence_stops_at_heading_trailer_or_wrapper(self):
+        self.dep_branch()
+        incomplete = self.UPSTREAM_HEADING + self.UPSTREAM_FIELDS + "- Closure: unchanged\n"
+        for boundary in ("## Findings", "Reviewed-by: Gemini", "[delegate-to-gemini] done", "Output file: review.log"):
+            with self.subTest(boundary=boundary):
+                self.assert_upstream_review(incomplete + boundary + "\n" + self.UNCHANGED_EVIDENCE, accepted=False)
+
+    def test_deployed_runtime_distinguishes_flags_and_names_from_negation(self):
+        self.dep_branch()
+        changed = self.UPSTREAM_HEADING + self.UPSTREAM_FIELDS + (
+            "- Closure: changed\n"
+            "- Closure evidence: nix store diff-closures /nix/store/old /nix/store/new; differences found.\n"
+        )
+        for runtime, accepted in (
+            ("systemctl --no-pager is-active ai-hybrid-coordinator.service", True),
+            ("nix build --no-write-lock-file .#runtime", True),
+            ("systemctl --no-legend is-active ai-no-cache-not-ready.service", True),
+            ("no deployed service was run", False),
+            ("systemctl is-active pkg.service (no check performed)", False),
+            ("not run", False),
+        ):
+            with self.subTest(runtime=runtime):
+                self.assert_upstream_review(
+                    changed + f"- Deployed runtime: {runtime}\n- Runtime result: passed\n",
+                    accepted=accepted,
+                )
+
+    def test_empty_dependency_lanes_uses_default_remote_order(self):
+        self.dep_branch()
+        self.env["AQ_LAND_DEP_LANES"] = ""
+        self.cfg({"gemini": {"mode": "cap"}, "codex": {"mode": "ok"}, "local": {"mode": "ok"}})
+        self.land("--author-lane", "dependabot", expect=0)
+        self.assertEqual(self.cp()["fast_lane"], "dependency-bump")
+        self.assertEqual(len(self.calls("gemini")), 1)
+        self.assertEqual(len(self.calls("codex")), 1)
+        self.assertEqual(self.calls("local"), [])
+
+    def test_dependency_lane_exhaustion_stops_without_local(self):
+        self.dep_branch()
+        self.env["AQ_LAND_DEP_LANES"] = ""
+        self.cfg({"gemini": {"mode": "cap"}, "codex": {"mode": "cap"}, "local": {"mode": "ok"}})
+        r = self.land("--author-lane", "dependabot", expect=1)
+        self.assertIn("STOP review: no eligible independent lane", self.stop_line(r))
+        self.assertEqual(self.cp()["fast_lane"], "dependency-bump")
+        self.assertEqual(len(self.calls("gemini")), 1)
+        self.assertEqual(len(self.calls("codex")), 1)
+        self.assertEqual(self.calls("local"), [])
 
     def test_dependabot_manifest_only_uses_fast_lane(self):
         self.dep_branch()
@@ -757,6 +849,22 @@ class DepFastLane(Base):
         self.assertIn("fast-lane: ambiguous or unsupported dependency diff, normal review path", r.stdout)
         self.assertEqual(self.cp().get("fast_lane", ""), "")
         self.assertNotIn("Upstream changes reviewed", (self.S / "prompt-gemini.txt").read_text())
+
+    def test_header_like_lines_in_hunk_use_normal_review_path(self):
+        self.g("checkout", "-q", "main")
+        self.change("requirements.txt", "pkg>=1.0\n-- extra\n")
+        self.g("push", "-q", "origin", "main")
+        self.g("checkout", "-q", "feat/x")
+        for updated in ("pkg>=2.0\n", "pkg>=2.0\n++ extra\n-- extra\n"):
+            with self.subTest(requirements=updated):
+                self.tearDown_state()
+                self.gh_state({})
+                self.g("reset", "-q", "--hard", "origin/main")
+                self.change("requirements.txt", updated)
+                self.cfg({"gemini": {"mode": "ok"}})
+                r = self.land("--author-lane", "dependabot", expect=0)
+                self.assertIn("fast-lane: ambiguous or unsupported dependency diff, normal review path", r.stdout)
+                self.assertEqual(self.cp()["fast_lane"], "")
 
     def test_evidence_package_and_range_must_match_actual_diff(self):
         self.dep_branch()
