@@ -4,61 +4,236 @@
     "title": "Experience capture: per model/agent/role/version tracking with recency+version weighting",
     "prd_ref": ".agents/plans/experience-capture-20261119/DESIGN.md",
     "owner": "hyperd",
-    "goal": "Extend agent-run-events with a dispatch->review->outcome->landing join, prompt/payload fingerprints and model identity, and read it through a decayed, version-weighted score used for advisory routing, reports and divergence alerts.",
+    "goal": "Baseline and measure learning loops, feature activations and improvement cycles; extend agent-run-events with a dispatch->review->outcome->landing join and read it through decayed, LCB-ranked per-cell cards used for advisory routing and reports.",
     "success_criteria": [
-      "Reviewer role compared across two real models with joined outcomes and weighting (J1-J7)",
-      "Unknown/non-agent outcomes never change a score (learning-attribution gate)"
+      "Baseline snapshot taken before activation; each feature/loop/cycle reports improved, no demonstrated change or no_baseline (J0)",
+      "Reviewer role compared across two real models with joined outcomes and reviewer_s per D5b (J1-J7)",
+      "Unknown/non-agent outcomes never change a score (learning-attribution gate, one eligibility predicate)",
+      "Efficiency metric flags concentrated contributors and shows attributed vs infrastructure failures"
     ]
   },
   "phases": [
-    {"id": "P0", "name": "Freeze", "goal": "Frozen PRD and owner decisions", "order": 0},
-    {"id": "P1", "name": "Capture", "goal": "Emit and join records", "order": 1},
-    {"id": "P2", "name": "Read", "goal": "Weighted cards and consumers", "order": 2},
-    {"id": "P3", "name": "Scale", "goal": "Retention and replay", "order": 3}
+    {
+      "id": "P0",
+      "name": "Freeze",
+      "goal": "Frozen rev2 PRD and owner decisions 1-4",
+      "order": 0
+    },
+    {
+      "id": "P1",
+      "name": "Measure and capture (MVP)",
+      "goal": "Baseline snapshot, emit, join",
+      "order": 1
+    },
+    {
+      "id": "P2",
+      "name": "Read (MVP)",
+      "goal": "Cards, efficiency metric, consumers",
+      "order": 2
+    },
+    {
+      "id": "P3",
+      "name": "Post-MVP",
+      "goal": "Wrappers, priors, rollup, alerts, exploration, routing",
+      "order": 3
+    }
   ],
   "items": [
-    {"id": "EC-0", "name": "Freeze PRD and owner decisions", "phase": "P0", "kind": "milestone",
-     "goal": "Independent scrutiny of formula and join design; owner answers decisions 1-9.",
-     "validation_goal": "PLAN_READY recorded with owner answers.",
-     "deps": [], "detection": {"freeze_record": ".agents/plans/experience-capture-20261119/DESIGN.md"}},
-    {"id": "EC-1", "name": "Emit lib with fingerprint and redaction", "phase": "P1", "kind": "slice",
-     "goal": "experience_emit over make_event: prompt_sha256, template version, manifest hash, model params, quota_window type, redacted sidecar, fail-open kill switch.",
-     "validation_goal": "Unit tests incl. synthetic-secret quarantine; real emit from one dispatch.",
-     "deps": ["EC-0"], "detection": {"commit_match": ["experience-capture", "experience_emit"]}},
-    {"id": "EC-2", "name": "Wire delegate wrappers", "phase": "P1", "kind": "slice",
-     "goal": "delegate-to-* and fanout emit events with dispatch_id==run_id, model id, tokens, wall time, quota windows.",
-     "validation_goal": "Real dispatches on two lanes produce complete J1 chains.",
-     "deps": ["EC-1"], "detection": {"wired_caller": {"file": "scripts/ai/delegate-to-codex", "pattern": "experience_emit"}}},
-    {"id": "EC-3", "name": "Join review receipt and landing outcome", "phase": "P1", "kind": "slice",
-     "goal": "aq-review-receipt review event; record_landing author_run_id, review_run_ids, redo/revert links; aq-land plumbing.",
-     "validation_goal": "A real PR landing yields a full prompt->review->outcome->landing chain (J2).",
-     "deps": ["EC-2"], "detection": {"wired_caller": {"file": "scripts/ai/lib/outcome_receipt.py", "pattern": "author_run_id"}}},
-    {"id": "EC-4", "name": "Weighted experience cards", "phase": "P2", "kind": "slice",
-     "goal": "experience_cards.py + config/experience-weighting.json implementing decay, version multiplier, shrinkage, confidence, LA gate.",
-     "validation_goal": "Hand recomputation matches; unknown outcomes leave score unchanged; new version starts low-trust (J3-J5).",
-     "deps": ["EC-3"], "detection": {"commit_match": ["experience_cards"]}},
-    {"id": "EC-5", "name": "Rollup and retention", "phase": "P3", "kind": "slice",
-     "goal": "Daily rollup and verified compression of raw events older than 90 days; no deletion.",
-     "validation_goal": "Rollup totals equal raw totals for a real month; measured size drop; restore test.",
-     "deps": ["EC-3"], "detection": {"commit_match": ["experience-rollup"]}},
-    {"id": "EC-6", "name": "Consumers: report, dashboard, hints, divergence alerts", "phase": "P2", "kind": "slice",
-     "goal": "aq-report Experience section, dashboard route, advisory aq-hints line, divergence alert job.",
-     "validation_goal": "Live aq-report and dashboard show real cards; alert path exercised (J6).",
-     "deps": ["EC-4"], "detection": {"wired_caller": {"file": "scripts/ai/aq-report", "pattern": "experience_cards"}}},
-    {"id": "EC-6b", "name": "Version priors and release-note intake", "phase": "P2", "kind": "slice",
-     "goal": "Version-change detector, sourced version_priors record from vendor release notes, discounted carry-over prior, stale-assumption flag.",
-     "validation_goal": "Real or replayed version change yields a sourced prior shown as prior-driven on the card (J8).",
-     "deps": ["EC-4"], "detection": {"commit_match": ["version_priors", "release-note intake"]}},
-    {"id": "EC-6c", "name": "Experiment engine with bounded exploration", "phase": "P2", "kind": "slice",
-     "goal": "experiments.jsonl, fail-closed emitter validation, epsilon-greedy selector with allow-list and gate exclusions, promotion rule, versioned setting_change with one-command revert, gain/degradation detector.",
-     "validation_goal": "Real bounded experiment with hypothesis/metric/min sample/stop rule; gate task type refused; revert verified (J9, J10).",
-     "deps": ["EC-6", "EC-6b"], "detection": {"commit_match": ["experiment engine", "setting_change"]}},
-    {"id": "EC-7", "name": "Cross-model replay and per-instance cards", "phase": "P3", "kind": "slice",
-     "goal": "aq-prompt-eval --replay across lanes; optional routing weights after owner decision.",
-     "validation_goal": "Replay on two lanes writes comparable experiment_id rows.",
-     "deps": ["EC-6c"], "detection": {"commit_match": ["prompt-eval replay"]}}
+    {
+      "id": "EC-0",
+      "name": "Freeze rev2 PRD and owner decisions",
+      "phase": "P0",
+      "kind": "milestone",
+      "goal": "Independent re-review of rev2 by non-author eligible lanes; owner answers decisions 1-4.",
+      "validation_goal": "PLAN_READY recorded with lane substitutions noted.",
+      "deps": [],
+      "detection": {
+        "freeze_record": ".agents/plans/experience-capture-20261119/DESIGN.md"
+      }
+    },
+    {
+      "id": "EC-M1",
+      "name": "Baseline snapshot and metric-trust checks",
+      "phase": "P1",
+      "kind": "slice",
+      "goal": "aq-baseline snapshot over existing producers; concentration flag; attributed vs infrastructure split; measurement objects in tracker.json and ACTIVATION-AUDIT; pm-tracker reports no_baseline.",
+      "validation_goal": "Reproduces 0.422 delegation success and git-archive 55.7% concentration; idempotent rerun (J0).",
+      "deps": [
+        "EC-0"
+      ],
+      "detection": {
+        "commit_match": [
+          "aq-baseline"
+        ]
+      }
+    },
+    {
+      "id": "EC-C1",
+      "name": "Capture lib, sanitizer, codex+gemini wrappers",
+      "phase": "P1",
+      "kind": "slice",
+      "goal": "experience_emit over make_event; spool/flock/0600/token-redaction fixes; prompt-safe sanitizer and gitignore; model/quota fields; codex and gemini foreground+background wrappers and quota fallback emit.",
+      "validation_goal": "Real dispatches on two lanes give complete prompt_load+model_call; secret quarantined hash-only (J1, J7).",
+      "deps": [
+        "EC-0"
+      ],
+      "detection": {
+        "wired_caller": {
+          "file": "scripts/ai/delegate-to-codex",
+          "pattern": "experience_emit"
+        }
+      }
+    },
+    {
+      "id": "EC-C2",
+      "name": "Join review receipt, author and reviewer outcomes",
+      "phase": "P1",
+      "kind": "slice",
+      "goal": "review event; D5/D5b outcomes; author_run_ids[]/reviewed_run_ids[]; redo/revert links; idempotent event_id and supersession; aq-land plumbing.",
+      "validation_goal": "Real landing yields full chain; repeated same-head review collapses to one outcome plus waste (J2, J4).",
+      "deps": [
+        "EC-C1"
+      ],
+      "detection": {
+        "wired_caller": {
+          "file": "scripts/ai/lib/outcome_receipt.py",
+          "pattern": "author_run_ids"
+        }
+      }
+    },
+    {
+      "id": "EC-M3",
+      "name": "Cards, efficiency metric, report/dashboard/QA/hints",
+      "phase": "P2",
+      "kind": "slice",
+      "goal": "experience_cards.py, experience-weighting.json, one is_learning_eligible, aq-report section, dashboard route+card, aq-qa CheckResult, advisory hint, trustworthy efficiency metric.",
+      "validation_goal": "Hand recomputation to 3 decimals; unknown outcome leaves S unchanged; live report (J3, J5, J6).",
+      "deps": [
+        "EC-C2",
+        "EC-M1"
+      ],
+      "detection": {
+        "wired_caller": {
+          "file": "scripts/ai/aq-report",
+          "pattern": "experience_cards"
+        }
+      }
+    },
+    {
+      "id": "EC-P1",
+      "name": "Wire claude, local and fanout wrappers",
+      "phase": "P3",
+      "kind": "slice",
+      "goal": "Remaining delegate wrappers emit with dispatch_id==run_id.",
+      "validation_goal": "Real dispatches on each lane give J1 chain.",
+      "deps": [
+        "EC-C2"
+      ],
+      "detection": {
+        "commit_match": [
+          "experience_emit claude",
+          "experience_emit local"
+        ]
+      }
+    },
+    {
+      "id": "EC-P2",
+      "name": "Version priors and release-note intake",
+      "phase": "P3",
+      "kind": "slice",
+      "goal": "Version-change detector, sourced version_priors, carry-over prior, stale-assumption flag.",
+      "validation_goal": "Real or replayed version change yields a sourced prior-driven cell (J8).",
+      "deps": [
+        "EC-M3"
+      ],
+      "detection": {
+        "commit_match": [
+          "version_priors"
+        ]
+      }
+    },
+    {
+      "id": "EC-P5",
+      "name": "Rollup and retention",
+      "phase": "P3",
+      "kind": "slice",
+      "goal": "Daily rollup with sufficient statistics and quantile buckets, immutable cutover, verified compression of raw events over 90 days.",
+      "validation_goal": "Rollup totals equal raw totals for a real month; size drop measured; restore test.",
+      "deps": [
+        "EC-M3"
+      ],
+      "detection": {
+        "commit_match": [
+          "experience-rollup"
+        ]
+      }
+    },
+    {
+      "id": "EC-P6",
+      "name": "Divergence alerts, replay, per-instance cards",
+      "phase": "P3",
+      "kind": "slice",
+      "goal": "Divergence alert job, aq-prompt-eval --replay, instance cards at n>=10.",
+      "validation_goal": "Replay on two lanes writes comparable rows; alert or honest none.",
+      "deps": [
+        "EC-M3"
+      ],
+      "detection": {
+        "commit_match": [
+          "prompt-eval replay"
+        ]
+      }
+    },
+    {
+      "id": "EC-P3",
+      "name": "Experiment engine with bounded exploration",
+      "phase": "P3",
+      "kind": "slice",
+      "goal": "experiments.jsonl, atomic slot reservation, epsilon-greedy selector, promotion, setting_change with revert. Not started until owner decision on a non-empty eligible list (Rule 23).",
+      "validation_goal": "Bounded experiment, gate task refused, revert verified (J9, J10).",
+      "deps": [
+        "EC-M3",
+        "EC-P2"
+      ],
+      "detection": {
+        "commit_match": [
+          "experiment engine",
+          "setting_change"
+        ]
+      }
+    },
+    {
+      "id": "EC-P7",
+      "name": "Routing weights and automatic promotion",
+      "phase": "P3",
+      "kind": "slice",
+      "goal": "Optional enforcement after 30 days of data and independent review.",
+      "validation_goal": "Owner decision recorded.",
+      "deps": [
+        "EC-P3"
+      ],
+      "detection": {
+        "commit_match": [
+          "routing weights"
+        ]
+      }
+    }
   ],
   "issues": [
-    {"title": "Feature freeze scope", "sev": "med", "note": "Confirm telemetry work is allowed during system-integrity-recovery freeze (owner decision 1)."}
+    {
+      "title": "Feature freeze scope",
+      "sev": "med",
+      "note": "Owner decision 1: confirm measurement and capture slices are allowed during system-integrity-recovery freeze."
+    },
+    {
+      "title": "Reviewer adjudication window and trailers",
+      "sev": "med",
+      "note": "Owner decision 3."
+    },
+    {
+      "title": "Exploration-eligible task types",
+      "sev": "low",
+      "note": "Owner decision 4; blocks EC-P3."
+    }
   ]
 }
