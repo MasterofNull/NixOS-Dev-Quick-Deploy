@@ -217,11 +217,14 @@ def cmd_promote(args: argparse.Namespace) -> int:
         "expires_at": _iso(now + timedelta(days=ttl_days)),
         "evidence": args.evidence,
     }
-    if args.capability_note:
-        entry["capability_note"] = args.capability_note
-
     lanes = registry.setdefault("lanes", {})
     lane_entry = lanes.setdefault(args.lane, {})
+    prior = lane_entry.get("eligible", {}).get(args.role) or {}
+    # A renewal without --capability-note keeps the measured envelope; dropping
+    # it would silently widen what the lane is trusted to do.
+    note = args.capability_note or prior.get("capability_note")
+    if note:
+        entry["capability_note"] = note
     lane_entry.setdefault("eligible", {})[args.role] = entry
     # Promotion is an affirmative earned grant; a fresh promote clears any
     # prior hard-ineligible block for the same lane+role so re-earning
