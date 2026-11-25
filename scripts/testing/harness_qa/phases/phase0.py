@@ -584,8 +584,16 @@ def _check_flagship_cli(ctx: RunContext) -> list[CheckResult]:
         primary_home=ctx.primary_home,
         canonical=True,
     )
-    factory = passed if all(item["result"] == "pass" for item in aggregate) else failed
-    result = factory(7, "0.6.1", "flagship agent CLI help smokes")
+    bad = [item for item in aggregate if item.get("result") != "pass"]
+    if bad:
+        detail = "; ".join(
+            f"{item.get('provider_id')}={item.get('failure_class')}(exit {item.get('exit_code')}): "
+            f"{str(item.get('stderr_summary') or '')[:80]}"
+            for item in bad
+        )[:240]
+        result = failed(7, "0.6.1", "flagship agent CLI help smokes", detail)
+    else:
+        result = passed(7, "0.6.1", "flagship agent CLI help smokes")
     result.details = aggregate
     results.append(result)
     return results
@@ -3324,7 +3332,8 @@ def _check_factory_readiness_preflight(ctx: RunContext) -> list[CheckResult]:
             capture_output=True, text=True, timeout=300,
         )
         if probe.returncode:
-            return [failed(5, "0.10.50", description, f"fixture exit {probe.returncode}")]
+            tail = (probe.stderr or probe.stdout or "").strip()[-200:]
+            return [failed(5, "0.10.50", description, f"fixture exit {probe.returncode}: {tail}")]
         prefix = "AQ_QA_FACTORY_READINESS_FIXTURE="
         markers = [line[len(prefix):] for line in probe.stdout.splitlines() if line.startswith(prefix)]
         if len(markers) != 1:

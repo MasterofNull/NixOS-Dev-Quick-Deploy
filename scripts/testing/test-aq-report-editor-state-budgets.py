@@ -61,6 +61,7 @@ def main() -> int:
         obsolete_path = root / ".vscode-oss" / "extensions" / ".obsolete"
         obsolete_path.parent.mkdir(parents=True, exist_ok=True)
         obsolete_path.write_text(json.dumps({"openai.chatgpt-0.5.80": True}), encoding="utf-8")
+        (obsolete_path.parent / "openai.chatgpt-0.5.80").mkdir()
 
         vscodium_db = root / ".config" / "VSCodium" / "User" / "globalStorage" / "state.vscdb"
         _write_vscodium_state(vscodium_db)
@@ -87,6 +88,13 @@ def main() -> int:
         failing_ids = {item.get("id") for item in budget.get("checks") or [] if item.get("status") == "FAIL"}
         assert_true("continue_hot_corpus" in failing_ids, "expected Continue hot corpus failure")
         assert_true("obsolete_ai_markers" in failing_ids, "expected stale obsolete marker failure")
+
+        # Marker whose extension dir is already gone is inert -> PASS.
+        (obsolete_path.parent / "openai.chatgpt-0.5.80").rmdir()
+        gone = aq_report.editor_state_budget_health()
+        gone_status = {item.get("id"): item.get("status") for item in gone.get("checks") or []}
+        assert_true(gone_status.get("obsolete_ai_markers") == "PASS", "marker with absent dir must not be actionable")
+        (obsolete_path.parent / "openai.chatgpt-0.5.80").mkdir()
 
         payload = json.loads(
             aq_report.format_json(

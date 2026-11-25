@@ -119,7 +119,7 @@ def main() -> int:
         probe_path.parent.mkdir(parents=True, exist_ok=True)
         probe_path.write_text(
             "def run_provider_probe(**kwargs):\n"
-            "    return [{'provider_id': 'codex', 'result': 'fail'}]\n",
+            "    return [{'provider_id': 'codex', 'result': 'fail', 'failure_class': 'nonzero_exit', 'exit_code': 3, 'stderr_summary': 'boom'}]\n",
             encoding="utf-8",
         )
         orig_run = phase0.subprocess.run
@@ -150,6 +150,8 @@ def main() -> int:
             check(len(sched_cli) == 2, f"split flagship/gemini checks yield 2 results: {len(sched_cli)}")
             check(sched_cli[0].id == "0.6.1" and sched_cli[0].status == Status.FAIL,
                   f"0.6.1 CLI smoke failure must survive stalled 0.6.2 under scheduler: {sched_cli[0]}")
+            check("codex=nonzero_exit(exit 3): boom" in sched_cli[0].reason,
+                  f"0.6.1 failure must carry provider detail: {sched_cli[0].reason!r}")
             check(sched_cli[1].status == Status.SKIP and "DEGRADED:" in sched_cli[1].reason,
                   f"stalled 0.6.2 must degrade independently: {sched_cli[1]}")
 
