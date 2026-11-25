@@ -31,6 +31,7 @@ import argparse
 import json
 import os
 import re
+import socket
 import sys
 import time
 import urllib.error
@@ -68,6 +69,15 @@ LLM_CALL_MAX_TOKENS = int(os.getenv("AQ_PROMPT_EVAL_MAX_TOKENS", "128"))
 # TimeoutStartSec (1h) while each abandoned request keeps the slot busy for everyone else.
 MAX_CONSECUTIVE_ERRORS = int(os.getenv("AQ_PROMPT_EVAL_MAX_CONSECUTIVE_ERRORS", "3"))
 RUN_DEADLINE_S = float(os.getenv("AQ_PROMPT_EVAL_DEADLINE_S", "3000"))
+
+
+EX_TEMPFAIL = 75  # unit declares this in SuccessExitStatus: a saturated backend defers the run, it is not a failure
+
+
+def _is_timeout(exc: BaseException) -> bool:
+    if isinstance(exc, (TimeoutError, socket.timeout)):
+        return True
+    return isinstance(exc, urllib.error.URLError) and isinstance(exc.reason, (TimeoutError, socket.timeout))
 
 
 class BackendBusy(Exception):
@@ -566,6 +576,8 @@ def run_eval(
     results_summary: List[dict] = []
     exit_code = 0
     consecutive_errors = 0
+    consecutive_timeouts = 0
+    deferred = False
     deadline = time.monotonic() + RUN_DEADLINE_S
     aborted = ""
 
@@ -609,11 +621,17 @@ def run_eval(
                     print(f"  ERROR {pid} / {ft.name}: {exc}", file=sys.stderr)
                     transport_error = True
                     consecutive_errors += 1
+                    consecutive_timeouts = consecutive_timeouts + 1 if _is_timeout(exc) else 0
+                    if consecutive_timeouts >= MAX_CONSECUTIVE_ERRORS:
+                        deferred = True
+                        aborted = f"{consecutive_timeouts} consecutive timeouts (inference saturated)"
+                        break
                     if consecutive_errors >= MAX_CONSECUTIVE_ERRORS:
                         aborted = f"{consecutive_errors} consecutive transport errors; backend busy or down"
                         break
                     continue
                 consecutive_errors = 0
+                consecutive_timeouts = 0
 
                 extracted = fe.extract_code_block(response)
                 passed, failures = fe.execute_functional_check(extracted, ft.check_script)
@@ -646,11 +664,17 @@ def run_eval(
                     print(f"  ERROR {pid} / {tc.description}: {exc}", file=sys.stderr)
                     transport_error = True
                     consecutive_errors += 1
+                    consecutive_timeouts = consecutive_timeouts + 1 if _is_timeout(exc) else 0
+                    if consecutive_timeouts >= MAX_CONSECUTIVE_ERRORS:
+                        deferred = True
+                        aborted = f"{consecutive_timeouts} consecutive timeouts (inference saturated)"
+                        break
                     if consecutive_errors >= MAX_CONSECUTIVE_ERRORS:
                         aborted = f"{consecutive_errors} consecutive transport errors; backend busy or down"
                         break
                     continue
                 consecutive_errors = 0
+                consecutive_timeouts = 0
 
                 passed, failures = score_response(tc, response)
                 case_results.append(passed)
@@ -684,6 +708,11 @@ def run_eval(
         elif transport_error:
             print(f"  SKIP  {pid:<40} registry update skipped due to runtime/transport errors")
 
+    if deferred:
+        print(f"aq-prompt-eval: deferring after {consecutive_timeouts} consecutive timeouts (inference saturated); exit {EX_TEMPFAIL}", file=sys.stderr)
+        if not dry_run and state_dirty:
+            write_eval_state(state_path, eval_state)
+        return EX_TEMPFAIL
     if aborted:
         print(f"  ABORT {aborted}; remaining prompts not evaluated (exit 1 so the failure stays visible)", file=sys.stderr)
         exit_code = 1
