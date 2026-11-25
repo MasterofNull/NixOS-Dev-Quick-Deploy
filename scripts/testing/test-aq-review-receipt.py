@@ -780,6 +780,19 @@ class T(unittest.TestCase):
         self.assertEqual(bad.returncode, 0, bad.stdout + bad.stderr)
         self.assertIn("WARN", bad.stdout)
 
+    def test_instructed_review_format_is_substantive_and_one_sentence_is_not(self):
+        import importlib.machinery, importlib.util
+        loader = importlib.machinery.SourceFileLoader("aq_review_receipt_mod", str(TOOL))
+        spec = importlib.util.spec_from_loader(loader.name, loader)
+        assert spec is not None
+        mod = importlib.util.module_from_spec(spec)
+        loader.exec_module(mod)
+        trailers = "Reviewed-head-sha: abc\nReview-Disposition: PASS\n"
+        ok = "## Findings\nNo findings.\nReviewed files: scripts/ai/aq-land scripts/testing/test-aq-land.py\n" + trailers
+        self.assertTrue(mod.substantive(ok))
+        self.assertTrue(mod.substantive("## Findings\n- high scripts/ai/aq-land:10 - bug\n" + trailers))
+        self.assertFalse(mod.substantive("The change looks correct to me.\n" + trailers))
+
 
 if __name__ == "__main__":
     unittest.main()
