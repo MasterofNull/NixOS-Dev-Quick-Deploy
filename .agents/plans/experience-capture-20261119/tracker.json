@@ -72,10 +72,10 @@
       "name": "Capture lib, sanitizer, codex+gemini wrappers",
       "phase": "P1",
       "kind": "slice",
-      "goal": "experience_emit over make_event; spool/flock/0600/token-redaction fixes; prompt-safe sanitizer and gitignore; model/quota fields; codex and gemini foreground+background wrappers and quota fallback emit.",
+      "goal": "experience_emit over make_event; spool/flock/0600/token-redaction fixes; prompt-safe sanitizer and gitignore; model/quota fields; codex and gemini foreground+background wrappers and quota fallback emit. Depends on a dated baseline snapshot existing before merge.",
       "validation_goal": "Real dispatches on two lanes give complete prompt_load+model_call; secret quarantined hash-only (J1, J7).",
       "deps": [
-        "EC-0"
+        "EC-M1"
       ],
       "detection": {
         "wired_caller": {
@@ -106,7 +106,7 @@
       "name": "Cards, efficiency metric, report/dashboard/QA/hints",
       "phase": "P2",
       "kind": "slice",
-      "goal": "experience_cards.py, experience-weighting.json, one is_learning_eligible, aq-report section, dashboard route+card, aq-qa CheckResult, advisory hint, trustworthy efficiency metric.",
+      "goal": "experience_cards.py, experience-weighting.json, one is_learning_eligible, aq-report section, dashboard route+card, aq-qa CheckResult, advisory hint, trustworthy efficiency metric. Ranking deferred (EC-P8).",
       "validation_goal": "Hand recomputation to 3 decimals; unknown outcome leaves S unchanged; live report (J3, J5, J6).",
       "deps": [
         "EC-C2",
@@ -210,11 +210,28 @@
       "goal": "Optional enforcement after 30 days of data and independent review.",
       "validation_goal": "Owner decision recorded.",
       "deps": [
-        "EC-P3"
+        "EC-P3",
+        "EC-P8"
       ],
       "detection": {
         "commit_match": [
           "routing weights"
+        ]
+      }
+    },
+    {
+      "id": "EC-P8",
+      "name": "Calibrated ranking",
+      "phase": "P3",
+      "kind": "slice",
+      "goal": "Introduce a rank value only after an interval is calibrated for the scoring unit (distinct reviewed work item) on real data; then the advisory ranked hint.",
+      "validation_goal": "Coverage check on real or replayed data shows nominal coverage; ranking used only if it passes.",
+      "deps": [
+        "EC-M3"
+      ],
+      "detection": {
+        "commit_match": [
+          "calibrated ranking"
         ]
       }
     }
