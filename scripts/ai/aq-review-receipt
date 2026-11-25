@@ -186,13 +186,14 @@ def _ts(v):
 def substantive(text: str) -> bool:
     """Deterministic content floor: a findings section, a no-findings statement that names reviewed
     paths, or enough review prose. Headers/metadata lines do not count toward the length."""
-    if re.search(r"^#{1,4}[ \t]*(findings|issues|defects)\b|^findings[ \t]*:", text, re.I | re.M):
-        return True
-    if re.search(r"\bno (blocking )?(findings|issues|defects)\b", text, re.I) and \
-            re.search(r"[\w.-]+(?:/[\w.-]+){2,}|[\w.-]+/[\w.-]+\.\w{1,6}\b", text):
-        return True
+    path_re = r"[\w.-]+(?:/[\w.-]+){2,}|[\w.-]+/[\w.-]+\.\w{1,6}\b"
     body = "\n".join(l for l in text.splitlines()
                      if not re.match(r"^(Reviewer|Timestamp|Reviewed-[\w-]+|Author-lane|Review-Disposition)[ \t]*:", l))
+    head = re.search(r"^#{1,4}[ \t]*(findings|issues|defects)\b|^findings[ \t]*:", body, re.I | re.M)
+    if head and re.search(path_re, body[head.end():]):
+        return True  # a bare heading plus a pathless approval sentence must not mint a receipt
+    if re.search(r"\bno (blocking )?(findings|issues|defects)\b", text, re.I) and re.search(path_re, text):
+        return True
     return len(body.strip()) >= MIN_REVIEW_BYTES
 
 

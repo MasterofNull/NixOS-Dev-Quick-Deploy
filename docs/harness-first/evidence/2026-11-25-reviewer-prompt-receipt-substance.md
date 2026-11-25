@@ -34,3 +34,7 @@ The format is advisory to the model; a reviewer that ignores it still fails mint
 ## Hint Feedback
 
 The mint requirement was not visible from the prompt side; prompt and gate now state the same contract.
+
+## Addendum: heading-only bypass closed
+
+Codex review codex-20261125-144106-n1ab6o (REQUEST_CHANGES) found that `substantive()` in `scripts/ai/aq-review-receipt` accepted a bare findings heading, so the new prompt format would let a heading plus a one-sentence approval mint a receipt. The heading now counts only when a path-like token follows it; the no-findings+path and prose branches are unchanged, so the gate is stricter. New tests: heading-only approval fails; heading + finding with a path passes; heading + `No findings.` + `Reviewed files:` passes. `python3 scripts/testing/test-aq-review-receipt.py`: 45 tests OK.

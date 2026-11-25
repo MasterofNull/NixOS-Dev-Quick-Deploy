@@ -792,6 +792,9 @@ class T(unittest.TestCase):
         self.assertTrue(mod.substantive(ok))
         self.assertTrue(mod.substantive("## Findings\n- high scripts/ai/aq-land:10 - bug\n" + trailers))
         self.assertFalse(mod.substantive("The change looks correct to me.\n" + trailers))
+        self.assertFalse(mod.substantive("## Findings\nLooks good, approve.\n" + trailers))
+        self.assertTrue(mod.substantive("## Findings\n- Medium scripts/ai/aq-land:610 - issue\n" + trailers))
+        self.assertTrue(mod.substantive("## Findings\nNo findings.\nReviewed files:\n- scripts/ai/aq-land\n" + trailers))
 
 
 if __name__ == "__main__":
