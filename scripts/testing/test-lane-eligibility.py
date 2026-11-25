@@ -333,6 +333,29 @@ def test_promote_sets_expiry_with_evidence() -> None:
         check(check_result["eligible"] is True, "promote: promoted entry is eligible via check()")
 
 
+def test_promote_renewal_keeps_capability_note() -> None:
+    with tempfile.TemporaryDirectory() as td:
+        reg_path = Path(td) / "registry.json"
+        _write_registry(reg_path, {"local": {"eligible": {"implementer": {
+            "measured_at": _past(40), "expires_at": _future(1), "evidence": "old",
+            "capability_note": "bounded single-edit",
+        }}}})
+        rc, _ = _run_cli(LANE_ELIGIBILITY_BIN, [
+            "--registry-path", str(reg_path), "promote", "local", "implementer",
+            "--evidence", "renewal", "--json",
+        ])
+        entry = json.loads(reg_path.read_text(encoding="utf-8"))["lanes"]["local"]["eligible"]["implementer"]
+        check(rc == 0 and entry.get("capability_note") == "bounded single-edit",
+              "promote: renewal without --capability-note keeps the prior note")
+        _run_cli(LANE_ELIGIBILITY_BIN, [
+            "--registry-path", str(reg_path), "promote", "local", "implementer",
+            "--evidence", "renewal", "--capability-note", "multi-site ok", "--json",
+        ])
+        entry = json.loads(reg_path.read_text(encoding="utf-8"))["lanes"]["local"]["eligible"]["implementer"]
+        check(entry.get("capability_note") == "multi-site ok",
+              "promote: explicit --capability-note replaces the prior note")
+
+
 # ---------------------------------------------------------------------------
 # 5. expire-scan finds an expired entry.
 # ---------------------------------------------------------------------------
@@ -372,6 +395,7 @@ def main() -> int:
     test_route_failsafe_unparseable_registry()
     test_promote_refuses_without_evidence()
     test_promote_sets_expiry_with_evidence()
+    test_promote_renewal_keeps_capability_note()
     test_expire_scan_finds_expired_entry()
 
     print()
