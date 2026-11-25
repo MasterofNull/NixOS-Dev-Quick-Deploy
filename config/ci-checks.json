@@ -522,6 +522,19 @@
       "ci_workflow": ".github/workflows/test.yml#syntax"
     },
     {
+      "id": "tier0-host-only-tests-gate",
+      "cmd": "scripts/testing/test-tier0-host-only-tests.py",
+      "paths": [
+        "scripts/governance/tier0.d/check-host-only-tests.py",
+        "scripts/testing/test-tier0-host-only-tests.py",
+        "config/ci-checks.json"
+      ],
+      "needs": [
+        "python3"
+      ],
+      "ci_workflow": ".github/workflows/test.yml#syntax"
+    },
+    {
       "id": "service-manager-sudo-commands-test",
       "cmd": "scripts/testing/test-service-manager-sudo-commands.py",
       "paths": [
