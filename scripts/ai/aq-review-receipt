@@ -186,7 +186,8 @@ def _ts(v):
 def substantive(text: str) -> bool:
     """Deterministic content floor: a findings section, a no-findings statement that names reviewed
     paths, or enough review prose. Headers/metadata lines do not count toward the length."""
-    path_re = r"[\w.-]+(?:/[\w.-]+){2,}|[\w.-]+/[\w.-]+\.\w{1,6}\b"
+    path_re = (r"[\w.-]+(?:/[\w.-]+){2,}|[\w.-]+/[\w.-]+\.\w{1,6}\b"
+               r"|(?<![\w./-])[\w-][\w.-]*\.(?:nix|py|md|json|jsonl|sh|bash|toml|ya?ml|js|ts|tsx|rs|lock|txt|cfg|ini|conf)\b")
     body = "\n".join(l for l in text.splitlines()
                      if not re.match(r"^(Reviewer|Timestamp|Reviewed-[\w-]+|Author-lane|Review-Disposition)[ \t]*:", l))
     head = re.search(r"^#{1,4}[ \t]*(findings|issues|defects)\b|^findings[ \t]*:", body, re.I | re.M)
