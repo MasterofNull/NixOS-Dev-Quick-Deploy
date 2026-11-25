@@ -201,7 +201,7 @@ def test_rule18_registry_preserves_role_eligibility_membership() -> None:
     registry, status = route_mod._load_registry(route_mod.DEFAULT_LANE_ELIGIBILITY_REGISTRY)
     check(status == "ok", "rule18: real registry loads cleanly for the invariant check")
 
-    ratified_deltas = {"implementer": {"gemini"}}  # antigravity/implementer hard block
+    ratified_deltas = {"implementer": {"gemini"}, "orchestrator": {"gemini"}, "binding-acceptance": {"gemini"}}  # antigravity/implementer hard block + 2026-11-25 gemini revocation
 
     for role, candidates in route_mod.ROLE_ELIGIBILITY.items():
         expected = set(candidates) - ratified_deltas.get(role, set())
@@ -257,6 +257,13 @@ def test_route_failsafe_missing_registry() -> None:
         excluded_by_lane = {row["lane"]: row["reason"] for row in result["excluded_lanes"]}
         check(excluded_by_lane.get("gemini") == "hard-ineligible",
               "route: fail-safe excluded_lanes still names gemini as hard-ineligible for implementer")
+        for role in ("orchestrator", "binding-acceptance"):
+            r = route_mod.route(role, "subj", [], registry_path=missing_path)
+            check(r["ok"] is True and r["chosen_agent"] != "gemini"
+                  and not any(c.get("lane") == "gemini" for c in r.get("candidates", []) if isinstance(c, dict) and c.get("eligible")),
+                  f"route: missing registry + {role} -> backstop blocks gemini/antigravity")
+            check({row["lane"]: row["reason"] for row in r["excluded_lanes"]}.get("gemini") == "hard-ineligible",
+                  f"route: missing registry + {role} -> gemini named hard-ineligible")
 
 
 def test_route_failsafe_unparseable_registry() -> None:
@@ -273,6 +280,12 @@ def test_route_failsafe_unparseable_registry() -> None:
         impl_result = route_mod.route("implementer", "subj", [], registry_path=bad_path)
         check(impl_result["chosen_agent"] != "gemini",
               "route: unparseable registry + implementer role -> backstop still blocks gemini")
+        for role in ("orchestrator", "binding-acceptance"):
+            r = route_mod.route(role, "subj", [], registry_path=bad_path)
+            check(r["ok"] is True and r["chosen_agent"] != "gemini",
+                  f"route: unparseable registry + {role} -> backstop blocks gemini/antigravity")
+            check({row["lane"]: row["reason"] for row in r["excluded_lanes"]}.get("gemini") == "hard-ineligible",
+                  f"route: unparseable registry + {role} -> gemini named hard-ineligible")
 
 
 # ---------------------------------------------------------------------------
