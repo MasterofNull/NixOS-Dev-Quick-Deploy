@@ -41,6 +41,14 @@ CASES = [
     ("cat <<-EOF\n\tgrep x\n\tEOF\nrg x", "allow"),
     ("cat <<-EOF\n\tgrep x\n\tEOF\ngrep x f", "deny"),
     ("AQ_BASH_POLICY=0 cat foo.py", "deny"),
+    ("cat <<\\EOF\nls\nEOF\nrg x", "allow"),
+    ("cat <<\\EOF\nbody\nEOF\nls", "deny"),
+    ("cat <<-\\EOF\n\tls\n\tEOF\nrg x", "allow"),
+    ("cat foo.py 2>/dev/null", "deny"),
+    ("cat foo.py > out.txt", "allow"),
+    ("cat foo.py 2>&1 | rg x", "deny"),
+    ("cat a 1>out", "allow"),
+    ("cat a &>out", "allow"),
 ]
 fails = []
 for cmd, want in CASES:
@@ -77,7 +85,13 @@ with tempfile.TemporaryDirectory() as td:
         if d["decision"] != "deny" or d["token"] != "cat":
             fails.append(f"telemetry fields: {d}")
 
+with tempfile.TemporaryDirectory() as td:
+    r = subprocess.run([sys.executable, hook], input=json.dumps({"tool_input": {"command": "rg x"}}),
+                       capture_output=True, text=True, cwd=td, env=dict(os.environ, AQ_BASH_POLICY_LOG="bare.jsonl"))
+    if r.returncode != 0 or not os.path.exists(f"{td}/bare.jsonl") or len(open(f"{td}/bare.jsonl").read().splitlines()) != 1:
+        fails.append("bare-filename log path not written")
+
 if fails:
     print("FAIL\n" + "\n".join(fails))
     sys.exit(1)
-print(f"PASS ({len(CASES)} policy cases + kill switch + hook)")
+print(f"PASS ({len(CASES)} policy cases + kill switch + hook + bare log path)")

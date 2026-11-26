@@ -21,9 +21,9 @@ Bounded implementer slice dispatched by the orchestrator to a Sonnet sub-agent (
 
 ## Validation Evidence
 
-- Policy test: 14 command cases, kill switch, hook deny (exit 2, replacement named on stderr), hook allow, fail-open on invalid JSON, telemetry JSONL has no command text (`PASS`).
+- Policy test: 34 command cases (incl. escaped heredoc delimiters, stdout vs stderr redirects), bare-filename log path, kill switch, hook deny (exit 2, replacement named on stderr), hook allow, fail-open on invalid JSON, telemetry JSONL has no command text (`PASS`).
 - Telemetry: `.agents/telemetry/bash-tool-policy.jsonl` records ts, decision, rule, first token only.
-- Registration in `.claude/settings.json` (PreToolUse `Bash` matcher, next to aq-approval-ask-hook) must be applied by the owner: the agent edit was blocked by the host policy protecting hook configuration.
+- Registration in `.claude/settings.json` (PreToolUse `Bash` matcher, next to aq-approval-ask-hook) was applied by the owner (2026-11-26) and is present in `.claude/settings.json` on this branch, not part of this staged delta (the agent edit had been blocked by the host policy protecting hook configuration).
 
 ## Rollback Plan
 

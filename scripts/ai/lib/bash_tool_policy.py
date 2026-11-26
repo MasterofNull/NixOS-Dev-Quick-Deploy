@@ -18,7 +18,9 @@ _REPLACEMENT = {
     "grep": "ctx_search (or `agrep` / `rg`)",
 }
 _ENV_ASSIGN = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
-_HEREDOC = re.compile(r"(?<!<)<<(?!<)(-?)\s*(['\"]?)([A-Za-z_][A-Za-z0-9_]*)\2")
+_HEREDOC = re.compile(r"(?<!<)<<(?!<)(-?)\s*(?:\\([A-Za-z_][A-Za-z0-9_]*)|(['\"]?)([A-Za-z_][A-Za-z0-9_]*)\3)")
+# stdout redirect to a file: `>`, `>>`, `>|`, `1>`, `&>`; not `2>`, `2>&1`, `>&2`
+_STDOUT_REDIRECT = re.compile(r"(?<![\w&<>])(?:1|&)?>>?(?!&)")
 
 
 def _strip_heredoc_bodies(text: str) -> str:
@@ -32,7 +34,7 @@ def _strip_heredoc_bodies(text: str) -> str:
                 pending.pop(0)
             continue
         out.append(line)
-        pending = [(m.group(3), m.group(1) == "-") for m in _HEREDOC.finditer(line)]
+        pending = [(m.group(2) or m.group(4), m.group(1) == "-") for m in _HEREDOC.finditer(line)]
     return "\n".join(out)
 
 
@@ -111,7 +113,7 @@ def evaluate(command: str) -> tuple[str, str]:
         name, toks = _first_token(seg)
         if name not in _REPLACEMENT:
             continue
-        if name == "cat" and (">" in seg or "<<" in seg or len(toks) == 1):
+        if name == "cat" and (_STDOUT_REDIRECT.search(seg) or "<<" in seg or len(toks) == 1):
             continue
         return "deny", (
             f"bare `{name}` is denied by the agent tool contract "

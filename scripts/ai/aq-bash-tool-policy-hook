@@ -18,7 +18,9 @@ def _log(decision: str, rule: str, token: str) -> None:
         path = os.environ.get("AQ_BASH_POLICY_LOG") or os.path.join(
             root, ".agents", "telemetry", "bash-tool-policy.jsonl"
         )
-        os.makedirs(os.path.dirname(path), exist_ok=True)
+        parent = os.path.dirname(path)
+        if parent:
+            os.makedirs(parent, exist_ok=True)
         with open(path, "a", encoding="utf-8") as fh:
             fh.write(json.dumps({"ts": time.time(), "decision": decision, "rule": rule, "token": token}) + "\n")
     except Exception:
