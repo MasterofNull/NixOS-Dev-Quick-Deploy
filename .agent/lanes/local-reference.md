@@ -82,7 +82,7 @@ Load the returned `reference_skills` before planning or editing. If the selector
 **Token budget constraint**: local model input = 3500 tokens (`local-agent` profile).
 **Load max 2 skills per task.** Each SKILL.md ≈ 400-1000 tokens.
 **Tool call budget**: 40 calls per session (`LOCAL_TOOL_CALL_LIMIT`). Active schemas: 12. GC threshold: 5000 chars.
-**Context compression**: `run_command` auto-wraps with RTK when available — shell output is compressed 60-90% before entering context. Check savings with `run_command "rtk gain"`.
+**Context compression**: `run_command` runs commands unwrapped (rtk retired 2026-11-25, 0.0% measured); lean-ctx (`ctx_shell` / Bash rewrite hook) is the shell-output compressor for Claude-side lanes.
 
 **Critical local-agent skills** (load for applicable work):
 - `self-improvement` — **load first** when asked to "run a self-improvement slice" or "improve the harness" — full workflow: discover priority from issues-backlog/PRDs/reports → announce target → implement autonomously → validate → commit
@@ -380,7 +380,7 @@ All agents share these canonical references — read before any non-trivial task
 | Edit in-place | `edit_file` | Provide exact old/new string |
 | List directory | `list_files` | Do not use shell `ls` |
 | Search contents | `search_files` | grep-equivalent, returns matches |
-| Run whitelisted commands | `run_command` | SAFE_COMMANDS whitelist; RTK auto-compresses output when installed (`"compressed": true` in response) |
+| Run whitelisted commands | `run_command` | SAFE_COMMANDS whitelist; output is returned as-is |
 | Reach a tool not on PATH | `run_command('aq-tool <pkg> [args]')` | Live, no restart — resolves `<pkg>` from the pinned nixpkgs (`flake.lock`). No manifest/permission gate; the capability manifest is a record, never a runtime gate (Rule 16 parity). |
 | Consult codebase mapping | `run_command('aq-wiki --section <name>')` | understand-anything subsystem wiki (hybrid-coordinator, switchboard, aidb, local-agent, governance, …); `--list`/`--status` for coverage. Use BEFORE scanning raw source for orientation. Now whitelisted in SAFE_COMMANDS. |
 | Git status/diff | `git_status`, `git_diff` | Read-only git introspection |

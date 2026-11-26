@@ -825,17 +825,13 @@ Delegation payloads carry pointers, scope, acceptance criteria, and blockers—n
 
 ## Context Compression Toolchain (Phase 164 — agent-agnostic)
 
-Three tools are system-wide installed. All agents must be aware of them.
+Shell-output compression is handled by lean-ctx; headroom is the payload proxy. All agents must be aware of them.
 
 | Tool | What it does | How to use |
 |------|-------------|------------|
-| **RTK** (`rtk`) | Wraps shell commands; compresses stdout 60-90% before it enters LLM context | `run_command` auto-wraps when `rtk` is in PATH (`"compressed": true` in response). Direct use: `rtk <cmd>`. Check savings: `rtk gain` |
+| **Shell output** (`ctx_shell` / Bash rewrite hook) | lean-ctx compresses shell output before it enters LLM context. RTK was retired 2026-11-25 (0.0% saved over 18,028 commands); `run_command` no longer wraps commands | Use `ctx_shell` (MCP) or plain Bash, which lean-ctx rewrites. No `rtk` binary, `rtk gain`, `SWB_RTK_ENABLED` or `RTK_BIN` |
 | **lean-ctx** (`lean-ctx`) | MCP server: 62 tools, 10 file-read modes (signatures, map, lines:N-M, density, diff), session memory. 76-99% token savings on file reads | Claude Code: registered in `~/.claude.json`. Other agents: `lean-ctx init --agent <gemini\|codex\|...>` |
 | **headroom** | Payload compression proxy on port 8787 (routes to llama.cpp :8080). STUB — not yet fully packaged | Enable when `ai.headroomProxy.enable = true` (nix). Set in `deploy-options.local.nix` |
-
-**RTK env vars** (disable/override per-agent if needed):
-- `SWB_RTK_ENABLED=0` — disable RTK wrapping in `run_command`
-- `RTK_BIN=<path>` — override binary path
 
 **Tool call budget** (switchboard — all agents routing through `:8085`):
 - `LOCAL_TOOL_CALL_LIMIT`: 40 (env `SWB_LOCAL_TOOL_CALL_LIMIT`)
