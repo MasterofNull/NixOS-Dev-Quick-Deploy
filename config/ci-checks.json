@@ -780,7 +780,15 @@
       "id": "tests-aq",
       "cmd": "scripts/testing/run-test-group.py tests-aq",
       "paths": [
+        "scripts/testing/test-no-tmpfs-guard.py",
         "scripts/testing/run-test-group.py",
+        "scripts/ai/lib/delegation-dir.sh",
+        "scripts/ai/lib/delegation_dir.py",
+        "scripts/ai/delegate-to-codex",
+        "scripts/ai/delegate-to-gemini",
+        "scripts/ai/delegate-to-local",
+        "scripts/ai/delegate-to-claude",
+        "scripts/ai/aq-local-review",
         "scripts/ai/aq-land",
         "scripts/ai/lib/merge_manifests.py",
         "scripts/ai/aq-context-packet",
@@ -880,6 +888,7 @@
       ],
       "ci_workflow": ".github/workflows/test.yml#syntax",
       "tests": [
+        "scripts/testing/test-no-tmpfs-guard.py",
         "scripts/testing/test-approval-recovery.py",
         "scripts/testing/test-approval-runbook-engine.py",
         "scripts/testing/test-approval-signer.py",
