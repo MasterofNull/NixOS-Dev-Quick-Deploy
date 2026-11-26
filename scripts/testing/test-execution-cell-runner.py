@@ -186,6 +186,74 @@ def _detect_delegated_cgroup_parent() -> "str | None":
 
 
 _CGROUP_PARENT = _detect_delegated_cgroup_parent()
+
+
+def _can_migrate_pid_into_cgroup(parent: "str | None") -> bool:
+    """mkdir/rmdir under `parent` is not enough to run a kill-proof test:
+    cgroup v2 lets a writer move a pid only if it can write the common
+    ancestor of the source and target cgroups. A test process in
+    session-N.scope (outside user@UID.service) gets EACCES, the pid never
+    enters the cell, and `cgroup.procs` is vacuously empty -- a "proven
+    absent" tree while the process lives. Require a real migration."""
+    if parent is None:
+        return False
+    probe = os.path.join(parent, f"aq-r3-migrate-{os.getpid()}")
+    try:
+        os.mkdir(probe)
+    except OSError:
+        return False
+    child = None
+    try:
+        child = subprocess.Popen(["sleep", "5"], start_new_session=True)
+        with open(os.path.join(probe, "cgroup.procs"), "w", encoding="utf-8") as fh:
+            fh.write(str(child.pid))
+        return True
+    except OSError:
+        return False
+    finally:
+        if child is not None:
+            child.kill()
+            child.wait()
+        for _ in range(20):
+            try:
+                os.rmdir(probe)
+                break
+            except OSError:
+                time.sleep(0.05)
+
+
+_CGROUP_MIGRATION_OK = _can_migrate_pid_into_cgroup(_CGROUP_PARENT)
+
+
+def _maybe_reexec_in_user_scope() -> None:
+    """Plain host shells sit outside user@UID.service, so the kill-proof tests
+    cannot migrate a pid. Re-run once inside a transient user scope so the
+    guarantee is exercised by default; the env guard prevents a loop. Only
+    re-execs after a cheap probe proves `systemd-run --user --scope` works, so
+    a missing/broken user manager degrades to SKIP, never a crash."""
+    if _CGROUP_MIGRATION_OK or os.environ.get("AQ_EXEC_CELL_REEXEC"):
+        return
+    systemd_run = shutil.which("systemd-run")
+    if not systemd_run:
+        return
+    try:
+        probe = subprocess.run([systemd_run, "--user", "--scope", "--quiet", "true"],
+                               capture_output=True, timeout=15, check=False)
+    except (OSError, subprocess.SubprocessError):
+        return
+    if probe.returncode != 0:
+        return
+    try:
+        os.execv(systemd_run, [systemd_run, "--user", "--scope", "--quiet", "-E", "AQ_EXEC_CELL_REEXEC=1",
+                               sys.executable, os.path.abspath(__file__), *sys.argv[1:]])
+    except OSError:
+        return
+
+
+_MIGRATION_SKIP_NOTE = (
+    "test process cannot migrate a pid into the delegated cgroup (cgroup v2 common-ancestor "
+    "write rule; run under `systemd-run --user --scope` or the deployed service)"
+)
 _BWRAP_PATH = shutil.which("bwrap")
 # The inner program executed INSIDE the bwrap sandbox must resolve under one
 # of the sandbox's own bound paths (--ro-bind /nix/store /nix/store); a
@@ -487,6 +555,9 @@ def test_epoch_bump_mid_run_kills_tree():
     if _CGROUP_PARENT is None:
         skip("epoch_bump_mid_run_kills_tree", "no delegated cgroup v2 subtree available on this host")
         return
+    if not _CGROUP_MIGRATION_OK:
+        skip("epoch_bump_mid_run_kills_tree", _MIGRATION_SKIP_NOTE)
+        return
 
     private_key, public_key_bytes = eg.generate_keypair()
     source_repo, head_oid = _build_source_repo()
@@ -514,7 +585,7 @@ def test_epoch_bump_mid_run_kills_tree():
         return
 
     proc = subprocess.Popen(["sleep", "5"], start_new_session=True)
-    runner.add_pid_to_cgroup(cgroup_path, proc.pid)
+    check("epoch_bump_pid_in_cgroup", runner.add_pid_to_cgroup(cgroup_path, proc.pid) and proc.pid in runner.read_cgroup_pids(cgroup_path), "pid did not enter the cell cgroup; kill proof would be vacuous")
 
     class _EpochHolder:
         def __init__(self):
@@ -652,6 +723,9 @@ def test_kill_cannot_prove_removal_quarantines():
     if _CGROUP_PARENT is None:
         skip("kill_cannot_prove_removal_quarantines", "no delegated cgroup v2 subtree available on this host")
         return
+    if not _CGROUP_MIGRATION_OK:
+        skip("kill_cannot_prove_removal_quarantines", _MIGRATION_SKIP_NOTE)
+        return
 
     cgroup_path = runner.create_cgroup(_CGROUP_PARENT, f"proof-budget-{uuid.uuid4().hex[:12]}")
     check("proof_budget_cgroup_created", cgroup_path is not None)
@@ -659,7 +733,7 @@ def test_kill_cannot_prove_removal_quarantines():
         return
 
     proc = subprocess.Popen(["sleep", "5"], start_new_session=True)
-    runner.add_pid_to_cgroup(cgroup_path, proc.pid)
+    check("proof_budget_pid_in_cgroup", runner.add_pid_to_cgroup(cgroup_path, proc.pid) and proc.pid in runner.read_cgroup_pids(cgroup_path), "pid did not enter the cell cgroup; kill proof would be vacuous")
 
     proven, _kill_used = runner.terminate_cgroup_tree(cgroup_path, sigterm_grace_s=0.05, kill_proof_budget_s=0.0)
     check("proof_budget_exhausted_not_proven", proven is False, f"proven={proven}")
@@ -844,6 +918,7 @@ def note_r6_canary_deferred_surfaces():
 
 
 def main() -> None:
+    _maybe_reexec_in_user_scope()
     tests = [
         test_valid_write_grant_green,
         test_valid_read_validate_grant_green,
