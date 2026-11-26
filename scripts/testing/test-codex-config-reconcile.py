@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Exercise the Home Manager Codex projection without touching the user's config."""
 
+import json
 import os
 from pathlib import Path
 import re
@@ -21,10 +22,15 @@ def main() -> int:
     )
     assert expression, "Codex reconciliation producer not found"
     transform = expression.group(1)
+    policy = json.loads((ROOT / "config/model-coordinator.json").read_text())
+    balanced_model = policy["tiers"]["openai"]["balanced"]
+    timeout_scale = "2"
     for key, value in {
         "${repoPath}": str(ROOT),
         "${toString aiHybridPort}": "12345",
         "${toString aiAidbPort}": "12346",
+        "${codexDefaultModel}": balanced_model,
+        "${mcpTimeoutScale}": timeout_scale,
     }.items():
         transform = transform.replace(key, value)
     assert "${" not in transform, "unhandled Nix interpolation"
@@ -70,6 +76,9 @@ enabled = false
             assert tomllib.loads(project(rendered)) == result, label + " is not idempotent"
             assert result["approval_policy"] == "on-request"
             assert result["approvals_reviewer"] == "user"
+            assert result["model"] == balanced_model
+            assert result["model_auto_compact_token_limit"] == 50000
+            assert result["model_auto_compact_token_limit_scope"] == "total"
             assert "/" not in result["projects"]
             assert result["projects"][str(ROOT)]["trust_level"] == "trusted"
             assert "codex_hooks" not in result["features"]
@@ -87,8 +96,8 @@ enabled = false
                 assert sandbox["exclude_slash_tmp"] is False
                 assert sandbox["exclude_tmpdir_env_var"] is False
             if label == "legacy":
-                assert result["model"] == original["model"]
                 assert result["mcp_servers"]["custom"] == original["mcp_servers"]["custom"]
+            assert result["mcp_servers"]["hybrid-coordinator"]["env"]["AQ_MCP_TIMEOUT_SCALE"] == timeout_scale
             assert result["mcp_servers"]["hybrid-coordinator"]["default_tools_approval_mode"] == "writes"
             assert result["mcp_servers"]["osint-tools"]["default_tools_approval_mode"] == "prompt"
             home = Path(temporary) / label
