@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
+# shellcheck source=/dev/null
 . "${BASH_SOURCE[0]%/*}/lib/aq-shim.sh" 2>/dev/null || true  # aq-usage-hook
 # aq-gap-import — auto-import knowledge for recurring query gaps into AIDB.
 #
 # Reads the top recurring gaps from /var/log/nixos-ai-stack/query-gaps.jsonl
-# (written by hybrid-coordinator's PRSI gap-sync loop), filters those that
-# exceed a minimum occurrence threshold, generates content via delegate-to-gemini
-# (invoked by aq-knowledge-import.sh; no gemini binary is used here),
+# (written by hybrid-coordinator's PRSI gap-sync loop), filters noise and
+# low-frequency gaps, generates content via aq-knowledge-import.sh,
 # imports each into AIDB, then rebuilds Qdrant embeddings for the new docs.
 #
 # Designed to run unattended as a systemd timer (ai-gap-import.timer).
@@ -14,6 +14,7 @@
 #   GAPS_JSONL           Path to query-gaps.jsonl  (default: /var/log/nixos-ai-stack/query-gaps.jsonl)
 #   MIN_OCCURRENCES      Minimum gap occurrences to warrant import  (default: 3)
 #   MAX_GAPS             Maximum gaps to import per run  (default: 5)
+#   GAP_IMPORT_LANE      Research delegate routing (auto, local, or gemini)
 #   AIDB_URL             Override AIDB base URL  (default: http://127.0.0.1:8002)
 #   AIDB_API_KEY_FILE    Path to AIDB API key file
 #   SKIP_QDRANT_REBUILD  Set to 1 to skip rebuild-qdrant-collections.sh
@@ -26,31 +27,75 @@ GAPS_JSONL="${GAPS_JSONL:-/var/log/nixos-ai-stack/query-gaps.jsonl}"
 MIN_OCCURRENCES="${MIN_OCCURRENCES:-3}"
 MAX_GAPS="${MAX_GAPS:-5}"
 SKIP_QDRANT_REBUILD="${SKIP_QDRANT_REBUILD:-0}"
+export GAP_IMPORT_LANE="${GAP_IMPORT_LANE:-auto}"
 
 # ── Sanity checks ─────────────────────────────────────────────────────────────
+case "$GAP_IMPORT_LANE" in
+  auto) [[ -x "${SCRIPT_DIR}/delegate-to-local" || -x "${SCRIPT_DIR}/delegate-to-gemini" ]] ;;
+  local|gemini) [[ -x "${SCRIPT_DIR}/delegate-to-${GAP_IMPORT_LANE}" ]] ;;
+  *) printf 'ERROR  Invalid GAP_IMPORT_LANE: %s\n' "$GAP_IMPORT_LANE" >&2; exit 1 ;;
+esac || {
+  printf 'ERROR  No executable delegate for GAP_IMPORT_LANE=%s in %s\n' "$GAP_IMPORT_LANE" "$SCRIPT_DIR" >&2
+  exit 1
+}
+
 if [[ ! -r "$GAPS_JSONL" ]]; then
   printf 'INFO  No gaps file at %s — nothing to import\n' "$GAPS_JSONL"
   exit 0
 fi
 
-# The generator is delegate-to-gemini (called by aq-knowledge-import.sh), not a
-# gemini binary on PATH; the retired npm gemini CLI is not a dependency of this job.
-if [[ ! -x "${SCRIPT_DIR}/delegate-to-gemini" ]]; then
-  printf 'ERROR delegate-to-gemini not executable at %s\n' "${SCRIPT_DIR}/delegate-to-gemini" >&2
-  exit 1
-fi
-
 # ── Extract top recurring gaps ─────────────────────────────────────────────────
-# Parse JSONL: select entries with occurrences >= MIN_OCCURRENCES,
-# deduplicate by query_text, take top MAX_GAPS by occurrence count.
-mapfile -t TOP_GAPS < <(python3 - <<PYEOF
-import json, sys
+# NUL delimiters preserve multiline topics. Wait for the parser so errors fail the job.
+exec {gaps_fd}< <(python3 - "$GAPS_JSONL" "$MIN_OCCURRENCES" "$MAX_GAPS" <<'PYEOF'
+import json
+import re
+import sys
 
-path = "${GAPS_JSONL}"
-min_occ = ${MIN_OCCURRENCES}
-max_gaps = ${MAX_GAPS}
+path = sys.argv[1]
+try:
+    min_occ, max_gaps = map(int, sys.argv[2:4])
+    if min_occ < 0 or max_gaps < 0:
+        raise ValueError
+except ValueError:
+    sys.exit("ERROR  MIN_OCCURRENCES and MAX_GAPS must be non-negative integers")
+
+noise = {
+    "ping", "pong", "hi", "hello", "hey", "yo", "hola", "sup", "test", "testing",
+    "ok", "okay", "yes", "no", "thanks", "thank you", "thx", "ty", "health",
+    "healthcheck", "health check", "status", "good morning", "good afternoon",
+    "good evening", "how are you", "hello how are you", "hello how are you today",
+    "hi how are you", "whats up", "what is up", "who are you", "help", "bye", "goodbye",
+}
+stopwords = set(
+    "a an and are as at be by can could did do does for from had has have how i in "
+    "is it me my of on or please should tell that the their this to was we were "
+    "what when where which who why will with would you your".split()
+)
+stack_words = set(
+    "nix nixos nixpkgs flake flakes systemd qdrant aidb llama postgres postgresql redis "
+    "apparmor sops mcp rag prsi hyprland waybar sway nixops agenix direnv devenv docker "
+    "podman kernel switchboard ralph aqd".split()
+)
+
+
+def is_trivial(query):
+    norm = " ".join(query.lower().split()).strip(" .,!?;:'\"()[]")
+    chatter = " ".join(re.sub(r'[.,!?;:"()\[\]]', " ", norm.replace("'", "")).split())
+    if chatter in noise:
+        return True
+    tokens = re.findall(r"[a-z0-9]+", norm)
+    if not tokens:
+        return True
+    if len(norm) >= 4 and sum(token not in stopwords for token in tokens) >= 2:
+        return False
+    return not (
+        any(marker in norm for marker in (".", "/", "_", ":", "--", "=", "`"))
+        or re.search(r"[a-z0-9]+-[a-z0-9]+", norm)
+        or stack_words.intersection(tokens)
+    )
 
 counts = {}
+skipped = 0
 with open(path, encoding="utf-8") as fh:
     for line in fh:
         line = line.strip()
@@ -58,22 +103,38 @@ with open(path, encoding="utf-8") as fh:
             continue
         try:
             obj = json.loads(line)
-        except json.JSONDecodeError:
+            if not isinstance(obj, dict):
+                continue
+            query = obj.get("query_text")
+            if not isinstance(query, str) or "\0" in query:
+                continue
+            query = query.strip()
+            occ = int(obj.get("occurrences") or 1)
+        except (ValueError, TypeError, OverflowError):
             continue
-        text = str(obj.get("query_text") or "").strip()
-        occ  = int(obj.get("occurrences") or 1)
-        if text:
-            counts[text] = max(counts.get(text, 0), occ)
+        if is_trivial(query):
+            skipped += 1
+            continue
+        counts[query] = max(counts.get(query, 0), occ)
 
 eligible = [(occ, text) for text, occ in counts.items() if occ >= min_occ]
 eligible.sort(reverse=True)
+if skipped:
+    print(f"INFO  Skipped {skipped} trivial/non-technical gap(s)", file=sys.stderr)
 for _, text in eligible[:max_gaps]:
-    print(text)
+    print(text, end="\0")
 PYEOF
 )
+gaps_pid=$!
+mapfile -d '' -t TOP_GAPS <&"$gaps_fd"
+exec {gaps_fd}<&-
+if ! wait "$gaps_pid"; then
+  printf 'ERROR  Could not select gaps from %s\n' "$GAPS_JSONL" >&2
+  exit 1
+fi
 
 if [[ ${#TOP_GAPS[@]} -eq 0 ]]; then
-  printf 'INFO  No gaps with occurrences >= %s — nothing to import\n' "$MIN_OCCURRENCES"
+  printf 'INFO  No eligible gaps to import (threshold=%s, limit=%s)\n' "$MIN_OCCURRENCES" "$MAX_GAPS"
   exit 0
 fi
 
