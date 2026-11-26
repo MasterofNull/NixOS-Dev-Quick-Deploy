@@ -57,7 +57,6 @@ import hashlib
 import importlib
 import importlib.util
 import os
-import shutil
 import sys
 import tempfile
 from pathlib import Path
@@ -202,31 +201,33 @@ async def test_insert_at_eof():
         check("EOF insert appends without disturbing existing lines", p.read_text(encoding="utf-8") == expected)
 
 
-def _outside_workspace_dir() -> Path:
-    """/var/tmp is NOT in file_operations.ALLOWED_BASE_PATHS (unlike /tmp,
-    ~/Documents, ~/.local/share/nixos-ai-stack) — use it as a target outside the
-    workspace boundary for traversal/symlink-escape tests."""
-    for candidate in ["/var/tmp", os.path.expanduser("~/.cache"), tempfile.gettempdir()]:
-        try:
-            return Path(tempfile.mkdtemp(prefix="wr-outside-", dir=candidate))
-        except OSError:
-            continue
-    return Path(tempfile.mkdtemp(prefix="wr-outside-"))
-
-
 async def test_path_traversal_rejected():
-    """(f) FINDING 2: ../ traversal and symlink-out-of-workspace targets are
-    rejected fail-closed via validate_file_path — no write occurs, no data leaks."""
-    outside_dir = _outside_workspace_dir()
-    try:
-        with tempfile.TemporaryDirectory() as td:
-            tmp_dir = Path(td)
+    """(f) Writes are allowed inside the workspace and rejected outside it."""
+    with tempfile.TemporaryDirectory(prefix="wr-boundary-") as td:
+        root = Path(td).resolve()
+        workspace_dir = root / "workspace"
+        workspace_dir.mkdir()
+        outside_dir = root / "outside"
+        outside_dir.mkdir()
 
-            # (i) literal ../ traversal escaping the workspace into /var/tmp
+        with patch.object(file_operations, "ALLOWED_BASE_PATHS", [workspace_dir]):
+            workspace_target = make_target_file(workspace_dir)
+            replacement = "line one REPLACED\n"
+            result = await file_operations.write_region_handler(
+                file_path=str(workspace_target), start_line=1, end_line=1, new_text=replacement,
+            )
+            check("workspace write accepted", result.get("success") is True)
+            check(
+                "workspace write updates the file",
+                workspace_target.read_text(encoding="utf-8")
+                == ORIGINAL_CONTENT.replace("line one\n", replacement, 1),
+            )
+
+            # (i) literal ../ traversal escaping the workspace
             outside_target = outside_dir / "traversal-target.txt"
             outside_target.write_text("ORIGINAL OUTSIDE CONTENT\n", encoding="utf-8")
-            rel_escape = os.path.relpath(str(outside_target), start=str(tmp_dir))
-            traversal_path = str(tmp_dir / rel_escape)  # contains ../ segments
+            rel_escape = os.path.relpath(str(outside_target), start=str(workspace_dir))
+            traversal_path = str(workspace_dir / rel_escape)
 
             result = await file_operations.write_region_handler(
                 file_path=traversal_path, start_line=1, end_line=1, new_text="PWNED\n",
@@ -244,23 +245,35 @@ async def test_path_traversal_rejected():
             # (ii) symlink inside the workspace pointing outside it
             symlink_target = outside_dir / "symlink-target.txt"
             symlink_target.write_text("ORIGINAL SYMLINK-TARGET CONTENT\n", encoding="utf-8")
-            symlink_path = tmp_dir / "evil_link.txt"
+            symlink_path = workspace_dir / "outside-link.txt"
             symlink_path.symlink_to(symlink_target)
 
-            result2 = await file_operations.write_region_handler(
+            result = await file_operations.write_region_handler(
                 file_path=str(symlink_path), start_line=1, end_line=1, new_text="PWNED\n",
             )
-            check("symlink-out-of-workspace rejected", result2.get("success") is False)
+            check("symlink-out-of-workspace rejected", result.get("success") is False)
             check(
                 "symlink-out error mentions path validation",
-                "path validation" in result2.get("error", "").lower(),
+                "path validation" in result.get("error", "").lower(),
             )
             check(
                 "symlink target untouched",
                 symlink_target.read_text(encoding="utf-8") == "ORIGINAL SYMLINK-TARGET CONTENT\n",
             )
-    finally:
-        shutil.rmtree(outside_dir, ignore_errors=True)
+
+            # (iii) direct absolute path outside the workspace
+            result = await file_operations.write_region_handler(
+                file_path=str(outside_target), start_line=1, end_line=1, new_text="PWNED\n",
+            )
+            check("absolute outside path rejected", result.get("success") is False)
+            check(
+                "absolute outside path error mentions path validation",
+                "path validation" in result.get("error", "").lower(),
+            )
+            check(
+                "absolute outside path: outside file untouched",
+                outside_target.read_text(encoding="utf-8") == "ORIGINAL OUTSIDE CONTENT\n",
+            )
 
 
 async def test_expected_content_guard():
