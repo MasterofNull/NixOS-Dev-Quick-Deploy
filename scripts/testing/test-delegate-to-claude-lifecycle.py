@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import shutil
@@ -26,6 +27,8 @@ class DelegateClaudeLifecycleTest(unittest.TestCase):
         self.wrapper = self.repo / "scripts/ai/delegate-to-claude"
         shutil.copy2(ROOT / "scripts/ai/delegate-to-claude", self.wrapper)
         shutil.copy2(ROOT / "scripts/ai/lib/claude-background-worker.sh", lib)
+        for name in ("registry-update.py", "task_registry.py", "dispatch_evidence.py"):
+            shutil.copy2(ROOT / "scripts/ai/lib" / name, lib)
         shutil.copy2(ROOT / "config/model-coordinator.json", self.repo / "config")
         # Egress gate fails closed without its tool and config.
         shutil.copy2(ROOT / "config/remote-lane-egress.json", self.repo / "config")
@@ -82,6 +85,16 @@ class DelegateClaudeLifecycleTest(unittest.TestCase):
                 return True
             time.sleep(0.1)
         return False
+
+    def test_foreground_review_records_output_hash_for_the_receipt_verifier(self) -> None:
+        r = self.run_wrapper("--wait", "--role", "review", "--model-tier", "balanced", "--prompt", "rev")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertNotIn("output hash not recorded", r.stderr)
+        row = self.registry()[-1]
+        out = self.repo / row["output_file"]
+        self.assertEqual(row["output_sha256"], hashlib.sha256(out.read_bytes()).hexdigest())
+        self.assertEqual(row["output_bytes"], out.stat().st_size)
+        self.assertTrue(row.get("output_recorded_at"))
 
     # -- defect 1: terminal reconciliation ---------------------------------
     def test_provider_failure_records_terminal_failed_with_exit_code(self) -> None:
