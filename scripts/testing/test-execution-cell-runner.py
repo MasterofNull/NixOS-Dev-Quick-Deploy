@@ -755,6 +755,55 @@ def test_kill_cannot_prove_removal_quarantines():
 # --------------------------------------------------------------------------
 
 
+def test_add_pid_failure_fails_closed():
+    """A pid that cannot enter its cgroup (EACCES) must never reach
+    supervision: the child is killed directly, the cell is QUARANTINED with
+    cgroup-attach-failed, and no kill proof is claimed. Pure stub: needs no
+    systemd, bwrap or real cgroup."""
+    from types import SimpleNamespace
+
+    cgroup_dir = _mkdtemp("attach-fail-cgroup")
+    state_root = _mkdtemp("attach-fail-state")
+    spawned: list = []
+    real_popen = subprocess.Popen
+
+    def _spawn(argv, **kw):
+        proc = real_popen(["sleep", "60"], **kw)
+        spawned.append(proc)
+        return proc
+
+    def _supervise_must_not_run(*_a, **_kw):
+        raise AssertionError("_supervise reached after add_pid_to_cgroup failure")
+
+    saved = (runner.build_bwrap_argv, runner.create_cgroup, runner.add_pid_to_cgroup,
+             runner._supervise, runner.subprocess.Popen)
+    runner.build_bwrap_argv = lambda *a, **k: ["unused"]
+    runner.create_cgroup = lambda *a, **k: cgroup_dir
+    runner.add_pid_to_cgroup = lambda *a, **k: False
+    runner._supervise = _supervise_must_not_run
+    runner.subprocess.Popen = _spawn
+    try:
+        config = SimpleNamespace(cell_state_root=state_root, cgroup_parent=cgroup_dir, python_bin=_PYTHON_BIN)
+        decision = runner._confine_run_validate(
+            SimpleNamespace(cell_root=_mkdtemp("attach-fail-cell"), base_oid="deadbeef"),
+            runner.CommandDescriptor(kind="read-validate"),
+            SimpleNamespace(), "digest", "receipt-attach-fail", "/fake/bwrap", config, time.monotonic(),
+        )
+    finally:
+        (runner.build_bwrap_argv, runner.create_cgroup, runner.add_pid_to_cgroup,
+         runner._supervise, runner.subprocess.Popen) = saved
+        for proc in spawned:
+            if proc.poll() is None:
+                proc.kill()
+                proc.wait()
+
+    check("add_pid_fail_spawned_child", len(spawned) == 1)
+    check("add_pid_fail_quarantined", decision.decision == runner.DECISION_QUARANTINED, decision.decision)
+    check("add_pid_fail_reason", decision.reason == runner.REASON_CGROUP_ATTACH_FAILED, decision.reason)
+    check("add_pid_fail_no_kill_proof", decision.tree_proven_absent is not True, repr(decision.tree_proven_absent))
+    check("add_pid_fail_child_dead", bool(spawned) and spawned[0].poll() is not None, "child still alive")
+
+
 def test_peer_authentication_real_uds():
     import threading
 
@@ -929,6 +978,7 @@ def main() -> None:
         test_epoch_bump_mid_run_kills_tree,
         test_final_epoch_fence_flips_green_to_red,
         test_kill_cannot_prove_removal_quarantines,
+        test_add_pid_failure_fails_closed,
         test_peer_authentication_real_uds,
         test_replayed_grant_denied,
         test_flag_off_refuses_cell,

@@ -1239,8 +1239,12 @@ def run_revocation_under_load(
             return result
         cgroup_paths.append(cgroup_path)
         proc = subprocess.Popen(["sleep", str(sleep_seconds)], start_new_session=True)
-        runner.add_pid_to_cgroup(cgroup_path, proc.pid)
         procs.append(proc)
+        if not runner.add_pid_to_cgroup(cgroup_path, proc.pid):
+            result["failures"].append("pid did not enter the cell cgroup (EACCES?); kill proof would be vacuous")
+            for stray in procs:
+                stray.kill()
+            return result
 
     supervise_config = runner.RunnerConfig(
         socket_path="", client_uid=None, client_gid=None, public_key_bytes=harness.public_key_bytes,
