@@ -42,6 +42,7 @@ class Fixture:
     def __init__(self, tmp: Path, *, pre_rounds: int = 1, post_rounds: int = 0, per_arm: int = 25,
                  dup_pr: bool = False) -> None:
         self.root = tmp
+        self.extra: dict[str, str] = {}  # per-test env overrides applied on top of the defaults
         self.deleg = tmp / "deleg"
         self.report = tmp / "latest-aq-report.json"
         self.leanctx = tmp / "leanctx.json"
@@ -101,7 +102,7 @@ class Fixture:
         return {"AQ_BASELINE_ROOT": str(self.root), "AQ_DELEGATION_DIR": str(self.deleg),
                 "AQ_REPORT_LATEST_JSON": str(self.report), "AQ_BASELINE_LEANCTX_JSON": str(self.leanctx),
                 "AQ_BASELINE_NOW": now, "TELEMETRY_DIR": str(self.root / "telemetry"),
-                "RSI_STATE_DIR": str(self.root / "rsi-state")}
+                "RSI_STATE_DIR": str(self.root / "rsi-state"), **self.extra}
 
 
 @contextlib.contextmanager
@@ -445,10 +446,11 @@ def test_cohort_validation_and_future_as_of_rejected() -> None:
 def test_live_stores_preferred_over_seed_and_fallback() -> None:
     with tempfile.TemporaryDirectory() as t:
         fx = Fixture(Path(t))
-        # RSI: runtime ledger (4) beats the tracked seed (1); with no ledger the seed is the fallback
+        # RSI: runtime ledger (4) beats the tracked seed (1); an explicit dir without a ledger is no_producer (seed fallback: see the RSI read test)
         assert rows_of(fx, snap(fx, PRE_NOW))["rsi_incident_count"]["value"] == 4
         (fx.root / "rsi-state" / "rsi-incidents.json").unlink()
-        assert rows_of(fx, snap(fx, "2026-10-27T00:00:01Z"))["rsi_incident_count"]["value"] == 1
+        gone = rows_of(fx, snap(fx, "2026-10-27T00:00:01Z"))["rsi_incident_count"]
+        assert gone["value"] is None and gone["gap"] == "no_producer"  # explicit RSI_STATE_DIR: never the seed
         # training loop: TELEMETRY_DIR primary store (5 runs) beats the delegation-dir fallback (3 runs)
         tel = fx.root / "telemetry"
         _jsonl(tel / "training-loop-results.jsonl", [
@@ -568,6 +570,119 @@ def test_per_lane_rows_keep_each_lane_when_two_lanes_share_a_pr() -> None:
         codex = r["delegation_success_raw.lane.codex"]
         assert codex["n"] == 2 and codex["numerator"] == 1  # retry clusters inside the lane: final attempt (failed) + x1
         assert r["delegation_success_raw"]["n"] == 2  # across lanes the PR is one unit (final attempt overall)
+
+
+def test_runtime_artifacts_are_gitignored() -> None:
+    for rel in (".agents/telemetry/.baseline.lock", ".agents/telemetry/baseline-snapshots.jsonl",
+                ".agents/telemetry/baseline-inputs/" + "a" * 64, ".agents/telemetry/baseline-schedule.disabled",
+                ".agent/archive/20261126T000000Z-aq-baseline/baseline-snapshots.jsonl",
+                ".agent/archive/20261126T000000Z-aq-baseline-2/baseline-inputs/" + "a" * 64):
+        r = subprocess.run(["git", "-C", str(ROOT), "check-ignore", "-q", rel], capture_output=True)
+        assert r.returncode == 0, f"not gitignored: {rel}"
+    with tempfile.TemporaryDirectory() as t:
+        fx = Fixture(Path(t) / "fx")
+        repo = Path(t) / "repo"
+        repo.mkdir()
+        (repo / ".gitignore").write_text((ROOT / ".gitignore").read_text())
+        git = ["git", "-C", str(repo), "-c", "user.name=t", "-c", "user.email=t@t"]
+        subprocess.run([*git, "init", "-q"], check=True)
+        subprocess.run([*git, "add", ".gitignore"], check=True)
+        subprocess.run([*git, "commit", "-qm", "init"], check=True)
+        e = {**os.environ, **fx.env(PRE_NOW), "AQ_BASELINE_ROOT": str(repo)}
+        a = ["--subject", "feat-x", "--definition-version", "v1", "--horizon-days", "30", "--min-effect", "0.1"]
+        assert subprocess.run([sys.executable, str(CLI), "snapshot", *a], env=e, capture_output=True).returncode == 0
+        assert subprocess.run([sys.executable, str(CLI), "rollback"], env=e, capture_output=True).returncode == 0
+        status = subprocess.run([*git, "status", "--porcelain"], capture_output=True, text=True).stdout
+        assert status == "", status
+
+
+def test_rsi_read_access_without_write_and_explicit_override_never_falls_back() -> None:
+    import rsi_paths
+    keep = {k: os.environ.pop(k, None) for k in ("PRSI_INCIDENTS_FILE", "RSI_RUNTIME_DIR", "RSI_STATE_DIR")}
+    default = rsi_paths.DEFAULT_STATE_DIR
+    try:
+        with tempfile.TemporaryDirectory() as t:
+            fx = Fixture(Path(t))  # tracked seed in root/.agent has 1 incident
+            state = Path(t) / "ro-state"
+            state.mkdir()
+            (state / "rsi-incidents.json").write_text((fx.root / "rsi-state" / "rsi-incidents.json").read_text())
+            state.chmod(0o555)  # readable, not writable
+            try:
+                # read-only explicit state dir with a ledger: read it (4), not the seed (1)
+                fx.extra = {"RSI_STATE_DIR": str(state)}
+                assert rows_of(fx, snap(fx, PRE_NOW))["rsi_incident_count"]["value"] == 4
+                # explicit override pointing at nothing: no_producer, never the seed
+                for i, (var, val) in enumerate((("RSI_STATE_DIR", str(Path(t) / "absent")),
+                                                ("RSI_RUNTIME_DIR", str(Path(t) / "absent")),
+                                                ("PRSI_INCIDENTS_FILE", str(Path(t) / "absent.json")))):
+                    fx.extra = {"RSI_STATE_DIR": "", "RSI_RUNTIME_DIR": "", "PRSI_INCIDENTS_FILE": "", var: val}
+                    row = rows_of(fx, snap(fx, f"2026-10-27T00:00:0{1 + i}Z"))["rsi_incident_count"]
+                    assert row["value"] is None and row["gap"] == "no_producer", (var, row["value"])
+                # no override: readable default state ledger (read-only) wins, then the seed when there is none
+                fx.extra = {"RSI_STATE_DIR": "", "RSI_RUNTIME_DIR": "", "PRSI_INCIDENTS_FILE": ""}
+                rsi_paths.DEFAULT_STATE_DIR = str(state)
+                assert rows_of(fx, snap(fx, "2026-10-27T00:00:09Z"))["rsi_incident_count"]["value"] == 4
+                rsi_paths.DEFAULT_STATE_DIR = str(Path(t) / "no-default")
+                assert rows_of(fx, snap(fx, "2026-10-27T00:00:10Z"))["rsi_incident_count"]["value"] == 1
+            finally:
+                state.chmod(0o755)
+    finally:
+        rsi_paths.DEFAULT_STATE_DIR = default
+        for k, v in keep.items():
+            if v is not None:
+                os.environ[k] = v
+
+
+def test_rollback_between_compute_and_append_leaves_no_dangling_rows() -> None:
+    with tempfile.TemporaryDirectory() as t:
+        fx = Fixture(Path(t))
+        snap(fx, PRE_NOW)  # something for rollback to move
+        real = ab.compute_rows
+
+        def rollback_mid_flight(*args: Any, **kw: Any) -> Any:
+            out = real(*args, **kw)
+            ab.rollback(fx.root)  # lands after the inputs were read, before the append
+            return out
+        ab.compute_rows = rollback_mid_flight
+        try:
+            # a scheduled tick that loses the race writes nothing
+            try:
+                with env(fx.env("2026-10-27T00:00:05Z")):
+                    ab.take_snapshot(fx.root, scheduled=True, as_of=None, window_days=30, **ARGS)
+            except ab.ScheduleDisabled:
+                pass
+            else:
+                raise AssertionError("scheduled tick wrote after rollback")
+            tdir = ab.telemetry_dir(fx.root)
+            assert not (tdir / ab.SNAPSHOT_FILE).exists() and not (tdir / ab.INPUT_DIR).exists()
+            # a manual snapshot that loses the race still retains its inputs inside the lock: nothing dangles
+            with env(fx.env("2026-10-27T00:00:06Z")):
+                sid, _ = ab.take_snapshot(fx.root, scheduled=False, as_of=None, window_days=30, **ARGS)
+        finally:
+            ab.compute_rows = real
+        with env(fx.env(PRE_NOW)):
+            assert ab.verify_snapshot(fx.root, sid)[0]
+        a = ["--subject", "feat-x", "--definition-version", "v1", "--horizon-days", "30", "--min-effect", "0.1", "--scheduled"]
+        assert run_cli(fx, "2026-10-27T00:00:07Z", "snapshot", *a).returncode == 3
+
+
+def test_latest_attempt_is_chronological_across_mixed_offsets() -> None:
+    with tempfile.TemporaryDirectory() as t:
+        fx = Fixture(Path(t))
+        # a2 is the LATER instant (10-11T04:00Z) but its string sorts before a1 ("...T00:00:00+00:00" < "...T00:00:00Z"? no:
+        # "2026-10-10T20:00:00-08:00" < "2026-10-11T00:00:00Z" lexically while being later in time)
+        _jsonl(fx.deleg / "registry.jsonl", [
+            {"id": "a1", "agent": "codex", "status": "done", "created": "2026-10-11T00:00:00Z", "pr": 9},
+            {"id": "a2", "agent": "codex", "status": "failed", "created": "2026-10-10T20:00:00-08:00", "pr": 9},
+            {"id": "b1", "agent": "codex", "status": "done", "created": "2026-10-12T00:00:00+00:00", "pr": 10},
+            {"id": "b2", "agent": "codex", "status": "failed", "created": "2026-10-12T00:00:00.500000Z", "pr": 10}])
+        _jsonl(fx.deleg / "outcome-receipts.jsonl", [
+            {"pr": 5, "recorded_at": "2026-10-11T00:00:00Z", "request_changes_rounds": 1},
+            {"pr": 5, "recorded_at": "2026-10-10T20:00:00-08:00", "request_changes_rounds": 3}])
+        r = rows_of(fx, snap(fx, PRE_NOW))
+        d = r["delegation_success_raw"]
+        assert d["n"] == 2 and d["numerator"] == 0  # final attempt of both PRs is the failed one
+        assert r["rework_rounds_per_pr"]["numerator"] == 3  # the -08:00 record is the later instant
 
 
 def test_at5_plan_naming_and_freeze_record() -> None:

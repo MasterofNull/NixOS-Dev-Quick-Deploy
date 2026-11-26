@@ -38,6 +38,14 @@ Implementer: Claude Sonnet 5.5 sub-agent (explicit `sonnet` override, Rule 17). 
 | check-pm-tracker.sh swallowed a crash of `--check-no-baseline` on commit | non-maintenance crash now prints a visible WARN with the output and exit code (still non-blocking per decision 2); maintenance still fails | not unit-tested (shell branch; `bash -n` only) |
 | Input validation | retained-input digest must match `^[0-9a-f]{64}$` before any path join; `--min-effect` must be finite and >= 0 | same test as P2 row |
 
+## Review round 2 (Gemini gemini-20261126-050314-800s0q, REQUEST_CHANGES): finding -> fix
+| Finding | Fix | Test |
+|---|---|---|
+| P1 lock file and rollback archive not gitignored | `.gitignore`: `.agents/telemetry/.baseline.lock` and `.agent/archive/*-aq-baseline*/` | `test_runtime_artifacts_are_gitignored`: `git check-ignore` on 6 runtime paths, plus snapshot + rollback in a temp git repo leaves `git status --porcelain` empty |
+| P1 RSI read needed os.W_OK and fell back to the seed on explicit misconfig | `_rsi_incidents_path` resolves read-only with the owner's precedence (PRSI_INCIDENTS_FILE, RSI_RUNTIME_DIR, RSI_STATE_DIR explicit: a missing/unreadable ledger is `no_producer`, never the seed; else a readable default state ledger; seed only with no override and no state ledger) | `test_rsi_read_access_without_write_and_explicit_override_never_falls_back` (0555 state dir read; three missing explicit overrides give no_producer; default ledger, then seed) |
+| P2 TOCTOU between snapshot/scheduled tick and rollback | `retain_input`, the disable-marker check (new `scheduled=` arg, `ScheduleDisabled`, CLI exit 3) and the append are one `store_lock` section; digests are computed outside; unused `schedule_disabled` removed | `test_rollback_between_compute_and_append_leaves_no_dangling_rows` (rollback injected between compute and append: scheduled tick writes nothing; manual snapshot still verifies; later tick exits 3) |
+| P3 latest attempt by string comparison | `_ts_key` (parse_ts) for registry clusters and rework receipts | `test_latest_attempt_is_chronological_across_mixed_offsets` (`Z`, `+00:00`, `-08:00`, fractional seconds) |
+
 ## Rollback Plan
 1. Disable the schedule: remove or disable the timer (when one exists) and run `aq-baseline rollback`, which writes `.agents/telemetry/baseline-schedule.disabled` so any remaining tick refuses to write.
 2. Archive: the same command moves `baseline-snapshots.jsonl` and `baseline-inputs/` to `.agent/archive/<YYYYMMDDTHHMMSSZ>-aq-baseline/`.

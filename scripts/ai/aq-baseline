@@ -24,12 +24,14 @@ import aq_baseline as ab  # noqa: E402
 
 
 def _cmd_snapshot(a: argparse.Namespace) -> int:
-    if a.scheduled and ab.schedule_disabled(ab.main_root()):
-        print("aq-baseline: schedule disabled (rollback marker present); nothing written", file=sys.stderr)
+    try:
+        sid, rows = ab.take_snapshot(ab.main_root(), subject=a.subject, cohort=a.cohort,
+                                     definition_version=a.definition_version, horizon_days=a.horizon_days,
+                                     min_effect=a.min_effect, as_of=a.as_of, window_days=a.window_days,
+                                     scheduled=a.scheduled)
+    except ab.ScheduleDisabled as exc:
+        print(f"aq-baseline: {exc}", file=sys.stderr)
         return 3
-    sid, rows = ab.take_snapshot(ab.main_root(), subject=a.subject, cohort=a.cohort,
-                                 definition_version=a.definition_version, horizon_days=a.horizon_days,
-                                 min_effect=a.min_effect, as_of=a.as_of, window_days=a.window_days)
     print(f"snapshot_id {sid}")
     print(f"captured_at {rows[0]['captured_at']} window {rows[0]['input_window']['start']}..{rows[0]['input_window']['end']}")
     for r in rows:

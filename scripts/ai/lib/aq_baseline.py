@@ -50,6 +50,10 @@ class BaselineError(Exception):
     """Operator-facing failure (bad args, rejected compare, unreadable store)."""
 
 
+class ScheduleDisabled(BaselineError):
+    """A scheduled tick found the rollback marker; nothing was written."""
+
+
 # --------------------------------------------------------------------------- time / paths
 
 def parse_ts(value: str) -> datetime:
@@ -100,17 +104,24 @@ def _training_loop_path(deleg: Path) -> Path:
 
 
 def _rsi_incidents_path(root: Path) -> Path:
-    """Same resolver as the ledger's owner (scripts/ai/lib/rsi_paths.py incidents_read_path): the runtime state
-    ledger (PRSI_INCIDENTS_FILE / RSI_RUNTIME_DIR / RSI_STATE_DIR / /var/lib/nixos-ai-stack/rsi) wins; the tracked
-    .agent/collaboration seed is read only when no state ledger exists yet."""
+    """Read-only resolution with the same precedence as the ledger's owner (scripts/ai/lib/rsi_paths.py):
+    PRSI_INCIDENTS_FILE, RSI_RUNTIME_DIR, RSI_STATE_DIR are explicit (a missing or unreadable explicit ledger
+    yields no_producer, never the seed); otherwise the default state ledger when it is readable (no write access
+    needed); the tracked seed only when no override is set and no state ledger exists."""
     lib = str(Path(__file__).resolve().parent)
     if lib not in sys.path:
         sys.path.insert(0, lib)
     import rsi_paths
-    try:
-        return Path(rsi_paths.incidents_read_path(root))
-    except rsi_paths.StateDirError:
-        return root / ".agent" / "collaboration" / "rsi-incidents.json"
+    env_file = os.environ.get("PRSI_INCIDENTS_FILE")
+    if env_file:
+        return Path(env_file)
+    for var in ("RSI_RUNTIME_DIR", "RSI_STATE_DIR"):
+        if os.environ.get(var):
+            return Path(os.environ[var]) / rsi_paths.LEDGER
+    state = Path(rsi_paths.DEFAULT_STATE_DIR) / rsi_paths.LEDGER
+    if state.is_file() and os.access(state, os.R_OK):
+        return state
+    return rsi_paths.seed_dir(root) / rsi_paths.LEDGER
 
 
 def producer_paths(root: Path) -> dict[str, Path]:
@@ -267,6 +278,14 @@ def _in_window(ts: Any, window: tuple[datetime, datetime]) -> bool:
     return window[0] <= t <= window[1]
 
 
+def _ts_key(value: Any) -> datetime:
+    """Chronological sort key; mixed Z / +00:00 / -08:00 strings must not be ordered lexically."""
+    try:
+        return parse_ts(str(value))
+    except ValueError:
+        return datetime.min.replace(tzinfo=timezone.utc)
+
+
 def _digest(items: list[str]) -> str:
     return hashlib.sha256("\n".join(sorted(items)).encode()).hexdigest()
 
@@ -360,7 +379,7 @@ def _registry_rows(data: bytes | None, window: tuple[datetime, datetime], lane_f
             pr = r.get("pr")
             key = f"pr:{pr}" if pr not in (None, "", "None") else f"dispatch:{rid}"
             prev = by_key.get(key)
-            if prev is None or str(_registry_ts(r)) >= str(_registry_ts(prev)):
+            if prev is None or _ts_key(_registry_ts(r)) >= _ts_key(_registry_ts(prev)):
                 by_key[key] = r  # retries linked to one PR cluster; the final attempt decides
         return list(by_key.items())
 
@@ -481,7 +500,7 @@ def _rework_row(data: bytes | None, window: tuple[datetime, datetime]) -> Row:
             continue
         key = str(r["pr"])
         prev = latest.get(key)
-        if prev is None or str(r.get("recorded_at")) >= str(prev.get("recorded_at")):
+        if prev is None or _ts_key(r.get("recorded_at")) >= _ts_key(prev.get("recorded_at")):
             latest[key] = r  # repeated landing records for one PR count once
     obs: list[dict[str, Any]] = []
     unknown = 0
@@ -644,10 +663,6 @@ def rollback(root: Path) -> Path:
     return dest
 
 
-def schedule_disabled(root: Path) -> bool:
-    return (telemetry_dir(root) / DISABLED_MARKER).exists()
-
-
 # --------------------------------------------------------------------------- snapshot / verify
 
 def _canonical(obj: Any) -> str:
@@ -671,7 +686,8 @@ def _repo_head(root: Path) -> str:
 
 
 def take_snapshot(root: Path, *, subject: str, cohort: str, definition_version: str, horizon_days: int,
-                  min_effect: float, as_of: str | None, window_days: int) -> tuple[str, list[Row]]:
+                  min_effect: float, as_of: str | None, window_days: int,
+                  scheduled: bool = False) -> tuple[str, list[Row]]:
     if window_days <= 0 or horizon_days <= 0:
         raise BaselineError("--window-days and --horizon-days must be positive")
     if not subject.strip():
@@ -689,7 +705,7 @@ def take_snapshot(root: Path, *, subject: str, cohort: str, definition_version: 
     raw: dict[str, bytes] = {}
     for name in sorted(live):
         origin, data = live[name]
-        inputs.append({"name": name, "path": origin, "sha256": retain_input(tdir, data)})
+        inputs.append({"name": name, "path": origin, "sha256": hashlib.sha256(data).hexdigest()})
         raw[name] = data
     rows = compute_rows(raw, window, cohort)
     win = {"start": fmt_ts(window[0]), "end": fmt_ts(window[1])}
@@ -704,6 +720,11 @@ def take_snapshot(root: Path, *, subject: str, cohort: str, definition_version: 
                     "repo_head": head, "subject": subject, "cohort": cohort, "definition_version": definition_version,
                     "horizon_days": horizon_days, "min_effect": min_effect, **r})
     with store_lock(tdir):
+        # marker check, input retention and append are one critical section: a rollback cannot interleave
+        if scheduled and (tdir / DISABLED_MARKER).exists():
+            raise ScheduleDisabled("schedule disabled (rollback marker present); nothing written")
+        for i in inputs:
+            retain_input(tdir, raw[i["name"]])
         existing = {str(r.get("metric_id")): r for r in load_rows(tdir) if r.get("snapshot_id") == sid}
         if existing:
             # same id = same subject/params/second/inputs: identical rows are a no-op, anything else is a collision
