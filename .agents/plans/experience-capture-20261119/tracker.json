@@ -6,9 +6,35 @@
     "owner": "hyperd",
     "goal": "MVP: baseline snapshot (aq-baseline) with before/after comparison and metric-trust rules over existing producers for learning loops, feature activations and improvement cycles. Phase 2 (capture, join, adjudication, cards) is gated by entry criteria in DESIGN.md.",
     "success_criteria": [
-      "Dated, reproducible baseline snapshot (snapshot_id, pinned window and source rev) exists before each activation (J0, J0h)",
-      "Linked pre/post snapshot pair compares to improved / no demonstrated change / insufficient / prospective-only / no_baseline (J0b)",
-      "Full-population metrics primary, concentration shown as sensitivity, unknown counts shown"
+      "Each snapshot reproducible from retained digest-addressed input copies (J0)",
+      "Compare bound to a feature or cycle effective start, with rejection cases (J0b, J0c)",
+      "Independent units (PR) with n>=20 floor; unknowns and in-flight shown"
+    ],
+    "decisions": [
+      {
+        "id": 1,
+        "decided": "2026-11-25",
+        "owner": "hyperd",
+        "decision": "S-M1 allowed during feature freeze"
+      },
+      {
+        "id": 2,
+        "decided": "2026-11-25",
+        "owner": "hyperd",
+        "decision": "no_baseline = WARN on every commit, HARD only in scheduled maintenance"
+      },
+      {
+        "id": 3,
+        "decided": "2026-11-25",
+        "owner": "hyperd",
+        "decision": "Drop rework/cycle-time/useful_ratio on 2027-02-25 if below minimum sample or without denominator"
+      },
+      {
+        "id": 4,
+        "decided": "2026-11-25",
+        "owner": "hyperd",
+        "decision": "No Phase 2 until S-M1 has run 30 days and entry criteria are met"
+      }
     ]
   },
   "phases": [
@@ -55,8 +81,8 @@
       "name": "Baseline snapshot and metric-trust checks",
       "phase": "P1",
       "kind": "slice",
-      "goal": "aq-baseline snapshot/verify/compare with snapshot_id, captured_at, pinned input window and source rev; aq-qa CheckResult; aq-pm-tracker no_baseline WARN; trust rules (full population primary, concentration as sensitivity).",
-      "validation_goal": "J0 live capture, J0h historical verify (0.422, git-archive 55.7%), J0b linked pre/post compare.",
+      "goal": "aq-baseline snapshot/verify/compare with snapshot_id, captured_at, pinned input window and source rev; aq-qa CheckResult; aq-pm-tracker no_baseline WARN; trust rules (full population primary, concentration as sensitivity); digest-addressed input copies; live age/verify indicator; rollback stops the schedule first..",
+      "validation_goal": "J0 live capture and verify from retained inputs; J0b feature and J0c cycle bound compare with rejection cases; live indicator in aq-qa/aq-report.",
       "deps": [
         "EC-0"
       ],
@@ -71,7 +97,7 @@
       "name": "Capture lib, sanitizer, codex+gemini wrappers",
       "phase": "P2",
       "kind": "slice",
-      "goal": "[Phase 2/3, entry criteria in DESIGN.md] experience_emit over make_event; spool/flock/0600/token-redaction fixes; prompt-safe sanitizer and gitignore; model/quota fields; codex and gemini foreground+background wrappers and quota fallback emit. Depends on a dated baseline snapshot existing before merge.",
+      "goal": "[Phase 2/3, entry criteria in DESIGN.md] experience_emit over make_event; spool/flock/0600/token-redaction fixes; prompt-safe sanitizer and gitignore; model/quota fields (quota emission conditional on a real fallback); codex and gemini foreground+background wrappers and quota fallback emit. Depends on a dated baseline snapshot existing before merge.",
       "validation_goal": "Real dispatches on two lanes give complete prompt_load+model_call; secret quarantined hash-only (J1, J7).",
       "deps": [
         "EC-M1"
@@ -235,16 +261,5 @@
       }
     }
   ],
-  "issues": [
-    {
-      "title": "Feature freeze scope",
-      "sev": "med",
-      "note": "Owner decision 1: S-M1 allowed during freeze."
-    },
-    {
-      "title": "Phase 2 entry",
-      "sev": "low",
-      "note": "Owner decision 4: no Phase 2 until S-M1 has run 30 days and entry criteria are met."
-    }
-  ]
+  "issues": []
 }

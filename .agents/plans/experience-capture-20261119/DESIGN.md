@@ -1,23 +1,24 @@
 # Experience capture and measurement baseline: per model/agent/role/version/task-type outcome tracking (PRD rev2)
 
-Status: rev4 DRAFT for independent re-review (architect lane, 2026-11-25). Supersedes rev3 (11c10943c; Codex re-review = REVISE, 6 P1 + 2 P2). Final revision under the retry budget: scope CUT, not extended. Not frozen. No code in this slice.
+Status: rev5 DRAFT for independent re-review (architect lane, 2026-11-25). Supersedes rev4 (751f25ea2; Codex = REVISE, 5 P1/1 P2/1 P3). Final bounded revision approved by the owner; scope cut again, nothing new added. Not frozen. No code in this slice.
+
+Owner decisions DECIDED 2026-11-25 (owner: hyperd): (1) S-M1 is allowed during the feature freeze; (2) `no_baseline` is a WARN on every commit, HARD only in scheduled maintenance; (3) rework, cycle time and `useful_ratio` are dropped from the contract on 2027-02-25 if below minimum sample or without a denominator; (4) no Phase 2 until S-M1 has run 30 days and the entry criteria are met.
 Owner directives: 2026-11-19 (experience capture, priors, bounded exploration) and 2026-11-25 widening: "work on our baseline and system measurement for our learning loops, new feature implementations, and system improvement cycles."
 Ground truth: `.agents/delegation/outputs/llama-bisect/capture-inventory-20261119.md`; r1 round `.agents/plans/experience-capture-prd-r1/` (AGGREGATE verdict REVISE, 7-item checklist); measured facts of 2026-11-25 cited inline (M1-M5, see Problem).
 
-## Revision response (rev4: Codex re-review of rev3)
+## Revision response (rev5: Codex review of rev4)
 
-Rev1-rev3 responses (r1 checklist, S0 findings) are recorded in git history (6554d8cf3, 11c10943c). Strategy: Codex found 8 new defects, 6 of them in capture/join/adjudication/cost machinery that the three stated MVP outcomes do not need to be proven first. Rev4 cuts that machinery to a Phase 2 with entry criteria and fixes the in-scope items precisely.
-
-| Finding | Where | Status |
+| Finding | Where | Resolution |
 |---|---|---|
-| P1 snapshot lacks `snapshot_id`/`captured_at`; no pinned window/source rev; no before/after journey; live check coupled to historical values | MVP S-M1 schema, J0/J0h/J0b, Baseline-window rules | Resolved in MVP: fields added, input window and per-log byte length pinned, `verify` and `compare` commands, linked-pair journey, live check independent of historical values |
-| P1 rework/cycle-time/useful_ratio sampling unit, sign, stop; outlier-excluded figure primary | Contract (b)/(c), rules, trust rule 1 | Resolved in MVP: `improves_when`, unit (PR / dispatch labelled), denominator or named gap, first eligible window, min sample, dated stop 2027-02-25; full population primary, ex-top as sensitivity only |
-| P1 reconciler ignores settled runs; no precedence | Entry criteria row 1 | Deferred to Phase 2 (reviewer adjudication is not an MVP outcome) |
-| P1 `agent_error` lacks LA negative evidence; author acceptance is self-report | Entry criteria row 2 | Deferred to Phase 2 |
-| P1 no work-item id; all-attempt cost loses failed retries; review collapse merges lanes | Entry criteria row 3; MVP "Out of MVP" | Deferred to Phase 2; MVP claims lane x outcome only with unknown counts |
-| P1 `model_call`/`quota_window` identity; overwritten receipt path | Entry criteria row 4 | Deferred to Phase 2 (quota capture needs a named consumer) |
-| P2 90-day statistic vs 30-day window; stale LCB refs | Phase 2 sketch banner, entry row 5, tracker, risks | MVP has no windowed card statistic; stale LCB wording fixed in risks and tracker; reconciliation of windows is an entry criterion |
-| P2 integration checks misplaced; S-C2 rollback; quota capture mandatory; S-M3 lane justification | S-M1 integrations, Rollback, entry row 6 | Resolved in MVP for S-M1 (aq-qa check and pm-tracker WARN ship inside S-M1; rollback tests both; Codex capability stated); the rest deferred |
+| P1 historical replay impossible (`latest-aq-report.json` overwritten, `lean-ctx gain` live) | MVP S-M1, J0h | Cut. J0h replay dropped. Each snapshot stores a digest-addressed copy of the exact input bytes it used (`.agents/telemetry/baseline-inputs/<sha256>`, 0600, gitignored); `verify` recomputes from those retained copies. The 2026-11-25 values (0.422, 55.7%) are `recorded-not-reproducible` observations, cited as context only, and the first real snapshot is the first reproducible baseline. Registry (43/102) vs report populations are recorded with producer, filter, numerator, denominator; they are not assumed equal. |
+| P1 `compare` unbound to the activation; no improvement-cycle test | S-M1 `compare`, J0b/J0c | Resolved: `compare` takes a subject id (feature or cycle) and its effective-start commit/time; pre snapshot window must end before it, post window must start after it, windows disjoint and equal length, metric definitions and cohort frozen at the pre snapshot (a changed definition is rejected). J0b exercises a feature activation, J0c an improvement cycle, each with a rejection case for an overlapping window. |
+| P1 `n>=5` bypasses the `n>=20` rate floor; retries inflate n; value+count cannot reproduce medians/intervals | Baseline-window rules, S-M1 schema | Resolved: `n>=20` independent units is the floor for any rate or improvement claim; `n>=5` is display only. Unit is the PR (retries clustered by PR) where linked, else the dispatch (labelled). Snapshots retain the per-unit observations (small, pinned in the input copy) so medians and bootstrap intervals are recomputable. Horizon and minimum meaningful change are fixed in the pre snapshot. Lane comparisons are descriptive only (task-mix adjustment deferred). Tests: a decreasing-is-better metric; repeated attempts on one PR. |
+| P1 producer contracts: rework, RSI recurrence, mint-failure denominator | Contract (a)/(c) rows | Resolved: rework read from distinct dated PR landing receipts (`request_changes_rounds`, `scripts/ai/aq-land:859`, `outcome_receipt.py:116`), zero distinguished from missing; RSI post-guard recurrence is a named GAP (no per-recurrence timestamp or guard link in `rsi-incidents.json`), only incident counts are snapshotted; mint failures published as a count, not a rate, until attempt coverage exists. |
+| P1 scheduled writer without live indicator; rollback does not stop it | S-M1 integrations, Rollback, DoD | Resolved: `aq-qa` CheckResult and `aq-report` line show snapshot age and last `verify` status inside S-M1. Rollback disables the schedule first, then archives output, then verifies no new write after the next scheduled tick. |
+| P2 S-M1 depends on the Phase 2 predicate; event vocabulary incomplete | S-M1 eligibility | Resolved: S-M1 counts are raw counts under its own explicit rule below, with no `is_learning_eligible` import; any metric making a learning claim is labelled "Phase 2, LA predicate required" and is not in S-M1. Full status vocabulary handled: `succeeded`/`failed`/`blocked`/`no_data` counted by status; `started`/`running` excluded from denominators as in-flight (reported as `in_flight_n`); `skipped` excluded and reported as `skipped_n`; contradictory success+error evidence counts neutral. |
+| P3 tracker quota-fallback emission unconditional | tracker.json EC-C1 | Resolved: accepted if no fallback occurred in the run; emission required only when a real fallback occurs. |
+
+Rev4 and earlier responses are in git history (751f25ea2, 11c10943c, 6554d8cf3).
 
 ## Problem
 
@@ -79,7 +80,7 @@ Every measured subject carries a `measurement` record, stored in the existing pl
 | Local training loop | Each pass adds eligible samples and improves a held-out score | New eligible samples per pass: `training-loop-results.jsonl`. Held-out eval delta: GAP (aq-prompt-eval is keyword-scored, 0 scored cases); until fixed report samples only | 2026-11-25, last 12 runs: pass 7/12, +0 samples | >= 1 eligible sample per passing run; any held-out delta > 0 once a scorer exists | 10 passes | 10 consecutive passes at +0 samples: mark `dormant` in the loop status and open a Rule 23 deferral or retirement | each 30 days |
 | Memory crystallizer | Crystallized facts are later retrieved and co-occur with accepted outcomes | Facts retrieved per accepted run joined by `run_id`: GAP (retrieval ids not on run events; add `memory_ids[]` to the D3 payload manifest). Interim: `continuous_learning_stats.json` ingest counts | baseline = first 30 days after S-C1 emits manifests | retrieved-fact runs show first-pass accept rate (s=1 share) >= non-retrieved by 0.05, labelled observational | 30 runs per arm | below baseline s for 30 runs: flag, no action | 30 days |
 | Hints | A hint changes the outcome, not just adoption | s=1 share and tokens per accepted outcome, hint-shown vs hint-suppressed, joined by `run_id` (`hint-feedback-sync-latest.json` + run events). Adoption (100%, 2112/2112) is NOT a benefit metric. GAP: no control arm, so the comparison needs a 5% suppress holdout on non-gate task types (Phase 2 allow-list decision) | 7d adoption 100%; outcome delta no_data | holdout shows >= 0.05 s uplift, or the hint line is cut as decorative (Rule 23) | 30 outcomes per arm | uplift CI includes 0 after min sample: report "no demonstrated benefit" | 60 days |
-| RSI loop | A guard seeded after an incident prevents recurrence | Recurrence count per incident class within 30 days of guard: `rsi-incidents.json` | per class, trailing 90 days (captured by snapshot) | recurrence 0 after guard | 1 class with >= 3 prior incidents | recurrence after guard: reopen incident, mark guard ineffective | 30 days per guard |
+| RSI loop | A guard seeded after an incident prevents recurrence | Incident counts per class from `rsi-incidents.json`. Post-guard recurrence is a GAP: no per-recurrence timestamp and no guard-activation link; not measured until linked events exist | counts at first snapshot | recurrence 0 after guard (once linkable) | n/a until linkable | none claimed | n/a |
 
 ### (b) New feature activations (Rule 15)
 
@@ -100,8 +101,8 @@ A cycle's measurement is the delta of cycle-level metrics over the cycle window 
 | Metric | Producer | Baseline (2026-11-25) | Direction |
 |---|---|---|---|
 | Delegation success per lane x role x task_type; unit: one dispatch. Raw success counted from the registry; attributed vs infrastructure split counts only dispatches the registry/receipts can classify and shows the unknown count | `registry.jsonl` joined to run events | raw 0.422 (43/102). Split historical = NOT measured (outcome unknown in 474/485 rows); S-M1 reports the classifiable subset and the unknown count; first prospective split = 30 days after S-C2 | attributed failure rate down; infra share separate; stop: 90 days |
-| Rework rounds per landed PR (improves_when `down`; unit: one landed PR, not a run) | GAP: `rc_rounds` lives in aq-land checkpoints, not receipts; S-M1 reads it only where present and reports unknown_n | no_data | first eligible window: the first 30-day window with >= 20 landed PRs; stop decision 2027-02-25: if n < 20 then `unmeasurable-at-current-volume`, drop from the contract |
-| Receipt-mint failure rate and wasted reviews (repeat reviews on an unchanged head); unit: one review | `aq-review-receipt` + `aq-land` structured failures (PR #865 records from its merge date only) | one observed episode (M2: 3 PASS mint failures, 3 wasted codex reviews on one head); historical rate and cost NOT measured; prospective from S-M1 | both to 0; every wasted review costed from S-C1 tokens/wall time on |
+| Rework rounds per landed PR (improves_when `down`; unit: one landed PR) | Distinct dated PR landing receipts, field `request_changes_rounds` (`aq-land:859`, `outcome_receipt.py:116`); zero is distinguished from missing (`unknown_n`) | measured at first snapshot (not asserted here) | first eligible window: first 30-day window with >= 20 landed PRs; stop decision 2027-02-25 (decided): if n < 20 then drop from the contract |
+| Receipt-mint failures and wasted reviews; published as a COUNT per window (no rate: no eligible-attempt denominator exists) | `aq-review-receipt` + `aq-land` structured failures (PR #865 records from its merge date only) | one observed episode (M2: 3 PASS mint failures, 3 wasted codex reviews on one head); not otherwise measured; prospective from S-M1 | count to 0; wasted reviews costed only once Phase 2 capture exists |
 | Dispatch-to-landing cycle time (improves_when `down`; unit: one landed PR, linked retries counted once by PR) | registry `dispatch_id` timestamps + outcome receipt timestamp; GAP: no author run_id on receipts, so only PRs with a registry link by branch/head are included, rest counted in unknown_n | no_data | same eligibility and 2027-02-25 stop decision |
 | `useful_ratio` (improves_when `up`) | `latest-aq-report.json` `useful_tokens`; GAP: denominator undefined (`no_data`) | BLOCKED / no_data | S-M1 records the blocker only; no value claimed; stop decision 2027-02-25: if no denominator is defined by then, remove from the contract |
 
@@ -110,7 +111,7 @@ Slice-level: each slice in a plan's `tracker.json` gets an optional `measurement
 ### Baseline-window and sample rules
 
 - Baseline window: trailing 30 days (or 7 days for fast metrics), recorded as `input_window` start/end timestamps and `source_rev` (repo head sha plus, for each append-only log, its byte length at capture so a later `verify` re-reads exactly the same prefix); must end before the activation commit. A producer without row timestamps is marked `current-only` (not historically reproducible). Post window equals baseline length.
-- Minimum sample: `n >= 20` events per arm for rates, or `n >= 5` eligible outcomes per cell (D6); fewer reports `insufficient`, with counts only.
+- Minimum sample: `n >= 20` independent units per arm for any rate or improvement claim; `n >= 5` is a display threshold only (counts shown, no verdict). Independent unit = the PR where runs are linked (retries clustered by PR), else the dispatch, labelled `dispatch-unit`. The pre snapshot fixes the horizon and the minimum meaningful change; lane comparisons are descriptive only (no task-mix adjustment in the MVP).
 - Sampling unit: the PR or work item where runs are linked (a retried run is not an independent sample); where no link exists the unit is the dispatch and the metric is labelled `dispatch-unit`.
 - A baseline with `no_data` is recorded as `no_data` plus the producer gap; it is never replaced by 0.
 - Direction and size are written before the post measurement; a result is `improved` only if the change exceeds the stated minimum effect and the one-sided 90% lower bound of the difference is > 0 (bootstrap over eligible events); otherwise `no demonstrated change`.
@@ -146,21 +147,24 @@ Phase 2 (slices S-C1 capture, S-C2 join and reviewer outcomes, S-M3 cards and co
 
 The MVP delivers a measurable baseline and a before/after comparison for new features and improvement cycles from EXISTING producers, with the trust rules. It does not add capture, joins or scoring.
 
-S0 Freeze: independent non-author re-review of rev4 (agent-agnostic per Rule 18, local floor if others down) and owner decisions 1-4.
+S0 Freeze: independent non-author re-review of rev5 (agent-agnostic per Rule 18, local floor if others down) and owner decisions 1-4.
 
-S-M1 `aq-baseline` (owner lane: Codex; capability needed: bounded Python reading JSONL/JSON producers with tests-first, no model or network dependence, so the cheapest eligible correct lane per Rule 17; fallback Claude sonnet override). Commands:
-- `aq-baseline snapshot [--as-of ISO] [--window-days N]` appends rows to `.agents/telemetry/baseline-snapshots.jsonl` (0600, gitignored, own file; no run-event dependency, so no dependency on any capture slice).
-- `aq-baseline verify <snapshot_id>` recomputes from the pinned inputs and must equal the stored rows.
-- `aq-baseline compare <pre_id> <post_id>` prints per metric `improved | no demonstrated change | insufficient | prospective-only | no_baseline` using the contract's direction, minimum sample and bound rules.
-- Row schema (one row per metric per snapshot): `snapshot_id` (sha256 over as_of, window, source_rev, metric ids), `captured_at` (UTC), `input_window{start,end}`, `source_rev{repo_head, producers[{path, byte_len, row_count}]}`, `subject`, `metric_id`, `improves_when`, `value`, `n`, `unknown_n`, `unit`, `unit_label` (`pr`/`dispatch`/`run`), `concentrated`, `value_ex_top` (sensitivity only), `current_only` flag, `source`.
-- Metrics (existing producers only): delegation success raw plus the classifiable attributed/infrastructure split by lane with `unknown_n`; registry model-known share (baseline 29/495); review-receipt mint failures and aq-land structured-failure counts (prospective from PR #865); lean-ctx per-tool savings with both totals; training-loop passes and samples; RSI recurrence; aq-report observability fields labelled observability; `useful_ratio` blocker; rework and cycle time where present. Lane breakdown is by lane only; role and task_type breakdowns, all-attempt cost per output and reviewer scoring are Phase 2.
-- Integrations beside the producer, in this slice: an `aq-qa` CheckResult (snapshot exists, `verify` passes, freshness <= 35 days) and `aq-pm-tracker` reporting `no_baseline` for a shipped slice lacking a `measurement` object (WARN, HARD only in scheduled maintenance; owner decision 2).
-- Rollback: archive the snapshot file; remove the two registered checks; additive only. Test both.
+S-M1 `aq-baseline` (owner lane: Codex; capability needed: bounded Python reading JSONL/JSON producers, tests first, no model or network dependence, so the cheapest eligible correct lane per Rule 17; fallback Claude sonnet override). Commands:
+- `aq-baseline snapshot` appends rows to `.agents/telemetry/baseline-snapshots.jsonl` (0600, gitignored, own file, no run-event dependency) and stores each input it read as a digest-addressed copy under `.agents/telemetry/baseline-inputs/<sha256>` (0600, gitignored, including the lean-ctx gain output and the aq-report JSON, which are overwritten or live).
+- `aq-baseline verify <snapshot_id>` recomputes every row from the retained input copies and must equal the stored rows.
+- `aq-baseline compare --subject <feature|cycle id> --effective-start <commit|ISO> <pre_id> <post_id>` requires the pre window to end before the effective start, the post window to start after it, disjoint equal-length windows, and identical metric definitions and cohort (frozen in the pre snapshot); otherwise it rejects. Per metric it prints `improved | no demonstrated change | insufficient | prospective-only | no_baseline`.
+- Row schema (one per metric per snapshot): `snapshot_id` (sha256 over as_of, window, input digests, metric ids), `captured_at` (UTC), `input_window{start,end}`, `inputs[{path, sha256}]`, `repo_head`, `subject`, `metric_id`, `definition_version`, `improves_when`, `unit_label` (`pr`/`dispatch`), `producer`, `eligibility_filter`, `numerator`, `denominator`, `value`, `n`, `unknown_n`, `in_flight_n`, `skipped_n`, `observations` (per-unit values, enough to recompute medians and clustered bootstrap intervals), `concentrated`, `value_ex_top` (sensitivity only), `horizon_days`, `min_effect`.
+- S-M1 eligibility (own rule, no Phase 2 predicate): raw counts by `agent_run_events` status `succeeded|failed|blocked|no_data`; `started`/`running` are in-flight (excluded from denominators, reported); `skipped` excluded (reported); contradictory success and error evidence counts neutral; infrastructure outcomes are reported as their own count, never merged into agent quality. Any metric that makes a learning claim is out of S-M1 (Phase 2, requires the LA predicate).
+- Metrics (existing producers only): delegation success raw by lane with `unknown_n` (population stated: registry vs `latest-aq-report.json` are separate rows, not assumed equal); registry model-known share; mint-failure count and aq-land structured-failure count; lean-ctx per-tool savings with both totals; training-loop passes and samples; RSI incident counts; rework from receipts; aq-report observability fields labelled observability; `useful_ratio` blocker.
+- Live indicator and integration, inside this slice: an `aq-qa` CheckResult and an `aq-report` line showing snapshot age and last `verify` status (stale after 35 days); `aq-pm-tracker` WARN for a shipped slice lacking a `measurement` object.
+- Rollback: disable the schedule first, then archive the snapshot and input-copy files, remove the checks, and verify no new write appears after the next scheduled tick. Test it.
 
-Acceptance (real data, no fixtures for the claim; a mechanics test may use two as-of dates):
-- J0 live capture: `snapshot` on live data yields populated rows with readable sources and unknown counts, independent of any historical value.
-- J0h historical reproduction: `verify` of a stored snapshot re-reads the pinned log prefixes and matches exactly (this is where M1 0.422/43-102 and M3 git-archive 135.9M of 243.9M, 55.7% `concentrated`, are checked, as values pinned at 2026-11-25, not as live expectations).
-- J0b before/after: a linked pair `snapshot` (pre) and `snapshot` (post) across a real window runs through `compare`; mechanics are first proven with as-of 2026-11-18 vs 2026-11-25 (labelled mechanics, no change claim); the first real feature activation after merge cites a pre `snapshot_id` in its PR body and gets a post snapshot after its post window. A PR that claims a measured change passes only with a populated pre snapshot older than the activation commit; `no_baseline`/`prospective-only` fails such a claim (it may still ship, claiming none).
+Acceptance (real data):
+- J0 live capture: `snapshot` on live data yields populated rows with retained inputs; `verify` of that snapshot passes after the live producers have changed (proves reproducibility from retained copies, replaces historical replay).
+- J0b feature activation: one real feature activation is bound to a pre snapshot older than its effective start and a post snapshot after it; `compare` gives a verdict. A rejection case with an overlapping window must fail.
+- J0c improvement cycle: one real improvement cycle (e.g. the receipt-mint fix cycle) goes through the same bound `compare`, including a changed-definition rejection case.
+- Tests: a decreasing-is-better metric; repeated attempts on one PR counted once; `n` between 5 and 19 prints counts but no verdict.
+- Recorded-not-reproducible context: 2026-11-25 observations (delegation success 0.422 = 43/102 from the report population; lean-ctx git-archive 135.9M of 243.9M = 55.7%) are cited as motivation only. A PR that claims a measured change passes only with a populated pre snapshot older than the activation; `no_baseline` or `prospective-only` fails such a claim (it may still ship claiming none).
 
 Out of MVP, recorded honestly: per lane x role x task_type outcome and cost, all-attempt cost per accepted output, reviewer scoring, exposure joins for context-warm/graph-query, saved-latency for the cache, and any ranking or routing hint. Outcome (i) of the owner directive is delivered only at lane x outcome granularity with unknown counts until Phase 2.
 
@@ -274,19 +278,17 @@ R19 (rev4) MVP measurability: ~21 outcome receipts and `no_data` producers mean 
 
 ## Rollback
 
-MVP: archive the snapshot file, remove the `aq-qa` check and the `aq-pm-tracker` WARN; all additive. Phase 2 rollback criteria are in its entry table.
+MVP: disable the schedule, archive the snapshot and input-copy files, remove the checks (aq-qa, aq-report line, aq-pm-tracker WARN), verify no write after the next tick; all additive. Phase 2 rollback criteria are in its entry table.
 
-## Owner decisions (<= 4; recommended default first)
+## Owner decisions (all DECIDED 2026-11-25, owner hyperd)
 
-1. Feature freeze scope. Default: S-M1 is allowed during system-integrity-recovery (read-only over existing producers, additive, no emit).
-2. `no_baseline` enforcement. Default: `aq-pm-tracker` WARN on every commit, HARD only in scheduled maintenance (Rule 19).
-3. Dated stop decisions. Default: unmeasurable metrics (rework, cycle time, `useful_ratio`) are dropped from the contract on 2027-02-25 if still below minimum sample or without a denominator.
-4. Phase 2 start. Default: no Phase 2 work until S-M1 has run 30 days and the re-frozen design meets the entry criteria; hint holdout, reviewer adjudication window and exploration allow-list decisions are deferred to that re-freeze.
-
-Settled rev1-rev3 constants (H=30, K=8, n>=5, lambda=0.5, advisory-only routing, no USD guessing, prompt retention 180 days, local Qwen as its own model) are Phase 2 sketch defaults, not MVP commitments.
+1. S-M1 is allowed during the feature freeze (read-only over existing producers, additive, no emit).
+2. `no_baseline` is a WARN on every commit, HARD only in scheduled maintenance (Rule 19).
+3. Rework, cycle time and `useful_ratio` are dropped from the contract on 2027-02-25 if below minimum sample or without a denominator.
+4. No Phase 2 until S-M1 has run 30 days and the entry criteria are met; hint holdout, adjudication window and exploration allow-list decisions are deferred to that re-freeze.
 
 ## Activation DoD (Rule 15), MVP
 
 | Slice | Integrated | ON | E2E | Observable | Intervenable | Baseline/post metric |
 |---|---|---|---|---|---|---|
-| S-M1 | `aq-baseline` called by an `aq-qa` CheckResult and `aq-pm-tracker` | on (snapshot via the existing maintenance schedule; Nix timer if needed is an owner act with exact command printed) | J0, J0h, J0b | aq-qa check, `no_baseline` count | archive file, remove checks | self: `verify` equality; count of shipped slices with a populated `measurement` (baseline = current count at first snapshot) |
+| S-M1 | `aq-baseline` called by an `aq-qa` CheckResult and `aq-pm-tracker` | on (snapshot via the existing maintenance schedule; Nix timer if needed is an owner act with exact command printed) | J0, J0b, J0c | aq-qa check, `no_baseline` count | archive file, remove checks | self: `verify` equality; count of shipped slices with a populated `measurement` (baseline = current count at first snapshot) |
