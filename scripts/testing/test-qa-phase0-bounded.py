@@ -9,11 +9,12 @@ import threading
 import time
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Any
+from typing import Any, cast
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts" / "testing"))
 from harness_qa.core import scheduler  # noqa: E402
+from harness_qa.core.context import RunContext  # noqa: E402
 from harness_qa.core.result import Status, passed, failed  # noqa: E402
 
 
@@ -163,6 +164,20 @@ def main() -> int:
         finally:
             release_gemini.set()
             phase0.subprocess.run = orig_run
+
+        # Worst case: 4 failing providers, longest failure class, long stderr -> every head survives the cap.
+        records = [
+            {"provider_id": name, "result": "fail", "failure_class": "provider_reported_failure",
+             "exit_code": code, "stderr_summary": name[0].upper() * 4096}
+            for name, code in (("codex", 1), ("qwen", 127), ("claude", -15), ("pi", None))
+        ]
+        probe_path.write_text(f"def run_provider_probe(**kwargs):\n    return {records!r}\n", encoding="utf-8")
+        reason = phase0._check_flagship_cli(cast("RunContext", ctx))[0].reason
+        check(len(reason) <= 240, f"alert stays within 240 chars: {len(reason)}")
+        for item in records:
+            head = f"{item['provider_id']}={item['failure_class']}(exit {item['exit_code']})"
+            check(head in reason, f"alert retains {head}: {reason!r}")
+            check(f"{head}: {item['stderr_summary'][:5]}" in reason, f"stderr shares the leftover space: {reason!r}")
 
     # Finding 2: timed-out still-alive threads count against the concurrency cap.
     lock = threading.Lock()

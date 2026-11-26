@@ -586,10 +586,15 @@ def _check_flagship_cli(ctx: RunContext) -> list[CheckResult]:
     )
     bad = [item for item in aggregate if item.get("result") != "pass"]
     if bad:
-        detail = "; ".join(
-            f"{item.get('provider_id')}={item.get('failure_class')}(exit {item.get('exit_code')}): "
-            f"{str(item.get('stderr_summary') or '')[:80]}"
+        heads = [
+            f"{item.get('provider_id')}={item.get('failure_class')}(exit {item.get('exit_code')})"
             for item in bad
+        ]
+        # Heads are reserved first; stderr only shares what is left of the 240-char alert.
+        room = max(0, (240 - len("; ".join(heads))) // len(bad) - len(": "))
+        tails = [str(item.get("stderr_summary") or "")[:min(room, 80)] for item in bad]
+        detail = "; ".join(
+            f"{head}: {tail}" if tail else head for head, tail in zip(heads, tails, strict=True)
         )[:240]
         result = failed(7, "0.6.1", "flagship agent CLI help smokes", detail)
     else:

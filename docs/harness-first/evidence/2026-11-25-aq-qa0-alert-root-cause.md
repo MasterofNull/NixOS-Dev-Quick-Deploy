@@ -42,3 +42,5 @@ health monitor still does not persist `.details`; the message now carries the su
 
 Hints did not cover the probe's `primary_user_path` vs. interactive PATH difference; a canonical
 probe with `executable_path=None` gives a misleading `node: not found`, so reproduce with the unit's PATH.
+
+The four-provider truncation and regular-file extension regressions failed before repair. Both focused test files pass after reserving provider summary space and checking for a directory.

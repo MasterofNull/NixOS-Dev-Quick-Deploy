@@ -94,6 +94,13 @@ def main() -> int:
         gone = aq_report.editor_state_budget_health()
         gone_status = {item.get("id"): item.get("status") for item in gone.get("checks") or []}
         assert_true(gone_status.get("obsolete_ai_markers") == "PASS", "marker with absent dir must not be actionable")
+
+        # A regular file at the marker path is not an installed extension.
+        (obsolete_path.parent / "openai.chatgpt-0.5.80").write_text("stray", encoding="utf-8")
+        stray = aq_report.editor_state_budget_health()
+        stray_status = {item.get("id"): item.get("status") for item in stray.get("checks") or []}
+        assert_true(stray_status.get("obsolete_ai_markers") == "PASS", "non-directory marker path must not be actionable")
+        (obsolete_path.parent / "openai.chatgpt-0.5.80").unlink()
         (obsolete_path.parent / "openai.chatgpt-0.5.80").mkdir()
 
         payload = json.loads(
