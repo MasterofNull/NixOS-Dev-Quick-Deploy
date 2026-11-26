@@ -29,6 +29,18 @@ CASES = [
     ("sed -n 1,5p f", "allow"),
     ("fd y", "allow"),
     ("echo 'a && cat b'", "allow"),
+    ("git log |\n grep fix", "allow"),
+    ("git log | \n\n grep fix", "allow"),
+    ("git log \\\n | grep fix", "allow"),
+    ("echo a \\\n && cat foo.py", "deny"),
+    ("git log |\n cat foo.py", "allow"),
+    ("cat <<EOF\ntext\nEOF\nls", "deny"),
+    ("cat <<EOF\ntext\nEOF\nrg x", "allow"),
+    ("cat <<'EOF'\nls\nEOF\nrg x", "allow"),
+    ('cat <<"EOF"\nls\nEOF\nls', "deny"),
+    ("cat <<-EOF\n\tgrep x\n\tEOF\nrg x", "allow"),
+    ("cat <<-EOF\n\tgrep x\n\tEOF\ngrep x f", "deny"),
+    ("AQ_BASH_POLICY=0 cat foo.py", "deny"),
 ]
 fails = []
 for cmd, want in CASES:

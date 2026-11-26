@@ -27,7 +27,7 @@ Bounded implementer slice dispatched by the orchestrator to a Sonnet sub-agent (
 
 ## Rollback Plan
 
-Set `AQ_BASH_POLICY=0` (always allow), or remove the `aq-bash-tool-policy-hook` entry from `.claude/settings.json`.
+Set `AQ_BASH_POLICY=0` in the environment that launches the agent (always allow; owner act, environment-level only -- a per-call `AQ_BASH_POLICY=0 cmd` prefix does not bypass the policy and stays denied), or remove the `aq-bash-tool-policy-hook` entry from `.claude/settings.json`.
 
 ## Residual Risk
 

@@ -2,7 +2,8 @@
 
 evaluate(command) -> (decision, reason). Deny only when the first command of a
 simple segment is bare cat/ls/find/grep used for reading. Kill switch:
-AQ_BASH_POLICY=0.
+AQ_BASH_POLICY=0, honoured only from the environment that launches the agent
+(owner act); a per-call `AQ_BASH_POLICY=0 cmd` prefix does NOT bypass the policy.
 """
 from __future__ import annotations
 
@@ -17,6 +18,22 @@ _REPLACEMENT = {
     "grep": "ctx_search (or `agrep` / `rg`)",
 }
 _ENV_ASSIGN = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
+_HEREDOC = re.compile(r"(?<!<)<<(?!<)(-?)\s*(['\"]?)([A-Za-z_][A-Za-z0-9_]*)\2")
+
+
+def _strip_heredoc_bodies(text: str) -> str:
+    """Drop heredoc body lines (up to the terminator); keep the opening line and all later lines."""
+    out: list[str] = []
+    pending: list[tuple[str, bool]] = []
+    for line in text.split("\n"):
+        if pending:
+            delim, strip = pending[0]
+            if (line.lstrip("\t") if strip else line) == delim:
+                pending.pop(0)
+            continue
+        out.append(line)
+        pending = [(m.group(3), m.group(1) == "-") for m in _HEREDOC.finditer(line)]
+    return "\n".join(out)
 
 
 def _split_segments(text: str) -> list[str]:
@@ -25,9 +42,11 @@ def _split_segments(text: str) -> list[str]:
     cur: list[str] = []
     quote = ""
     pipeline_pos = 0
+    after_pipe = False
 
     def flush(is_pipe: bool) -> None:
-        nonlocal cur, pipeline_pos
+        nonlocal cur, pipeline_pos, after_pipe
+        after_pipe = is_pipe
         piece = "".join(cur).strip()
         cur = []
         if piece and pipeline_pos == 0:
@@ -46,15 +65,22 @@ def _split_segments(text: str) -> list[str]:
                 quote = ""
         elif ch in "'\"":
             quote = ch
+            after_pipe = False
             cur.append(ch)
+        elif ch == "\\" and text.startswith("\n", i + 1):
+            i += 1  # line continuation: command carries on
         elif text.startswith("||", i) or text.startswith("&&", i):
             flush(False)
             i += 1
         elif ch == "|":
             flush(True)
+        elif ch == "\n" and after_pipe and not "".join(cur).strip():
+            pass  # newline after a trailing `|` continues the pipeline
         elif ch in ";\n":
             flush(False)
         else:
+            if not ch.isspace():
+                after_pipe = False
             cur.append(ch)
         i += 1
     flush(False)
@@ -80,10 +106,7 @@ def evaluate(command: str) -> tuple[str, str]:
     if os.environ.get("AQ_BASH_POLICY") == "0":
         return "allow", "kill-switch"
     command = command or ""
-    if "<<" in command:  # heredoc bodies are data, not commands
-        idx = command.index("<<")
-        eol = command.find("\n", idx)
-        command = command if eol < 0 else command[:eol]
+    command = _strip_heredoc_bodies(command)  # heredoc bodies are data, not commands
     for seg in _split_segments(command):
         name, toks = _first_token(seg)
         if name not in _REPLACEMENT:
@@ -93,6 +116,6 @@ def evaluate(command: str) -> tuple[str, str]:
         return "deny", (
             f"bare `{name}` is denied by the agent tool contract "
             f"(docs/agent-guides/47-AGENT-TOOL-CONTRACT.md); use {_REPLACEMENT[name]}. "
-            "Override: AQ_BASH_POLICY=0."
+            "Kill switch is environment-level only (owner act: set AQ_BASH_POLICY=0 in the environment that launches the agent); it is not a per-call override."
         )
     return "allow", "ok"
