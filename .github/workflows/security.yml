@@ -106,7 +106,7 @@ jobs:
           pattern='^(nix/|flake\.nix$|flake\.lock$|Cargo\.(toml|lock)$|crates/|config/|data/|patches/|pins/|templates/|scripts/(agent-tools|deploy/|services/|ai/lib/|ai/aq-herdr$|ai/aq-network-policy$|maintenance/aq-auto-update$|security/publish-credential-status\.py$)|ai-stack/(mcp-servers/shared/audit_sidecar\.py|switchboard/(capability_lease_gate|execution_cell_runner|execution_cell_validator)\.py)$|\.github/workflows/security\.yml$|scripts/security/aq-closure-scan$|\.grype\.yaml$)'
           changed="$(git diff --name-only HEAD^1 HEAD)"
           echo "changed files:"; echo "$changed"
-          if echo "$changed" | grep -Eq "$pattern"; then
+          if grep -Eq "$pattern" <<< "$changed"; then
             echo "scan=true" >> "$GITHUB_OUTPUT"
           else
             echo "scan=false" >> "$GITHUB_OUTPUT"
@@ -144,7 +144,7 @@ jobs:
             /usr/local/share/boost \
             /var/lib/docker \
             /var/run/docker.sock
-          docker system prune --all --volumes -f 2>/dev/null || true  # NON-GATING: disk cleanup
+          docker system prune --all --volumes -f 2>/dev/null || :  # NON-GATING: disk cleanup
           df -h /
 
       - name: Install Nix
@@ -172,11 +172,15 @@ jobs:
         run: |
           # CI-VULN-SCAN-RUNNER-LOST diagnosis: one sample line per 60s to this step's log
           # (the last line before a lost runner shows the pressure) and to a file.
-          ( while :; do
-              echo "$(date -u +%FT%TZ) mem_used/avail_MB=$(free -m | awk '/Mem:/{print $3"/"$7}') swap_used_MB=$(free -m | awk '/Swap:/{print $3}') disk_avail=$(df -BG --output=avail / | tail -1 | tr -d ' ') load=$(cut -d' ' -f1-3 /proc/loadavg) top_rss=$(ps -eo rss=,comm= --sort=-rss | head -1 | awk '{print $2":"int($1/1024)"MB"}')" | tee -a resource-samples.log
-              sleep 60
-            done ) &
-          trap 'kill %1 2>/dev/null || true' EXIT
+          ( set +e +o pipefail
+            trap 'kill "$spid" 2>/dev/null; exit 0' TERM
+            while :; do
+              echo "$(date -u +%FT%TZ) mem_used/avail_MB=$(free -m | awk '/Mem:/{print $3"/"$7}') swap_used_MB=$(free -m | awk '/Swap:/{print $3}') disk_avail=$(df -BG --output=avail / | awk 'END{print $1}') load=$(cut -d' ' -f1-3 /proc/loadavg) top_rss=$(ps -eo rss=,comm= --sort=-rss | awk 'NR==1{p=$2":"int($1/1024)"MB"} END{print p}')" | tee -a resource-samples.log
+              sleep "${SAMPLE_INTERVAL:-60}" & spid=$!
+              wait "$spid"
+            done ) </dev/null &
+          sampler_pid=$!
+          trap 'kill "$sampler_pid" 2>/dev/null || :; wait "$sampler_pid" 2>/dev/null || :' EXIT
           # Bounded parallelism: llama-cpp's Vulkan shader generation forks many compilers per
           # job; the hosted runner's default (max-jobs=auto x all cores) exhausted it
           # ("Failed to fork process", then ld failure) on 2026-10-02.
