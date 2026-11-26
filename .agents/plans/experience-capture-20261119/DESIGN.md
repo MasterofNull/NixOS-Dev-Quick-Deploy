@@ -1,6 +1,6 @@
-# Experience capture and measurement baseline: per model/agent/role/version/task-type outcome tracking (PRD rev2)
+# Experience capture and measurement baseline: per model/agent/role/version/task-type outcome tracking (PRD rev5, frozen)
 
-Status: rev5 DRAFT for independent re-review (architect lane, 2026-11-25). Supersedes rev4 (751f25ea2; Codex = REVISE, 5 P1/1 P2/1 P3). Final bounded revision approved by the owner; scope cut again, nothing new added. Not frozen. No code in this slice.
+Status: FROZEN 2026-11-26 as PLAN_READY_WITH_FOLLOWUPS by owner override (owner: hyperd) after 5 Codex review rounds; reviewed sha 1869c40c3 (rev5). Codex rev5 findings (1 REVISE) are converted into S-M1 acceptance tests AT-1..AT-5 below instead of another revision. Scope: S0 + S-M1 only; Phase 2 gated by its entry criteria. No code in this slice.
 
 Owner decisions DECIDED 2026-11-25 (owner: hyperd): (1) S-M1 is allowed during the feature freeze; (2) `no_baseline` is a WARN on every commit, HARD only in scheduled maintenance; (3) rework, cycle time and `useful_ratio` are dropped from the contract on 2027-02-25 if below minimum sample or without a denominator; (4) no Phase 2 until S-M1 has run 30 days and the entry criteria are met.
 Owner directives: 2026-11-19 (experience capture, priors, bounded exploration) and 2026-11-25 widening: "work on our baseline and system measurement for our learning loops, new feature implementations, and system improvement cycles."
@@ -129,6 +129,16 @@ Slice-level: each slice in a plan's `tracker.json` gets an optional `measurement
 Goodhart guards: guardrail metrics fixed in advance with the formula config version; a variant or feature may not be judged on a metric it controls; token cost never judged without s; success rate never judged without task_type stratification (easier-task selection); metric definitions are versioned in `config/experience-weighting.json`; a metric whose headline moved but whose component n shrank is flagged.
 
 Where recorded (no new store): baseline/post -> the plan `tracker.json` `measurement` objects and the `.agent/ACTIVATION-AUDIT.md` entry (two lines, each citing a `snapshot_id`); raw snapshots -> `.agents/telemetry/baseline-snapshots.jsonl` (S-M1 own file, 0600, gitignored; schema in the MVP section); no run-event type is needed; report -> aq-report "Experience and baselines" section.
+
+## S-M1 acceptance tests from rev5 review (AT-1..AT-5)
+
+These are required in S-M1 alongside J0/J0b/J0c; a failing AT blocks S-M1 acceptance.
+
+- AT-1 Compare binding. `snapshot_id` hashes subject id, cohort definition, metric definition (`definition_version`), `horizon_days`, `min_effect`, window and input digests, so any change yields a new id. `compare` must reject: a post snapshot whose `input_window` ends before the effective start; a pre snapshot whose window ends after it; windows that overlap or differ in length; pre/post ids whose subject, cohort, definition, horizon or min effect differ. Pass: each of these five cases is rejected with a named reason, and a correctly bound pair is accepted.
+- AT-2 Aggregate unit. Metrics that are not per-PR/per-dispatch (training-loop passes, RSI incident counts, per-tool lean-ctx savings) use `unit_label=aggregate` with an explicit `observation_membership` (the list or digest of the producer records counted, window-filtered). Rule: an `aggregate` metric yields no improvement verdict below `n>=20` memberships, is never clustered by PR, and prints `descriptive` otherwise. Pass: a snapshot containing all three aggregates verifies from retained inputs, membership counts equal the producer record counts in the window, and `compare` on an aggregate with fewer than 20 memberships prints `insufficient`.
+- AT-3 Mint-failure gap. The mint-failure count is reported as the named gap `no_producer` (no durable producer exists: `aq-land:621` stops and `aq-land:910` writes to stderr only) until `aq-land` emits structured failure events; the snapshot carries `value=null, gap=no_producer`, never 0. Pass: the snapshot row shows `no_producer`; a stub durable producer, when added, flips the row to a count without a schema change; the wasted-review figure is likewise `no_producer`.
+- AT-4 Live display and enforcement. The `aq-qa` CheckResult and `aq-report` line show snapshot age and last `verify` status, and the dashboard backend or report card displays the same two values if a dashboard surface already lists aq-qa checks (otherwise a dated deferral is recorded in the S-M1 activation entry). Owner decision 2 is exercised: `aq-pm-tracker` emits WARN on a commit lacking a `measurement` object and the scheduled maintenance run exits non-zero (HARD) on the same input. Pass: all three behaviours demonstrated on real runs, one rollback tick verified.
+- AT-5 Naming and freeze record. tracker.json and DESIGN.md name rev5 and sha 1869c40c3 for the freeze; EC-0 `freeze_record` cites this decision; no stale rev2/rev4 names remain in the plan. Pass: a grep of the plan directory for `rev2` and `rev4` outside revision-history text returns nothing.
 
 ## Phase 2 entry criteria (each rev4 finding that moved here)
 

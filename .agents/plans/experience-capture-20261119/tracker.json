@@ -35,13 +35,22 @@
         "owner": "hyperd",
         "decision": "No Phase 2 until S-M1 has run 30 days and entry criteria are met"
       }
-    ]
+    ],
+    "freeze": {
+      "state": "FROZEN",
+      "date": "2026-11-26",
+      "owner": "hyperd",
+      "disposition": "PLAN_READY_WITH_FOLLOWUPS (owner override after 5 Codex rounds)",
+      "reviewed_sha": "1869c40c3",
+      "revision": "rev5",
+      "followups": "AT-1..AT-5 in DESIGN.md"
+    }
   },
   "phases": [
     {
       "id": "P0",
       "name": "Freeze",
-      "goal": "Frozen rev4 PRD and owner decisions 1-4",
+      "goal": "Frozen rev5 PRD (PLAN_READY_WITH_FOLLOWUPS) and owner decisions 1-4",
       "order": 0
     },
     {
@@ -66,14 +75,15 @@
   "items": [
     {
       "id": "EC-0",
-      "name": "Freeze rev2 PRD and owner decisions",
+      "name": "Freeze rev5 PRD and owner decisions",
       "phase": "P0",
       "kind": "milestone",
-      "goal": "Independent non-author re-review of rev4; owner decisions 1-4.",
-      "validation_goal": "PLAN_READY recorded with lane substitutions noted.",
+      "goal": "Rev5 frozen 2026-11-26 by owner hyperd as PLAN_READY_WITH_FOLLOWUPS (override after 5 Codex rounds, reviewed sha 1869c40c3); owner decisions 1-4 decided 2026-11-25.",
+      "validation_goal": "Freeze record in DESIGN.md header with reviewed sha 1869c40c3.",
       "deps": [],
       "detection": {
-        "freeze_record": ".agents/plans/experience-capture-20261119/DESIGN.md"
+        "freeze_record": ".agents/plans/experience-capture-20261119/DESIGN.md",
+        "reviewed_sha": "1869c40c3"
       }
     },
     {
@@ -90,7 +100,14 @@
         "commit_match": [
           "aq-baseline"
         ]
-      }
+      },
+      "acceptance": [
+        "AT-1 compare binding and rejection cases",
+        "AT-2 aggregate unit type with observation membership",
+        "AT-3 mint-failure count reported as gap no_producer until aq-land emits structured failure events",
+        "AT-4 live age/verify display and decision-2 WARN/HARD exercised",
+        "AT-5 naming and freeze record aligned to rev5"
+      ]
     },
     {
       "id": "EC-C1",
