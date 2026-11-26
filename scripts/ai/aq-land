@@ -9,7 +9,7 @@ scripts/ai/lib/merge_manifests.py and re-reviewed; any other conflict stops and 
 Replaces .agents/delegation/outputs/landing/land.sh (design: delivery-loop-simplification, S3).
 
   aq-land --title T --body-file F [--commit-msg-file M] [--criteria-file C] [--author-lane claude]
-          [--allow-docs-only] [--lanes gemini,codex,local] [--optional-check NAME]... [--owned PATHFILE]
+          [--allow-docs-only] [--lanes gemini,codex,opus,sonnet,local] [--optional-check NAME]... [--owned PATHFILE]
 
 Dependency-bump fast lane: with --author-lane dependabot and a net diff (vs origin/main) made only of files matching
 dependabot_manifest_exemption.manifest_globs in config/harness-first-policy.json and one supported package-version
@@ -38,6 +38,7 @@ import argparse
 import fcntl
 import fnmatch
 import hashlib
+import importlib.machinery
 import importlib.util
 import json
 import os
@@ -64,7 +65,15 @@ CODE_SUFFIXES = (".py", ".sh", ".nix", ".yml", ".yaml")
 # files and runs tools, and completed review logs show 4-13 minutes from start to last write with no
 # progress text in them. A stall limit would kill a valid long review, so gemini and local rely on the
 # hard limit alone. Codex exec prints its tool activity as it goes, so it keeps a stall limit.
-LANES = {"gemini": ("gemini", 1800, 0), "codex": ("codex", 2400, 900), "local": ("local-direct", 2400, 0)}
+# opus/sonnet run through delegate-to-claude (--wait): `claude -p --output-format text` prints only its final answer, so
+# like gemini they get a hard limit and no stall limit.
+LANES = {"gemini": ("gemini", 1800, 0), "codex": ("codex", 2400, 900), "local": ("local-direct", 2400, 0),
+         "opus": ("claude", 2400, 0), "sonnet": ("claude", 2400, 0)}
+BASE_LANES = ("gemini", "codex", "local")  # the only lanes used when the lane-eligibility registry is unreadable
+CLAUDE_LANES = {"opus": "flagship_fallback", "sonnet": "balanced"}  # lane -> delegate-to-claude --model-tier
+CLAUDE_FAMILY = ("opus", "sonnet", "haiku", "fable")
+DEFAULT_LANES = "gemini,codex,opus,sonnet,local"
+REVIEW_ROLE = "reviewer"
 
 
 def _gemini_model_chain() -> tuple[str, ...]:
@@ -193,7 +202,34 @@ def has_dependency_upstream_evidence(text, expected_change=None):
 
 FAILLINE = re.compile(r"FAIL|ERROR|error:|not ok|Traceback|\bfatal\b", re.I)
 RECORD_KEYS = ("Author-lane", "Review-Disposition", "Reviewed-subject-sha256", "Reviewed-head-sha", "Reviewed-by",
-               "Review-Receipt", "Review history")
+               "Review-Receipt", "Review history", "same_vendor_fallback", "Reviewer-model")
+
+
+def delegate_name(lane):
+    return "claude" if lane in CLAUDE_LANES else lane
+
+
+def load_registry():
+    """The Q5 lane-eligibility registry through aq-lane-eligibility's own reader; None when it cannot be read."""
+    try:
+        path = HERE / "aq-lane-eligibility"
+        loader = importlib.machinery.SourceFileLoader("aq_lane_eligibility", str(path))
+        spec = importlib.util.spec_from_loader("aq_lane_eligibility", loader)
+        if spec is None:
+            return None
+        mod = importlib.util.module_from_spec(spec)
+        loader.exec_module(mod)
+        return mod, mod._load_registry(mod._registry_path(argparse.Namespace(registry_path=None)))
+    except Exception:
+        return None
+
+
+def author_family(author):
+    """(vendor_wide, model): vendor_wide is True for generic `claude` (every Anthropic lane is the author's lane)."""
+    m = re.search("|".join(CLAUDE_FAMILY), author)
+    if m:
+        return False, m.group(0)
+    return author.startswith("claude"), ""
 
 
 class Stop(Exception):
@@ -577,23 +613,40 @@ class Land:
     def lane_plan(self, diff_bytes):
         author = (self.a.author_lane or "").strip().lower()
         author = "local" if author.startswith("local") else author
+        vendor_wide, author_model = author_family(author)
+        fallback_on = os.environ.get("AQ_LAND_SAME_VENDOR_FALLBACK", "1") != "0"
+        reg = load_registry()
         order, skipped = [], []
         lanes = self.a.lanes or (
             (os.environ.get("AQ_LAND_DEP_LANES") or "gemini,codex")
-            if getattr(self, "fast_lane", "") else "gemini,codex,local"
+            if getattr(self, "fast_lane", "") else DEFAULT_LANES
         )
         for lane in [x for x in lanes.split(",") if x]:
             if lane not in LANES:
                 raise Stop("review", f"unknown lane {lane!r}")
-            if lane == author:
+            claude = lane in CLAUDE_LANES
+            if claude and reg is None:
+                skipped.append(f"{lane}: lane-eligibility registry unreadable; Claude review lanes need a live grant")
+            elif claude and vendor_wide:
+                skipped.append(f"{lane}: author's lane (author-lane claude covers every Anthropic lane)")
+            elif lane == author or (claude and lane == author_model):
                 skipped.append(f"{lane}: author's lane")
+            elif claude and author_model and not fallback_on:
+                skipped.append(f"{lane}: same-vendor fallback disabled (AQ_LAND_SAME_VENDOR_FALLBACK=0)")
             elif lane == "local" and self.trust_critical:
                 skipped.append("local: change touches gates/trunk/review authority; needs codex or gemini")
             elif lane == "local" and diff_bytes > env_int("AQ_LAND_LOCAL_MAX_DIFF", 30000):
                 skipped.append(f"local: diff {diff_bytes} bytes over the small-diff limit")
-            else:
+            elif lane != "local" and reg is not None and not (grant := reg[0]._check(reg[1], lane, REVIEW_ROLE)).get("eligible"):
+                skipped.append(f"{lane}: no live registry grant for {REVIEW_ROLE} ({grant.get('status')})")
+            elif lane not in order:
                 order.append(lane)
-        return order, skipped
+        self.same_vendor = {x for x in order if x in CLAUDE_LANES and author_model}
+        # same-vendor lanes only after every other remote lane, ahead of local
+        sv = [x for x in order if x in self.same_vendor]
+        rest = [x for x in order if x not in self.same_vendor]
+        at = rest.index("local") if "local" in rest else len(rest)
+        return rest[:at] + sv + rest[at:], skipped
 
     def prompt(self, lane, head, diff_file, diff_text):
         dep_crit = (ROOT / "config/review-criteria/dependency-bump.md").read_text() if getattr(self, "fast_lane", "") else ""
@@ -607,7 +660,9 @@ class Land:
                   f"Read every repository file under the worktree path {self.W}. The main checkout (any repository path outside "
                   ".agents/delegation/worktrees) is out of date for this change: findings based on files read there are wrong. "
                   "Do not run test suites; the author and CI run them.", "", crit]
-        p += ["", "End your answer with exactly these two lines:", f"Reviewed-head-sha: {head}",
+        p += ["", "Start your answer with a `## Findings` heading. List each finding as `- <severity> <file>:<line> - <issue>`. "
+              "If there are none, write `No findings.` then `Reviewed files:` followed by every changed file path, listed exactly as it appears in the diff (full repo-relative paths).",
+              "", "End your answer with exactly these two lines:", f"Reviewed-head-sha: {head}",
               "Review-Disposition: <PASS|PASS_WITH_FOLLOWUPS|REQUEST_CHANGES>", "Use REQUEST_CHANGES only for a concrete defect you can name."]
         return "\n".join(p) + "\n"
 
@@ -645,13 +700,15 @@ class Land:
         agent, hard, stall = LANES[lane]
         hard = env_int("AQ_LAND_REVIEW_TIMEOUT_S", hard)
         stall = env_int("AQ_LAND_STALL_S", stall) if stall else 0  # the override tunes streaming lanes; it cannot re-enable it for the others
-        tool = str(self.delegates / f"delegate-to-{lane}")
-        if lane == "codex":
+        tool = str(self.delegates / f"delegate-to-{delegate_name(lane)}")
+        if lane == "codex" or lane in CLAUDE_LANES:
             b = run([tool, "--budget-check-only", "--role", "review"], cwd=self.W, check=False, stage="review", timeout=60)
             if b.returncode != 0:
                 return "unavailable", f"budget refused (exit {b.returncode})", "", ""
         cmd = {"gemini": ["--role", "reviewer", "--mode", "plan", "--model", model, "--wait"],
                "codex": ["--role", "review", "--mode", "safe", "--shared", "--wait"],
+               "opus": ["--role", "review", "--model-tier", CLAUDE_LANES["opus"], "--wait"],
+               "sonnet": ["--role", "review", "--model-tier", CLAUDE_LANES["sonnet"], "--wait"],
                "local": ["--mode", "direct", "--role", "reviewer", "--wait", "--timeout", str(hard), "--max-tokens", "900"]}[lane]
         out = self.dir / f"review-{lane}-{head[:12]}{'-' + model if model else ''}.out"
         with open(out, "w") as fh:
@@ -688,7 +745,7 @@ class Land:
         reply_text = out_file_text if out_file_text.strip() else stdout_text
         verdicts = re.findall(rf"^Review-Disposition:[ \t]*({'|'.join(VERDICTS)})[ \t]*$", text, re.M)
         heads = re.findall(r"^Reviewed-head-sha:[ \t]*([0-9a-f]{40})[ \t]*$", text, re.M)
-        rid = re.search(rf"\b({lane}-\d{{8}}-\d{{6}}-[a-z0-9]+)", text)
+        rid = re.search(rf"\b({delegate_name(lane)}-\d{{8}}-\d{{6}}-[a-z0-9]+)", text)
         if not verdicts:
             if LOCAL_CAP.search(text):
                 kind = "local cap"
@@ -745,6 +802,9 @@ class Land:
                 raise Stop("review", f"{lane} run {rid} returned {detail}; fix the findings (see {self.dir})")
             rec = {"head": head, "run_id": rid, "lane": lane, "reviewer": LANES[lane][0], "disposition": detail,
                    "subject": hashlib.sha256((diff + "\n").encode()).hexdigest(), "notes": notes}
+            if lane in getattr(self, "same_vendor", ()):
+                rec.update(same_vendor_fallback=True, reviewer_model=lane)
+                rec["notes"] = [*notes, f"{lane}: same-vendor fallback review (author and reviewer are both Anthropic)"]
             self.save(review=rec)
             say(f"review {rid}: {detail}")
             return rec
@@ -786,6 +846,8 @@ class Land:
         block = ["### Review record", f"Author-lane: {self.a.author_lane}", f"Review-Disposition: {rec['disposition']}",
                  f"Reviewed-subject-sha256: {rec['subject']}", f"Reviewed-head-sha: {rec['head']}", f"Reviewed-by: {rec['reviewer']}", "",
                  f"Review history: run {rec['run_id']} ({rec['lane']}) reviewed {rec['head'][:12]}. Lane substitutions: {subs}.", ""]
+        if rec.get("same_vendor_fallback"):
+            block[-1:-1] = ["same_vendor_fallback: true",f"Reviewer-model: {rec['reviewer_model']}"]
         i = next((n for n, l in enumerate(keep) if l.strip() == "## What"), None)
         if i is None:
             raise Stop("pr", "body file has no '## What' heading")
@@ -1022,7 +1084,7 @@ class Land:
                 "checks": list(checks or []),
                 "lane": lane,
                 "run_id": run_id,
-                "detail": str(detail)[:240],
+                "detail": str(detail)[:600],
                 "log_path": str(log_path) if log_path else "",
             }
             line = (json.dumps(row, sort_keys=True) + "\n").encode()
@@ -1222,7 +1284,7 @@ def main():
                     help="additional criteria (added to dependency-bump criteria on that fast lane)")
     ap.add_argument("--author-lane", default="claude")
     ap.add_argument("--lanes", default=os.environ.get("AQ_LAND_LANES", ""),
-                    help="review lanes in order (default gemini,codex,local; gemini,codex on the dependency-bump fast lane)")
+                    help="review lanes in order (default gemini,codex,opus,sonnet,local; opus/sonnet need a live registry grant and a non-Anthropic or specific-model author; gemini,codex on the dependency-bump fast lane)")
     ap.add_argument("--allow-docs-only", action="store_true")
     ap.add_argument("--max-updates", type=int, default=env_int("AQ_LAND_MAX_UPDATES", 3),
                     help="max gh pr update-branch rounds when main moves past the PR before merge (env AQ_LAND_MAX_UPDATES)")

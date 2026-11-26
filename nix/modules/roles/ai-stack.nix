@@ -2302,6 +2302,8 @@ in {
         path = [promptEvalPython];
         serviceConfig = {
           Type = "oneshot";
+          # 75 = aq-prompt-eval deferred (inference saturated); retry next timer, not a failure.
+          SuccessExitStatus = [0 75];
           User = cfg.primaryUser;
           WorkingDirectory = cfg.mcpServers.repoPath;
           ExecStart = "${promptEvalPython}/bin/python3 ${cfg.mcpServers.repoPath}/scripts/ai/aq-prompt-eval";
