@@ -73,7 +73,11 @@ class Fixture:
             {"run_id": f"loop-{n}", "timestamp": f"2026-10-{10 + n:02d}T00:00:00Z", "cases_total": 12, "pass_count": 7,
              "ingest": {"samples_added": 0}} for n in range(3)])
         (self.root / ".agent" / "collaboration").mkdir(parents=True, exist_ok=True)
+        # the tracked seed is a decoy (1 incident); the live runtime ledger (4 incidents) must win
         (self.root / ".agent" / "collaboration" / "rsi-incidents.json").write_text(json.dumps({"version": 1, "incidents": {
+            "seed0": {"first_seen": "2026-10-05T00:00:00Z", "producer": "seed"}}}))
+        (self.root / "rsi-state").mkdir(exist_ok=True)
+        (self.root / "rsi-state" / "rsi-incidents.json").write_text(json.dumps({"version": 1, "incidents": {
             f"inc{n}": {"first_seen": f"2026-10-{5 + n:02d}T00:00:00Z", "producer": "aq-qa:phase0"} for n in range(4)}}))
         self.report.write_text(json.dumps({
             "generated_at": "2026-11-26T00:00:00Z", "hint_adoption": {"total": 10, "accepted": 10},
@@ -96,7 +100,8 @@ class Fixture:
     def env(self, now: str) -> dict[str, str]:
         return {"AQ_BASELINE_ROOT": str(self.root), "AQ_DELEGATION_DIR": str(self.deleg),
                 "AQ_REPORT_LATEST_JSON": str(self.report), "AQ_BASELINE_LEANCTX_JSON": str(self.leanctx),
-                "AQ_BASELINE_NOW": now}
+                "AQ_BASELINE_NOW": now, "TELEMETRY_DIR": str(self.root / "telemetry"),
+                "RSI_STATE_DIR": str(self.root / "rsi-state")}
 
 
 @contextlib.contextmanager
@@ -435,6 +440,134 @@ def test_cohort_validation_and_future_as_of_rejected() -> None:
             raise AssertionError("future --as-of accepted")
         lane = rows_of(fx, snap(fx, PRE_NOW, cohort="lane=other"))
         assert lane["delegation_success_raw"]["n"] == 0
+
+
+def test_live_stores_preferred_over_seed_and_fallback() -> None:
+    with tempfile.TemporaryDirectory() as t:
+        fx = Fixture(Path(t))
+        # RSI: runtime ledger (4) beats the tracked seed (1); with no ledger the seed is the fallback
+        assert rows_of(fx, snap(fx, PRE_NOW))["rsi_incident_count"]["value"] == 4
+        (fx.root / "rsi-state" / "rsi-incidents.json").unlink()
+        assert rows_of(fx, snap(fx, "2026-10-27T00:00:01Z"))["rsi_incident_count"]["value"] == 1
+        # training loop: TELEMETRY_DIR primary store (5 runs) beats the delegation-dir fallback (3 runs)
+        tel = fx.root / "telemetry"
+        _jsonl(tel / "training-loop-results.jsonl", [
+            {"run_id": f"live-{n}", "timestamp": f"2026-10-{10 + n:02d}T00:00:00Z", "cases_total": 12, "pass_count": 9,
+             "ingest": {"samples_added": 1}} for n in range(5)])
+        r = rows_of(fx, snap(fx, "2026-10-27T00:00:02Z"))["training_loop_pass_rate"]
+        assert r["n"] == 5 and r["samples_added"] == 5 and r["numerator"] == 45
+        origins = [i["path"] for i in ab.snapshot_rows(ab.telemetry_dir(fx.root), ab_sid_last(fx))[0]["inputs"]]
+        assert str(tel / "training-loop-results.jsonl") in origins
+
+
+def ab_sid_last(fx: Fixture) -> str:
+    return max(ab.load_rows(ab.telemetry_dir(fx.root)), key=lambda r: r["captured_at"])["snapshot_id"]
+
+
+def test_duplicate_snapshot_idempotent_conflict_refused_and_concurrent_writers() -> None:
+    with tempfile.TemporaryDirectory() as t:
+        fx = Fixture(Path(t))
+        tdir = ab.telemetry_dir(fx.root)
+        sid = snap(fx, PRE_NOW)
+        n_lines = len((tdir / ab.SNAPSHOT_FILE).read_text().splitlines())
+        assert snap(fx, PRE_NOW) == sid  # same second, same inputs: identical rows, no-op
+        assert len((tdir / ab.SNAPSHOT_FILE).read_text().splitlines()) == n_lines
+        with env(fx.env(PRE_NOW)):
+            assert ab.verify_snapshot(fx.root, sid)[0] and ab.snapshot_status(now=ab.parse_ts(PRE_NOW))["verify"] == "pass"
+        # a legacy store that already holds an identical duplicate still verifies (identical rows collapse)
+        path = tdir / ab.SNAPSHOT_FILE
+        path.write_text(path.read_text() * 2)
+        with env(fx.env(PRE_NOW)):
+            assert ab.verify_snapshot(fx.root, sid)[0]
+        # same id but different row content: refuse with a clear error, store unchanged
+        lines = path.read_text().splitlines()
+        path.write_text("\n".join(lines[:n_lines]) + "\n")
+        rows = [json.loads(x) for x in path.read_text().splitlines()]
+        rows[0]["value"] = 12345
+        path.write_text("".join(json.dumps(r, sort_keys=True, separators=(",", ":")) + "\n" for r in rows))
+        before = path.read_text()
+        try:
+            snap(fx, PRE_NOW)
+        except ab.BaselineError as exc:
+            assert "different rows" in str(exc)
+        else:
+            raise AssertionError("conflicting same-id snapshot accepted")
+        assert path.read_text() == before
+        with env(fx.env(PRE_NOW)):
+            assert not ab.verify_snapshot(fx.root, sid)[0]
+    with tempfile.TemporaryDirectory() as t:
+        fx = Fixture(Path(t))
+        a = ["--subject", "feat-x", "--definition-version", "v1", "--horizon-days", "30", "--min-effect", "0.1"]
+        procs = [subprocess.Popen([sys.executable, str(CLI), "snapshot", *a, *(["--as-of", PRE_NOW] if i % 2 else [])],
+                                  stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+                                  env={**os.environ, **fx.env(PRE_NOW)}) for i in range(8)]
+        outs = [p.communicate() for p in procs]
+        assert all(p.returncode == 0 for p in procs), outs
+        tdir = ab.telemetry_dir(fx.root)
+        ids = {o[0].split()[1] for o in outs}
+        assert len(ids) == 1  # identical inputs and second: one snapshot id, written once
+        sid = ids.pop()
+        lines = (tdir / ab.SNAPSHOT_FILE).read_text().splitlines()
+        assert all(json.loads(x) for x in lines) and len(lines) == len(ab.snapshot_rows(tdir, sid))
+        with env(fx.env(PRE_NOW)):
+            assert ab.verify_snapshot(fx.root, sid)[0]
+        assert not [p for p in (tdir / ab.INPUT_DIR).iterdir() if p.name.endswith(".tmp")]
+
+
+def test_post_display_gates_aggregate_verdict_and_input_validation() -> None:
+    pre = ab.new_row("m", improves_when="up", unit_label="aggregate", time_coverage="windowed", producer="p",
+                     eligibility_filter="f", value=1.0, display="descriptive")
+    post = {**pre, "display": "insufficient"}
+    assert ab.metric_verdict(pre, post, 0.1, "s")["verdict"] == "insufficient"
+    assert ab.metric_verdict(post, pre, 0.1, "s")["verdict"] == "insufficient"
+    assert ab.metric_verdict(pre, {**pre}, 0.1, "s")["verdict"] == "descriptive"
+    # a unit row paired with a current-only post row never gets a verdict
+    unit = {**pre, "unit_label": "pr", "time_coverage": "windowed", "observations": [{"u": str(i), "v": 1} for i in range(30)]}
+    assert ab.metric_verdict(unit, {**unit, "time_coverage": "current-only"}, 0.1, "s")["verdict"] in ("descriptive", "insufficient")
+    with tempfile.TemporaryDirectory() as t:
+        fx = Fixture(Path(t))
+        for bad in (float("nan"), float("inf"), -0.1):
+            try:
+                snap(fx, PRE_NOW, min_effect=bad)
+            except ab.BaselineError:
+                continue
+            raise AssertionError(f"min_effect {bad} accepted")
+        # a tampered snapshot line cannot point verify outside baseline-inputs/
+        sid = snap(fx, PRE_NOW)
+        path = ab.telemetry_dir(fx.root) / ab.SNAPSHOT_FILE
+        path.write_text(path.read_text().replace(ab.snapshot_rows(ab.telemetry_dir(fx.root), sid)[0]["inputs"][0]["sha256"], "../../../etc/passwd"))
+        with env(fx.env(PRE_NOW)):
+            ok, detail = ab.verify_snapshot(fx.root, sid)
+        assert not ok and ("invalid" in detail or "differ" in detail)
+
+
+def test_rollback_twice_same_second_never_overwrites() -> None:
+    with tempfile.TemporaryDirectory() as t:
+        fx = Fixture(Path(t))
+        snap(fx, PRE_NOW)
+        assert run_cli(fx, PRE_NOW, "rollback").returncode == 0
+        snap(fx, PRE_NOW, as_of="2026-10-26T00:00:00Z")
+        first = {p.name: p.stat().st_size for p in (fx.root / ".agent" / "archive").glob("*-aq-baseline/*")}
+        assert run_cli(fx, PRE_NOW, "rollback").returncode == 0
+        dirs = sorted((fx.root / ".agent" / "archive").glob("*-aq-baseline*"))
+        assert len(dirs) == 2 and re.match(r"\d{8}T\d{6}Z-aq-baseline", dirs[0].name)
+        assert all((d / ab.SNAPSHOT_FILE).exists() and (d / ab.INPUT_DIR).is_dir() for d in dirs)
+        assert first[ab.SNAPSHOT_FILE] == (dirs[0] / ab.SNAPSHOT_FILE).stat().st_size
+
+
+def test_per_lane_rows_keep_each_lane_when_two_lanes_share_a_pr() -> None:
+    with tempfile.TemporaryDirectory() as t:
+        fx = Fixture(Path(t))
+        _jsonl(fx.deleg / "registry.jsonl", [
+            {"id": "a1", "agent": "codex", "status": "done", "created": "2026-10-10T00:00:00Z", "pr": 7},
+            {"id": "a2", "agent": "codex", "status": "failed", "created": "2026-10-11T00:00:00Z", "pr": 7},  # retry, same lane
+            {"id": "g1", "agent": "gemini", "status": "done", "created": "2026-10-12T00:00:00Z", "pr": 7},  # reviewer lane, same PR
+            {"id": "x1", "agent": "codex", "status": "done", "created": "2026-10-13T00:00:00Z"}])
+        r = rows_of(fx, snap(fx, PRE_NOW))
+        assert r["delegation_success_raw.lane.gemini"]["n"] == 1  # not dropped for the later/earlier lane
+        codex = r["delegation_success_raw.lane.codex"]
+        assert codex["n"] == 2 and codex["numerator"] == 1  # retry clusters inside the lane: final attempt (failed) + x1
+        assert r["delegation_success_raw"]["n"] == 2  # across lanes the PR is one unit (final attempt overall)
 
 
 def test_at5_plan_naming_and_freeze_record() -> None:

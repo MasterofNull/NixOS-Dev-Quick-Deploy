@@ -121,6 +121,10 @@ if [[ "${MODE}" == "--maintenance" ]]; then
   fi
 elif nb_out="$(python3 "${TRACKER}" --check-no-baseline 2>&1)"; then
   echo "${nb_out}" | sed -n 's/^WARN/[tier0.d\/check-pm-tracker] WARN/p'
+else
+  # decision 2: never blocks a commit, but a crash of the check itself must be visible, not swallowed
+  echo "[tier0.d/check-pm-tracker] WARN: --check-no-baseline crashed (exit $?); no_baseline NOT evaluated:"
+  echo "${nb_out}" | sed 's/^/    /'
 fi
 
 # The current refactor rundown is an operator-facing projection, not a second

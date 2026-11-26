@@ -8,15 +8,20 @@ No model, no network, no run-event dependency. A metric with no producer is valu
 """
 from __future__ import annotations
 
+import contextlib
+import fcntl
 import hashlib
 import json
 import math
 import os
 import random
+import re
+import shutil
 import subprocess
+import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, Iterator
 
 DEFINITION_FLOOR_N = 20  # independent units for any rate/improvement claim
 DISPLAY_N = 5  # display-only threshold
@@ -27,6 +32,8 @@ SNAPSHOT_FILE = "baseline-snapshots.jsonl"
 DISABLED_MARKER = "baseline-schedule.disabled"
 INPUT_DIR = "baseline-inputs"
 METRIC_DEFINITIONS_VERSION = "s-m1.v1"
+LOCK_FILE = ".baseline.lock"
+_SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 
 Row = dict[str, Any]
 
@@ -85,14 +92,35 @@ def telemetry_dir(root: Path) -> Path:
     return root / ".agents" / "telemetry"
 
 
+def _training_loop_path(deleg: Path) -> Path:
+    """Same resolution as the owner (scripts/ai/aq-local-training-loop RESULTS_LOG): TELEMETRY_DIR is the primary
+    store; the delegation-dir file is only its PermissionError fallback (_persist_result)."""
+    primary = Path(os.environ.get("TELEMETRY_DIR", "/var/lib/ai-stack/hybrid/telemetry")) / "training-loop-results.jsonl"
+    return primary if primary.is_file() else deleg / "training-loop-results.jsonl"
+
+
+def _rsi_incidents_path(root: Path) -> Path:
+    """Same resolver as the ledger's owner (scripts/ai/lib/rsi_paths.py incidents_read_path): the runtime state
+    ledger (PRSI_INCIDENTS_FILE / RSI_RUNTIME_DIR / RSI_STATE_DIR / /var/lib/nixos-ai-stack/rsi) wins; the tracked
+    .agent/collaboration seed is read only when no state ledger exists yet."""
+    lib = str(Path(__file__).resolve().parent)
+    if lib not in sys.path:
+        sys.path.insert(0, lib)
+    import rsi_paths
+    try:
+        return Path(rsi_paths.incidents_read_path(root))
+    except rsi_paths.StateDirError:
+        return root / ".agent" / "collaboration" / "rsi-incidents.json"
+
+
 def producer_paths(root: Path) -> dict[str, Path]:
     deleg = Path(os.environ.get("AQ_DELEGATION_DIR") or root / ".agents" / "delegation")
     return {
         "registry": deleg / "registry.jsonl",
         "outcome_receipts": deleg / "outcome-receipts.jsonl",
         "aq_land_failures": deleg / "outputs" / "aq-land" / "failure-events.jsonl",
-        "training_loop": deleg / "training-loop-results.jsonl",
-        "rsi_incidents": root / ".agent" / "collaboration" / "rsi-incidents.json",
+        "training_loop": _training_loop_path(deleg),
+        "rsi_incidents": _rsi_incidents_path(root),
         "aq_report": Path(os.environ.get("AQ_REPORT_LATEST_JSON", "/var/lib/ai-stack/hybrid/telemetry/latest-aq-report.json")),
     }
 
@@ -128,12 +156,31 @@ def read_live_inputs(root: Path) -> dict[str, tuple[str, bytes]]:
 
 # --------------------------------------------------------------------------- store
 
-def _secure_append(path: Path, line: str) -> None:
+def _write_all(fd: int, data: bytes) -> None:
+    view = memoryview(data)
+    while view:
+        view = view[os.write(fd, view):]
+
+
+@contextlib.contextmanager
+def store_lock(tdir: Path) -> Iterator[None]:
+    tdir.mkdir(parents=True, exist_ok=True)
+    fd = os.open(tdir / LOCK_FILE, os.O_RDWR | os.O_CREAT, 0o600)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX)
+        yield
+    finally:
+        os.close(fd)  # closing releases the flock
+
+
+def _secure_append(path: Path, text: str) -> None:
+    """Caller holds store_lock. Full-write loop + fsync so a short write never leaves a torn row set unnoticed."""
     path.parent.mkdir(parents=True, exist_ok=True)
     fd = os.open(path, os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o600)
     try:
         os.fchmod(fd, 0o600)
-        os.write(fd, line.encode("utf-8"))
+        _write_all(fd, text.encode("utf-8"))
+        os.fsync(fd)
     finally:
         os.close(fd)
 
@@ -145,10 +192,11 @@ def retain_input(tdir: Path, data: bytes) -> str:
     os.chmod(d, 0o700)
     target = d / digest
     if not target.exists():
-        tmp = d / f".{digest}.tmp"
+        tmp = d / f".{digest}.{os.getpid()}.{os.urandom(4).hex()}.tmp"  # unique: concurrent writers never share a temp
         fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
         try:
-            os.write(fd, data)
+            _write_all(fd, data)
+            os.fsync(fd)
         finally:
             os.close(fd)
         os.replace(tmp, target)
@@ -171,10 +219,17 @@ def load_rows(tdir: Path) -> list[Row]:
 
 
 def snapshot_rows(tdir: Path, snapshot_id: str) -> list[Row]:
-    rows = [r for r in load_rows(tdir) if r.get("snapshot_id") == snapshot_id]
+    rows: dict[str, Row] = {}
+    for r in load_rows(tdir):
+        if r.get("snapshot_id") != snapshot_id:
+            continue
+        mid = str(r.get("metric_id"))
+        if mid in rows and _canonical(rows[mid]) != _canonical(r):
+            raise BaselineError(f"snapshot {snapshot_id} has conflicting rows for {mid}")
+        rows[mid] = r  # identical duplicates (older same-second appends) collapse to one
     if not rows:
         raise BaselineError(f"unknown snapshot {snapshot_id}")
-    return rows
+    return list(rows.values())
 
 
 # --------------------------------------------------------------------------- parsing helpers
@@ -299,18 +354,23 @@ def _registry_rows(data: bytes | None, window: tuple[datetime, datetime], lane_f
         if _in_window(_registry_ts(r), window):
             latest[rid] = r  # duplicate events for one dispatch collapse to the last record
 
-    clustered: dict[str, dict[str, Any]] = {}
-    for rid, r in sorted(latest.items()):
-        pr = r.get("pr")
-        key = f"pr:{pr}" if pr not in (None, "", "None") else f"dispatch:{rid}"
-        prev = clustered.get(key)
-        if prev is None or str(_registry_ts(r)) >= str(_registry_ts(prev)):
-            clustered[key] = r  # retries linked to one PR cluster; the final attempt decides
+    def cluster(recs: list[tuple[str, dict[str, Any]]]) -> list[tuple[str, dict[str, Any]]]:
+        by_key: dict[str, dict[str, Any]] = {}
+        for rid, r in sorted(recs):
+            pr = r.get("pr")
+            key = f"pr:{pr}" if pr not in (None, "", "None") else f"dispatch:{rid}"
+            prev = by_key.get(key)
+            if prev is None or str(_registry_ts(r)) >= str(_registry_ts(prev)):
+                by_key[key] = r  # retries linked to one PR cluster; the final attempt decides
+        return list(by_key.items())
 
-    groups: dict[str, list[tuple[str, dict[str, Any]]]] = {"all": []}
-    for key, r in clustered.items():
-        groups["all"].append((key, r))
-        groups.setdefault(f"lane.{r.get('agent')}", []).append((key, r))
+    by_lane: dict[str, list[tuple[str, dict[str, Any]]]] = {}
+    for rid, r in latest.items():
+        by_lane.setdefault(f"lane.{r.get('agent')}", []).append((rid, r))
+    # clustering happens WITHIN each group: a PR worked by two lanes keeps one unit per lane row and one in "all"
+    groups: dict[str, list[tuple[str, dict[str, Any]]]] = {"all": cluster(list(latest.items()))}
+    for gname, recs in by_lane.items():
+        groups[gname] = cluster(recs)
 
     rows: list[Row] = []
     for gname in sorted(groups):
@@ -566,18 +626,21 @@ def compute_rows(inputs: dict[str, bytes], window: tuple[datetime, datetime], co
 
 def rollback(root: Path) -> Path:
     """Rollback order (DESIGN.md): 1. disable the schedule (a scheduled tick then refuses to write),
-    2. archive (never delete, Rule 12) the snapshot file and retained inputs. Removing the aq-qa / aq-report /
-    aq-pm-tracker checks is a code revert and is done after this returns."""
+    2. archive (never delete, Rule 12) the snapshot file and retained inputs into a timestamped directory that
+    is never reused or overwritten. Removing the aq-qa / aq-report / aq-pm-tracker checks is a code revert."""
     tdir = telemetry_dir(root)
-    tdir.mkdir(parents=True, exist_ok=True)
-    marker = tdir / DISABLED_MARKER
-    marker.write_text(f"disabled {fmt_ts(now_utc())}\n", encoding="utf-8")
-    dest = root / ".agent" / "archive" / f"{now_utc().strftime('%Y%m%d')}-aq-baseline"
-    dest.mkdir(parents=True, exist_ok=True)
-    for name in (SNAPSHOT_FILE, INPUT_DIR):
-        src = tdir / name
-        if src.exists():
-            os.replace(src, dest / name)
+    with store_lock(tdir):
+        (tdir / DISABLED_MARKER).write_text(f"disabled {fmt_ts(now_utc())}\n", encoding="utf-8")
+        base = root / ".agent" / "archive" / f"{now_utc().strftime('%Y%m%dT%H%M%SZ')}-aq-baseline"
+        dest, n = base, 1
+        while dest.exists():
+            n += 1
+            dest = base.with_name(f"{base.name}-{n}")
+        dest.mkdir(parents=True)
+        for name in (SNAPSHOT_FILE, INPUT_DIR):
+            src = tdir / name
+            if src.exists():
+                shutil.move(str(src), str(dest / name))
     return dest
 
 
@@ -613,6 +676,8 @@ def take_snapshot(root: Path, *, subject: str, cohort: str, definition_version: 
         raise BaselineError("--window-days and --horizon-days must be positive")
     if not subject.strip():
         raise BaselineError("--subject is required")
+    if not math.isfinite(min_effect) or min_effect < 0:
+        raise BaselineError("--min-effect must be a finite number >= 0")
     captured = now_utc()
     end = parse_ts(as_of) if as_of else captured
     if end > captured:
@@ -638,8 +703,14 @@ def take_snapshot(root: Path, *, subject: str, cohort: str, definition_version: 
         out.append({"snapshot_id": sid, "captured_at": fmt_ts(captured), "input_window": win, "inputs": inputs,
                     "repo_head": head, "subject": subject, "cohort": cohort, "definition_version": definition_version,
                     "horizon_days": horizon_days, "min_effect": min_effect, **r})
-    path = tdir / SNAPSHOT_FILE
-    _secure_append(path, "".join(_canonical(r) + "\n" for r in out))
+    with store_lock(tdir):
+        existing = {str(r.get("metric_id")): r for r in load_rows(tdir) if r.get("snapshot_id") == sid}
+        if existing:
+            # same id = same subject/params/second/inputs: identical rows are a no-op, anything else is a collision
+            if {str(r["metric_id"]): _canonical(r) for r in out} == {m: _canonical(r) for m, r in existing.items()}:
+                return sid, out
+            raise BaselineError(f"snapshot id {sid[:12]} already recorded with different rows; refusing to append")
+        _secure_append(tdir / SNAPSHOT_FILE, "".join(_canonical(r) + "\n" for r in out))
     return sid, out
 
 
@@ -649,6 +720,8 @@ def verify_snapshot(root: Path, snapshot_id: str) -> tuple[bool, str]:
     first = stored[0]
     raw: dict[str, bytes] = {}
     for i in first["inputs"]:
+        if not _SHA256_RE.match(str(i.get("sha256"))):
+            return False, f"invalid retained-input digest for {i.get('name')}"
         p = tdir / INPUT_DIR / i["sha256"]
         try:
             data = p.read_bytes()
@@ -734,8 +807,8 @@ def metric_verdict(pre: Row | None, post: Row | None, min_effect: float, seed: s
         return {"verdict": "no_baseline", "reason": "metric absent from the pre or post snapshot"}
     if pre.get("gap") or post.get("gap") or pre.get("value") is None or post.get("value") is None:
         return {"verdict": "prospective-only", "reason": pre.get("gap") or post.get("gap") or "no value in one arm"}
-    if pre["unit_label"] == "aggregate" or pre["time_coverage"] == "current-only":
-        return {"verdict": pre["display"] if pre["display"] == "insufficient" else "descriptive",
+    if "aggregate" in (pre["unit_label"], post["unit_label"]) or "current-only" in (pre["time_coverage"], post["time_coverage"]):
+        return {"verdict": "insufficient" if "insufficient" in (pre["display"], post["display"]) else "descriptive",
                 "reason": "aggregate or current-only rows carry no verdict"}
     n_pre, n_post = len(pre["observations"]), len(post["observations"])
     base = {"n_pre": n_pre, "n_post": n_post, "pre_value": pre["value"], "post_value": post["value"]}

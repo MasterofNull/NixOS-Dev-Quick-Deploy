@@ -1601,24 +1601,28 @@ def no_baseline_report(plans_root: Path | None = None) -> dict:
     required: list[str] = []
     legacy = 0
     plans = sorted(p.parent for p in root.glob("*/tracker.json")) if root.is_dir() else []
+    if not plans:
+        return {"no_baseline_required": required, "no_baseline_legacy_count": legacy}
+    # one shared evidence snapshot for every plan (as project_all does), not one git log per plan
+    gitlog, source_health = _git_log()
+    activation_ctx = _load_activation_ctx()
+    untrusted, _uerrs = load_untrusted()
     for plan_dir in plans:
         try:
             manifest = json.loads((plan_dir / "tracker.json").read_text())
-            projected = project(plan_dir)["items"]
+            enforce = bool((manifest.get("plan") or {}).get("measurement_required"))
+            for it in manifest.get("items", []):
+                status = project_item_full(it, gitlog, source_health, untrusted, plan_dir.name, activation_ctx)[0]
+                if status not in ("SHIPPED", "ACTIVATED"):
+                    continue
+                if isinstance(it.get("measurement"), dict) and it["measurement"]:
+                    continue
+                if enforce:
+                    required.append(f"{plan_dir.name}:{it['id']}")
+                else:
+                    legacy += 1
         except Exception as exc:  # one unprojectable legacy plan must not hide the others
             print(f"aq-pm-tracker: no_baseline skipped {plan_dir.name}: {type(exc).__name__}", file=sys.stderr)
-            continue
-        by_id = {it.get("id"): it for it in manifest.get("items", [])}
-        enforce = bool((manifest.get("plan") or {}).get("measurement_required"))
-        for it in projected:
-            if it["status"] not in ("SHIPPED", "ACTIVATED"):
-                continue
-            if isinstance((by_id.get(it["id"]) or {}).get("measurement"), dict) and by_id[it["id"]]["measurement"]:
-                continue
-            if enforce:
-                required.append(f"{plan_dir.name}:{it['id']}")
-            else:
-                legacy += 1
     return {"no_baseline_required": required, "no_baseline_legacy_count": legacy}
 
 
