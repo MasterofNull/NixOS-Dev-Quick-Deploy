@@ -289,7 +289,7 @@ class Base(unittest.TestCase):
         self.g("checkout", "-qb", "feat/x")
         self.change("scripts/foo.py", "print(1)\n")
         (self.S / "body.md").write_text(BODY)
-        for name, src in (("delegate-to-gemini", STUB_DELEGATE), ("delegate-to-codex", STUB_DELEGATE), ("delegate-to-local", STUB_DELEGATE),
+        for name, src in (("delegate-to-gemini", STUB_DELEGATE), ("delegate-to-codex", STUB_DELEGATE), ("delegate-to-local", STUB_DELEGATE), ("delegate-to-claude", STUB_DELEGATE),
                           ("gh", STUB_GH), ("receipt", STUB_RECEIPT), ("tier0", STUB_TIER0)):
             (self.S / name).write_text(src)
             (self.S / name).chmod(0o755)
@@ -302,9 +302,17 @@ class Base(unittest.TestCase):
                     "AQ_DELEGATION_DIR": str(self.S / "deleg"),
                     "AQ_LAND_WORKTREE_DIR": str(self.S / "wts"), "AQ_LAND_POLL_S": "0.05", "AQ_LAND_STALL_S": "2",
                     "AQ_LAND_REVIEW_TIMEOUT_S": "4", "AQ_LAND_CHECKS_TIMEOUT_S": "5", "AQ_LAND_LOCK_WAIT_S": "1"}
+        self.registry({lane: "2999-01-01T00:00:00Z" for lane in ("gemini", "codex", "opus", "sonnet")})
+        self.env["AQ_LANE_ELIGIBILITY_REGISTRY"] = str(self.S / "lane-registry.json")
+        self.env.pop("AQ_LAND_SAME_VENDOR_FALLBACK", None)
         self.env.pop("AQ_LAND_GEMINI_MODEL", None)
         self.env.pop("AQ_LAND_GEMINI_FALLBACK_MODELS", None)
         self.env.pop("AQ_LAND_MERGE_POLL_TIMEOUT_S", None)
+
+    def registry(self, expiries):
+        """Fixture lane-eligibility registry: lane -> reviewer-grant expiry (None = no reviewer grant)."""
+        lanes = {lane: {"eligible": ({"reviewer": {"expires_at": exp}} if exp else {})} for lane, exp in expiries.items()}
+        (self.S / "lane-registry.json").write_text(json.dumps({"lanes": lanes}))
 
     def tearDown_state(self):
         for n in ("calls.log", "published", "receipt.log"):
@@ -778,6 +786,101 @@ class Lanes(Base):
         r = self.land(expect=1)
         self.assertIn("over the small-diff limit", self.stop_line(r))
         self.assertEqual(self.calls("local"), [])
+
+
+class RegistryLanes(Base):
+    """Claude review lanes (opus, sonnet) gated by the lane-eligibility registry and by author independence."""
+
+    LIVE = "2999-01-01T00:00:00Z"
+
+    def down(self, *lanes):
+        self.cfg({lane: ({"budget_rc": 3} if lane == "codex" else {"mode": "quota"}) for lane in lanes})
+
+    def claude_calls(self):
+        return self.calls("claude")
+
+    def cp(self):
+        return json.loads(next((self.S / "state").glob("*/checkpoint.json")).read_text())
+
+    def test_generic_claude_author_excludes_every_anthropic_lane(self):
+        self.down("gemini", "codex")
+        self.land("--lanes", "gemini,codex,opus,sonnet", expect=1)
+        self.assertEqual(self.claude_calls(), [])
+        detail = self.failure_events()[-1]["detail"]
+        self.assertIn("opus: author's lane", detail)
+        self.assertIn("sonnet: author's lane", detail)
+
+    def test_specific_author_model_falls_back_to_the_other_claude_lane_and_flags_it(self):
+        self.down("gemini", "codex")
+        self.land("--author-lane", "sonnet", expect=0)
+        calls = self.claude_calls()
+        self.assertEqual(len(calls), 1)
+        self.assertIn("--model-tier flagship_fallback", calls[0])  # opus, never the author's own sonnet
+        body = self.pr_body()
+        self.assertIn("same_vendor_fallback: true", body)
+        self.assertIn("Reviewer-model: opus", body)
+        self.assertIn("Reviewed-by: claude", body)
+        rec = self.cp()["review"]
+        self.assertEqual((rec["same_vendor_fallback"], rec["reviewer_model"]), (True, "opus"))
+
+    def test_other_vendor_lane_is_tried_before_same_vendor(self):
+        self.down("gemini")
+        self.land("--author-lane", "sonnet", expect=0)
+        self.assertEqual(self.claude_calls(), [])
+        self.assertNotIn("same_vendor_fallback", self.pr_body())
+
+    def test_same_vendor_fallback_switch_off_leaves_no_lane(self):
+        self.down("gemini", "codex")
+        self.env["AQ_LAND_SAME_VENDOR_FALLBACK"] = "0"
+        self.land("--author-lane", "sonnet", "--lanes", "gemini,codex,opus,sonnet", expect=1)
+        self.assertEqual(self.claude_calls(), [])
+        self.assertIn("same-vendor fallback disabled", self.failure_events()[-1]["detail"])
+
+    def test_claude_lane_is_other_vendor_for_a_non_anthropic_author(self):
+        self.down("gemini", "codex")
+        self.land("--author-lane", "codex", "--lanes", "gemini,opus", expect=0)
+        self.assertEqual(len(self.claude_calls()), 1)
+        self.assertNotIn("same_vendor_fallback", self.pr_body())
+
+    def test_expired_or_missing_registry_grant_skips_the_lane_with_a_reason(self):
+        self.down("gemini", "codex")
+        for opus, sonnet, want in (("2020-01-01T00:00:00Z", self.LIVE, "opus: no live registry grant for reviewer (expired)"),
+                                   (self.LIVE, None, "sonnet: no live registry grant for reviewer (not-listed)")):
+            self.tearDown_state(); self.gh_state({})
+            (self.S / "calls.log").unlink(missing_ok=True)
+            self.registry({"gemini": self.LIVE, "codex": self.LIVE, "opus": opus, "sonnet": sonnet})
+            self.land("--author-lane", "haiku", "--lanes", "gemini,codex,opus,sonnet", expect=0)
+            self.assertIn(want, self.pr_body())
+            self.assertEqual(len(self.claude_calls()), 1)  # only the lane that still has a grant ran
+
+    def test_expired_codex_grant_skips_codex(self):
+        self.registry({"gemini": self.LIVE, "codex": "2020-01-01T00:00:00Z"})
+        self.down("gemini")
+        self.land("--lanes", "gemini,codex,local", expect=0)
+        self.assertEqual(self.calls("codex"), [])
+        self.assertIn("codex: no live registry grant", self.pr_body())
+
+    def test_unreadable_registry_keeps_only_the_original_three_lanes(self):
+        self.down("gemini", "codex")
+        self.env["AQ_LANE_ELIGIBILITY_REGISTRY"] = str(self.S / "missing.json")
+        self.land("--author-lane", "haiku", "--lanes", "gemini,codex,opus,sonnet,local", expect=0)
+        self.assertEqual(self.claude_calls(), [])
+        self.assertIn("opus: lane-eligibility registry unreadable", self.pr_body())
+        self.assertEqual(len(self.calls("local")), 1)  # the original three-lane behaviour is untouched
+
+    def test_trust_critical_change_still_excludes_local_with_claude_lanes_present(self):
+        self.change("scripts/governance/new-gate.sh", "#!/bin/sh\n")
+        self.cfg({"gemini": {"mode": "quota"}, "codex": {"budget_rc": 3}, "claude": {"mode": "quota"}, "local": {"mode": "ok"}})
+        self.land("--author-lane", "haiku", expect=1)
+        self.assertIn("needs codex or gemini", self.failure_events()[-1]["detail"])
+        self.assertEqual(self.calls("local"), [])
+        self.assertEqual(len(self.claude_calls()), 2)  # opus and sonnet were tried, both unavailable
+
+    def test_claude_budget_refusal_falls_through(self):
+        self.cfg({"gemini": {"mode": "quota"}, "codex": {"budget_rc": 3}, "claude": {"budget_rc": 3}, "local": {"mode": "ok"}})
+        self.land("--author-lane", "haiku", expect=0)
+        self.assertIn("opus: budget refused (exit 3)", self.pr_body())
+        self.assertEqual(len(self.calls("local")), 1)
 
 
 class DepFastLane(Base):
