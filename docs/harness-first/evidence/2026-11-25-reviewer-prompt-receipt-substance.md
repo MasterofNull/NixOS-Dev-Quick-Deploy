@@ -38,3 +38,7 @@ The mint requirement was not visible from the prompt side; prompt and gate now s
 ## Addendum: heading-only bypass closed
 
 Codex review codex-20261125-144106-n1ab6o (REQUEST_CHANGES) found that `substantive()` in `scripts/ai/aq-review-receipt` accepted a bare findings heading, so the new prompt format would let a heading plus a one-sentence approval mint a receipt. The heading now counts only when a path-like token follows it; the no-findings+path and prose branches are unchanged, so the gate is stricter. New tests: heading-only approval fails; heading + finding with a path passes; heading + `No findings.` + `Reviewed files:` passes. `python3 scripts/testing/test-aq-review-receipt.py`: 45 tests OK. Root-level files (e.g. `flake.nix`) are accepted as reviewed paths (codex-20261125-144725-grhfm2).
+
+## Addendum
+
+Redesign (owner 2026-11-25): substance now requires naming a file the reviewed diff changes; regex path heuristics retired for that branch.

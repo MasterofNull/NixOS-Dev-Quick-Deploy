@@ -30,7 +30,7 @@ class T(unittest.TestCase):
         os.environ["AQ_RECEIPT_HASH_ENFORCED_FROM"] = "2000-01-01"  # tests mint "now"; the legacy test sets an old created_at
         self.addCleanup(os.environ.pop, "AQ_RECEIPT_HASH_ENFORCED_FROM", None)
         self.head = self._repo()  # mint binds a real commit's tree, so every test needs a repo
-        self.write_log(f"reviewed {self.head[:12]}\n## Findings\nnone in a/b.py\nReview-Disposition: PASS\n")
+        self.write_log(f"reviewed {self.head[:12]}\n## Findings\nnone in b\nReview-Disposition: PASS\n")
 
     def tearDown(self):
         self._t.cleanup()
@@ -120,7 +120,7 @@ class T(unittest.TestCase):
         self.assertNotEqual(self.mint().returncode, 0)
 
     def test_verify_rejects_verdict_edit(self):
-        self.write_log(f"reviewed {self.head[:12]}\n## Findings\nbug in a/b.py\nReview-Disposition: REQUEST_CHANGES\n")
+        self.write_log(f"reviewed {self.head[:12]}\n## Findings\nbug in b\nReview-Disposition: REQUEST_CHANGES\n")
         self.assertEqual(self.mint().returncode, 0)  # minting records the real verdict
         rec = json.loads(self.rfile.read_text())
         self.assertEqual(rec["verdict"], "REQUEST_CHANGES")
@@ -190,7 +190,7 @@ class T(unittest.TestCase):
         r = self.mint()
         self.assertNotEqual(r.returncode, 0)
         self.assertIn("substantive", r.stderr)
-        self.write_log(f"reviewed {self.head[:12]}\nNo findings after reading scripts/ai/aq-land.\nReview-Disposition: PASS\n")
+        self.write_log(f"reviewed {self.head[:12]}\nNo findings after reading b.\nReview-Disposition: PASS\n")
         self.assertEqual(self.mint().returncode, 0)  # no-findings statement that names reviewed files
         self.write_log(f"reviewed {self.head[:12]}\nNo findings.\nReview-Disposition: PASS\n")
         self.assertNotEqual(self.mint().returncode, 0)  # ...but not without file paths
@@ -326,7 +326,7 @@ class T(unittest.TestCase):
         self.assertNotIn("BURST", self.run_tool("audit").stdout)
 
     def test_audit_warns_on_ci_claims_without_failing_for_it(self):
-        self.write_log(f"reviewed {self.head[:12]}\n## Findings\nnone in a/b.py; CI is green\nReview-Disposition: PASS\n")
+        self.write_log(f"reviewed {self.head[:12]}\n## Findings\nnone in b, CI is green\nReview-Disposition: PASS\n")
         self.assertEqual(self.mint().returncode, 0)
         a = self.run_tool("audit")
         self.assertIn("WARN: review text asserts CI state", a.stdout)
@@ -420,7 +420,7 @@ class T(unittest.TestCase):
         return self._head
 
     def _ob(self, head, **extra):
-        self.write_log(f"reviewed {head[:12]}\n## Findings\nnone in a/b.py\nReview-Disposition: PASS\n")
+        self.write_log(f"reviewed {head[:12]}\n## Findings\nnone in b\nReview-Disposition: PASS\n")
         out = self.d / "ob.json"
         r = subprocess.run([sys.executable, str(TOOL), "--root", str(self.work), "--registry", str(self.reg), "mint", "--run-id", "r1",
                             "--pr", "7", "--head", head, "--author-lane", "claude", "--offbranch", "--repo", "o/r", "--out", str(out)],
@@ -797,6 +797,16 @@ class T(unittest.TestCase):
         self.assertTrue(mod.substantive("## Findings\nNo findings.\nReviewed files:\n- scripts/ai/aq-land\n" + trailers))
         self.assertTrue(mod.substantive("## Findings\nNo findings.\nReviewed files:\n- flake.nix\n" + trailers))
         self.assertFalse(mod.substantive("## Findings\nLooks good, approve. e.g. fine.\n" + trailers))
+
+        cp = {"Makefile", ".gitignore", ".githooks/pre-commit", "flake.nix", "scripts/ai/aq-land"}
+        for name in ("Makefile", ".gitignore", ".githooks/pre-commit", "flake.nix", "scripts/ai/aq-land"):
+            self.assertTrue(mod.substantive(f"## Findings\nNo findings.\nReviewed files:\n- {name}\n" + trailers, cp), name)
+        self.assertTrue(mod.substantive("## Findings\n- low `Makefile`: nit\n" + trailers, cp))
+        self.assertFalse(mod.substantive("## Findings\nLooks good, approve.\n" + trailers, cp))
+        self.assertFalse(mod.substantive("## Findings\nNo findings.\nReviewed files:\n- scripts/ai/other\n" + trailers, cp))
+        self.assertFalse(mod.substantive("## Findings\nNo findings. See xscripts/ai/aq-landing and Makefile2\n" + trailers, cp))
+        self.assertTrue(mod.substantive("## Findings\nNo findings.\n" + trailers, None) is False)
+        self.assertTrue(mod.substantive(ok, None))
 
 
 if __name__ == "__main__":
