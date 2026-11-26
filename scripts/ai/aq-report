@@ -859,6 +859,9 @@ def editor_state_budget_health() -> Dict[str, Any]:
             key for key in ai_markers
             if not (qwen_available and key.startswith("qwenlm.qwen-code-vscode-ide-companion-"))
         ]
+        # A marker whose extension dir is already gone is inert (nothing left to delete).
+        extensions_dir = VSCODIUM_OBSOLETE_PATH.parent
+        actionable_ai_markers = [key for key in actionable_ai_markers if (extensions_dir / key).is_dir()]
         ignored_ai_markers = [key for key in ai_markers if key not in actionable_ai_markers]
         overview["obsolete_markers"] = {
             "total_count": len(all_markers),
