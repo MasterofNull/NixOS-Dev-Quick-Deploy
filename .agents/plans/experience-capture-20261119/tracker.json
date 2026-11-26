@@ -102,10 +102,10 @@
         ]
       },
       "acceptance": [
-        "AT-1 compare binding and rejection cases",
-        "AT-2 aggregate unit type with observation membership",
-        "AT-3 mint-failure count reported as gap no_producer until aq-land emits structured failure events",
-        "AT-4 live age/verify display and decision-2 WARN/HARD exercised",
+        "AT-1 compare binding incl. capture-time (pre.captured_at < effective_start), subject match; rejection of retrospective capture, different subject, changed min_effect",
+        "AT-2 unit and time coverage per metric; current-only aggregates descriptive; independent-unit resampling (duplicate events on one PR leave interval unchanged)",
+        "AT-3 retained timestamped mint-failure source with one recovered failure, else no_data / gap no_producer",
+        "AT-4 existing dashboard path (aistack.py aq-report artifact + /aq-qa/run) shows snapshot age and verify status; same missing-baseline case gives commit WARN and maintenance failure",
         "AT-5 naming and freeze record aligned to rev5"
       ]
     },
