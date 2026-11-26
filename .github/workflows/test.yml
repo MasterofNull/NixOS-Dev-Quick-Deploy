@@ -610,6 +610,7 @@ jobs:
             --only mobility-sleep-resilience \
             --only ci-test-coverage-gate \
             --only bash-tool-policy-test \
+            --only tier0-host-only-tests-gate \
             --only service-manager-sudo-commands-test \
             --only tier0-qa-admission-test \
             --only tier0-focused-ci-output-test \

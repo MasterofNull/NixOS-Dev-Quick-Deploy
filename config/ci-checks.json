@@ -522,18 +522,18 @@
       "ci_workflow": ".github/workflows/test.yml#syntax"
     },
     {
-      "id": "bash-tool-policy-test",
-      "cmd": "scripts/testing/test-bash-tool-policy.py",
+      "id": "tier0-host-only-tests-gate",
+      "cmd": "scripts/testing/test-tier0-host-only-tests.py",
       "paths": [
-        "scripts/ai/lib/bash_tool_policy.py",
-        "scripts/ai/aq-bash-tool-policy-hook",
-        "scripts/testing/test-bash-tool-policy.py",
+        "scripts/governance/tier0.d/check-host-only-tests.py",
+        "scripts/testing/test-tier0-host-only-tests.py",
+        "scripts/governance/lib/clean_git_env.py",
         "config/ci-checks.json"
       ],
       "needs": [
         "python3"
       ],
-      "ci_workflow": ".github/workflows/test.yml#syntax"
+      "ci_workflow": ".github/workflows/test.yml#manifest-tests"
     },
     {
       "id": "service-manager-sudo-commands-test",
@@ -784,6 +784,8 @@
         "scripts/ai/aq-land",
         "scripts/ai/lib/merge_manifests.py",
         "scripts/ai/aq-context-packet",
+        "scripts/ai/aq-gap-import",
+        "scripts/ai/aq-knowledge-import.sh",
         "scripts/testing/test-aq-a2a-audit.py",
         "scripts/testing/test-aq-context-packet.py",
         "scripts/testing/test-aq-agent-launcher.py",
@@ -815,6 +817,7 @@
         "scripts/testing/test-aq-editor-rescue.py",
         "scripts/testing/test-aq-eval.py",
         "scripts/testing/test-aq-evidence-collector.py",
+        "scripts/testing/test-aq-gap-import.py",
         "scripts/testing/test-aq-help-center.py",
         "scripts/testing/test-aq-index-knowledge-graph.py",
         "scripts/testing/test-aq-index-logic-patterns-backoff.py",
@@ -912,6 +915,7 @@
         "scripts/testing/test-aq-editor-rescue.py",
         "scripts/testing/test-aq-eval.py",
         "scripts/testing/test-aq-evidence-collector.py",
+        "scripts/testing/test-aq-gap-import.py",
         "scripts/testing/test-aq-help-center.py",
         "scripts/testing/test-aq-index-knowledge-graph.py",
         "scripts/testing/test-aq-index-logic-patterns-backoff.py",
@@ -2450,6 +2454,20 @@
         "bash"
       ],
       "ci_workflow": ".github/workflows/test.yml#manifest-tests"
+    },
+    {
+      "id": "bash-tool-policy-test",
+      "cmd": "scripts/testing/test-bash-tool-policy.py",
+      "paths": [
+        "scripts/ai/lib/bash_tool_policy.py",
+        "scripts/ai/aq-bash-tool-policy-hook",
+        "scripts/testing/test-bash-tool-policy.py",
+        "config/ci-checks.json"
+      ],
+      "needs": [
+        "python3"
+      ],
+      "ci_workflow": ".github/workflows/test.yml#syntax"
     }
   ],
   "ci_exempt": [
@@ -2641,7 +2659,7 @@
     {
       "script": "scripts/testing/test-agent-status-integration.py",
       "class": "known-failing",
-      "reason": "fails on main (rc=1): \u274c Some tests failed, tracked in backlog"
+      "reason": "fails on main (rc=1): ❌ Some tests failed, tracked in backlog"
     },
     {
       "script": "scripts/testing/test-ai-coordinator.py",
@@ -2651,7 +2669,7 @@
     {
       "script": "scripts/testing/test-ai-insights-dashboard.py",
       "class": "live-service",
-      "reason": "host-only: needs a live local service (switchboard/dashboard/coordinator/AIDB); last output: \u2717 11 test(s) FAILED"
+      "reason": "host-only: needs a live local service (switchboard/dashboard/coordinator/AIDB); last output: ✗ 11 test(s) FAILED"
     },
     {
       "script": "scripts/testing/test-ai-insights-roadmap-surfaces.py",
@@ -2661,7 +2679,7 @@
     {
       "script": "scripts/testing/test-ai-service-health-monitoring.py",
       "class": "live-service",
-      "reason": "host-only: needs a live local service (switchboard/dashboard/coordinator/AIDB); last output: \u2717 11 test(s) FAILED"
+      "reason": "host-only: needs a live local service (switchboard/dashboard/coordinator/AIDB); last output: ✗ 11 test(s) FAILED"
     },
     {
       "script": "scripts/testing/test-ai-stack-health-monitor.py",
@@ -2731,7 +2749,7 @@
     {
       "script": "scripts/testing/test-chat-intent.py",
       "class": "known-failing",
-      "reason": "fails on main (rc=1): FAIL  single word 'hello' \u2192 agentic (conservative default), tracked in backlog"
+      "reason": "fails on main (rc=1): FAIL  single word 'hello' → agentic (conservative default), tracked in backlog"
     },
     {
       "script": "scripts/testing/test-check-mcp-health-defaults.sh",
@@ -2946,7 +2964,7 @@
     {
       "script": "scripts/testing/test-llm-router-integration.py",
       "class": "known-failing",
-      "reason": "known-failing (2026-11-07): imports and config now load (path + AI_STRICT_ENV fixed), but the script only prints PASS/FAIL and exits 0, so it cannot gate; its Test 2 expects a 'free' tier for 'implement a new REST API endpoint' while the router now returns local (visible '\u2717 FAIL'). Needs a routing-policy decision, then conversion to real asserts"
+      "reason": "known-failing (2026-11-07): imports and config now load (path + AI_STRICT_ENV fixed), but the script only prints PASS/FAIL and exits 0, so it cannot gate; its Test 2 expects a 'free' tier for 'implement a new REST API endpoint' while the router now returns local (visible '✗ FAIL'). Needs a routing-policy decision, then conversion to real asserts"
     },
     {
       "script": "scripts/testing/test-local-agent-offline-resilience.py",
