@@ -660,7 +660,9 @@ class Land:
                   f"Read every repository file under the worktree path {self.W}. The main checkout (any repository path outside "
                   ".agents/delegation/worktrees) is out of date for this change: findings based on files read there are wrong. "
                   "Do not run test suites; the author and CI run them.", "", crit]
-        p += ["", "End your answer with exactly these two lines:", f"Reviewed-head-sha: {head}",
+        p += ["", "Start your answer with a `## Findings` heading. List each finding as `- <severity> <file>:<line> - <issue>`. "
+              "If there are none, write `No findings.` then `Reviewed files:` followed by every changed file path, listed exactly as it appears in the diff (full repo-relative paths).",
+              "", "End your answer with exactly these two lines:", f"Reviewed-head-sha: {head}",
               "Review-Disposition: <PASS|PASS_WITH_FOLLOWUPS|REQUEST_CHANGES>", "Use REQUEST_CHANGES only for a concrete defect you can name."]
         return "\n".join(p) + "\n"
 

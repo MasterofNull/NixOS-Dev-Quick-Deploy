@@ -680,6 +680,10 @@ class Lanes(Base):
         self.assertIn("main checkout", text)
         self.assertIn("out of date", text)
         self.assertIn("Do not run test suites", text)
+        self.assertIn("## Findings", text)
+        self.assertIn("No findings.", text)
+        self.assertIn("Reviewed files:", text)
+        self.assertLess(text.index("## Findings"), text.index("Review-Disposition:"))
         cwd = [l for l in (self.S / "cwd.log").read_text().splitlines() if l.startswith("gemini ")][0].split(" ", 1)[1]
         self.assertEqual(os.path.realpath(cwd), os.path.realpath(wd))
         self.tearDown_state(); self.gh_state({})
