@@ -57,7 +57,7 @@ def main() -> int:
             aq_prompt_eval.llm_call = original_llm_call
 
         updated_text = tmp_registry.read_text(encoding="utf-8")
-        assert_true(exit_code == 1, "transport errors should make aq-prompt-eval fail")
+        assert_true(exit_code == 75, "consecutive timeouts should defer aq-prompt-eval (exit 75)")
         assert_true(updated_text == original_text, "transport errors should not rewrite registry scores")
 
     print("PASS: aq-prompt-eval preserves registry entries on transport/runtime failures")
@@ -77,7 +77,7 @@ def breaker_check() -> int:
         reg = Path(tmpdir) / "registry.yaml"
         reg.write_text((ROOT / "ai-stack" / "prompts" / "registry.yaml").read_text(encoding="utf-8"), encoding="utf-8")
         exit_code = aq_prompt_eval.run_eval(registry_path=reg, target_id=None, dry_run=True, verbose=False, model="local")
-    assert_true(exit_code == 1, "an aborted run must still exit 1")
+    assert_true(exit_code == 75, "a timeout-saturated run must defer with exit 75")
     assert_true(len(calls) == aq_prompt_eval.MAX_CONSECUTIVE_ERRORS, f"breaker should stop after {aq_prompt_eval.MAX_CONSECUTIVE_ERRORS} calls, made {len(calls)}")
     print("PASS: aq-prompt-eval stops calling a saturated backend after the consecutive-error limit")
     return 0
