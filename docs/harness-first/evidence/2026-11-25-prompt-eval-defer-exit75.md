@@ -42,3 +42,5 @@ A persistently saturated slot now yields repeated deferrals with no score; obser
 ## Hint Feedback
 
 None beyond the root cause: #834's commit body claimed this change but did not contain it, so verify claimed changes against the diff.
+
+Mixed-run breaker and runtime-state regression cases pass (5/5 defer cases). The non-timeout breaker exited 0 before the repair and exits 1 after it.
