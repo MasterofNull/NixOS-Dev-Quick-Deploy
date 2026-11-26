@@ -4,7 +4,9 @@
 from __future__ import annotations
 
 import asyncio
+import importlib
 import os
+import shlex
 from unittest.mock import patch
 import sys
 from pathlib import Path
@@ -169,19 +171,19 @@ async def test_run_command_never_invokes_rtk() -> None:
     with tempfile.TemporaryDirectory() as d:
         marker = Path(d) / "rtk-called"
         fake = Path(d) / "rtk"
-        fake.write_text(f"#!/bin/sh\ntouch {marker}\n")
+        fake.write_text(f"#!/bin/sh\ntouch {shlex.quote(str(marker))}\n")
         fake.chmod(fake.stat().st_mode | stat.S_IXUSR)
         env = {"PATH": d + os.pathsep + os.environ.get("PATH", ""), "RTK_BIN": str(fake), "SWB_RTK_ENABLED": "1"}
         sandbox = shell_tools.NsjailSandbox()
         sandbox.available = False
         sandbox.required = False
-        original = shell_tools._nsjail
         try:
-            shell_tools._nsjail = sandbox
             with patch.dict(os.environ, env):
+                importlib.reload(shell_tools)
+                shell_tools._nsjail = sandbox
                 result = await shell_tools.run_command_handler("echo rtk-retired")
         finally:
-            shell_tools._nsjail = original
+            importlib.reload(shell_tools)
         assert result.get("success") is True, result
         assert "rtk-retired" in result.get("stdout", ""), result
         assert "compressed" not in result, result

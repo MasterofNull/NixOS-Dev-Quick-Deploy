@@ -187,7 +187,7 @@ System-wide installed. Register lean-ctx for this agent with `lean-ctx init --ag
 
 | Tool | Purpose |
 |------|---------|
-| `rtk <cmd>` | Compress shell stdout 60-90% before it enters context. Check: `rtk gain` |
+| `ctx_shell` / Bash rewrite hook | lean-ctx compresses shell stdout before it enters context (rtk retired 2026-11-25, 0.0% measured) |
 | `lean-ctx` | MCP server — 62 tools, 10 read modes (signatures/map/lines/diff). 76-99% token savings on file reads |
 | headroom proxy | Payload compression on :8787 → llama.cpp. Enable via `ai.headroomProxy.enable = true` |
 
