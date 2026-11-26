@@ -132,24 +132,11 @@ diagnosis.
 
 ## Phase 164 — Stages B, C, D: Context Compression Toolchain
 
-### Stage B — RTK Shell Output Compression
+### Stage B — Shell Output Compression (RTK retired 2026-11-25)
 
-RTK (Rust Token Killer) is installed as a NixOS system package and auto-detected by
-`run_command`. When `rtk` is in PATH, every `run_command` call wraps the command with
-`rtk <cmd>` before execution, compressing output 60-90% before it enters LLM context.
-
-```nix
-# Already in ai-stack.nix — enabled after nixos-rebuild:
-(pkgs.callPackage ../../pkgs/rtk.nix {})
-```
-
-Controls: `SWB_RTK_ENABLED=0` disables wrapping; `RTK_BIN=/path/to/rtk` overrides binary path.
-
-**Hash resolution required** (run after nixos-rebuild download error):
-```bash
-nix-prefetch-url https://github.com/rtk-ai/rtk/releases/download/v0.42.3/rtk-x86_64-unknown-linux-musl.tar.gz
-# Replace lib.fakeHash in nix/pkgs/rtk.nix with printed hash
-```
+`run_command` no longer wraps commands with `rtk` (measured 0.0% saved across 18,028
+commands). Shell-output compression is provided by lean-ctx (`ctx_shell` / the Bash
+rewrite hook).
 
 ### Stage C — headroom Context Compression Proxy (pending packaging)
 
