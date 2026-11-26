@@ -27,9 +27,9 @@ import signal
 import subprocess
 import sys
 import tempfile
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 AI_SCRIPT_DIR = SCRIPT_DIR.parent / "ai"
@@ -247,6 +247,14 @@ def cmd_agent(args: argparse.Namespace) -> int:
 
 def _now() -> str:
     return datetime.now(tz=timezone.utc).isoformat()
+
+
+def _parse_iso(value: Any) -> Optional[datetime]:
+    try:
+        parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
 
 
 def _today_utc() -> str:
@@ -633,6 +641,7 @@ def cmd_sync(args: argparse.Namespace, *, incidents_only: bool = False) -> int:
 
 def _sync_locked(args, policy, discovered, report, incidents_only: bool) -> int:
     queue = _load_queue()
+    before = json.dumps(queue, sort_keys=True)
     existing = {a.get("id"): a for a in queue["actions"] if isinstance(a, dict)}
     if incidents_only:
         degradation = queue.get("meta", {}).get("degradation", {})
@@ -651,6 +660,15 @@ def _sync_locked(args, policy, discovered, report, incidents_only: bool) -> int:
         est_cost = _estimate_action_token_cost(action, policy)
         if aid in existing:
             row = existing[aid]
+            # A re-observation that changes nothing is not an update: seen_count only moves with a
+            # real change. last_seen_at is the presence signal aq-prsi-review's staleness check reads
+            # (alert_human, 14d), so it is refreshed at most once per day, keeping idle syncs byte-stable.
+            if (row.get("confidence"), row.get("reason"), row.get("raw_action"), row.get("estimated_token_cost")) == (
+                    action.get("confidence"), action.get("reason"), action, est_cost):
+                seen_at = _parse_iso(row.get("last_seen_at"))
+                if seen_at is None or datetime.now(tz=timezone.utc) - seen_at >= timedelta(days=1):
+                    row["last_seen_at"] = _now()
+                continue
             row["last_seen_at"] = _now()
             row["seen_count"] = int(row.get("seen_count", 1)) + 1
             row["confidence"] = action.get("confidence")
@@ -686,7 +704,8 @@ def _sync_locked(args, policy, discovered, report, incidents_only: bool) -> int:
             "degradation": degradation,
             "policy_file": str(PRSI_POLICY_FILE),
         }
-    _save_queue(queue)
+    if json.dumps(queue, sort_keys=True) != before:
+        _save_queue(queue)
     event = {
         "ts": _now(),
         "event": "sync",
