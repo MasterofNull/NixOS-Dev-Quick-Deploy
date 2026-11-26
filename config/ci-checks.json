@@ -527,12 +527,13 @@
       "paths": [
         "scripts/governance/tier0.d/check-host-only-tests.py",
         "scripts/testing/test-tier0-host-only-tests.py",
+        "scripts/governance/lib/clean_git_env.py",
         "config/ci-checks.json"
       ],
       "needs": [
         "python3"
       ],
-      "ci_workflow": ".github/workflows/test.yml#syntax"
+      "ci_workflow": ".github/workflows/test.yml#manifest-tests"
     },
     {
       "id": "service-manager-sudo-commands-test",
