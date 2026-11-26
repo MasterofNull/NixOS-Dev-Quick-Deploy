@@ -202,16 +202,18 @@ def _can_migrate_pid_into_cgroup(parent: "str | None") -> bool:
         os.mkdir(probe)
     except OSError:
         return False
-    child = subprocess.Popen(["sleep", "5"], start_new_session=True)
+    child = None
     try:
+        child = subprocess.Popen(["sleep", "5"], start_new_session=True)
         with open(os.path.join(probe, "cgroup.procs"), "w", encoding="utf-8") as fh:
             fh.write(str(child.pid))
         return True
     except OSError:
         return False
     finally:
-        child.kill()
-        child.wait()
+        if child is not None:
+            child.kill()
+            child.wait()
         for _ in range(20):
             try:
                 os.rmdir(probe)
@@ -226,17 +228,28 @@ _CGROUP_MIGRATION_OK = _can_migrate_pid_into_cgroup(_CGROUP_PARENT)
 def _maybe_reexec_in_user_scope() -> None:
     """Plain host shells sit outside user@UID.service, so the kill-proof tests
     cannot migrate a pid. Re-run once inside a transient user scope so the
-    guarantee is exercised by default; the env guard prevents a loop."""
+    guarantee is exercised by default; the env guard prevents a loop. Only
+    re-execs after a cheap probe proves `systemd-run --user --scope` works, so
+    a missing/broken user manager degrades to SKIP, never a crash."""
     if _CGROUP_MIGRATION_OK or os.environ.get("AQ_EXEC_CELL_REEXEC"):
         return
     systemd_run = shutil.which("systemd-run")
     if not systemd_run:
         return
-    os.execv(systemd_run, [systemd_run, "--user", "--scope", "--quiet", "-E", "AQ_EXEC_CELL_REEXEC=1",
-                           sys.executable, os.path.abspath(__file__), *sys.argv[1:]])
+    try:
+        probe = subprocess.run([systemd_run, "--user", "--scope", "--quiet", "true"],
+                               capture_output=True, timeout=15, check=False)
+    except (OSError, subprocess.SubprocessError):
+        return
+    if probe.returncode != 0:
+        return
+    try:
+        os.execv(systemd_run, [systemd_run, "--user", "--scope", "--quiet", "-E", "AQ_EXEC_CELL_REEXEC=1",
+                               sys.executable, os.path.abspath(__file__), *sys.argv[1:]])
+    except OSError:
+        return
 
 
-_maybe_reexec_in_user_scope()
 _MIGRATION_SKIP_NOTE = (
     "test process cannot migrate a pid into the delegated cgroup (cgroup v2 common-ancestor "
     "write rule; run under `systemd-run --user --scope` or the deployed service)"
@@ -905,6 +918,7 @@ def note_r6_canary_deferred_surfaces():
 
 
 def main() -> None:
+    _maybe_reexec_in_user_scope()
     tests = [
         test_valid_write_grant_green,
         test_valid_read_validate_grant_green,

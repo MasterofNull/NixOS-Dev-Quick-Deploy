@@ -23,10 +23,12 @@ Fix (scripts/testing/test-execution-cell-runner.py only):
 - `_can_migrate_pid_into_cgroup()` probes a real pid migration; `_CGROUP_MIGRATION_OK`.
 - The two kill-proof tests (`epoch_bump_mid_run_kills_tree`, `kill_cannot_prove_removal_quarantines`) SKIP (R6-canary-deferred, with note) when migration is impossible, instead of asserting on a vacuous proof.
 - `_maybe_reexec_in_user_scope()`: when migration is impossible, systemd-run is on PATH and AQ_EXEC_CELL_REEXEC is unset, the test `execv`s itself under `systemd-run --user --scope --quiet -E AQ_EXEC_CELL_REEXEC=1` (exit code propagates since the process is replaced). Skip only if systemd-run is absent or the re-exec'd run still cannot migrate.
+- Review follow-up (Gemini): the re-exec now runs from `main()`, not at import, and only after a probe (`systemd-run --user --scope --quiet true`, 15 s timeout) succeeds; a missing or failing systemd-run degrades to SKIP. `_can_migrate_pid_into_cgroup` creates the child inside try/finally so the probe cgroup dir is always removed.
 - New regression assertions `epoch_bump_pid_in_cgroup` / `proof_budget_pid_in_cgroup` require the pid to actually appear in cgroup.procs before the kill proof runs. The `process_actually_dead` assertion is unchanged.
 
 Results:
 - Plain host, 3 runs after the re-exec change: 58/58 passed each, 2 skips (R6 canary), kill-proof tests run. Before the re-exec, plain host 5 runs: 46/46, 4 skips. Originally 55/56 failed.
+- PATH without systemd-run, and a stub systemd-run that exits 1: both SKIP the two tests, 46/46, no crash; no leftover aq-r3-migrate dirs.
 - AQ_EXEC_CELL_REEXEC=1 forced, no scope: 46/46, the two kill-proof tests SKIP with the note.
 - Under `systemd-run --user --scope`, 5 runs: 58/58 passed each, 2 skips; epoch_bump_pid_in_cgroup and epoch_bump_process_actually_dead PASS, so the real guarantee is exercised and holds.
 - A first attempt that made the shared `_CGROUP_PARENT` None broke 5 unrelated tests; reverted in favor of the separate flag.
