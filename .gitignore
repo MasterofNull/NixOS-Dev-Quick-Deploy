@@ -224,6 +224,8 @@ nix/hosts/*/.sops.yaml
 .agents/durable/ledger.lock
 .agents/events/*.jsonl
 .agents/telemetry/*.jsonl
+.agents/telemetry/baseline-inputs/
+.agents/telemetry/baseline-schedule.disabled
 .agents/observability/
 .agents/health-monitor/
 .agents/guidance/

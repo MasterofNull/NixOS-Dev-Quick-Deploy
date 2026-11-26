@@ -101,7 +101,7 @@
           "aq-baseline"
         ]
       },
-      "acceptance": [
+      "acceptance_criteria": [
         "AT-1 compare binding incl. capture-time (pre.captured_at < effective_start), subject match; rejection of retrospective capture, different subject, changed min_effect",
         "AT-2 unit and time coverage per metric; current-only aggregates descriptive; independent-unit resampling (duplicate events on one PR leave interval unchanged)",
         "AT-3 retained timestamped mint-failure source with one recovered failure, else no_data / gap no_producer",

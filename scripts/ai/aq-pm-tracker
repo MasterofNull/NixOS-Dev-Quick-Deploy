@@ -11,6 +11,7 @@ Modes:
   aq-pm-tracker <plan-dir> --check    validate manifest + project; exit 0 ok / 1 on manifest error
   aq-pm-tracker --all                 aggregate human summary across every .agents/plans/*/tracker.json
   aq-pm-tracker --all-json            aggregate projection (JSON): {generated_at, plans[], program_rollup_pct}
+  aq-pm-tracker --check-no-baseline [--maintenance] [--plans-root DIR]   shipped item without `measurement` (plans with plan.measurement_required): WARN, or exit 1 with --maintenance
   aq-pm-tracker --check-owner-acceptance --baseline-sha256 <hex>   owner-acceptance gate (tier0.d/check-pm-tracker supplies the pinned digest)
   aq-pm-tracker --request-acceptance <plan-dir> <item-id>   push one pm-acceptance alert for a proposed owner acceptance (shows in aq-approve)
   aq-pm-tracker --record-acceptance <attn-id>   host-side: write the decision record for an owner-approved pm-acceptance alert (run in the slice worktree)
@@ -1593,11 +1594,52 @@ def _print_hold(it: dict, indent: str) -> None:
               f"clear via review receipt or later trusted commit")
 
 
+def no_baseline_report(plans_root: Path | None = None) -> dict:
+    """Shipped items without a `measurement` object (experience-capture PRD, S-M1; owner decision 2).
+    Plans opt into enforcement with plan.measurement_required=true; others are counted for the baseline figure only."""
+    root = plans_root or (REPO / ".agents" / "plans")
+    required: list[str] = []
+    legacy = 0
+    plans = sorted(p.parent for p in root.glob("*/tracker.json")) if root.is_dir() else []
+    for plan_dir in plans:
+        try:
+            manifest = json.loads((plan_dir / "tracker.json").read_text())
+            projected = project(plan_dir)["items"]
+        except Exception as exc:  # one unprojectable legacy plan must not hide the others
+            print(f"aq-pm-tracker: no_baseline skipped {plan_dir.name}: {type(exc).__name__}", file=sys.stderr)
+            continue
+        by_id = {it.get("id"): it for it in manifest.get("items", [])}
+        enforce = bool((manifest.get("plan") or {}).get("measurement_required"))
+        for it in projected:
+            if it["status"] not in ("SHIPPED", "ACTIVATED"):
+                continue
+            if isinstance((by_id.get(it["id"]) or {}).get("measurement"), dict) and by_id[it["id"]]["measurement"]:
+                continue
+            if enforce:
+                required.append(f"{plan_dir.name}:{it['id']}")
+            else:
+                legacy += 1
+    return {"no_baseline_required": required, "no_baseline_legacy_count": legacy}
+
+
+def check_no_baseline(maintenance: bool, plans_root: Path | None = None) -> int:
+    """Owner decision 2: a shipped slice with no baseline is a WARN on every commit, HARD only in scheduled maintenance."""
+    rep = no_baseline_report(plans_root)
+    miss = rep["no_baseline_required"]
+    for m in miss:
+        print(f"{'FAIL' if maintenance else 'WARN'}: no_baseline: shipped item {m} has no `measurement` object (aq-baseline snapshot)")
+    print(f"no_baseline: {len(miss)} required, {rep['no_baseline_legacy_count']} legacy (plans without measurement_required)")
+    return 1 if (maintenance and miss) else 0
+
+
 def main() -> int:
     args = [a for a in sys.argv[1:]]
     if "-h" in args or "--help" in args:
         print(__doc__)
         return 0
+    if "--check-no-baseline" in args:
+        root = Path(args[args.index("--plans-root") + 1]) if "--plans-root" in args[:-1] else None
+        return check_no_baseline("--maintenance" in args, root)
     if "--check-legacy-allowlist" in args:
         return check_legacy_allowlist()
     if "--check-untrusted-items" in args:

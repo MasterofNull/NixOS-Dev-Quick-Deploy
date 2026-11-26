@@ -172,6 +172,27 @@
       "ci_workflow": ".github/workflows/test.yml#syntax"
     },
     {
+      "id": "aq-baseline-test",
+      "cmd": "scripts/testing/test-aq-baseline.py",
+      "paths": [
+        "scripts/ai/aq-baseline",
+        "scripts/ai/lib/aq_baseline.py",
+        "scripts/ai/aq-pm-tracker",
+        "scripts/ai/aq-report",
+        "scripts/testing/test-aq-baseline.py",
+        "scripts/testing/harness_qa/phases/phase0.py",
+        "scripts/governance/tier0.d/check-pm-tracker.sh",
+        "dashboard/backend/api/routes/aistack.py",
+        ".agents/plans/experience-capture-20261119/**",
+        "config/ci-checks.json"
+      ],
+      "needs": [
+        "python3",
+        "git"
+      ],
+      "ci_workflow": ".github/workflows/test.yml#syntax"
+    },
+    {
       "id": "pm-tracker-owner-acceptance",
       "cmd": "scripts/testing/test-pm-tracker-owner-acceptance.py",
       "paths": [

@@ -1669,6 +1669,32 @@ def _check_durable_triage_engine(ctx: RunContext) -> list[CheckResult]:
     return [passed(5, "0.10.70", desc)]
 
 
+def _check_baseline_snapshot(ctx: RunContext) -> list[CheckResult]:
+    """0.10.71: a taken aq-baseline snapshot verifies from retained inputs and is at most 35 days old; none yet = skipped, not failed (experience-capture S-M1)."""
+    desc = "aq-baseline snapshot: exists, verify passes, age <= 35d"
+    lib = ctx.repo_root / "scripts" / "ai" / "lib" / "aq_baseline.py"
+    if not lib.is_file():
+        return [failed(5, "0.10.71", desc, "scripts/ai/lib/aq_baseline.py missing")]
+    try:
+        spec = importlib.util.spec_from_file_location("aq_baseline_qa", lib)
+        if spec is None or spec.loader is None:
+            return [failed(5, "0.10.71", desc, "aq_baseline.py not loadable")]
+        mod = importlib.util.module_from_spec(spec)
+        sys.modules.setdefault("aq_baseline_qa", mod)
+        spec.loader.exec_module(mod)
+        st = mod.snapshot_status()
+    except Exception as exc:  # a broken indicator must read FAIL, never silently pass
+        return [failed(5, "0.10.71", desc, f"{type(exc).__name__}: {exc}"[:240])]
+    if not st.get("available"):
+        return [skipped(5, "0.10.71", desc, "not yet baselined: run aq-baseline snapshot (non-failing until a first snapshot exists)")]
+    detail = f"{desc} [age {st['age_days']}d, verify {st['verify']}, snapshot {st['snapshot_id'][:12]}]"
+    if st["verify"] != "pass":
+        return [failed(5, "0.10.71", detail, str(st.get("detail"))[:200])]
+    if st["stale"]:
+        return [failed(5, "0.10.71", detail, f"stale: older than {mod.STALE_DAYS}d")]
+    return [passed(5, "0.10.71", detail)]
+
+
 def _check_pi_agent_streaming_canvas(ctx: RunContext) -> list[CheckResult]:
     """0.10.67: Pi-Style Multi-Agent Streaming Canvas & Interactive Guidance (DP-4)."""
     desc = "Pi-style multi-agent streaming canvas: agent-tree hierarchy, SSE execution streaming, operator steering"
@@ -2578,6 +2604,7 @@ def run(ctx: RunContext) -> list[CheckResult]:
     results.extend(_check_aq_confine_behavioral(ctx))
     results.extend(_check_frontier_fe2b_prompt_compile(ctx))
     results.extend(_check_durable_triage_engine(ctx))
+    results.extend(_check_baseline_snapshot(ctx))
     results.extend(_check_pi_agent_streaming_canvas(ctx))
     results.extend(_check_durable_runtime_engine(ctx))
     results.extend(_check_autonomous_oncall_daemon(ctx))

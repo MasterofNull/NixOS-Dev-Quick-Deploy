@@ -1,0 +1,110 @@
+#!/usr/bin/env python3
+"""aq-baseline: reproducible measurement snapshots over existing producers (experience-capture PRD, slice S-M1).
+
+  aq-baseline snapshot --subject ID --cohort all|lane=X --definition-version V --horizon-days N --min-effect X
+                       [--as-of ISO] [--window-days N]
+  aq-baseline verify <snapshot_id>
+  aq-baseline compare --subject ID --effective-start <ISO|commit> <pre_id> <post_id>
+  aq-baseline rollback              disable the schedule marker, then archive snapshots + retained inputs (mv, never rm)
+  aq-baseline status [--json]       newest snapshot age + last verify (same data the aq-qa check and aq-report line show)
+
+Writes .agents/telemetry/baseline-snapshots.jsonl (0600) and digest-addressed input copies under
+.agents/telemetry/baseline-inputs/<sha256> (0600), both gitignored. Rollback: see the evidence doc.
+Env: AQ_BASELINE_ROOT (repo root holding the telemetry dir), AQ_DELEGATION_DIR, AQ_REPORT_LATEST_JSON.
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent / "lib"))
+import aq_baseline as ab  # noqa: E402
+
+
+def _cmd_snapshot(a: argparse.Namespace) -> int:
+    if a.scheduled and ab.schedule_disabled(ab.main_root()):
+        print("aq-baseline: schedule disabled (rollback marker present); nothing written", file=sys.stderr)
+        return 3
+    sid, rows = ab.take_snapshot(ab.main_root(), subject=a.subject, cohort=a.cohort,
+                                 definition_version=a.definition_version, horizon_days=a.horizon_days,
+                                 min_effect=a.min_effect, as_of=a.as_of, window_days=a.window_days)
+    print(f"snapshot_id {sid}")
+    print(f"captured_at {rows[0]['captured_at']} window {rows[0]['input_window']['start']}..{rows[0]['input_window']['end']}")
+    for r in rows:
+        val = "null" if r["value"] is None else f"{r['value']:.4g}"
+        print(f"  {r['metric_id']:<44} {r['unit_label']:<9} {r['time_coverage']:<12} value={val} n={r['n']} "
+              f"unknown_n={r['unknown_n']} display={r['display']}" + (f" gap={r['gap']}" if r["gap"] else "")
+              + (" CONCENTRATED" if r["concentrated"] else ""))
+    return 0
+
+
+def _cmd_verify(a: argparse.Namespace) -> int:
+    ok, detail = ab.verify_snapshot(ab.main_root(), a.snapshot_id)
+    print(f"{'PASS' if ok else 'FAIL'}: {detail}")
+    return 0 if ok else 1
+
+
+def _cmd_compare(a: argparse.Namespace) -> int:
+    res = ab.compare_snapshots(ab.main_root(), a.subject, a.effective_start, a.pre_id, a.post_id)
+    if a.json:
+        print(json.dumps(res, indent=2, sort_keys=True))
+        return 0
+    print(f"subject {res['subject']} effective_start {res['effective_start']}")
+    for mid, v in res["metrics"].items():
+        extra = f" n={v['n_pre']}/{v['n_post']}" if "n_pre" in v else ""
+        print(f"  {mid:<44} {v['verdict']}{extra}")
+    return 0
+
+
+def _cmd_rollback(a: argparse.Namespace) -> int:
+    dest = ab.rollback(ab.main_root())
+    print(f"schedule disabled; snapshots and retained inputs archived to {dest}")
+    return 0
+
+
+def _cmd_status(a: argparse.Namespace) -> int:
+    st = ab.snapshot_status()
+    print(json.dumps(st, indent=2) if a.json else ab.status_line(st))
+    return 0 if st.get("status") == "ok" else 1
+
+
+def main(argv: list[str] | None = None) -> int:
+    p = argparse.ArgumentParser(prog="aq-baseline", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    sub = p.add_subparsers(dest="cmd", required=True)
+    s = sub.add_parser("snapshot")
+    s.add_argument("--subject", required=True)
+    s.add_argument("--cohort", default="all")
+    s.add_argument("--definition-version", required=True)
+    s.add_argument("--horizon-days", type=int, required=True)
+    s.add_argument("--min-effect", type=float, required=True)
+    s.add_argument("--as-of")
+    s.add_argument("--window-days", type=int, default=30)
+    s.add_argument("--scheduled", action="store_true", help="invoked by a timer; honours the rollback marker")
+    s.set_defaults(fn=_cmd_snapshot)
+    v = sub.add_parser("verify")
+    v.add_argument("snapshot_id")
+    v.set_defaults(fn=_cmd_verify)
+    c = sub.add_parser("compare")
+    c.add_argument("--subject", required=True)
+    c.add_argument("--effective-start", required=True)
+    c.add_argument("--json", action="store_true")
+    c.add_argument("pre_id")
+    c.add_argument("post_id")
+    c.set_defaults(fn=_cmd_compare)
+    rb = sub.add_parser("rollback", help="disable the schedule, then archive snapshots and retained inputs")
+    rb.set_defaults(fn=_cmd_rollback)
+    st = sub.add_parser("status")
+    st.add_argument("--json", action="store_true")
+    st.set_defaults(fn=_cmd_status)
+    args = p.parse_args(argv)
+    try:
+        return int(args.fn(args))
+    except ab.BaselineError as exc:
+        print(f"aq-baseline: {exc}", file=sys.stderr)
+        return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())
