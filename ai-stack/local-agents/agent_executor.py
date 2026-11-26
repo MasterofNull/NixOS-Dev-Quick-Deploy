@@ -1765,6 +1765,9 @@ class Task:
     remote_profile: Optional[str] = None
     remote_model: Optional[str] = None
 
+    # Optional per-call output token ceiling (set by aq-agent-loop --max-tokens / brief caps).
+    max_tokens: Optional[int] = None
+
     # Populated only by the declared verified-edit completion path.  It is a
     # closed, typed receipt suitable for progress/event surfaces.
     completion_evidence: Optional[Dict[str, Any]] = None
@@ -2217,6 +2220,10 @@ class LocalAgentExecutor:
 
         # Execute with tool use loop
         _task_tokens_used = 0
+        _prev_max_tokens_cap = getattr(self, "_active_max_tokens_cap", None)
+        self._active_max_tokens_cap = (
+            task.max_tokens if isinstance(task.max_tokens, int) and task.max_tokens > 0 else None
+        )
         try:
             result, _task_tokens_used = await self._execute_with_tools(
                 task,
@@ -2315,6 +2322,8 @@ class LocalAgentExecutor:
                     "run_attempt": len(task.tool_calls_made),
                 },
             )
+        finally:
+            self._active_max_tokens_cap = _prev_max_tokens_cap
 
         # Update performance tracking
         self.performance[agent_type].update(task)
@@ -4207,6 +4216,20 @@ class LocalAgentExecutor:
         # 4096 would risk 68-minute slot locks when clients disconnect.
         # When task_type is set the profile drives temperature; otherwise use 0.2.
         _temperature: Optional[float] = None if task_type else 0.2
+        _caps = []
+        _task_cap = getattr(self, "_active_max_tokens_cap", None)
+        if isinstance(_task_cap, int) and _task_cap > 0:
+            _caps.append(_task_cap)
+        _env_cap_raw = os.environ.get("LLAMA_MAX_TOKENS", "").strip()
+        if _env_cap_raw:
+            try:
+                _env_cap = int(_env_cap_raw)
+                if _env_cap > 0:
+                    _caps.append(_env_cap)
+            except ValueError:
+                pass
+        if _caps:
+            max_tokens = min(max_tokens, min(_caps))
 
         # Prefill-wedge guard (root-cause fix for orphaned-slot cascades): a single oversized prompt
         # — e.g. an un-compacted large-file read that slipped past the >8-message context pruning —

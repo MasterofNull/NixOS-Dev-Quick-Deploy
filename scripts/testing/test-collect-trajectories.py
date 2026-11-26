@@ -9,6 +9,7 @@ import stat
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 from pathlib import Path
 from typing import Any
@@ -20,6 +21,10 @@ spec = importlib.util.spec_from_file_location("collector", SCRIPT)
 assert spec is not None and spec.loader is not None
 col: Any = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(col)
+receipt_spec = importlib.util.spec_from_file_location("outcome_receipt_mod", ROOT / "scripts/ai/lib/outcome_receipt.py")
+assert receipt_spec is not None and receipt_spec.loader is not None
+receipt_mod: Any = importlib.util.module_from_spec(receipt_spec)
+receipt_spec.loader.exec_module(receipt_mod)
 
 GH = """#!/bin/sh
 # stub gh: `gh pr view N --json ...` prints $STUB_GH_JSON
@@ -302,6 +307,524 @@ class Collector(unittest.TestCase):
         c = self.collect()
         self.assertEqual((c["collected"], c["already_done"]), (1, 1), c)
         self.assertEqual(len(self.lines("trajectories.jsonl")), 1)
+
+    def test_j_long_changed_repo_path_exempt_from_entropy_while_slash_secret_quarantines(self) -> None:
+        r = self.repo
+        long_rel = "docs/harness-first/evidence/2026-11-15-deploy-validation.md"
+        self.assertEqual(col.scan(json.dumps({"path": long_rel})), ["entropy"],
+                         "precondition: bare scan flags this 59-char path as entropy > 4.0")
+        (r / long_rel).parent.mkdir(parents=True, exist_ok=True)
+        (r / long_rel).write_text("ok\n")
+        _git(r, "add", "-A")
+        _git(r, "commit", "-qm", "long-path")
+        long_head = _git(r, "rev-parse", "HEAD")
+        self.set_gh(self.head, long_head)
+        self.receipts(_receipt(60))
+        c = self.collect()
+        self.assertEqual((c["collected"], c["quarantined"]), (1, 0), c)
+        # A real base64-like secret containing '/' in another field still quarantines with entropy
+        slash_secret = "AbCdEfGhIjKlMnOpQrStUvWxYz012345/789+AbCdEf"
+        self.receipts(_receipt(61, author_lane=slash_secret))
+        c = self.collect()
+        self.assertEqual((c["collected"], c["quarantined"]), (0, 1), c)
+        q = [x for x in self.lines("trajectories.quarantine.jsonl") if x["pr"] == 61][0]
+        self.assertIn("entropy", q["reasons"])
+        # A matching high-entropy token in an unrelated field must NOT be exempted by changed files
+        self.receipts(_receipt(62, author_lane=long_rel))
+        c = self.collect()
+        self.assertEqual((c["collected"], c["quarantined"]), (0, 1), c)
+        q62 = [x for x in self.lines("trajectories.quarantine.jsonl") if x["pr"] == 62][0]
+        self.assertIn("entropy", q62["reasons"])
+        # Single-segment high-entropy filename (no '/') remains subject to entropy even when in allowed_paths
+        single_seg = "AbCdEfGhIjKlMnOpQrStUvWxYz0123456789"
+        self.assertEqual(col.scan(json.dumps({"files": [{"path": single_seg}]}), allowed_paths={single_seg}), ["entropy"])
+
+    def test_k_long_unicode_changed_path_and_renamed_from_exempt_while_unrelated_field_quarantines(self) -> None:
+        r = self.repo
+        uni_long = "caf\u00e9/docs/harness-first/evidence/2026-11-15-deploy-validation.md"
+        self.assertEqual(col.scan(json.dumps({"path": uni_long})), ["entropy"],
+                         "precondition: JSON escaping produces u00e9/docs/... with entropy > 4.0")
+        (r / uni_long).parent.mkdir(parents=True, exist_ok=True)
+        (r / uni_long).write_text("".join(f"line{i}\n" for i in range(20)))
+        _git(r, "add", "-A")
+        _git(r, "commit", "-qm", "unicode-long-path")
+        uni_head = _git(r, "rev-parse", "HEAD")
+        self.set_gh(self.head, uni_head)
+        self.receipts(_receipt(63))
+        c = self.collect()
+        self.assertEqual((c["collected"], c["quarantined"]), (1, 0), c)
+        row63 = [x for x in self.lines("trajectories.jsonl") if x["pr"] == 63][0]
+        self.assertEqual(row63["files"][0]["path"], uni_long)
+        # Same Unicode path in renamed_from must also be exempt at the verified field occurrence
+        (r / "docs/moved").mkdir(parents=True, exist_ok=True)
+        _git(r, "mv", uni_long, "docs/moved/note.md")
+        _git(r, "commit", "-qm", "rename-unicode-long-path")
+        rename_head = _git(r, "rev-parse", "HEAD")
+        self.set_gh(uni_head, rename_head)
+        self.receipts(_receipt(64))
+        c = self.collect()
+        self.assertEqual((c["collected"], c["quarantined"]), (1, 0), c)
+        row64 = [x for x in self.lines("trajectories.jsonl") if x["pr"] == 64][0]
+        self.assertEqual(row64["files"][0]["renamed_from"], uni_long)
+        # Same Unicode path appearing in an unrelated field must still be quarantined
+        self.receipts(_receipt(65, author_lane=uni_long))
+        c = self.collect()
+        self.assertEqual((c["collected"], c["quarantined"]), (0, 1), c)
+        q65 = [x for x in self.lines("trajectories.quarantine.jsonl") if x["pr"] == 65][0]
+        self.assertIn("entropy", q65["reasons"])
+
+    def test_l_high_entropy_nested_path_dir_and_renamed_from_quarantine(self) -> None:
+        r = self.repo
+        secret_tok = "AbCdEfGhIjKlMnOpQrStUvWxYz0123456789"
+        # 1) Nested filename containing an opaque high-entropy component must quarantine
+        nested_file = f"docs/nested/{secret_tok}.txt"
+        (r / nested_file).parent.mkdir(parents=True, exist_ok=True)
+        (r / nested_file).write_text("ok\n")
+        _git(r, "add", "-A")
+        _git(r, "commit", "-qm", "nested-secret-filename")
+        h1 = _git(r, "rev-parse", "HEAD")
+        self.set_gh(self.head, h1)
+        self.receipts(_receipt(66))
+        c = self.collect()
+        self.assertEqual((c["collected"], c["quarantined"]), (0, 1), c)
+
+        # 2) Directory component containing an opaque high-entropy token must quarantine
+        secret_dir = f"docs/Dir{secret_tok}/note.md"
+        (r / secret_dir).parent.mkdir(parents=True, exist_ok=True)
+        (r / secret_dir).write_text("ok\n")
+        _git(r, "add", "-A")
+        _git(r, "commit", "-qm", "nested-secret-dirname")
+        h2 = _git(r, "rev-parse", "HEAD")
+        self.set_gh(h1, h2)
+        self.receipts(_receipt(67))
+        c = self.collect()
+        self.assertEqual((c["collected"], c["quarantined"]), (0, 1), c)
+
+        # 3) Rename source (renamed_from) containing a high-entropy component must quarantine
+        rename_src = f"archive/Old{secret_tok}.md"
+        (r / rename_src).parent.mkdir(parents=True, exist_ok=True)
+        (r / rename_src).write_text("".join(f"line{i}\n" for i in range(20)))
+        _git(r, "add", "-A")
+        _git(r, "commit", "-qm", "seed-rename-src")
+        h3 = _git(r, "rev-parse", "HEAD")
+        (r / "docs/moved-clean").mkdir(parents=True, exist_ok=True)
+        _git(r, "mv", rename_src, "docs/moved-clean/target.md")
+        _git(r, "commit", "-qm", "rename-secret-src")
+        h4 = _git(r, "rev-parse", "HEAD")
+        self.set_gh(h3, h4)
+        self.receipts(_receipt(68))
+        c = self.collect()
+        self.assertEqual((c["collected"], c["quarantined"]), (0, 1), c)
+
+        self.assertEqual(self.lines("trajectories.jsonl"), [])
+        quar_by_pr = {x["pr"]: x for x in self.lines("trajectories.quarantine.jsonl")}
+        for pr in (66, 67, 68):
+            self.assertIn("entropy", quar_by_pr[pr]["reasons"])
+
+    def test_m_slash_secret_in_verified_path_and_renamed_from_quarantines(self) -> None:
+        r = self.repo
+        # Halves are each < 32 chars so splitting on '/' would bypass _BLOB unless _path_like blocks it.
+        b64_slash = "AbCdEfGhIjKlMnOpQr01/2345+6789AbCdEfGhIj="
+        (r / b64_slash).parent.mkdir(parents=True, exist_ok=True)
+        (r / b64_slash).write_text("ok\n")
+        _git(r, "add", "-A")
+        _git(r, "commit", "-qm", "b64-slash-path")
+        h1 = _git(r, "rev-parse", "HEAD")
+        self.set_gh(self.head, h1)
+        self.receipts(_receipt(69))
+        c = self.collect()
+        self.assertEqual((c["collected"], c["quarantined"]), (0, 1), c)
+
+        # Direct scan checks for base64 (+/=), lowercase (+/=), and mixed-case without +/=
+        self.assertEqual(
+            col.scan(
+                json.dumps({"files": [{"path": "AbCdEfGhIjKlMnOpQrStUvWxYz012345/789+AbCdEf"}]}),
+                allowed_paths={"AbCdEfGhIjKlMnOpQrStUvWxYz012345/789+AbCdEf"},
+            ),
+            ["entropy"],
+        )
+        low_b64 = "abcdefghij0123456789/klmnop+qrstuv=wxyz01"
+        self.assertEqual(col.scan(json.dumps({"files": [{"path": low_b64}]}), allowed_paths={low_b64}), ["entropy"])
+        self.assertEqual(
+            col.scan(
+                json.dumps({"files": [{"path": "AbCdEfGhIjKlMnOpQrStUvWxYz012345/6789AbCdEfGhIj"}]}),
+                allowed_paths={"AbCdEfGhIjKlMnOpQrStUvWxYz012345/6789AbCdEfGhIj"},
+            ),
+            ["entropy"],
+        )
+        mixed_hyphen = "docs/Secret_Token-Here_Now/file_AbCdEfGhIjKlMnOp.md"
+        self.assertEqual(
+            col.scan(json.dumps({"files": [{"path": mixed_hyphen}]}), allowed_paths={mixed_hyphen}),
+            ["entropy"],
+        )
+
+        # Mixed-case slash secret WITHOUT +/= in verified files[*].path and files[*].renamed_from
+        mixed_slash = "AbCdEfGhIjKlMnOpQr01/23456789AbCdEfGhIjKl"
+        (r / mixed_slash).parent.mkdir(parents=True, exist_ok=True)
+        (r / mixed_slash).write_text("".join(f"line{i}\n" for i in range(20)))
+        _git(r, "add", "-A")
+        _git(r, "commit", "-qm", "mixed-slash-path")
+        h2 = _git(r, "rev-parse", "HEAD")
+        self.set_gh(h1, h2)
+        self.receipts(_receipt(70))
+        c = self.collect()
+        self.assertEqual((c["collected"], c["quarantined"]), (0, 1), c)
+
+        (r / "docs/moved-clean").mkdir(parents=True, exist_ok=True)
+        _git(r, "mv", mixed_slash, "docs/moved-clean/renamed-target.md")
+        _git(r, "commit", "-qm", "mixed-slash-rename")
+        h3 = _git(r, "rev-parse", "HEAD")
+        self.set_gh(h2, h3)
+        self.receipts(_receipt(71))
+        c = self.collect()
+        self.assertEqual((c["collected"], c["quarantined"]), (0, 1), c)
+
+        # TitleCase slash secret (< 8 chars per part, each '/'-half < 32 chars, total _BLOB entropy > 4.0)
+        title_slash = "Qwxz01-Vbnm23/Kjhg45-Plok67_Mnbv89"
+        self.assertGreater(receipt_mod._entropy(title_slash), 4.0)
+        self.assertTrue(all(len(seg) < 32 for seg in title_slash.split("/")))
+        self.assertEqual(col.scan(json.dumps({"files": [{"path": title_slash}]}), allowed_paths={title_slash}), ["entropy"])
+        (r / title_slash).parent.mkdir(parents=True, exist_ok=True)
+        (r / title_slash).write_text("".join(f"title-{i}\n" for i in range(20)))
+        _git(r, "add", "-A")
+        _git(r, "commit", "-qm", "title-slash-path")
+        h4 = _git(r, "rev-parse", "HEAD")
+        self.set_gh(h3, h4)
+        self.receipts(_receipt(72))
+        c = self.collect()
+        self.assertEqual((c["collected"], c["quarantined"]), (0, 1), c)
+
+        _git(r, "mv", title_slash, "docs/moved-clean/renamed-title-target.md")
+        _git(r, "commit", "-qm", "title-slash-rename")
+        h5 = _git(r, "rev-parse", "HEAD")
+        self.assertEqual(col._numstat(r, 73, h4, h5)[0].get("renamed_from"), title_slash)
+        self.set_gh(h4, h5)
+        self.receipts(_receipt(73))
+        c = self.collect()
+        self.assertEqual((c["collected"], c["quarantined"]), (0, 1), c)
+
+        # Long (>= 8) single-case mixed-alphanumeric slash secret (each '/'-half < 32 chars, total _BLOB entropy > 4.0)
+        alnum_slash = "a1b2c3d4e5f6g7h8/i9j0k1l2m3n4o5p6q7r8"
+        self.assertGreater(receipt_mod._entropy(alnum_slash), 4.0)
+        self.assertTrue(all(len(seg) < 32 for seg in alnum_slash.split("/")))
+        self.assertEqual(col.scan(json.dumps({"files": [{"path": alnum_slash}]}), allowed_paths={alnum_slash}), ["entropy"])
+        (r / alnum_slash).parent.mkdir(parents=True, exist_ok=True)
+        (r / alnum_slash).write_text("".join(f"alnum-{i}\n" for i in range(20)))
+        _git(r, "add", "-A")
+        _git(r, "commit", "-qm", "alnum-slash-path")
+        h6 = _git(r, "rev-parse", "HEAD")
+        self.set_gh(h5, h6)
+        self.receipts(_receipt(74))
+        c = self.collect()
+        self.assertEqual((c["collected"], c["quarantined"]), (0, 1), c)
+
+        _git(r, "mv", alnum_slash, "docs/moved-clean/renamed-alnum-target.md")
+        _git(r, "commit", "-qm", "alnum-slash-rename")
+        h7 = _git(r, "rev-parse", "HEAD")
+        self.assertEqual(col._numstat(r, 75, h6, h7)[0].get("renamed_from"), alnum_slash)
+        self.set_gh(h6, h7)
+        self.receipts(_receipt(75))
+        c = self.collect()
+        self.assertEqual((c["collected"], c["quarantined"]), (0, 1), c)
+
+        # Multi-chunk hyphenated mixed-alphanumeric token and uninterrupted high-entropy single component
+        chunked_alnum = "docs/kx9q2-mz7p4-vb8w1-nf6t3-rc5y0-hd4j8.txt"
+        self.assertEqual(
+            col.scan(json.dumps({"files": [{"path": chunked_alnum}]}), allowed_paths={chunked_alnum}),
+            ["entropy"],
+        )
+        long_single_comp = "docs/qwertyuiopasdfghjklzxcvbnm123456.txt"
+        self.assertEqual(
+            col.scan(json.dumps({"files": [{"path": long_single_comp}]}), allowed_paths={long_single_comp}),
+            ["entropy"],
+        )
+
+        # P1: case change across '-' inside a slash segment in files[*].path and files[*].renamed_from
+        case_switch_slash = "qxjfzpwnrt-VMKDHYCLBG/tsgkvbnmqu-SXWRJHFPDZ"
+        self.assertGreater(receipt_mod._entropy(case_switch_slash), 4.0)
+        self.assertTrue(all(len(seg) < 32 for seg in case_switch_slash.split("/")))
+        self.assertEqual(
+            col.scan(json.dumps({"files": [{"path": case_switch_slash}]}), allowed_paths={case_switch_slash}),
+            ["entropy"],
+        )
+        (r / case_switch_slash).parent.mkdir(parents=True, exist_ok=True)
+        (r / case_switch_slash).write_text("".join(f"case-switch-{i}\n" for i in range(20)))
+        _git(r, "add", "-A")
+        _git(r, "commit", "-qm", "case-switch-slash-path")
+        h8 = _git(r, "rev-parse", "HEAD")
+        self.set_gh(h7, h8)
+        self.receipts(_receipt(76))
+        c = self.collect()
+        self.assertEqual((c["collected"], c["quarantined"]), (0, 1), c)
+
+        _git(r, "mv", case_switch_slash, "docs/moved-clean/renamed-case-switch-target.md")
+        _git(r, "commit", "-qm", "case-switch-slash-rename")
+        h9 = _git(r, "rev-parse", "HEAD")
+        self.assertEqual(col._numstat(r, 77, h8, h9)[0].get("renamed_from"), case_switch_slash)
+        self.set_gh(h8, h9)
+        self.receipts(_receipt(77))
+        c = self.collect()
+        self.assertEqual((c["collected"], c["quarantined"]), (0, 1), c)
+
+        # Slash-less high-entropy hyphenated hex token after '.' in verified files[*].path and files[*].renamed_from
+        dot_uuid_tok = "01234567-89ab-cdef-0123-456789abcdef"
+        dot_uuid = f"docs/prefix.{dot_uuid_tok}"
+        dot_uuid_txt = f"{dot_uuid}.txt"
+        self.assertGreater(receipt_mod._entropy(dot_uuid_tok), 4.0)
+        self.assertEqual(
+            col.scan(json.dumps({"files": [{"path": dot_uuid}]}), allowed_paths={dot_uuid}),
+            ["entropy"],
+        )
+        self.assertEqual(
+            col.scan(json.dumps({"files": [{"path": dot_uuid_txt}]}), allowed_paths={dot_uuid_txt}),
+            ["entropy"],
+        )
+        (r / dot_uuid_txt).parent.mkdir(parents=True, exist_ok=True)
+        (r / dot_uuid_txt).write_text("".join(f"dot-uuid-{i}\n" for i in range(20)))
+        _git(r, "add", "-A")
+        _git(r, "commit", "-qm", "dot-uuid-path")
+        h10 = _git(r, "rev-parse", "HEAD")
+        self.set_gh(h9, h10)
+        self.receipts(_receipt(78))
+        c = self.collect()
+        self.assertEqual((c["collected"], c["quarantined"]), (0, 1), c)
+
+        _git(r, "mv", dot_uuid_txt, "docs/moved-clean/renamed-dot-uuid-target.md")
+        _git(r, "commit", "-qm", "dot-uuid-rename")
+        h11 = _git(r, "rev-parse", "HEAD")
+        self.assertEqual(col._numstat(r, 79, h10, h11)[0].get("renamed_from"), dot_uuid_txt)
+        self.set_gh(h10, h11)
+        self.receipts(_receipt(79))
+        c = self.collect()
+        self.assertEqual((c["collected"], c["quarantined"]), (0, 1), c)
+
+        # Nested basename/dir high-entropy hyphenated hex token in verified files[*].path and files[*].renamed_from
+        nested_uuid = f"docs/{dot_uuid_tok}.txt"
+        nested_prefixed_uuid = f"docs/key-{dot_uuid_tok}.txt"
+        nested_dir_uuid = f"docs/{dot_uuid_tok}/note.md"
+        for p in (nested_uuid, nested_prefixed_uuid, nested_dir_uuid):
+            self.assertEqual(
+                col.scan(json.dumps({"files": [{"path": p}]}), allowed_paths={p}),
+                ["entropy"],
+                p,
+            )
+        (r / nested_uuid).parent.mkdir(parents=True, exist_ok=True)
+        (r / nested_uuid).write_text("".join(f"nested-uuid-{i}\n" for i in range(20)))
+        _git(r, "add", "-A")
+        _git(r, "commit", "-qm", "nested-uuid-path")
+        h12 = _git(r, "rev-parse", "HEAD")
+        self.set_gh(h11, h12)
+        self.receipts(_receipt(80))
+        c = self.collect()
+        self.assertEqual((c["collected"], c["quarantined"]), (0, 1), c)
+
+        _git(r, "mv", nested_uuid, "docs/moved-clean/renamed-nested-uuid-target.md")
+        _git(r, "commit", "-qm", "nested-uuid-rename")
+        h13 = _git(r, "rev-parse", "HEAD")
+        self.assertEqual(col._numstat(r, 81, h12, h13)[0].get("renamed_from"), nested_uuid)
+        self.set_gh(h12, h13)
+        self.receipts(_receipt(81))
+        c = self.collect()
+        self.assertEqual((c["collected"], c["quarantined"]), (0, 1), c)
+
+        # Hex-character prefixes before a UUID token must not dilute _HYPHEN_HEX entropy below 4.0
+        added_uuid = f"docs/added-{dot_uuid_tok}.txt"
+        deadbeef_uuid = f"docs/deadbeef-{dot_uuid_tok}.txt"
+        aaa_uuid = f"docs/aaaaa{dot_uuid_tok}.txt"
+        for p in (added_uuid, deadbeef_uuid, aaa_uuid):
+            self.assertEqual(
+                col.scan(json.dumps({"files": [{"path": p}]}), allowed_paths={p}),
+                ["entropy"],
+                p,
+            )
+        (r / added_uuid).parent.mkdir(parents=True, exist_ok=True)
+        (r / added_uuid).write_text("".join(f"added-uuid-{i}\n" for i in range(20)))
+        _git(r, "add", "-A")
+        _git(r, "commit", "-qm", "added-uuid-path")
+        h14 = _git(r, "rev-parse", "HEAD")
+        self.set_gh(h13, h14)
+        self.receipts(_receipt(82))
+        c = self.collect()
+        self.assertEqual((c["collected"], c["quarantined"]), (0, 1), c)
+
+        _git(r, "mv", added_uuid, "docs/moved-clean/renamed-added-uuid-target.md")
+        _git(r, "commit", "-qm", "added-uuid-rename")
+        h15 = _git(r, "rev-parse", "HEAD")
+        self.assertEqual(col._numstat(r, 83, h14, h15)[0].get("renamed_from"), added_uuid)
+        self.set_gh(h14, h15)
+        self.receipts(_receipt(83))
+        c = self.collect()
+        self.assertEqual((c["collected"], c["quarantined"]), (0, 1), c)
+
+        # Cross-segment / whole-match opaque base64 credentials containing '/' (without '+'/'=')
+        for b64_vec in (
+            "ABCDEFGHIJKLMNOP/qrstuvwxyz012345",
+            "ABCDEFGH/ijklmnop/QRSTUVWX/yz012345",
+            "docs/harness-first/ABCDEFGHIJKLMNOP/qrstuvwxyzabcdef-1",
+            "qxjfzpwnrt/vmkdhyclbg/tsgkvbnmqu/sxwrjhfpdz",
+            "a1b2c3d/e4f5g6h/i7j8k9m/n0p1q2r/s3t4u5v",
+            "0123456789abcdef/0123456789abcdef",
+            "ABCDEFGH-X/ijklmnop-y/QRSTUVWX-Z/yz012345-a",
+        ):
+            self.assertEqual(
+                col.scan(json.dumps({"files": [{"path": b64_vec}]}), allowed_paths={b64_vec}),
+                ["entropy"],
+                b64_vec,
+            )
+
+        b64_cross_seg = "ABCDEFGHIJKLMNOP/qrstuvwxyz012345"
+        (r / b64_cross_seg).parent.mkdir(parents=True, exist_ok=True)
+        (r / b64_cross_seg).write_text("".join(f"b64-cross-{i}\n" for i in range(20)))
+        _git(r, "add", "-A")
+        _git(r, "commit", "-qm", "b64-cross-seg-path")
+        h16 = _git(r, "rev-parse", "HEAD")
+        self.set_gh(h15, h16)
+        self.receipts(_receipt(84))
+        c = self.collect()
+        self.assertEqual((c["collected"], c["quarantined"]), (0, 1), c)
+
+        _git(r, "mv", b64_cross_seg, "docs/moved-clean/renamed-b64-cross-seg.md")
+        _git(r, "commit", "-qm", "b64-cross-seg-rename")
+        h17 = _git(r, "rev-parse", "HEAD")
+        self.assertEqual(col._numstat(r, 85, h16, h17)[0].get("renamed_from"), b64_cross_seg)
+        self.set_gh(h16, h17)
+        self.receipts(_receipt(85))
+        c = self.collect()
+        self.assertEqual((c["collected"], c["quarantined"]), (0, 1), c)
+
+        lower_b64_slash = "qxjfzpwnrt/vmkdhyclbg/tsgkvbnmqu/sxwrjhfpdz"
+        (r / lower_b64_slash).parent.mkdir(parents=True, exist_ok=True)
+        (r / lower_b64_slash).write_text("ok\n")
+        _git(r, "add", "-A")
+        _git(r, "commit", "-qm", "lower-b64-slash-path")
+        h18 = _git(r, "rev-parse", "HEAD")
+        self.set_gh(h17, h18)
+        self.receipts(_receipt(86))
+        c = self.collect()
+        self.assertEqual((c["collected"], c["quarantined"]), (0, 1), c)
+
+        # Low-entropy prefixes and parent directories can dilute whole-blob entropy.
+        long_parent = "a" * 80
+        self.assertEqual(
+            col.scan(json.dumps({"id": long_parent + "-Zx9Qm3Lp7Tr2Vb8Nc5Kd1Hf6Gj4Sw0YaUeEi"})),
+            ["entropy"],
+        )
+        diluted_uuid = f"{long_parent}/{dot_uuid_tok}.txt"
+        self.assertLess(receipt_mod._entropy(diluted_uuid.rsplit(".", 1)[0]), 4.0)
+        diluted_added_uuid = f"{long_parent}/added-{dot_uuid_tok}.txt"
+        for p in (
+            diluted_uuid,
+            diluted_added_uuid,
+            f"{long_parent}AbCdEfGhIjKlMnOpQrStUvWxYz0123456789.txt",
+            f"{long_parent}/ABCDEFGH-X/ijklmnop-y/QRSTUVWX-Z/yz012345-a",
+            f"{long_parent}/abcdefghij0/123456789xy/klmn+qrst=1",
+            f"{long_parent}/{'a' * 32}AbCdEfGhIjKlMnOpQrStUvWxYz0123456789.txt",
+            f"{long_parent}/ABCDEFGHIJKLMNOP/qrstuvwxyz012345",
+            f"{long_parent}/qxjfzpwnrt/vmkdhyclbg/tsgkvbnmqu/sxwrjhfpdz",
+            f"{long_parent}/docs/harness-first/ABCDEFGHIJKLMNOP/qrstuvwxyzabcdef-1",
+        ):
+            self.assertEqual(
+                col.scan(json.dumps({"files": [{"path": p}]}), allowed_paths={p}),
+                ["entropy"],
+                p,
+            )
+
+        (r / diluted_added_uuid).parent.mkdir(parents=True, exist_ok=True)
+        (r / diluted_added_uuid).write_text("".join(f"diluted-uuid-{i}\n" for i in range(20)))
+        _git(r, "add", "-A")
+        _git(r, "commit", "-qm", "diluted-added-uuid-path")
+        h19 = _git(r, "rev-parse", "HEAD")
+        self.set_gh(h18, h19)
+        self.receipts(_receipt(87))
+        c = self.collect()
+        self.assertEqual((c["collected"], c["quarantined"]), (0, 1), c)
+
+        _git(r, "mv", diluted_added_uuid, "docs/moved-clean/renamed-diluted-uuid.md")
+        _git(r, "commit", "-qm", "diluted-added-uuid-rename")
+        h20 = _git(r, "rev-parse", "HEAD")
+        self.assertEqual(col._numstat(r, 88, h19, h20)[0].get("renamed_from"), diluted_added_uuid)
+        self.set_gh(h19, h20)
+        self.receipts(_receipt(88))
+        c = self.collect()
+        self.assertEqual((c["collected"], c["quarantined"]), (0, 1), c)
+
+        self.assertEqual(self.lines("trajectories.jsonl"), [])
+        quar_by_pr = {x["pr"]: x for x in self.lines("trajectories.quarantine.jsonl")}
+        for pr in range(69, 89):
+            self.assertIn("entropy", quar_by_pr[pr]["reasons"])
+
+
+class ScanPathEntropy(unittest.TestCase):
+    """PR 788 false positive: long lowercase repo paths tripped the entropy heuristic and quarantined a clean row."""
+
+    def test_long_repo_paths_are_clean(self) -> None:
+        for p in (
+            "docs/harness-first/evidence/2026-11-15-deploy-validation",
+            "agent/PROJECT-DEPLOY-VALIDATION-PRD",
+            "docs/harness-first/evidence/DEPLOY-README.md",
+            "scripts/security/compare-github-code-scanning-alerts.sh",
+            "docs/harness-first/evidence/2026-03-04-harness-first-owner-approval.md",
+            "docs/harness-first/evidence/2026-10-01-local-first-token-budget.md",
+            "docs/architecture/GOOGLE-ADK-PARITY-MATRIX-2026-03.md",
+            "scripts/testing/phase58b-routing-audit.py",
+            ".agents/plans/aqos-refoundation-cycle0/evidence/cas/sha256/491dce6c806b8638f0d97aab379ed4421c78272beb58090e55d178c15def4649.json",
+            "nix/modules/hardware/cpu/riscv64.nix",
+            "dashboard/backend/api/routes/deployments.py",
+        ):
+            txt = json.dumps({"files": [{"path": p}]})
+            self.assertEqual(col.scan(txt, allowed_paths={p}), [], p)
+            self.assertEqual(col.scan(txt), ["entropy"], f"unverified path must still flag: {p}")
+            self.assertEqual(col.scan(json.dumps({"path": p})), ["entropy"], f"bare path must still flag: {p}")
+
+    def test_nil_uuid_is_clean(self) -> None:
+        self.assertEqual(col.scan(json.dumps({"id": "00000000-0000-0000-0000-000000000000"})), [])
+
+    def test_long_single_values_are_linear_time(self) -> None:
+        plain_hex = json.dumps({"id": "a" * 16384})
+        with_trailing_dash = json.dumps({"id": "a" * 16383 + "-"})
+        delimited = json.dumps({"id": "a-" * 8192})
+        with_uuid = json.dumps({"id": "a" * 8192 + "-01234567-89ab-cdef-0123-456789abcdef"})
+
+        t0 = time.monotonic()
+        self.assertEqual(col.scan(plain_hex), [])
+        self.assertLess(time.monotonic() - t0, 0.05)
+        self.assertEqual(col.scan(with_trailing_dash), [])
+        self.assertEqual(col.scan(delimited), [])
+        self.assertEqual(col.scan(with_uuid), ["entropy"])
+        self.assertLess(time.monotonic() - t0, 0.5)
+
+    def test_real_blobs_still_caught(self) -> None:
+        self.assertEqual(col.scan("k=Zx9Qm3Lp7Tr2Vb8Nc5Kd1Hf6Gj4Sw0Ya+Ue/Ei=="), ["entropy"])
+        self.assertEqual(col.scan("tok Zx9Qm3Lp7Tr2Vb8Nc5Kd1Hf6Gj4Sw0YaUeEi"), ["entropy"])
+
+    def test_duplicate_json_key_fails_closed(self) -> None:
+        p = "docs/harness-first/evidence/2026-11-15-deploy-validation.md"
+        dup = (
+            '{"files":[{"path":"' + p + '"}],'
+            '"label":"AbCdEfGhIjKlMnOpQrStUvWxYz0123456789",'
+            '"label":"clean"}'
+        )
+        self.assertEqual(col.scan(dup, allowed_paths={p}), ["entropy"])
+
+    def test_aq_land_calls_collector_nonfatally(self) -> None:
+        land = (ROOT / "scripts/ai/aq-land").read_text()
+        self.assertIn("self.collect_trajectory(n)", land)
+        self.assertIn("collect-verified-trajectories.py", land)
+        self.assertIn("WARN trajectory", land)
+
+    def test_deeply_nested_clean_path_is_bounded_and_clean(self) -> None:
+        deep_clean = "/".join(["dir"] * 500) + "/file.txt"
+        deep_bad = "/".join(["dir"] * 500) + "/ABCDEFGHIJKLMNOP/qrstuvwxyz012345"
+        t0 = time.monotonic()
+        self.assertEqual(
+            col.scan(json.dumps({"files": [{"path": deep_clean}]}), allowed_paths={deep_clean}),
+            [],
+        )
+        self.assertEqual(
+            col.scan(json.dumps({"files": [{"path": deep_bad}]}), allowed_paths={deep_bad}),
+            ["entropy"],
+        )
+        self.assertLess(time.monotonic() - t0, 1.0)
 
 
 if __name__ == "__main__":

@@ -35,6 +35,7 @@ memory; that is why another lane committed straight into the main checkout. They
   `Reviewed-head-sha` (== current PR head, or a clean automatic merge of main onto it) and `Reviewed-by` (lane != Author-lane). The receipt is
   not in the PR: `aq-land` publishes it to the `review-receipts` branch (`scripts/ai/aq-review-receipt mint` + `publish`), so the head never moves.
   Template: `.github/pull_request_template.md`. Identity is declarative until signed receipts exist.
+- A review receipt is minted only by `aq-land` or the reviewer wrapper from a recorded, wrapper-hashed review run, never by hand or a helper script; minting one without a recorded review is faking a gate signal (Rule 19). `aq-review-receipt revoke` voids a bad one.
 - PR body layout (CI-enforced by `scripts/governance/check-pr-body-format.py` in the `review-disposition` workflow): `## Details` first (scope, merge order, tests with results, risk, then `### Review record`), followed by plain-language `## What`, `## How`, `## Why`, each non-empty.
 
 ### 4. Leave a resumable trail
@@ -89,3 +90,10 @@ tested. A slice is finished only after these four steps, in this order:
   `scripts/ai/aq-graph-query search|symbol|impact <x>` (whole-system knowledge graph),
   `scripts/ai/aq-wiki --section <name>` (subsystem wiki), `aq-hints` (coordinator hints).
 - Friction or failures go to the RSI loop: `scripts/ai/aq-rsi report ...` (local, non-blocking).
+
+### 9. Onboard new lanes on synthetic data
+- New agents/models/lanes: probe, test, validate on synthetic data before real work or personal data; start restricted;
+  widen authority only on measured results (owner 2026-11-14). Send only hand-written toy prompts and diffs; tokens come
+  from the existing OAuth session at call time and never reach disk or logs. A transport, entitlement or rate-limit
+  failure means "lane unavailable", never a verdict. Tool: `scripts/ai/probe-reviewer-lane` (seeded-defect bar: at least
+  80% hits, at most 1 false REQUEST_CHANGES).

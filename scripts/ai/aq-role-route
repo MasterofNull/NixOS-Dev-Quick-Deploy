@@ -74,9 +74,13 @@ LANE_TO_REGISTRY_LANES: dict[str, list[str]] = {
 # antigravity-implementer hard-ineligibility is load-bearing governance and
 # must still apply. Antigravity has no dedicated routing lane today — it is
 # reached only via the "gemini" lane's alias set — so the backstop blocks
-# that lane for the implementer role specifically.
+# that lane for the implementer role specifically. Gemini is also revoked for
+# orchestrator and binding-acceptance (owner decision 2026-11-25, after the
+# 2026-11-19 receipt incident); a registry read failure must not restore it.
 HARDCODED_BACKSTOP_BLOCKS: dict[str, set[str]] = {
     "implementer": {"gemini"},
+    "orchestrator": {"gemini"},
+    "binding-acceptance": {"gemini"},
 }
 
 # Lane identity: canonical id, aliases an --exclude token may name (matched

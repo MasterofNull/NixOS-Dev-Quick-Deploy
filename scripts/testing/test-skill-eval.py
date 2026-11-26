@@ -22,6 +22,17 @@ class TestSkillEval(unittest.TestCase):
         self.assertTrue(template["zero_delta"])
         self.assertEqual(template["recommendation"], "archive")
 
+    def test_prune_candidates_flag(self):
+        # Regression: `args.prune-candidates` (hyphen) raised AttributeError, so the flag never worked.
+        cmd = [str(REPO_ROOT / "scripts/ai/aq-skill-eval"), "--prune-candidates"]
+        res = subprocess.run(cmd, capture_output=True, text=True)
+        self.assertEqual(res.returncode, 0, res.stderr)
+        self.assertIn("template-skill: placeholder", res.stdout)
+
+    def test_weekly_report_calls_skill_eval(self):
+        nix = (REPO_ROOT / "nix/modules/roles/ai-stack.nix").read_text()
+        self.assertIn("scripts/ai/aq-skill-eval", nix)
+
 
 if __name__ == "__main__":
     unittest.main()

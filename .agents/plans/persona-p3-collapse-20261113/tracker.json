@@ -1,0 +1,81 @@
+{
+  "plan": {
+    "id": "persona-p3-collapse-20261113",
+    "title": "Persona P3: shared memory as git-tracked fact files",
+    "prd_ref": ".agents/plans/persona-p3-collapse-20261113/DESIGN.md",
+    "owner": "hyperd",
+    "goal": "Instances commit tagged fact files on their slice branch; collapse is the normal aq-land merge; conflicting claims are put to the owner in the CLI and never silently overwritten",
+    "success_criteria": [
+      "A fact landed by one lane is recalled from files by another after the merge",
+      "A conflicting claim is put to the owner in the CLI, not silently overwritten",
+      "Conflict rate is measured before anything more is built"
+    ]
+  },
+  "phases": [
+    {
+      "id": "design",
+      "name": "Design check",
+      "goal": "Independent review of DESIGN.md before build",
+      "order": 1
+    },
+    {
+      "id": "build",
+      "name": "Build and activate",
+      "goal": "Delta route, collapse, conflict executor, live E2E",
+      "order": 2
+    }
+  ],
+  "items": [
+    {
+      "id": "P3-D0",
+      "name": "Design and independent review",
+      "phase": "design",
+      "kind": "slice",
+      "goal": "Frozen design for delta schema, collapse merge, conflict list",
+      "validation_goal": "Review receipt from a lane different from the author; open questions 1-6 answered",
+      "deps": [],
+      "detection": {
+        "commit_match": [
+          "docs\\(persona\\): .*P3 design",
+          "feat\\(persona\\): .*P3 design"
+        ]
+      }
+    },
+    {
+      "id": "P3-S1",
+      "name": "Fact files and check",
+      "phase": "build",
+      "kind": "slice",
+      "goal": "`.agent/memory/facts/` convention, check-fact-files.py tier0.d check, on-demand conflict report",
+      "validation_goal": "Acceptance tests 1-6 pass with real lanes",
+      "deps": [
+        "P3-D0"
+      ],
+      "detection": {
+        "commit_match": [
+          "feat\\(persona\\): .*P3-S1",
+          "feat\\(persona\\): P3 shared memory as git-tracked fact files"
+        ]
+      }
+    },
+    {
+      "id": "P3-A1",
+      "name": "Activation attestation",
+      "phase": "build",
+      "kind": "milestone",
+      "goal": "Rule 15 attestation: integrated, ON, validated end to end, observable, intervenable",
+      "validation_goal": "Cross-lane recall and conflict listing demonstrated with real Claude, Codex and local lanes",
+      "deps": [
+        "P3-S1"
+      ],
+      "detection": {}
+    }
+  ],
+  "issues": [
+    {
+      "title": "Clean overwrite of another lane's claim is invisible to git",
+      "sev": "medium",
+      "note": "covered by check-fact-files.py owner_reply rule"
+    }
+  ]
+}

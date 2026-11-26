@@ -146,9 +146,7 @@ Features that are experimental or have specific requirements:
 
 | Feature | Why Disabled | How to Enable |
 |---------|-------------|---------------|
-| `QUERY_EXPANSION_ENABLED` | Experimental, limited testing | `QUERY_EXPANSION_ENABLED=true` |
 | `REMOTE_LLM_FEEDBACK_ENABLED` | Requires API key + costs money | Set API key + enable flag |
-| `MULTI_TURN_QUERY_EXPANSION` | Incomplete implementation | Not recommended |
 | `PATTERN_EXTRACTION_ENABLED` | Research use only | Enable for training environments |
 
 **When to use:**
@@ -523,9 +521,6 @@ sudo nixos-rebuild switch
 
 **Opting into experimental features:**
 ```bash
-# Enable query expansion (experimental)
-export QUERY_EXPANSION_ENABLED="true"
-
 # Enable remote LLM feedback (requires API key)
 export REMOTE_LLM_FEEDBACK_ENABLED="true"
 export ANTHROPIC_API_KEY="your-key-here"

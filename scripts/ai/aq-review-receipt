@@ -25,6 +25,7 @@ import re
 import subprocess
 import sys
 import tempfile
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -47,6 +48,19 @@ GIT_TIMEOUT = 180
 PUSH_TIMEOUT = int(os.environ.get("AQ_REVIEW_RECEIPT_PUSH_TIMEOUT", "1200"))
 RECEIPT_EMAIL = "aq-review-receipt@noreply.invalid"  # pre-push identity check needs a dot in the domain
 VERDICTS = ("PASS", "PASS_WITH_FOLLOWUPS", "REQUEST_CHANGES")
+REVOCATION_DIR = "revocations"
+LOCAL_REVOCATIONS = ".agents/delegation/review-revocations"
+
+
+def _local_rev_dir() -> Path:
+    return Path(os.environ["AQ_REVIEW_REVOCATIONS_DIR"]) if os.environ.get("AQ_REVIEW_REVOCATIONS_DIR") else MAIN_ROOT / LOCAL_REVOCATIONS
+# Receipts created on or after this UTC date must be backed by a wrapper-recorded output hash.
+HASH_ENFORCED_FROM = os.environ.get("AQ_RECEIPT_HASH_ENFORCED_FROM", "2026-11-20")
+MIN_REVIEW_BYTES = int(os.environ.get("AQ_REVIEW_MIN_BYTES", "1500"))
+BURST_MAX = int(os.environ.get("AQ_RECEIPT_BURST_MAX", "3"))
+BURST_WINDOW_S = int(os.environ.get("AQ_RECEIPT_BURST_WINDOW_S", "600"))
+CI_CLAIM = re.compile(r"\b(ci|checks?|tests?|pipeline|build)\b[^.\n]{0,40}\b(green|pass(?:ed|es|ing)?|success(?:ful)?|ok)\b"
+                      r"|\b(green|passing)\b[^.\n]{0,20}\b(ci|checks?|tests?)\b", re.I)
 
 
 def norm(lane: str) -> str:
@@ -66,20 +80,73 @@ def load_registry(path: Path) -> dict:
     return rows
 
 
-def _rel(root: Path, p: str) -> tuple[Path, str]:
-    full = Path(p) if Path(p).is_absolute() else root / p
-    if not full.exists() and not Path(p).is_absolute() and (MAIN_ROOT / p).exists():
-        full = MAIN_ROOT / p
-    full = full.resolve()
-    for base in (root.resolve(), MAIN_ROOT.resolve()):
-        try:
-            return full, str(full.relative_to(base))
-        except ValueError:
+def _git_common_root(root: Path) -> Path | None:
+    try:
+        common = _git(root, "rev-parse", "--path-format=absolute", "--git-common-dir")
+    except (subprocess.SubprocessError, OSError):
+        return None
+    common_path = Path(common).resolve()
+    return common_path.parent if common_path.name == ".git" else None
+
+
+def _is_within(path: Path, root: Path) -> bool:
+    try:
+        path.relative_to(root)
+    except ValueError:
+        return False
+    return True
+
+
+def _allowed_scopes(root: Path, registry: Path | None = None) -> list[tuple[Path, Path]]:
+    scopes = []
+    if registry is not None:
+        reg_dir = registry.resolve().parent
+        if reg_dir.name == "delegation" and reg_dir.parent.name == ".agents":
+            scopes.append((reg_dir.parent.parent, reg_dir))
+        scopes.append((reg_dir, reg_dir))
+    root_resolved = root.resolve()
+    scopes.append((root_resolved, root_resolved))
+    common_root = _git_common_root(root_resolved)
+    if common_root is not None:
+        scopes.append((common_root, common_root))
+    elif root_resolved == ROOT.resolve():
+        scopes.append((MAIN_ROOT, MAIN_ROOT))
+    return list(dict.fromkeys(scopes))
+
+
+def _rel(root: Path, p: str, registry: Path | None = None) -> tuple[Path, str]:
+    scopes = _allowed_scopes(root, registry)
+    raw = Path(p)
+    if raw.is_absolute():
+        full = raw.resolve()
+        for rel_base, contain_root in scopes:
+            if _is_within(full, contain_root):
+                return full, str(full.relative_to(rel_base))
+        raise SystemExit(f"output_file {full} is outside the repo or registry root")
+
+    fallback: tuple[Path, str] | None = None
+    escaped: Path | None = None
+    for rel_base, contain_root in scopes:
+        joined = rel_base / raw
+        candidate = joined.resolve()
+        if not _is_within(candidate, contain_root):
+            if escaped is None and (joined.is_symlink() or joined.exists()):
+                escaped = candidate
             continue
-    raise SystemExit(f"output_file {full} is outside the repo")
+        rel = str(candidate.relative_to(rel_base))
+        if candidate.exists():
+            return candidate, rel
+        if fallback is None:
+            fallback = candidate, rel
+    if escaped is not None:
+        raise SystemExit(f"output_file {escaped} is outside the repo or registry root")
+    if fallback is not None:
+        return fallback
+    full = (root.resolve() / raw).resolve()
+    raise SystemExit(f"output_file {full} is outside the repo or registry root")
 
 
-def _run_checks(entry, root: Path):
+def _run_checks(entry, root: Path, registry: Path | None = None):
     """Return (errors, output_path, rel, text) for a registry entry."""
     errs = []
     if not entry:
@@ -90,7 +157,7 @@ def _run_checks(entry, root: Path):
         errs.append(f"registry role {entry.get('role')!r} is not a review role")
     if not entry.get("output_file"):
         return errs + ["registry entry has no output_file"], None, None, ""
-    full, rel = _rel(root, entry["output_file"])
+    full, rel = _rel(root, entry["output_file"], registry)
     if not full.is_file():
         return errs + [f"output_file missing: {rel}"], full, rel, ""
     return errs, full, rel, full.read_text(encoding="utf-8", errors="replace")
@@ -108,16 +175,68 @@ def parse_verdict(text: str) -> str:
     return m[-1] if m else ""
 
 
+def _ts(v):
+    """Parse the registry/receipt ISO timestamps (with or without fractions); None when unparsable."""
+    try:
+        return datetime.fromisoformat(str(v).replace("Z", "+00:00")).timestamp()
+    except ValueError:
+        return None
+
+
+def substantive(text: str) -> bool:
+    """Deterministic content floor: a findings section, a no-findings statement that names reviewed
+    paths, or enough review prose. Headers/metadata lines do not count toward the length."""
+    if re.search(r"^#{1,4}[ \t]*(findings|issues|defects)\b|^findings[ \t]*:", text, re.I | re.M):
+        return True
+    if re.search(r"\bno (blocking )?(findings|issues|defects)\b", text, re.I) and \
+            re.search(r"[\w.-]+(?:/[\w.-]+){2,}|[\w.-]+/[\w.-]+\.\w{1,6}\b", text):
+        return True
+    body = "\n".join(l for l in text.splitlines()
+                     if not re.match(r"^(Reviewer|Timestamp|Reviewed-[\w-]+|Author-lane|Review-Disposition)[ \t]*:", l))
+    return len(body.strip()) >= MIN_REVIEW_BYTES
+
+
+def integrity_errors(entry: dict, full: Path, text: str, head: str, pr, created=None) -> list[str]:
+    """Checks that tie a receipt to a real, wrapper-recorded reviewer run (tamper-evident, not tamper-proof)."""
+    errs = []
+    if created is not None and str(created)[:10] < HASH_ENFORCED_FROM and not entry.get("output_sha256"):
+        return errs  # legacy receipt from before wrappers recorded hashes
+    sha, nbytes, rec_at = entry.get("output_sha256"), entry.get("output_bytes"), entry.get("output_recorded_at")
+    if not (isinstance(sha, str) and re.fullmatch(r"[0-9a-f]{64}", sha) and type(nbytes) is int and rec_at):
+        errs.append("registry row has no wrapper-recorded output hash (output_sha256/output_bytes/output_recorded_at); "
+                    "hand-written or pre-hash rows cannot back a receipt")
+    else:
+        data = full.read_bytes()
+        if hashlib.sha256(data).hexdigest() != sha or len(data) != nbytes:
+            errs.append("output file does not match the hash the wrapper recorded in the registry row")
+        t_rec, mtime = _ts(rec_at), full.stat().st_mtime
+        if t_rec is None or mtime > t_rec + 5:
+            errs.append("output file was modified after the wrapper recorded it")
+        if mtime > datetime.now(timezone.utc).timestamp() + 5:
+            errs.append("output file mtime is in the future")
+    if entry.get("head") and entry["head"] != head:
+        errs.append(f"registry row head {str(entry['head'])[:12]} != receipt head {head[:12]}")
+    if entry.get("pr") not in (None, "") and entry["pr"] != pr:
+        errs.append(f"registry row pr {entry['pr']} != receipt pr {pr}")
+    if not substantive(text):
+        errs.append("output has no substantive review (need a Findings section, a no-findings statement naming "
+                    f"reviewed files, or {MIN_REVIEW_BYTES}+ bytes of review prose)")
+    return errs
+
+
 def cmd_mint(a) -> int:
     root = Path(a.root).resolve()
-    reg = load_registry(Path(a.registry) if a.registry else DEFAULT_REGISTRY)
+    reg_path = Path(a.registry) if a.registry else DEFAULT_REGISTRY
+    reg = load_registry(reg_path)
     entry = reg.get(a.run_id)
-    errs, full, rel, text = _run_checks(entry, root)
+    errs, full, rel, text = _run_checks(entry, root, reg_path)
     if not re.fullmatch(r"[0-9a-f]{40}", a.head):
         errs.append("--head must be 40 lowercase hex")
     if entry and norm(entry.get("agent")) == norm(a.author_lane):
         errs.append(f"reviewer lane {entry.get('agent')!r} equals author lane")
     verdict = parse_verdict(text)
+    if full is not None and full.is_file() and entry:
+        errs += integrity_errors(entry, full, text, a.head, a.pr)
     if full is not None and full.is_file():
         if not text.strip():
             errs.append("output is empty")
@@ -135,6 +254,7 @@ def cmd_mint(a) -> int:
         "reviewer_instance": reviewer_instance(entry),
         "author_instance": build_label(a.author_lane, a.author_model, a.author_session),
         "output_file": rel, "output_sha256": hashlib.sha256(full.read_bytes()).hexdigest(),
+        "output_bytes": entry["output_bytes"], "registry_output_sha256": entry["output_sha256"],
         "created_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
     }
     try:
@@ -167,15 +287,88 @@ def _repo_slug(root) -> str:
     return m.group(1)
 
 
-def verify_receipt(path: Path, root: Path, registry: Path) -> list[str]:
+def _rkey(pr, head) -> str:
+    return f"pr{pr}-{str(head)[:12]}"
+
+
+def _fetch_pinned(root, remote, ref) -> str:
+    """Fetch `ref` into a private per-call ref and return its commit id, so a concurrent fetch in the
+    same repo (which rewrites FETCH_HEAD) cannot change what this call reads."""
+    tmp = f"refs/aq-receipt-tmp/{os.getpid()}-{uuid.uuid4().hex[:12]}"
     try:
-        r = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, ValueError) as exc:
-        return [f"unreadable receipt: {exc.__class__.__name__}"]
+        _git(root, "fetch", "--no-tags", "-q", remote, f"+{ref}:{tmp}")
+        return _git(root, "rev-parse", "--verify", f"{tmp}^{{commit}}")
+    finally:
+        try:
+            _git(root, "update-ref", "-d", tmp)
+        except (subprocess.SubprocessError, OSError):
+            pass
+
+
+def _branch_tip(root, remote):
+    """Tip commit of the receipts branch on `remote`, or "" when the branch does not exist yet."""
+    ref = f"refs/heads/{RECEIPT_BRANCH}"
+    if not _git(root, "ls-remote", remote, ref):
+        return ""
+    return _fetch_pinned(root, remote, ref)
+
+
+def _branch_json(root, tip, prefix) -> dict:
+    """{filename-stem: parsed json} for every regular .json file under `prefix/` at `tip`."""
+    out = {}
+    for name in _git(root, "ls-tree", "--name-only", tip, f"{prefix}/").splitlines():
+        if name.endswith(".json"):
+            try:
+                out[Path(name).stem] = json.loads(_git(root, "show", f"{tip}:{name}"))
+            except (ValueError, subprocess.CalledProcessError):
+                out[Path(name).stem] = {"_unreadable": True}
+    return out
+
+
+def load_revocations(root: Path, remote: str, tip=None):
+    """(revoked {key: record}, error|None), optionally pinned to a receipts-branch commit."""
+    revoked, err = {}, None
+    ld = _local_rev_dir()
+    for f in sorted(ld.glob("*.json")) if ld.is_dir() else []:
+        try:
+            revoked[f.stem] = json.loads(f.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            revoked[f.stem] = {"_unreadable": True}
+            err = f"cannot read local revocation {f.name}"
+    try:
+        if tip is None:
+            tip = _branch_tip(root, remote)
+        if tip:
+            branch_revocations = _branch_json(root, tip, REVOCATION_DIR)
+            unreadable = [key for key, record in branch_revocations.items()
+                          if not isinstance(record, dict) or record.get("_unreadable")]
+            if unreadable:
+                err = f"cannot read revocations from {RECEIPT_BRANCH} on {remote} (unreadable {unreadable[0]}.json)"
+            revoked.update(branch_revocations)
+    except (subprocess.SubprocessError, OSError) as exc:
+        err = f"cannot read revocations from {RECEIPT_BRANCH} on {remote} ({exc.__class__.__name__})"
+    return revoked, err
+
+
+def binding_errors(r, entry) -> list[str]:
+    """The integrity binding CI enforces (registry-recorded hash and size on the receipt), so a receipt CI would refuse cannot be published."""
+    errs = []
+    if not (isinstance(r.get("registry_output_sha256"), str) and r["registry_output_sha256"] == r.get("output_sha256")
+            and r["registry_output_sha256"] == entry.get("output_sha256")):
+        errs.append("receipt registry_output_sha256 missing or != output_sha256 / the registry-recorded hash")
+    if type(r.get("output_bytes")) is not int or r["output_bytes"] != entry.get("output_bytes"):
+        errs.append("receipt output_bytes missing or != the registry-recorded size")
+    return errs
+
+
+def verify_data(r, root: Path, registry: Path, revoked=None) -> list[str]:
     if not isinstance(r, dict) or r.get("schema") not in (1, 2):
         return ["not a schema 1 or 2 receipt"]
+    if revoked and _rkey(r.get("pr"), r.get("reviewed_head_sha")) in revoked:
+        rec = revoked[_rkey(r.get("pr"), r.get("reviewed_head_sha"))]
+        return [f"receipt REVOKED: {str(rec.get('reason', 'no reason recorded'))[:200]}"]
     entry = load_registry(registry).get(r.get("run_id"))
-    errs, full, rel, text = _run_checks(entry, root)
+    errs, full, rel, text = _run_checks(entry, root, registry)
     if entry and norm(entry.get("agent")) != norm(r.get("reviewer_lane")):
         errs.append("registry agent != receipt reviewer_lane")
     if norm(r.get("reviewer_lane")) == norm(r.get("author_lane")):
@@ -194,8 +387,13 @@ def verify_receipt(path: Path, root: Path, registry: Path) -> list[str]:
             errs.append("receipt reviewed_head_sha must be 40 lowercase hex")
         elif not text.strip() or (rhead not in text and rhead[:12] not in text):
             errs.append("output is empty or does not mention reviewed head")
+        else:
+            errs += integrity_errors(entry, full, text, rhead, r.get("pr"), r.get("created_at"))
         if r.get("verdict") not in VERDICTS or r.get("verdict") != parse_verdict(text):
             errs.append("receipt verdict != last Review-Disposition in output")
+    legacy = (str(r.get("created_at", ""))[:10] < HASH_ENFORCED_FROM and entry is not None and not entry.get("output_sha256"))
+    if r.get("schema") == 2 and entry and not legacy:
+        errs += binding_errors(r, entry)
     if r.get("schema") == 2:
         for k in ("tree", "base_commit"):
             if not re.fullmatch(r"[0-9a-f]{40}", str(r.get(k, ""))):
@@ -209,23 +407,26 @@ def verify_receipt(path: Path, root: Path, registry: Path) -> list[str]:
     return errs
 
 
-def cmd_publish(a) -> int:
-    """Append a verified schema 2 receipt to the review-receipts branch (plumbing only; idempotent)."""
-    root = Path(a.root).resolve()
-    src = Path(a.receipt)
-    errs = verify_receipt(src, root, Path(a.registry) if a.registry else DEFAULT_REGISTRY)
+def verify_receipt(path: Path, root: Path, registry: Path, revoked=None,
+                   expected_pr: int | None = None, expected_head: str = "") -> list[str]:
     try:
-        r = json.loads(src.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        r = {}
-    if r.get("schema") != 2:
-        errs.append("publish needs a schema 2 receipt (from mint)")
-    if errs:
-        for e in errs:
-            print(f"publish FAILED: {e}", file=sys.stderr)
-        return 1
-    path = f"receipts/pr{r['pr']}-{r['reviewed_head_sha'][:12]}.json"
-    blob_text = json.dumps(r, indent=2) + "\n"
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        return [f"unreadable receipt: {exc.__class__.__name__}"]
+    errs = verify_data(data, root, registry, revoked)
+    if isinstance(data, dict):
+        if expected_pr is not None and (type(data.get("pr")) is not int or data.get("pr") != expected_pr):
+            errs.append(f"receipt pr does not match --pr {expected_pr}")
+        if expected_head and data.get("reviewed_head_sha") != expected_head:
+            errs.append(f"receipt reviewed_head_sha does not match --head {expected_head}")
+    return errs
+
+
+def _publish_file(root: Path, remote: str, path: str, blob_text: str, message: str, guard, check_parent=None) -> int:
+    """Append one file to the receipts branch with plumbing only (idempotent, retried on non-fast-forward).
+
+    Both guard(existing_text|None) and check_parent(parent) return None to proceed,
+    or (exit_code, message) to stop."""
     env_id = {"GIT_AUTHOR_NAME": "aq-review-receipt", "GIT_AUTHOR_EMAIL": RECEIPT_EMAIL,
               "GIT_COMMITTER_NAME": "aq-review-receipt", "GIT_COMMITTER_EMAIL": RECEIPT_EMAIL}
     ref = f"refs/heads/{RECEIPT_BRANCH}"
@@ -233,39 +434,40 @@ def cmd_publish(a) -> int:
     for _ in range(PUBLISH_RETRIES):
         try:
             parent = ""
-            if _git(root, "ls-remote", a.remote, ref):
-                _git(root, "fetch", "--no-tags", "-q", a.remote, ref)
-                parent = _git(root, "rev-parse", "FETCH_HEAD")
+            if _git(root, "ls-remote", remote, ref):
+                parent = _fetch_pinned(root, remote, ref)
+            if check_parent:
+                stop = check_parent(parent)
+                if stop is not None:
+                    print(stop[1], file=sys.stderr if stop[0] else sys.stdout)
+                    return stop[0]
             with tempfile.TemporaryDirectory() as td:
                 env = {**os.environ, **env_id, "GIT_INDEX_FILE": os.path.join(td, "index")}
+                existing = None
                 if parent:
                     _git(root, "read-tree", parent, env=env)
                     try:
-                        existing = json.loads(_git(root, "show", f"{parent}:{path}"))
+                        existing = _git(root, "show", f"{parent}:{path}")
                     except subprocess.CalledProcessError:
                         existing = None
-                    if existing is not None:
-                        same = {k: v for k, v in existing.items() if k != "created_at"} == {k: v for k, v in r.items() if k != "created_at"}
-                        if same:
-                            print(f"already published: {RECEIPT_BRANCH}:{path}")
-                            return 0
-                        if existing.get("verdict") != "REQUEST_CHANGES":
-                            print(f"publish FAILED: {path} already holds a different {existing.get('verdict')} receipt (append-only)", file=sys.stderr)
-                            return 1
+                stop = guard(existing)
+                if stop is not None:
+                    print(stop[1], file=sys.stderr if stop[0] else sys.stdout)
+                    return stop[0]
                 blob = _git(root, "hash-object", "-w", "--stdin", input=blob_text)
                 _git(root, "update-index", "--add", "--cacheinfo", f"100644,{blob},{path}", env=env)
                 tree = _git(root, "write-tree", env=env)
-                cmd = ["commit-tree", tree, "-m", f"receipt PR {r['pr']} {r['reviewed_head_sha'][:12]} {r['verdict']}"]
+                cmd = ["commit-tree", tree, "-m", message]
                 if parent:
                     cmd += ["-p", parent]
                 commit = _git(root, *cmd, env=env)
-            _git(root, "push", "-q", a.remote, f"{commit}:{ref}", timeout=PUSH_TIMEOUT)
+            _git(root, "push", "-q", remote, f"{commit}:{ref}", timeout=PUSH_TIMEOUT)
             print(f"published {RECEIPT_BRANCH}:{path} ({commit[:12]})")
             return 0
         except subprocess.TimeoutExpired as exc:
             what = " ".join(str(x) for x in exc.cmd[:3]) if isinstance(exc.cmd, (list, tuple)) else "git"
             print(f"publish FAILED: git timed out after {int(exc.timeout)}s ({what}); not retrying because the push state is "
-                  f"unknown. Check {RECEIPT_BRANCH} on {a.remote}, then re-run publish (it is idempotent).", file=sys.stderr)
+                  f"unknown. Check {RECEIPT_BRANCH} on {remote}, then re-run publish (it is idempotent).", file=sys.stderr)
             return 1
         except subprocess.CalledProcessError as exc:
             last = (exc.stderr or "").strip()[:300]  # non-fast-forward or transient: rebuild on the new tip
@@ -276,10 +478,171 @@ def cmd_publish(a) -> int:
     return 1
 
 
+def cmd_publish(a) -> int:
+    """Append a verified schema 2 receipt to the review-receipts branch (plumbing only; idempotent)."""
+    root = Path(a.root).resolve()
+    src = Path(a.receipt)
+    revoked, rerr = load_revocations(root, a.remote, "")
+    errs = verify_receipt(src, root, Path(a.registry) if a.registry else DEFAULT_REGISTRY, revoked)
+    if rerr:
+        errs.append(rerr + "; failing closed")
+    try:
+        r = json.loads(src.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        r = {}
+    if r.get("schema") != 2:
+        errs.append("publish needs a schema 2 receipt (from mint)")
+    else:
+        entry = load_registry(Path(a.registry) if a.registry else DEFAULT_REGISTRY).get(r.get("run_id"))
+        if entry:
+            errs += [e for e in binding_errors(r, entry) if e not in errs]
+    if errs:
+        for e in errs:
+            print(f"publish FAILED: {e}", file=sys.stderr)
+        return 1
+    path = f"receipts/{_rkey(r['pr'], r['reviewed_head_sha'])}.json"
+
+    def guard(existing_text):
+        if existing_text is None:
+            return None
+        existing = json.loads(existing_text)
+        if {k: v for k, v in existing.items() if k != "created_at"} == {k: v for k, v in r.items() if k != "created_at"}:
+            return 0, f"already published: {RECEIPT_BRANCH}:{path}"
+        # A REQUEST_CHANGES receipt, or a legacy one lacking the integrity fields (CI refuses it anyway),
+        # may be superseded by this freshly verified receipt; any other existing receipt is append-only.
+        legacy = (not isinstance(existing, dict) or existing.get("registry_output_sha256") != existing.get("output_sha256")
+                  or type(existing.get("output_bytes")) is not int)
+        if existing.get("verdict") != "REQUEST_CHANGES" and not legacy:
+            return 1, f"publish FAILED: {path} already holds a different {existing.get('verdict')} receipt (append-only)"
+        return None
+
+    def check_parent(parent):
+        parent_revoked, parent_err = load_revocations(root, a.remote, parent)
+        if parent_err:
+            return 1, f"publish FAILED: {parent_err}; failing closed"
+        parent_errs = verify_data(r, root, Path(a.registry) if a.registry else DEFAULT_REGISTRY, parent_revoked)
+        if parent_errs:
+            return 1, f"publish FAILED: {parent_errs[0]}"
+        return None
+    return _publish_file(root, a.remote, path, json.dumps(r, indent=2) + "\n",
+                         f"receipt PR {r['pr']} {r['reviewed_head_sha'][:12]} {r['verdict']}", guard, check_parent)
+
+
+def _maybe_rerun_open_pr_check(pr: int, head: str, *, root: Path) -> None:
+    gh = os.environ.get("AQ_REVIEW_RECEIPT_GH", "gh")
+    try:
+        result = subprocess.run([gh, "pr", "view", str(pr), "--json", "state,headRefOid,body,statusCheckRollup"],
+                                cwd=root, capture_output=True, text=True, check=True, timeout=30)
+        data = json.loads(result.stdout)
+    except (subprocess.SubprocessError, OSError, ValueError) as exc:
+        print(f"revoke WARN: cannot inspect PR {pr} for check reruns ({exc.__class__.__name__})", file=sys.stderr)
+        return
+    body = data.get("body") if isinstance(data, dict) else None
+    body = body if isinstance(body, str) else ""
+    reviewed_heads = re.findall(
+        r"^Reviewed-head-sha:[ \t]*(.*?)[ \t]*$",
+        body.replace("\r\n", "\n").replace("\r", "\n"),
+        re.M,
+    )
+    reviewed_head = reviewed_heads[-1] if reviewed_heads else ""
+    if (
+        not isinstance(data, dict)
+        or data.get("state") != "OPEN"
+        or (data.get("headRefOid") != head and reviewed_head != head)
+    ):
+        print(f"revoke INFO: skipping check rerun for PR {pr}; expected an open PR at {head}", file=sys.stderr)
+        return
+    checks = data.get("statusCheckRollup")
+    if not isinstance(checks, list):
+        print(f"revoke WARN: missing check rollup for PR {pr}", file=sys.stderr)
+        return
+    run_ids = set()
+    for check in checks:
+        if not isinstance(check, dict) or check.get("name") != "review-disposition":
+            continue
+        match = re.search(r"/actions/runs/(\d+)", str(check.get("detailsUrl", "")))
+        if match:
+            run_ids.add(match[1])
+    for run_id in sorted(run_ids):
+        try:
+            subprocess.run([gh, "run", "rerun", run_id], cwd=root, capture_output=True, text=True, check=True, timeout=30)
+        except (subprocess.SubprocessError, OSError, ValueError) as exc:
+            print(f"revoke WARN: cannot rerun workflow {run_id} ({exc.__class__.__name__})", file=sys.stderr)
+
+
+def cmd_revoke(a) -> int:
+    """Publish a revocation record; verify/audit and the review-disposition check then reject that receipt."""
+    root = Path(a.root).resolve()
+    if a.pr <= 0:
+        print("revoke FAILED: --pr must be positive", file=sys.stderr)
+        return 1
+    if not re.fullmatch(r"[0-9a-f]{40}", a.head) or not a.reason.strip():
+        print("revoke FAILED: --head must be 40 lowercase hex and --reason non-empty", file=sys.stderr)
+        return 1
+    rec = {"schema": 1, "pr": a.pr, "reviewed_head_sha": a.head, "reason": a.reason.strip(),
+           "revoked_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")}
+    text = json.dumps(rec, indent=2) + "\n"
+    key = _rkey(a.pr, a.head)
+    local = _local_rev_dir() / f"{key}.json"
+    local.parent.mkdir(parents=True, exist_ok=True)
+    local.write_text(text, encoding="utf-8")
+
+    def guard(existing_text):
+        return (0, f"already revoked: {RECEIPT_BRANCH}:{REVOCATION_DIR}/{key}.json") if existing_text is not None else None
+    result = _publish_file(root, a.remote, f"{REVOCATION_DIR}/{key}.json", text,
+                           f"revoke PR {a.pr} {a.head[:12]}", guard)
+    if result == 0 and not getattr(a, "no_rerun", False):
+        _maybe_rerun_open_pr_check(a.pr, a.head, root=root)
+    return result
+
+
+def _verify_published(root, reg, revoked, tip, a) -> list[str]:
+    """Verify the receipt published on the receipts branch for --pr/--head; absent or unreadable fails closed."""
+    try:
+        data = _branch_json(root, tip, "receipts").get(_rkey(a.pr, a.head)) if tip else None
+    except (subprocess.SubprocessError, OSError) as exc:
+        return [f"cannot read published receipt ({exc.__class__.__name__}); failing closed"]
+    if not data or data.get("_unreadable"):
+        return [f"no readable published receipt for PR {a.pr} head {a.head[:12]} on {RECEIPT_BRANCH}"]
+    if data.get("pr") != a.pr or data.get("reviewed_head_sha") != a.head:
+        return ["published receipt pr/head does not match its path"]
+    return verify_data(data, root, reg, revoked)
+
+
 def cmd_verify(a) -> int:
     root = Path(a.root).resolve()
     reg = Path(a.registry) if a.registry else DEFAULT_REGISTRY
-    errs = verify_receipt(Path(a.receipt), root, reg)
+    if a.pr is not None and a.pr <= 0:
+        print("verify FAILED: --pr must be positive", file=sys.stderr)
+        return 1
+    if a.receipt:
+        if a.head and not re.fullmatch(r"[0-9a-f]{40}", a.head):
+            print("verify FAILED: --head must be 40 lowercase hex", file=sys.stderr)
+            return 1
+        revoked, rerr = load_revocations(root, a.remote)
+        errs = verify_receipt(Path(a.receipt), root, reg, revoked, expected_pr=a.pr, expected_head=a.head)
+    elif a.pr is not None and a.pr > 0 and re.fullmatch(r"[0-9a-f]{40}", a.head):
+        try:
+            tip = _branch_tip(root, a.remote)
+        except (subprocess.SubprocessError, OSError) as exc:
+            tip = None
+            rerr = f"cannot read {RECEIPT_BRANCH} from {a.remote} ({exc.__class__.__name__})"
+            revoked, _ = load_revocations(root, a.remote, "")
+        else:
+            revoked, rerr = load_revocations(root, a.remote, tip)
+        if tip is None:
+            errs = [rerr + "; failing closed"]
+            rerr = None
+        else:
+            errs = _verify_published(root, reg, revoked, tip, a)
+    else:
+        revoked, rerr = load_revocations(root, a.remote)
+        errs = ["give a receipt file, or --pr and --head (40 hex) to verify the published receipt"]
+    if rerr:
+        if a.require_revocation_check or (not a.receipt and a.pr is not None and a.pr > 0):
+            errs.append(rerr + "; failing closed")
+        else:
+            print(f"verify WARN: {rerr}", file=sys.stderr)
     for e in errs:
         print(f"verify FAILED: {e}", file=sys.stderr)
     if not errs:
@@ -287,22 +650,99 @@ def cmd_verify(a) -> int:
     return 1 if errs else 0
 
 
+def _bursts(items, window_s: int, limit: int):
+    """items: [(lane, epoch_seconds, label)] -> [(lane, count, first_label)] for lanes with > limit in any window."""
+    by = {}
+    for lane, t, label in items:
+        by.setdefault(norm(lane), []).append((t, label))
+    out = []
+    for lane, rows in by.items():
+        rows.sort()
+        best, lo = 0, 0
+        for hi in range(len(rows)):
+            while rows[hi][0] - rows[lo][0] > window_s:
+                lo += 1
+            if hi - lo + 1 > best:
+                best, first = hi - lo + 1, rows[lo][1]
+        if best > limit:
+            out.append((lane, best, first))
+    return out
+
+
+def _merge_items(a, root):
+    """Merged PRs as (lane, epoch, '#N'); lane = body Reviewed-by (all lanes share one GitHub account, so the PR body is the only hint)."""
+    if a.merges_json:
+        rows = json.loads(Path(a.merges_json).read_text(encoding="utf-8"))
+    else:
+        r = subprocess.run(["gh", "pr", "list", "--state", "merged", "--limit", "60", "--json", "number,mergedAt,body"],
+                           capture_output=True, text=True, cwd=str(root), timeout=120)
+        if r.returncode != 0:
+            print(f"audit WARN: cannot list merged PRs: {r.stderr.strip()[:150]}", file=sys.stderr)
+            return []
+        rows = json.loads(r.stdout or "[]")
+    out = []
+    for row in rows:
+        m = re.findall(r"^Reviewed-by:[ \t]*(\S.*?)[ \t]*$", row.get("body") or "", re.M)
+        t = _ts(row.get("mergedAt"))
+        if m and t is not None:
+            out.append((m[-1], t, f"#{row.get('number')}"))
+    return out
+
+
 def cmd_audit(a) -> int:
     root = Path(a.root).resolve()
     reg = Path(a.registry) if a.registry else DEFAULT_REGISTRY
-    bad = 0
-    print(f"{'receipt':40} {'reviewer':12} {'verdict':20} result")
+    revoked, rerr = load_revocations(root, a.remote)
+    if rerr:
+        print(f"audit WARN: {rerr}", file=sys.stderr)
+    receipts = []
     for p in sorted((root / RECEIPT_DIR).glob("*.json")):
         try:
-            r = json.loads(p.read_text(encoding="utf-8"))
+            receipts.append((p.name, json.loads(p.read_text(encoding="utf-8"))))
         except ValueError:
-            r = {}
+            receipts.append((p.name, {}))
+    if a.branch:
+        try:
+            tip = _branch_tip(root, a.remote)
+            if tip:
+                receipts += [(f"{k}.json", v) for k, v in sorted(_branch_json(root, tip, "receipts").items())]
+        except (subprocess.SubprocessError, OSError) as exc:
+            print(f"audit WARN: cannot read {RECEIPT_BRANCH}: {exc.__class__.__name__}", file=sys.stderr)
+    bad, live = 0, []
+    entries = load_registry(reg)
+    print(f"{'receipt':40} {'reviewer':12} {'verdict':20} result")
+    for name, r in receipts:
         if a.since and str(r.get("created_at", ""))[:10] < a.since:
             continue
-        errs = verify_receipt(p, root, reg)
-        bad += bool(errs)
-        print(f"{p.name:40} {str(r.get('reviewer_lane', '?')):12} {str(r.get('verdict', '?')):20} "
-              f"{'OK' if not errs else 'FAIL: ' + '; '.join(errs)}")
+        errs = verify_data(r, root, reg, revoked)
+        isrev = bool(errs) and errs[0].startswith("receipt REVOKED")
+        if isrev:
+            result = "REVOKED (" + errs[0][17:80] + ")"
+        else:
+            bad += bool(errs)
+            result = "OK" if not errs else "FAIL: " + "; ".join(errs)
+            t = _ts(r.get("created_at"))
+            if t is not None and isinstance(r, dict):
+                live.append((str(r.get("reviewer_lane", "?")), t, name))
+            # (c) CI-state claims in the review text cannot be verified from the receipt: WARN only.
+            e = entries.get(r.get("run_id")) or {}
+            if e.get("output_file"):
+                try:
+                    full = _rel(root, e["output_file"], reg)[0]
+                except SystemExit:
+                    full = None
+                if full is not None and full.is_file():
+                    m = CI_CLAIM.search(full.read_text(encoding="utf-8", errors="replace"))
+                    if m:
+                        result += f"  WARN: review text asserts CI state ({m.group(0)[:40]!r}); unverifiable"
+        print(f"{name:40} {str(r.get('reviewer_lane', '?')):12} {str(r.get('verdict', '?')):20} {result}")
+    for lane, n, first in _bursts(live, BURST_WINDOW_S, BURST_MAX):
+        bad += 1
+        print(f"BURST: {n} receipts from reviewer lane {lane!r} within {BURST_WINDOW_S}s (limit {BURST_MAX}), starting {first}")
+    if a.merges or a.merges_json:
+        for lane, n, first in _bursts(_merge_items(a, root), BURST_WINDOW_S, BURST_MAX):
+            bad += 1
+            print(f"MERGE-BURST: {n} merges backed by lane {lane!r} within {BURST_WINDOW_S}s (limit {BURST_MAX}), starting {first}")
     return 1 if bad else 0
 
 
@@ -327,11 +767,26 @@ def main() -> int:
     pb.add_argument("receipt")
     pb.add_argument("--remote", default="origin")
     pb.set_defaults(fn=cmd_publish)
+    rv = sub.add_parser("revoke", help="publish a revocation; verify/audit and CI then reject that receipt")
+    rv.add_argument("--pr", type=int, required=True)
+    rv.add_argument("--head", required=True)
+    rv.add_argument("--reason", required=True)
+    rv.add_argument("--remote", default="origin")
+    rv.add_argument("--no-rerun", action="store_true", help="skip best-effort gh run rerun on matching open PR")
+    rv.set_defaults(fn=cmd_revoke)
     v = sub.add_parser("verify")
-    v.add_argument("receipt")
+    v.add_argument("receipt", nargs="?", default="", help="local receipt file; omit with --pr/--head to verify the published one")
+    v.add_argument("--pr", type=int, default=None)
+    v.add_argument("--head", default="")
+    v.add_argument("--remote", default="origin")
+    v.add_argument("--require-revocation-check", action="store_true", help="fail when revocations cannot be read (merge gate)")
     v.set_defaults(fn=cmd_verify)
     u = sub.add_parser("audit")
     u.add_argument("--since", default="")
+    u.add_argument("--remote", default="origin")
+    u.add_argument("--branch", action="store_true", help="also audit receipts published on the review-receipts branch")
+    u.add_argument("--merges", action="store_true", help="also flag merge bursts (uses gh)")
+    u.add_argument("--merges-json", default="", help="merged-PR rows (number, mergedAt, body) instead of gh")
     u.set_defaults(fn=cmd_audit)
     a = ap.parse_args()
     return a.fn(a)

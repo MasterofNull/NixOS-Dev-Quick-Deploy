@@ -75,7 +75,7 @@ def main() -> int:
 
     zero_deltas = [s for s in skills if s["zero_delta"]]
 
-    if args.prune-candidates if hasattr(args, 'prune_candidates') and args.prune_candidates else False:
+    if args.prune_candidates:
         for z in zero_deltas:
             print(f"{z['skill']}: {z['status']} ({z['line_count']} lines, {z['byte_size']} bytes) -> {z['recommendation']}")
         return 0

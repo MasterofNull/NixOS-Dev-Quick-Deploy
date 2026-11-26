@@ -74,11 +74,33 @@ body = {"cantrun": "I am unable to proceed: every command timed out. Please chec
         "finding": "scripts/ai/aq-land:365 drops valid rejections when a command timed out.\n",
         "prose": "The lock is released twice, which corrupts state. I was also unable to access one file.\n",
         "mixed": "The lock is released twice, which corrupts state. I am unable to proceed because subsequent commands timed out.\n",
-        "bullet": "- The retry loop never stops after the command timed out.\n"}.get(mode, "looks fine\n")
-text = f"{body}Reviewed-head-sha: {shown}\nReview-Disposition: {verdict}\n"
-open(out, "w").write(text)
+        "bullet": "- The retry loop never stops after the command timed out.\n",
+        "missing_upstream_evidence": "## Upstream changes reviewed\n- package and range reviewed; looks fine.\n",
+        "missing_package": "## Upstream changes reviewed\n- Release notes: https://example.test/pkg/releases/2.0\n- Authority: Nix\n- Input path: flake.lock\n- Closure: unchanged\n- Closure evidence: lock input matched the deployed closure.\n",
+        "missing_old": "## Upstream changes reviewed\n- Package and range: pkg -> 2.0\n- Release notes: https://example.test/pkg/releases/2.0\n- Authority: Nix\n- Input path: flake.lock\n- Closure: unchanged\n- Closure evidence: git diff --no-index /tmp/closure-before /tmp/closure-after; exit 0 (no differences).\n",
+        "multi_package": "## Upstream changes reviewed\n- Package and range: pkg 1.0 -> 2.0; other 1.0 -> 2.0\n- Release notes: https://example.test/pkg/releases/2.0\n- Authority: Nix\n- Input path: flake.lock\n- Closure: unchanged\n- Closure evidence: git diff --no-index /tmp/closure-before /tmp/closure-after; exit 0 (no differences).\n",
+        "negated_runtime": "## Upstream changes reviewed\n- Package and range: pkg 1.0 -> 2.0\n- Release notes: https://example.test/pkg/releases/2.0\n- Authority: Nix\n- Input path: flake.lock\n- Closure: changed\n- Closure evidence: nix store diff-closures /nix/store/old /nix/store/new; differences found.\n- Deployed runtime: no deployed service was run.\n- Runtime result: passed\n",
+        "no_deployed_runtime": "## Upstream changes reviewed\n- Package and range: pkg 1.0 -> 2.0\n- Release notes: https://example.test/pkg/releases/2.0\n- Authority: Nix\n- Input path: flake.lock\n- Closure: changed\n- Closure evidence: nix store diff-closures /nix/store/old /nix/store/new; differences found.\n- Runtime result: passed\n",
+        "placeholder_authority": "## Upstream changes reviewed\n- Package and range: pkg 1.0 -> 2.0\n- Release notes: https://example.test/pkg/releases/2.0\n- Authority: <Nix or manifest>\n- Input path: flake.lock\n- Closure: unchanged\n- Closure evidence: lock input matched the deployed closure.\n",
+        "negated_authority": "## Upstream changes reviewed\n- Package and range: pkg 1.0 -> 2.0\n- Release notes: https://example.test/pkg/releases/2.0\n- Authority: not Nix\n- Input path: flake.lock\n- Closure: unchanged\n- Closure evidence: lock input matched the deployed closure.\n",
+        "placeholder_closure": "## Upstream changes reviewed\n- Package and range: pkg 1.0 -> 2.0\n- Release notes: https://example.test/pkg/releases/2.0\n- Authority: Nix\n- Input path: flake.lock\n- Closure: <changed or unchanged>\n- Closure evidence: lock input matched the deployed closure.\n",
+        "negated_closure": "## Upstream changes reviewed\n- Package and range: pkg 1.0 -> 2.0\n- Release notes: https://example.test/pkg/releases/2.0\n- Authority: Nix\n- Input path: flake.lock\n- Closure: unchanged\n- Closure evidence: no closure evidence was collected.\n",
+        "failed_active": "## Upstream changes reviewed\n- Package and range: pkg 1.0 -> 2.0\n- Release notes: https://example.test/pkg/releases/2.0\n- Authority: Nix\n- Input path: flake.lock\n- Closure: changed\n- Closure evidence: nix store diff-closures /nix/store/old /nix/store/new; differences found.\n- Deployed runtime: systemctl is-active pkg.service\n- Runtime result: failed but active\n",
+        "unhealthy_active": "## Upstream changes reviewed\n- Package and range: pkg 1.0 -> 2.0\n- Release notes: https://example.test/pkg/releases/2.0\n- Authority: Nix\n- Input path: flake.lock\n- Closure: changed\n- Closure evidence: nix store diff-closures /nix/store/old /nix/store/new; differences found.\n- Deployed runtime: systemctl is-active pkg.service\n- Runtime result: active but unhealthy\n",
+        "changed_without_operands": "## Upstream changes reviewed\n- Package and range: pkg 1.0 -> 2.0\n- Release notes: https://example.test/pkg/releases/2.0\n- Authority: Nix\n- Input path: flake.lock\n- Closure: changed\n- Closure evidence: nix store diff-closures; differences found.\n- Deployed runtime: systemctl is-active pkg.service\n- Runtime result: active\n",
+        "changed_exit_zero": "## Upstream changes reviewed\n- Package and range: pkg 1.0 -> 2.0\n- Release notes: https://example.test/pkg/releases/2.0\n- Authority: Nix\n- Input path: flake.lock\n- Closure: changed\n- Closure evidence: nix store diff-closures /nix/store/old /nix/store/new; exit 0, differences found.\n- Deployed runtime: systemctl is-active pkg.service\n- Runtime result: active\n",
+        "changed_operand_only": "## Upstream changes reviewed\n- Package and range: pkg 1.0 -> 2.0\n- Release notes: https://example.test/pkg/releases/2.0\n- Authority: Nix\n- Input path: flake.lock\n- Closure: changed\n- Closure evidence: nix store diff-closures /nix/store/old-changed /nix/store/new\n- Deployed runtime: systemctl is-active pkg.service\n- Runtime result: active\n",
+        "timed_out_active": "## Upstream changes reviewed\n- Package and range: pkg 1.0 -> 2.0\n- Release notes: https://example.test/pkg/releases/2.0\n- Authority: Nix\n- Input path: flake.lock\n- Closure: changed\n- Closure evidence: nix store diff-closures /nix/store/old /nix/store/new; exit 0, differences found.\n- Deployed runtime: systemctl is-active pkg.service\n- Runtime result: timed out but active\n",
+        "unchanged_operand_only": "## Upstream changes reviewed\n- Package and range: pkg 1.0 -> 2.0\n- Release notes: https://example.test/pkg/releases/2.0\n- Authority: Nix\n- Input path: flake.lock\n- Closure: unchanged\n- Closure evidence: git diff --no-index /tmp/unchanged /tmp/closure-after\n",
+        "changed_no_differences": "## Upstream changes reviewed\n- Package and range: pkg 1.0 -> 2.0\n- Release notes: https://example.test/pkg/releases/2.0\n- Authority: Nix\n- Input path: flake.lock\n- Closure: changed\n- Closure evidence: nix store diff-closures /nix/store/old /nix/store/new; no differences found.\n- Deployed runtime: systemctl is-active pkg.service\n- Runtime result: active\n",
+        "unchanged_explicitly_changed": "## Upstream changes reviewed\n- Package and range: pkg 1.0 -> 2.0\n- Release notes: https://example.test/pkg/releases/2.0\n- Authority: Nix\n- Input path: flake.lock\n- Closure: unchanged\n- Closure evidence: git diff --no-index /tmp/closure-before /tmp/closure-after; differences found.\n",
+        "arbitrary_closure": "## Upstream changes reviewed\n- Package and range: pkg 1.0 -> 2.0\n- Release notes: https://example.test/pkg/releases/2.0\n- Authority: Nix\n- Input path: flake.lock\n- Closure: unchanged\n- Closure evidence: lock input matched the deployed closure.\n",
+        "wrong_package_range": "## Upstream changes reviewed\n- Package and range: other 1.0 -> 2.0\n- Release notes: https://example.test/pkg/releases/2.0\n- Authority: Nix\n- Input path: flake.lock\n- Closure: unchanged\n- Closure evidence: git diff --no-index /tmp/closure-before /tmp/closure-after; exit 0 (no differences).\n"}.get(mode, "## Upstream changes reviewed\n- Package and range: pkg 1.0 -> 2.0\n- Release notes: https://example.test/pkg/releases/2.0\n- Authority: Nix\n- Input path: flake.lock\n- Closure: unchanged\n- Closure evidence: git diff --no-index /tmp/closure-before /tmp/closure-after; exit 0 (no differences).\n")
+body = c.get("body", body)
+trailers = f"Reviewed-head-sha: {shown}\nReview-Disposition: {verdict}\n"
+open(out, "w").write(body + trailers)
 print(f"Output file: {out}")
-print(text)
+print(c.get("stdout_body", body) + trailers)
 '''
 
 STUB_GH = r'''#!/usr/bin/env python3
@@ -104,7 +126,8 @@ def bump(k):
 st.setdefault("calls", []).append(" ".join(a[:3]))
 cmd = " ".join(a[:2])
 fl = st.get("flaky")
-if fl and cmd == fl["cmd"] and bump("n_flaky") <= fl["times"]:
+is_check_poll = "statusCheckRollup" in (flag("--json") or "")
+if fl and cmd == fl["cmd"] and (not fl.get("poll_only") or is_check_poll) and bump("n_flaky") <= fl["times"]:
     sys.stderr.write(fl["msg"] + "\n")
     sys.exit(1)
 def move_main(msg):
@@ -123,13 +146,19 @@ if cmd == "pr list":
     print(json.dumps([{"number": p["number"], "state": p["state"]} for p in st["prs"] if p["branch"] == flag("--head")]))
 elif cmd == "pr create":
     n = 77
-    st["prs"].append({"number": n, "state": "OPEN", "branch": flag("--head"), "body": open(flag("--body-file")).read()})
+    st["prs"].append({"number": n, "state": "OPEN", "branch": flag("--head"), "body": open(flag("--body-file")).read(), "draft": "--draft" in a})
     st["creates"] = st.get("creates", 0) + 1
     save()
     print(f"https://github.com/o/r/pull/{n}")
     suicide("after_create")
 elif cmd == "pr view":
     pr = [p for p in st["prs"] if p["number"] == int(a[2])][0]
+    if flag("--json") == "state,headRefOid" and st.get("post_merge_views"):
+        view = st["post_merge_views"].pop(0)
+        pr["state"] = view["state"]
+        save()
+        print(json.dumps({"headRefOid": branch_head(pr["branch"]), **view}))
+        sys.exit(0)
     seq = st.get("rollups", [[]])
     roll = seq[0]
     if "statusCheckRollup" in flag("--json") and len(seq) > 1:
@@ -142,7 +171,10 @@ elif cmd == "pr view":
         sys.exit(0)
     if st.get("main_moves_at_wait") and "statusCheckRollup" in flag("--json") and bump("n_wait") == 1:
         move_main("main moved after CI")
-    print(json.dumps({"headRefOid": st.get("head_override") or branch_head(pr["branch"]), "state": pr["state"], "body": pr["body"], "statusCheckRollup": roll}))
+    head_override = st.get("head_override")
+    if is_check_poll:
+        head_override = st.get("check_head_override") or head_override
+    print(json.dumps({"headRefOid": head_override or branch_head(pr["branch"]), "state": pr["state"], "isDraft": pr.get("draft", False), "body": pr["body"], "statusCheckRollup": roll}))
 elif cmd == "pr update-branch":
     bump("updates")
     pr = [p for p in st["prs"] if p["number"] == int(a[2])][0]
@@ -158,9 +190,18 @@ elif cmd == "pr update-branch":
 elif cmd == "pr edit":
     [p for p in st["prs"] if p["number"] == int(a[2])][0]["body"] = open(flag("--body-file")).read()
     save()
+elif cmd == "pr ready":
+    pr = [p for p in st["prs"] if p["number"] == int(a[2])][0]
+    assert pr["draft"]
+    pr["draft"] = False
+    save()
 elif cmd == "pr merge":
     st["merges"] = st.get("merges", 0) + 1
     assert flag("--match-head-commit")
+    if st.get("merge_error"):
+        save()
+        print(st["merge_error"], file=sys.stderr)
+        sys.exit(1)
     [p for p in st["prs"] if p["number"] == int(a[2])][0]["state"] = "MERGED"
     save()
     suicide("after_merge")
@@ -190,6 +231,19 @@ if a[0] == "mint":
     lane = rid.split("-")[0]
     json.dump({"run_id": rid, "reviewer_lane": "local-direct" if lane == "local" else lane, "reviewed_head_sha": a[a.index("--head") + 1]},
               open(a[a.index("--out") + 1], "w"))
+elif a[0] == "verify":
+    g = json.load(open(f"{S}/gh.json"))
+    draft = g["prs"][0].get("draft")
+    if draft:
+        assert a[1:] == ["--require-revocation-check", "--pr", "77", "--head", a[-1]]
+        g.setdefault("calls", []).append("RECEIPT verify")
+        if g.get("move_head_on_verify"):
+            g["head_override"] = "f" * 40
+        json.dump(g, open(f"{S}/gh.json", "w"))
+    if os.path.exists(f"{S}/draft_verify_fail" if draft else f"{S}/verify_fail"):
+        sys.stderr.write("verify FAILED: receipt REVOKED: test\\n")
+        sys.exit(1)
+    sys.exit(0)
 else:
     if a[0] == "publish":
         g = json.load(open(f"{S}/gh.json")); g.setdefault("calls", []).append("RECEIPT publish"); json.dump(g, open(f"{S}/gh.json", "w"))
@@ -206,7 +260,7 @@ else:
         os.kill(os.getppid(), 9)
 '''
 
-STUB_TIER0 = '#!/bin/sh\necho tier0 >> "$STUB_DIR/tier0.log"\n[ -e "$STUB_DIR/tier0.fail" ] && { echo "FAIL: stub gate"; exit 1; }\nexit 0\n'
+STUB_TIER0 = '#!/bin/sh\necho tier0 >> "$STUB_DIR/tier0.log"\n[ -e "$STUB_DIR/tier0.fail" ] && { echo "FAIL: stub gate"; echo "stub-secret-stderr" >&2; exit 1; }\nexit 0\n'
 
 RD_OK = {"name": "review-disposition", "status": "COMPLETED", "conclusion": "SUCCESS"}
 BODY = "## Details\n- scope\n\n## What\nw\n\n## How\nh\n\n## Why\ny\n"
@@ -230,6 +284,7 @@ class Base(unittest.TestCase):
             self.g("config", k, v)
         self.g("remote", "add", "origin", str(self.origin))
         (self.wd / "shared.txt").write_text("base\n")
+        (self.wd / "requirements.txt").write_text("pkg>=1.0\n")
         self.g("add", "."); self.g("commit", "-qm", "base"); self.g("push", "-q", "origin", "main")
         self.g("checkout", "-qb", "feat/x")
         self.change("scripts/foo.py", "print(1)\n")
@@ -247,6 +302,9 @@ class Base(unittest.TestCase):
                     "AQ_DELEGATION_DIR": str(self.S / "deleg"),
                     "AQ_LAND_WORKTREE_DIR": str(self.S / "wts"), "AQ_LAND_POLL_S": "0.05", "AQ_LAND_STALL_S": "2",
                     "AQ_LAND_REVIEW_TIMEOUT_S": "4", "AQ_LAND_CHECKS_TIMEOUT_S": "5", "AQ_LAND_LOCK_WAIT_S": "1"}
+        self.env.pop("AQ_LAND_GEMINI_MODEL", None)
+        self.env.pop("AQ_LAND_GEMINI_FALLBACK_MODELS", None)
+        self.env.pop("AQ_LAND_MERGE_POLL_TIMEOUT_S", None)
 
     def tearDown_state(self):
         for n in ("calls.log", "published", "receipt.log"):
@@ -273,6 +331,10 @@ class Base(unittest.TestCase):
 
     def ghs(self):
         return json.loads((self.S / "gh.json").read_text())
+
+    def failure_events(self):
+        journal = self.S / "deleg/outputs/aq-land/failure-events.jsonl"
+        return [json.loads(line) for line in journal.read_text().splitlines()]
 
     def calls(self, lane):
         p = self.S / "calls.log"
@@ -322,12 +384,13 @@ class Landing(Base):
         edits = lambda: [c for c in self.ghs()["calls"] if c.startswith("pr edit")]
         self.gh_state({"required": ["never-reported"]})
         self.land(expect=1)
-        self.assertEqual(edits(), [])
+        publication_edits = edits()
+        self.assertEqual(len(publication_edits), 1)
         self.land(expect=1)
-        self.assertEqual(edits(), [])  # unchanged body: no edit
+        self.assertEqual(edits(), publication_edits)
         (self.S / "body.md").write_text(BODY.replace("- scope", "- scope corrected"))
         self.land(expect=1)
-        self.assertEqual(len(edits()), 1)
+        self.assertEqual(len(edits()), len(publication_edits) + 1)
         self.assertIn("scope corrected", self.pr_body())
 
     def test_resume_after_kill_never_duplicates(self):
@@ -525,6 +588,12 @@ class Manifests(Base):
 
 
 class Lanes(Base):
+    gemini_lane = json.loads((ROOT / "config/model-coordinator.json").read_text())["tiers"]["google"]["gemini_lane"]
+    gemini_models = (gemini_lane["role_map"]["reviewer"], gemini_lane["fallback"], gemini_lane["baseline_fallback"])
+
+    def gemini_model_calls(self):
+        return [call.split("--model ", 1)[1].split()[0] for call in self.calls("gemini")]
+
     def test_stall_and_budget_fall_through_to_local_and_are_recorded(self):
         self.cfg({"codex": {"mode": "silent"}, "local": {"mode": "ok"}})
         self.land("--lanes", "codex,local", expect=0)
@@ -548,31 +617,51 @@ class Lanes(Base):
 
     def test_gemini_gets_an_explicit_model_default_and_override(self):
         self.land(expect=0)
-        self.assertIn("--model gemini-3.8-flash-high", self.calls("gemini")[0])
+        self.assertEqual(self.gemini_model_calls(), [self.gemini_models[0]])
         self.tearDown_state(); self.gh_state({})
         self.env["AQ_LAND_GEMINI_MODEL"] = "gemini-x-custom"
         self.land(expect=0)
-        self.assertIn("--model gemini-x-custom", self.calls("gemini")[-1])
+        self.assertEqual(self.gemini_model_calls(), ["gemini-x-custom"])
 
     def test_gemini_quota_retries_once_on_the_fallback_model_and_records_it(self):
-        self.cfg({"gemini": {"mode": "ok", "quota_models": ["gemini-3.8-flash-high"]}})
+        primary, fallback, _ = self.gemini_models
+        self.cfg({"gemini": {"mode": "ok", "quota_models": [primary]}})
         self.land(expect=0)
-        calls = self.calls("gemini")
-        self.assertEqual(len(calls), 2, calls)
-        self.assertIn("--model gemini-3.8-flash-high", calls[0])
-        self.assertIn("--model gemini-3.8-flash-medium", calls[1])
+        self.assertEqual(self.gemini_model_calls(), [primary, fallback])
         body = self.pr_body()
-        self.assertIn("gemini: model gemini-3.8-flash-high quota error; retried with gemini-3.8-flash-medium", body)
+        self.assertIn(f"gemini: model {primary} quota error; retried with {fallback}", body)
         self.assertIn("Reviewed-by: gemini", body)
 
-    def test_gemini_quota_on_both_models_leaves_the_lane_after_one_retry(self):
+    def test_gemini_quota_on_all_models_falls_through_to_local(self):
+        primary, fallback, baseline = self.gemini_models
         self.cfg({"gemini": {"mode": "quota"}, "local": {"mode": "ok"}})
         self.land("--lanes", "gemini,local", expect=0)
-        self.assertEqual(len(self.calls("gemini")), 2)
+        self.assertEqual(self.gemini_model_calls(), list(self.gemini_models))
         body = self.pr_body()
-        self.assertIn("retried with gemini-3.8-flash-medium", body)
+        self.assertIn(f"gemini: model {primary} quota error; retried with {fallback}", body)
+        self.assertIn(f"gemini: model {fallback} quota error; retried with {baseline}", body)
         self.assertIn("gemini: quota error", body)
         self.assertIn("Reviewed-by: local-direct", body)
+
+    def test_gemini_quota_walks_all_configured_pools_before_leaving_lane(self):
+        primary, fallback, baseline = self.gemini_models
+        self.cfg({"gemini": {"mode": "ok", "quota_models": [primary, fallback]}})
+        self.land("--lanes", "gemini", expect=0)
+        self.assertEqual(self.gemini_model_calls(), list(self.gemini_models))
+        body = self.pr_body()
+        self.assertIn(f"gemini: model {primary} quota error; retried with {fallback}", body)
+        self.assertIn(f"gemini: model {fallback} quota error; retried with {baseline}", body)
+        self.assertIn("Reviewed-by: gemini", body)
+
+    def test_gemini_fallback_override_is_ordered_deduplicated_and_capped(self):
+        self.env["AQ_LAND_GEMINI_MODEL"] = "gemini-custom-primary"
+        self.env["AQ_LAND_GEMINI_FALLBACK_MODELS"] = (
+            " gemini-custom-primary, gemini-custom-first, , gemini-custom-first, gemini-custom-second, gemini-custom-third "
+        )
+        self.cfg({"gemini": {"mode": "quota"}, "local": {"mode": "ok"}})
+        self.land("--lanes", "gemini,local", expect=0)
+        self.assertEqual(self.gemini_model_calls(), ["gemini-custom-primary", "gemini-custom-first", "gemini-custom-second"])
+        self.assertIn("Reviewed-by: local-direct", self.pr_body())
 
     def test_reviewer_prompt_points_at_the_worktree_and_runs_there(self):
         self.cfg({"gemini": {"mode": "ok"}, "codex": {"mode": "ok"}})
@@ -624,6 +713,11 @@ class Lanes(Base):
         with open(self.S / "state/lock", "a+") as fh:
             fcntl.flock(fh, fcntl.LOCK_EX | fcntl.LOCK_NB)  # raises if still held
         self.assertEqual(self.ghs()["prs"], [])
+        event, = self.failure_events()
+        self.assertEqual((event["stage"], event["kind"]), ("review", "review_exhausted"))
+        self.assertIn("gemini: quota error", event["detail"])
+        self.assertIn("codex: budget refused (exit 3)", event["detail"])
+        self.assertIn("local: quota error", event["detail"])
 
     def test_never_the_authors_lane(self):
         r = self.land("--author-lane", "gemini", "--lanes", "gemini", expect=1)
@@ -635,6 +729,9 @@ class Lanes(Base):
         r = self.land(expect=1)
         self.assertIn("returned REQUEST_CHANGES", self.stop_line(r))
         self.assertEqual(self.calls("codex") + self.calls("local"), [])
+        event, = self.failure_events()
+        self.assertEqual((event["stage"], event["kind"]), ("review", "review_negative"))
+        self.assertEqual((event["lane"], event["run_id"], event["detail"]), ("gemini", "gemini-20261106-120001-abc1", "REQUEST_CHANGES"))
 
     def test_could_not_run_request_changes_stops_with_a_rerun_hint_never_falls_through(self):
         self.cfg({"gemini": {"mode": "real"}, "codex": {"mode": "ok"}, "local": {"mode": "ok"}})
@@ -683,6 +780,274 @@ class Lanes(Base):
         self.assertEqual(self.calls("local"), [])
 
 
+class DepFastLane(Base):
+    UPSTREAM_HEADING = "## Upstream changes reviewed\n"
+    UPSTREAM_FIELDS = (
+        "- Package and range: pkg 1.0 -> 2.0\n"
+        "- Release notes: https://example.test/pkg/releases/2.0\n"
+        "- Authority: Nix\n"
+        "- Input path: flake.lock\n"
+    )
+    UNCHANGED_EVIDENCE = (
+        "- Closure evidence: git diff --no-index /tmp/closure-before /tmp/closure-after; exit 0 (no differences).\n"
+    )
+
+    def dep_branch(self, path="requirements.txt"):
+        self.g("reset", "-q", "--hard", "origin/main")
+        self.change(path, "pkg>=2.0\n")
+
+    def cp(self):
+        return json.loads(next((self.S / "state").glob("*/checkpoint.json")).read_text())
+
+    def assert_upstream_review(self, body, *, accepted, **delegate_options):
+        self.tearDown_state()
+        self.gh_state({})
+        self.cfg({"gemini": {"mode": "ok", "body": body, **delegate_options}, "codex": {"mode": "ok"}})
+        self.land("--author-lane", "dependabot", expect=0)
+        self.assertEqual(self.cp()["fast_lane"], "dependency-bump")
+        self.assertEqual(len(self.calls("gemini")), 1)
+        self.assertEqual(len(self.calls("codex")), 0 if accepted else 1)
+
+    def test_duplicated_reply_keeps_preamble_out_of_upstream_evidence(self):
+        self.dep_branch()
+        preamble = "Authority: Nix\n" + self.UNCHANGED_EVIDENCE.removeprefix("- ")
+        incomplete = self.UPSTREAM_HEADING + self.UPSTREAM_FIELDS + "- Closure: unchanged\n"
+        self.assert_upstream_review(preamble + incomplete + self.UNCHANGED_EVIDENCE, accepted=True)
+        self.assert_upstream_review(preamble + incomplete, accepted=False)
+
+    def test_closure_comparison_rejects_flag_operands(self):
+        self.dep_branch()
+        for comparison in (
+            "diff -u /tmp/only-one",
+            "diff -u -r /tmp/only-one",
+            "git diff --stat --cached HEAD",
+            "nix store diff-closures --help /nix/store/a",
+            "nix-store --diff-closures -v /nix/store/a",
+        ):
+            with self.subTest(comparison=comparison):
+                body = self.UPSTREAM_HEADING + self.UPSTREAM_FIELDS + "- Closure: unchanged\n"
+                self.assert_upstream_review(body + f"- Closure evidence: {comparison}; no differences.\n", accepted=False)
+
+    def test_closure_comparison_accepts_two_operands(self):
+        self.dep_branch()
+        for comparison in (
+            "diff -u /tmp/a /tmp/b",
+            "git diff --stat main HEAD",
+            "nix store diff-closures /nix/store/a /nix/store/b",
+        ):
+            with self.subTest(comparison=comparison):
+                body = self.UPSTREAM_HEADING + self.UPSTREAM_FIELDS + "- Closure: unchanged\n"
+                self.assert_upstream_review(body + f"- Closure evidence: {comparison}; no differences.\n", accepted=True)
+
+    def test_output_file_supplies_evidence_when_stdout_differs(self):
+        self.dep_branch()
+        complete = self.UPSTREAM_HEADING + self.UPSTREAM_FIELDS + "- Closure: unchanged\n" + self.UNCHANGED_EVIDENCE
+        self.assert_upstream_review("Summary only.\n", accepted=False, stdout_body=complete)
+
+    def test_last_upstream_section_includes_subheadings(self):
+        self.dep_branch()
+        incomplete = self.UPSTREAM_HEADING + self.UPSTREAM_FIELDS + "- Closure: unchanged\n"
+        complete = (
+            self.UPSTREAM_HEADING + "### pkg 1.0 -> 2.0\n" + self.UPSTREAM_FIELDS
+            + "- Closure: unchanged\n" + self.UNCHANGED_EVIDENCE
+        )
+        self.assert_upstream_review(complete, accepted=True)
+        self.assert_upstream_review(incomplete + complete, accepted=True)
+        self.assert_upstream_review(complete + incomplete, accepted=False)
+
+    def test_upstream_evidence_stops_at_heading_trailer_or_wrapper(self):
+        self.dep_branch()
+        incomplete = self.UPSTREAM_HEADING + self.UPSTREAM_FIELDS + "- Closure: unchanged\n"
+        for boundary in ("## Findings", "Reviewed-by: Gemini", "[delegate-to-gemini] done", "Output file: review.log"):
+            with self.subTest(boundary=boundary):
+                self.assert_upstream_review(incomplete + boundary + "\n" + self.UNCHANGED_EVIDENCE, accepted=False)
+
+    def test_deployed_runtime_distinguishes_flags_and_names_from_negation(self):
+        self.dep_branch()
+        changed = self.UPSTREAM_HEADING + self.UPSTREAM_FIELDS + (
+            "- Closure: changed\n"
+            "- Closure evidence: nix store diff-closures /nix/store/old /nix/store/new; differences found.\n"
+        )
+        for runtime, accepted in (
+            ("systemctl --no-pager is-active ai-hybrid-coordinator.service", True),
+            ("nix build --no-write-lock-file .#runtime", True),
+            ("systemctl --no-legend is-active ai-no-cache-not-ready.service", True),
+            ("no deployed service was run", False),
+            ("systemctl is-active pkg.service (no check performed)", False),
+            ("not run", False),
+        ):
+            with self.subTest(runtime=runtime):
+                self.assert_upstream_review(
+                    changed + f"- Deployed runtime: {runtime}\n- Runtime result: passed\n",
+                    accepted=accepted,
+                )
+
+    def test_empty_dependency_lanes_uses_default_remote_order(self):
+        self.dep_branch()
+        self.env["AQ_LAND_DEP_LANES"] = ""
+        self.cfg({"gemini": {"mode": "cap"}, "codex": {"mode": "ok"}, "local": {"mode": "ok"}})
+        self.land("--author-lane", "dependabot", expect=0)
+        self.assertEqual(self.cp()["fast_lane"], "dependency-bump")
+        self.assertEqual(len(self.calls("gemini")), 1)
+        self.assertEqual(len(self.calls("codex")), 1)
+        self.assertEqual(self.calls("local"), [])
+
+    def test_dependency_lane_exhaustion_stops_without_local(self):
+        self.dep_branch()
+        self.env["AQ_LAND_DEP_LANES"] = ""
+        self.cfg({"gemini": {"mode": "cap"}, "codex": {"mode": "cap"}, "local": {"mode": "ok"}})
+        r = self.land("--author-lane", "dependabot", expect=1)
+        self.assertIn("STOP review: no eligible independent lane", self.stop_line(r))
+        self.assertEqual(self.cp()["fast_lane"], "dependency-bump")
+        self.assertEqual(len(self.calls("gemini")), 1)
+        self.assertEqual(len(self.calls("codex")), 1)
+        self.assertEqual(self.calls("local"), [])
+
+    def test_dependabot_manifest_only_uses_fast_lane(self):
+        self.dep_branch()
+        self.cfg({"gemini": {"mode": "ok"}, "codex": {"mode": "ok"}})
+        r = self.land("--author-lane", "Dependabot", expect=0)
+        self.assertIn("fast-lane: dependency-bump (pkg 1.0 -> 2.0)", r.stdout)
+        self.assertEqual(self.cp()["fast_lane"], "dependency-bump")
+        self.assertEqual(len(self.calls("gemini")), 1)
+        self.assertEqual(self.calls("local"), [])
+        self.assertIn("Upstream changes reviewed", (self.S / "prompt-gemini.txt").read_text())
+
+    def test_fast_lane_malformed_pass_tries_next_lane(self):
+        self.dep_branch()
+        self.cfg({"gemini": {"mode": "missing_upstream_evidence"}, "codex": {"mode": "ok"}})
+        self.land("--author-lane", "dependabot", expect=0)
+        self.assertEqual(self.cp().get("rc_rounds", 0), 0)
+        self.assertEqual(len(self.calls("codex")), 1)
+        self.assertTrue(any(note.startswith("gemini: malformed PASS") for note in self.cp()["review"]["notes"]))
+
+    def test_fast_lane_malformed_dependency_evidence_tries_next_lane(self):
+        for mode in ("missing_package", "negated_runtime", "no_deployed_runtime", "placeholder_authority",
+                     "negated_authority", "placeholder_closure", "negated_closure", "missing_old",
+                     "multi_package", "failed_active", "unhealthy_active", "changed_without_operands",
+                     "changed_no_differences", "unchanged_explicitly_changed", "arbitrary_closure",
+                     "changed_operand_only", "unchanged_operand_only", "timed_out_active"):
+            with self.subTest(mode=mode):
+                self.tearDown_state(); self.gh_state({})
+                self.dep_branch()
+                self.cfg({"gemini": {"mode": mode}, "codex": {"mode": "ok"}})
+                self.land("--author-lane", "dependabot", expect=0)
+                self.assertEqual(len(self.calls("codex")), 1)
+
+    def test_multi_package_diff_uses_normal_review_path(self):
+        self.dep_branch()
+        self.change("requirements.txt", "pkg>=2.0\nother>=2.0\n")
+        self.cfg({"gemini": {"mode": "ok"}, "codex": {"mode": "ok"}})
+        r = self.land("--author-lane", "dependabot", expect=0)
+        self.assertIn("fast-lane: ambiguous or unsupported dependency diff, normal review path", r.stdout)
+        self.assertEqual(self.cp().get("fast_lane", ""), "")
+        self.assertNotIn("Upstream changes reviewed", (self.S / "prompt-gemini.txt").read_text())
+
+    def test_header_like_lines_in_hunk_use_normal_review_path(self):
+        self.g("checkout", "-q", "main")
+        self.change("requirements.txt", "pkg>=1.0\n-- extra\n")
+        self.g("push", "-q", "origin", "main")
+        self.g("checkout", "-q", "feat/x")
+        for updated in ("pkg>=2.0\n", "pkg>=2.0\n++ extra\n-- extra\n"):
+            with self.subTest(requirements=updated):
+                self.tearDown_state()
+                self.gh_state({})
+                self.g("reset", "-q", "--hard", "origin/main")
+                self.change("requirements.txt", updated)
+                self.cfg({"gemini": {"mode": "ok"}})
+                r = self.land("--author-lane", "dependabot", expect=0)
+                self.assertIn("fast-lane: ambiguous or unsupported dependency diff, normal review path", r.stdout)
+                self.assertEqual(self.cp()["fast_lane"], "")
+
+    def test_evidence_package_and_range_must_match_actual_diff(self):
+        self.dep_branch()
+        self.cfg({"gemini": {"mode": "wrong_package_range"}, "codex": {"mode": "ok"}})
+        self.land("--author-lane", "dependabot", expect=0)
+        self.assertEqual(len(self.calls("codex")), 1)
+
+    def test_criteria_file_help_is_additive(self):
+        r = subprocess.run([sys.executable, str(TOOL), "--help"], capture_output=True, text=True, timeout=10)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("added to dependency-bump criteria", r.stdout)
+
+    def test_fast_lane_accepts_explicit_unchanged_closure_evidence(self):
+        self.dep_branch()
+        self.cfg({"gemini": {"mode": "ok"}, "codex": {"mode": "ok"}})
+        self.land("--author-lane", "dependabot", expect=0)
+        self.assertEqual(len(self.calls("gemini")), 1)
+        self.assertEqual(self.calls("codex"), [])
+
+    def test_fast_lane_accepts_changed_closure_reported_with_successful_comparison(self):
+        self.dep_branch()
+        self.cfg({"gemini": {"mode": "changed_exit_zero"}, "codex": {"mode": "ok"}})
+        self.land("--author-lane", "dependabot", expect=0)
+        self.assertEqual(self.calls("codex"), [])
+
+    def test_unsupported_version_constraint_uses_normal_review_path(self):
+        for requirement in ("pkg==2.0", "pkg>=2.0,<3"):
+            with self.subTest(requirement=requirement):
+                self.tearDown_state()
+                self.gh_state({})
+                self.dep_branch()
+                self.change("requirements.txt", requirement + "\n")
+                self.cfg({"gemini": {"mode": "ok"}})
+                self.land("--author-lane", "dependabot", expect=0)
+                self.assertEqual(self.cp()["fast_lane"], "")
+
+    def test_non_manifest_file_means_normal_path(self):
+        self.dep_branch()
+        self.change("scripts/foo2.py", "print(2)\n")
+        self.cfg({"gemini": {"mode": "ok"}, "codex": {"mode": "ok"}})
+        r = self.land("--author-lane", "dependabot", expect=0)
+        self.assertNotIn("fast-lane", r.stdout)
+        self.assertEqual(self.cp().get("fast_lane", ""), "")
+        self.assertNotIn("Upstream changes reviewed", (self.S / "prompt-gemini.txt").read_text())
+
+    def test_non_dependabot_author_is_not_fast_laned(self):
+        self.dep_branch()
+        self.cfg({"gemini": {"mode": "ok"}, "codex": {"mode": "ok"}})
+        r = self.land("--author-lane", "claude", expect=0)
+        self.assertNotIn("fast-lane", r.stdout)
+        self.assertEqual(self.cp().get("fast_lane", ""), "")
+
+    def test_explicit_lanes_win_and_custom_criteria_retains_dependency_baseline(self):
+        self.dep_branch()
+        crit = self.S / "crit.md"
+        crit.write_text("MY CRITERIA\n")
+        self.cfg({"gemini": {"mode": "ok"}, "codex": {"mode": "ok"}, "local": {"mode": "ok"}})
+        r = self.land("--author-lane", "dependabot", "--lanes", "local", "--criteria-file", str(crit), expect=0)
+        self.assertIn("fast-lane: dependency-bump", r.stdout)
+        self.assertEqual(self.calls("gemini"), [])
+        self.assertEqual(len(self.calls("local")), 1)
+        text = (self.S / "prompt-local.txt").read_text()
+        self.assertIn("MY CRITERIA", text)
+        self.assertIn("Upstream changes reviewed", text)
+
+    def test_staged_non_manifest_change_committed_before_review_means_normal_path(self):
+        self.dep_branch()
+        self.change("scripts/foo3.py", "print(3)\n", commit=False)
+        msg = self.S / "msg.txt"
+        msg.write_text("feat: x\n")
+        self.cfg({"gemini": {"mode": "ok"}, "codex": {"mode": "ok"}})
+        r = self.land("--author-lane", "dependabot", "--commit-msg-file", str(msg), expect=0)
+        self.assertNotIn("fast-lane: dependency-bump", r.stdout)
+        self.assertEqual(self.cp()["fast_lane"], "")
+        self.assertNotIn("Upstream changes reviewed", (self.S / "prompt-gemini.txt").read_text())
+
+    def test_malformed_policy_globs_use_the_normal_path(self):
+        for bad in (None, "*", ["*"], [""]):
+            with self.subTest(globs=bad):
+                self.tearDown_state(); self.gh_state({})
+                pol = self.S / "policy.json"
+                pol.write_text(json.dumps({"dependabot_manifest_exemption": {"author": "dependabot[bot]", "manifest_globs": bad}}))
+                self.env["AQ_LAND_POLICY_FILE"] = str(pol)
+                self.dep_branch()
+                self.cfg({"gemini": {"mode": "ok"}, "codex": {"mode": "ok"}})
+                r = self.land("--author-lane", "dependabot", expect=0)
+                self.assertIn("fast-lane: policy invalid, normal review path", r.stdout)
+                self.assertEqual(self.cp()["fast_lane"], "")
+
+
 class Preflight(Base):
     def test_docs_only_change_is_refused_unless_allowed(self):
         self.g("reset", "-q", "--hard", "origin/main")
@@ -726,6 +1091,8 @@ class Preflight(Base):
         self.assertIn("FAIL: stub gate", line)  # the blocker, never just "tier0 failed"
         log = line.split("full output ")[1]
         self.assertIn("FAIL: stub gate", pathlib.Path(log).read_text())
+        event, = self.failure_events()
+        self.assertEqual((event["kind"], event["head_sha"], event["log_path"]), ("tier0_failed", before, log))
         self.assertEqual(self.g("rev-parse", "HEAD"), before)
         (self.S / "tier0.fail").unlink()
         hook = self.wd / ".git/hooks/pre-commit"
@@ -734,6 +1101,28 @@ class Preflight(Base):
         self.land("--commit-msg-file", str(msg), expect=0)
         self.assertNotEqual(self.g("rev-parse", "HEAD"), before)
         self.assertTrue((self.S / "hook.log").exists())  # hooks ran: no --no-verify
+
+    def test_failed_gate_on_committed_head_reaches_the_outcome_receipt(self):
+        marker = self.S / "tier0.fail"
+        marker.write_text("")
+        head = self.g("rev-parse", "HEAD")
+        r = self.land(expect=1)
+        line = self.stop_line(r)
+        self.assertIn("STOP tier0", line)
+        journal = self.S / "deleg/outputs/aq-land/failure-events.jsonl"
+        self.assertEqual(journal.stat().st_mode & 0o777, 0o600)
+        event, = self.failure_events()
+        self.assertEqual((event["schema"], event["stage"], event["kind"]), (1, "tier0", "tier0_failed"))
+        self.assertEqual((event["head_sha"], event["detail"]), (head, "exit 1"))
+        self.assertEqual(event["log_path"], line.split("full output ")[1])
+        output = pathlib.Path(event["log_path"]).read_text()
+        for marker_text in ("FAIL: stub gate", "stub-secret-stderr"):
+            self.assertIn(marker_text, output)
+            self.assertNotIn(marker_text, journal.read_text())
+        marker.rename(self.S / "tier0.fixed")
+        self.land(expect=0)
+        receipts = (self.S / "deleg/outcome-receipts.jsonl").read_text().splitlines()
+        self.assertEqual([json.loads(receipt)["tier0_failures"] for receipt in receipts], [1])
 
     def test_failing_commit_hook_shows_its_output_and_a_log(self):
         self.change("scripts/bar.py", "print(2)\n", commit=False)
@@ -865,18 +1254,26 @@ class Checks(Base):
     def test_transient_network_error_is_retried_within_the_deadline(self):
         self.env["AQ_LAND_RETRY_S"] = "0.05"
         r = self.run_checks([[{"name": "test", "status": "COMPLETED", "conclusion": "SUCCESS"}]],
-                            flaky={"cmd": "pr view", "times": 3, "msg": "error connecting to api.github.com\nCheck your internet connection"})
+                            flaky={"cmd": "pr view", "poll_only": True, "times": 3, "msg": "error connecting to api.github.com\nCheck your internet connection"})
         self.assertEqual(self.ghs()["merges"], 1)
         self.assertEqual(r.stdout.count("transient gh error"), 1)  # one line for the whole outage
 
+    def test_transient_graphql_query_error_is_retried(self):
+        self.env["AQ_LAND_RETRY_S"] = "0.05"
+        ok = {"name": "test", "status": "COMPLETED", "conclusion": "SUCCESS"}
+        r = self.run_checks([[ok]], flaky={"cmd": "pr view", "times": 2,
+                                         "msg": "GraphQL: Something went wrong while executing your query"})
+        self.assertEqual(r.stdout.count("transient gh error"), 1)
+        self.assertEqual(self.ghs()["merges"], 1)
+
     def test_persistent_network_failure_stops_at_the_deadline(self):
         self.env.update({"AQ_LAND_RETRY_S": "0.05", "AQ_LAND_CHECKS_TIMEOUT_S": "1"})
-        r = self.run_checks([[]], flaky={"cmd": "pr view", "times": 100000, "msg": "error connecting to api.github.com"}, expect=1)
+        r = self.run_checks([[]], flaky={"cmd": "pr view", "poll_only": True, "times": 100000, "msg": "error connecting to api.github.com"}, expect=1)
         self.assertIn("still failing", self.stop_line(r))
         self.assertNotIn("merges", self.ghs())
 
     def test_non_transient_gh_error_stops_at_once(self):
-        r = self.run_checks([[]], flaky={"cmd": "pr view", "times": 100000, "msg": "HTTP 404: Not Found"}, expect=1)
+        r = self.run_checks([[]], flaky={"cmd": "pr view", "poll_only": True, "times": 100000, "msg": "HTTP 404: Not Found"}, expect=1)
         self.assertIn("STOP gh: gh pr view failed: HTTP 404", self.stop_line(r))
         self.assertEqual(self.ghs()["n_flaky"], 1)
 
@@ -915,6 +1312,29 @@ class Checks(Base):
         self.run_checks([[pend], [pend], [ok]])
         self.assertEqual(self.ghs()["merges"], 1)
 
+    def test_success_duplicate_cannot_mask_a_pending_check(self):
+        self.env["AQ_LAND_CHECKS_TIMEOUT_S"] = "1"
+        pending = {"name": "test", "status": "IN_PROGRESS", "detailsUrl": "https://x/actions/runs/45"}
+        ok = {"name": "test", "status": "COMPLETED", "conclusion": "SUCCESS", "detailsUrl": "https://x/actions/runs/46"}
+        r = self.run_checks([[pending, ok]], expect=1)
+        self.assertIn("timed out waiting for: test", self.stop_line(r))
+        self.assertNotIn("merges", self.ghs())
+        event, = self.failure_events()
+        self.assertEqual((event["stage"], event["kind"], event["pr"]), ("checks", "ci_checks_timeout", 77))
+        self.assertEqual(event["detail"], "timed out waiting for: test")
+        self.assertEqual(event["checks"], [{"name": "test", "run_id": "45", "status": "pending"}])
+
+    def test_success_duplicate_cannot_mask_a_failed_check(self):
+        bad = {"name": "test", "status": "COMPLETED", "conclusion": "FAILURE", "detailsUrl": "https://x/actions/runs/47"}
+        ok = {"name": "test", "status": "COMPLETED", "conclusion": "SUCCESS", "detailsUrl": "https://x/actions/runs/48"}
+        r = self.run_checks([[bad, ok]], expect=1)
+        self.assertIn("failed: test", self.stop_line(r))
+        self.assertNotIn("merges", self.ghs())
+        event, = self.failure_events()
+        self.assertEqual((event["stage"], event["kind"], event["pr"]), ("checks", "ci_checks_failed", 77))
+        self.assertEqual(event["detail"], "failed: test")
+        self.assertEqual(event["checks"], [{"name": "test", "run_id": "47", "status": "fail"}])
+
     def test_failed_and_missing_required_checks_block_the_merge(self):
         bad = {"name": "test", "status": "COMPLETED", "conclusion": "FAILURE"}
         r = self.run_checks([[bad]], expect=1)
@@ -932,7 +1352,7 @@ class Checks(Base):
         self.land("--optional-check", "flaky", expect=0)
 
     def test_head_that_is_not_the_one_landed_never_reuses_a_green(self):
-        r = self.run_checks([[{"name": "test", "status": "COMPLETED", "conclusion": "SUCCESS"}]], head_override="e" * 40, expect=1)
+        r = self.run_checks([[{"name": "test", "status": "COMPLETED", "conclusion": "SUCCESS"}]], check_head_override="e" * 40, expect=1)
         self.assertIn("refusing to reuse checks for another head", self.stop_line(r))
         self.assertNotIn("merges", self.ghs())
 
@@ -947,6 +1367,7 @@ class Checks(Base):
 class MergeFreshness(Base):
     """G0: a PR whose CI ran on an older main is updated and re-checked, never merged on stale results."""
     OK = [{"name": "test", "status": "COMPLETED", "conclusion": "SUCCESS"}, RD_OK]
+    MERGE_IN_PROGRESS = "GraphQL: Merge already in progress (mergePullRequest)"
 
     def jsonl(self):
         p = self.S / "deleg/outputs/aq-land/merge-freshness.jsonl"
@@ -959,6 +1380,42 @@ class MergeFreshness(Base):
         self.assertEqual((st["merges"], st.get("updates", 0)), (1, 0))
         row = self.jsonl()[0]
         self.assertEqual((row["pr"], row["was_behind"], row["updates"], row["extra_ci_wait_s"], row["merged"]), (77, False, 0, 0, True))
+
+    def test_merge_in_progress_completes_on_expected_head(self):
+        self.gh_state({"merge_error": self.MERGE_IN_PROGRESS, "post_merge_views": [{"state": "OPEN"}, {"state": "MERGED"}]})
+        result = self.land(expect=0)
+        self.assertIn("merge already in progress; waiting for merge completion", result.stdout)
+        state = self.ghs()
+        self.assertEqual(state["merges"], 1)
+        self.assertEqual(state["post_merge_views"], [])
+        self.assertIs(self.jsonl()[0]["merged"], True)
+        checkpoint = next((self.S / "state").glob("*/checkpoint.json"))
+        self.assertIsNone(json.loads(checkpoint.read_text())["expected_checks"])
+        receipts = (self.S / "deleg" / "outcome-receipts.jsonl").read_text().splitlines()
+        self.assertEqual([json.loads(line)["pr"] for line in receipts], [77])
+
+    def test_merge_in_progress_stops_if_head_changes(self):
+        self.gh_state({"merge_error": self.MERGE_IN_PROGRESS, "post_merge_views": [{"state": "MERGED", "headRefOid": "e" * 40}]})
+        result = self.land(expect=1)
+        self.assertIn("STOP merge: PR #77 head changed", self.stop_line(result))
+        self.assertFalse((self.S / "deleg" / "outcome-receipts.jsonl").exists())
+
+    def test_merge_in_progress_stops_on_timeout_or_closure(self):
+        self.env["AQ_LAND_MERGE_POLL_TIMEOUT_S"] = "0"
+        for state, message in (("OPEN", "is still OPEN after merge-in-progress"), ("CLOSED", "is CLOSED after merge-in-progress")):
+            with self.subTest(state=state):
+                self.tearDown_state()
+                self.gh_state({"merge_error": self.MERGE_IN_PROGRESS, "post_merge_views": [{"state": state}]})
+                result = self.land(expect=1)
+                self.assertIn(f"STOP merge: PR #77 {message}", self.stop_line(result))
+                self.assertFalse((self.S / "deleg" / "outcome-receipts.jsonl").exists())
+
+    def test_non_race_merge_error_stops_without_polling(self):
+        views = [{"state": "MERGED"}]
+        self.gh_state({"merge_error": "Pull Request is not mergeable", "post_merge_views": views})
+        result = self.land(expect=1)
+        self.assertIn("STOP gh: gh pr merge failed: Pull Request is not mergeable", self.stop_line(result))
+        self.assertEqual(self.ghs()["post_merge_views"], views)
 
     def test_behind_pr_is_updated_rechecked_then_merged(self):
         self.gh_state({"main_moves_at_wait": True, "after_update_rollups": [[{"name": "test", "status": "IN_PROGRESS", "detailsUrl": "https://x/nojob"}, RD_OK], self.OK]})
@@ -1099,9 +1556,70 @@ class Friction(Base):
         (self.S / "body.md").write_text(BODY.replace("- scope", "- scope v2"))
         self.land(expect=1)
         calls = self.ghs()["calls"]
-        edit = calls.index("pr edit 77")
-        self.assertEqual([i for i, c in enumerate(calls) if c == "RECEIPT publish"][-1] < edit, True, calls)
+        publication = ["RECEIPT publish", "pr edit 77"]
+        self.assertEqual([call for call in calls if call in publication], publication * 2)
         self.assertEqual(len(self.published()), 2)
+
+    def test_draft_resumes_only_after_published_receipt_verifies(self):
+        failure = self.S / "draft_verify_fail"
+        failure.write_text("1")
+        line = self.stop_line(self.land(expect=1))
+        self.assertIn("published receipt could not be verified", line)
+        state = self.ghs()
+        self.assertTrue(state["prs"][0]["draft"])
+        self.assertNotIn("pr ready 77", state["calls"])
+        self.assertEqual(len(self.published()), 1)
+        published_body = state["prs"][0]["body"]
+        self.assertNotIn("Review receipt publication is in progress.", published_body)
+        failure.unlink()
+        result = self.raw()
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        state = self.ghs()
+        self.assertEqual(state["prs"][0]["body"], published_body)
+        calls = state["calls"]
+        self.assertEqual(calls.count("pr edit 77"), 1)
+        self.assertEqual(state["creates"], 1)
+        self.assertEqual(calls.count("RECEIPT publish"), 1)
+        self.assertLess(calls.index("RECEIPT publish"), calls.index("RECEIPT verify"))
+        self.assertLess(calls.index("RECEIPT verify"), calls.index("pr ready 77"))
+        self.assertEqual(calls.count("RECEIPT verify"), 2)
+        self.assertEqual(len(self.calls("gemini")), 1)
+
+    def test_changed_head_during_published_receipt_verification_stays_draft(self):
+        self.gh_state({"move_head_on_verify": True})
+        line = self.stop_line(self.land(expect=1))
+        self.assertIn("changed during receipt verification", line)
+        state = self.ghs()
+        self.assertTrue(state["prs"][0]["draft"])
+        self.assertNotIn("pr ready 77", state["calls"])
+
+    def test_merge_is_refused_when_receipt_verify_fails(self):
+        head = self.g("rev-parse", "HEAD")
+        (self.S / "verify_fail").write_text("1")
+        line = self.stop_line(self.land(expect=1))
+        self.assertIn("merge", line)
+        self.assertIn("receipt verify refused the merge", line)
+        self.assertEqual(self.ghs().get("merges", 0), 0)
+        receipt, = (self.S / "state").rglob(f"pr77-{head[:12]}.json")
+        self.assertIn(f"verify --require-revocation-check {receipt} --pr 77 --head {head}",
+                      (self.S / "receipt.log").read_text().splitlines())
+        (self.S / "verify_fail").unlink()
+        self.land(expect=0)  # a resume after the receipt verifies merges
+
+    def test_resume_without_local_receipt_verifies_the_published_one_and_fails_closed(self):
+        (self.S / "verify_fail").write_text("1")
+        self.land(expect=1)
+        gone = [f for f in (self.S / "state").rglob("pr*-*.json")]
+        self.assertTrue(gone)
+        for f in gone:
+            f.unlink()
+        (self.S / "receipt.log").write_text("")
+        line = self.stop_line(self.land(expect=1))
+        self.assertIn("receipt verify refused the merge", line)
+        self.assertEqual(self.ghs().get("merges", 0), 0)
+        self.assertRegex((self.S / "receipt.log").read_text(), r"verify --require-revocation-check --pr \d+ --head [0-9a-f]{40}")
+        (self.S / "verify_fail").unlink()
+        self.land(expect=0)
 
     def test_bad_body_format_stops_in_preflight_before_any_review_or_push(self):
         (self.S / "body.md").write_text(BODY.replace("## Details", "## Summary"))

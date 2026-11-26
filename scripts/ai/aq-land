@@ -11,6 +11,12 @@ Replaces .agents/delegation/outputs/landing/land.sh (design: delivery-loop-simpl
   aq-land --title T --body-file F [--commit-msg-file M] [--criteria-file C] [--author-lane claude]
           [--allow-docs-only] [--lanes gemini,codex,local] [--optional-check NAME]... [--owned PATHFILE]
 
+Dependency-bump fast lane: with --author-lane dependabot and a net diff (vs origin/main) made only of files matching
+dependabot_manifest_exemption.manifest_globs in config/harness-first-policy.json and one supported package-version
+replacement, aq-land reviews with config/review-criteria/dependency-bump.md plus any --criteria-file and defaults the lanes to
+gemini,codex (env AQ_LAND_DEP_LANES; local cannot read release notes). An explicit --lanes or AQ_LAND_LANES always wins.
+Any non-manifest file in the diff means the normal path. Receipt, review record, CI wait and merge are unchanged.
+
 --owned PATHFILE (default: .agents/delegation/owned/<branch-slug>.txt in the worktree) lists the globs
 the slice owns, one per line ('#' comments; a trailing '/' means a whole directory; '*' also crosses '/').
 A changed file outside them stops the landing in preflight, before any review, and is logged to
@@ -59,8 +65,26 @@ CODE_SUFFIXES = (".py", ".sh", ".nix", ".yml", ".yaml")
 # progress text in them. A stall limit would kill a valid long review, so gemini and local rely on the
 # hard limit alone. Codex exec prints its tool activity as it goes, so it keeps a stall limit.
 LANES = {"gemini": ("gemini", 1800, 0), "codex": ("codex", 2400, 900), "local": ("local-direct", 2400, 0)}
-GEMINI_MODEL = "gemini-3.8-flash-high"
-GEMINI_FALLBACK_MODEL = "gemini-3.8-flash-medium"
+
+
+def _gemini_model_chain() -> tuple[str, ...]:
+    defaults = ("gemini-4-neon-high", "gemini-4-hydrogen", "gemini-3.8-flash-medium")
+    try:
+        gl = json.loads((ROOT / "config/model-coordinator.json").read_text())["tiers"]["google"]["gemini_lane"]
+        prefix = gl.get("required_id_prefix") or "gemini-"
+        if not isinstance(prefix, str):
+            return defaults
+        prefix = prefix.lower()
+        configured = (gl.get("role_map", {}).get("reviewer"), gl.get("fallback"), gl.get("baseline_fallback"))
+    except (OSError, ValueError, KeyError, TypeError, AttributeError):
+        return defaults
+    models = (model.strip() for model in configured if isinstance(model, str))
+    return tuple(dict.fromkeys(model for model in models if model and model.lower().startswith(prefix))) or defaults
+
+
+GEMINI_MODEL_CHAIN = _gemini_model_chain()
+GEMINI_MODEL = GEMINI_MODEL_CHAIN[0]
+GEMINI_FALLBACK_MODEL = GEMINI_MODEL_CHAIN[1] if len(GEMINI_MODEL_CHAIN) > 1 else GEMINI_MODEL_CHAIN[0]
 QUOTA = re.compile(r"quota|usage limit|rate.?limit|RESOURCE_EXHAUSTED|\b429\b|exhausted|capacity", re.I)
 STRONG_QUOTA = re.compile(r"\b429\b|usage limit|RESOURCE_EXHAUSTED|quota (?:exceeded|exhausted)|cooldown active", re.I)
 LOCAL_CAP = re.compile(r"local headless cap reached", re.I)
@@ -70,7 +94,7 @@ VERDICTS = ("PASS_WITH_FOLLOWUPS", "PASS", "REQUEST_CHANGES", "FAIL")
 # Network and server blips gh reports while polling; anything else (404, auth, bad request) stops at once.
 TRANSIENT = re.compile(r"error connecting|could not resolve host|no such host|temporary failure|connection (?:reset|refused|timed out)|"
                        r"timed? ?out|\bEOF\b|TLS handshake|network is unreachable|HTTP 5\d\d|\b50[234]\b|bad gateway|service unavailable|"
-                       r"i/o timeout", re.I)
+                       r"i/o timeout|Something went wrong while executing your query", re.I)
 # A REQUEST_CHANGES/FAIL always stops the landing; text cannot prove a reviewer did not mean it. This heuristic only decides whether the
 # STOP message adds a re-run hint: an explicit could-not-proceed phrase, no path or location token, no finding marker, a short body.
 # The real Gemini sandbox-timeout reply is ~513 chars with both copies of its text, so 800 leaves headroom.
@@ -89,6 +113,82 @@ def reviewer_could_not_run(text):
     sentences = [x for x in re.split(r"(?<=[.!?])\s+|\n+", body) if x.strip()]
     return (len(body) <= COULD_NOT_RUN_MAX and bool(COULD_NOT_RUN.search(body)) and not LOCATION.search(body)
             and not FINDING_MARK.search(body) and all(ENV_SENTENCE.search(x) for x in sentences))  # every sentence is about the environment
+
+
+def has_dependency_upstream_evidence(text, expected_change=None):
+    """Check the required evidence shape; the trusted reviewer still validates facts."""
+    matches = list(re.finditer(r"^(#{1,6})[ \t]+Upstream changes reviewed[ \t]*$", text, re.M | re.I))
+    if not matches:
+        return False
+    last = matches[-1]
+    level = len(last.group(1))
+    rest = text[last.end():]
+    stop = re.search(
+        rf"^(?:#{{1,{level}}}[ \t]+|(?:Reviewed-head-sha|Review-Disposition|Author-lane|Reviewed-by|Review-Receipt):|\[delegate-to-[^\]]*\]|Output file:)",
+        rest,
+        re.M | re.I,
+    )
+    evidence = rest[:stop.start()] if stop else rest
+
+    def field(name):
+        matches = re.findall(rf"^[ \t>*-]*{re.escape(name)}:[ \t]*(\S.*?)[ \t]*$", evidence, re.M | re.I)
+        if len(matches) != 1:
+            return None
+        value = matches[0]
+        if re.search(r"<[^>\n]+>|\b(?:tbd|todo|n/?a|unknown|unavailable|missing|placeholder|not reviewed|not run)\b", value, re.I):
+            return None
+        return value
+
+    def failed(value):
+        return bool(re.search(
+            r"\b(?:fail(?:ed|ure)?|error|exit(?:ed)? [1-9]|non-?zero|unhealthy|degraded|inactive|dead|not healthy|not running)\b",
+            value,
+            re.I,
+        ))
+
+    package = field("Package and range")
+    release_notes = field("Release notes")
+    authority = field("Authority")
+    input_path = field("Input path")
+    closure = field("Closure")
+    closure_evidence = field("Closure evidence")
+    package_match = package and re.fullmatch(r"(@?[A-Za-z0-9][A-Za-z0-9._+/@-]*)\s+(\S+)\s+(?:->|→)\s+(\S+)", package)
+    if not package_match:
+        return False
+    if expected_change:
+        expected_package, expected_old, expected_new = expected_change
+        seen_package = re.sub(r"[-_.]+", "-", package_match.group(1)).lower()
+        if (seen_package, package_match.group(2), package_match.group(3)) != (expected_package, expected_old, expected_new):
+            return False
+    if not release_notes or not re.search(r"https://[^\s<>()]+", release_notes):
+        return False
+    if not authority or not re.fullmatch(r"(?:Nix|manifest)", authority, re.I):
+        return False
+    if not input_path or not re.fullmatch(r"(?:\.?/)?(?:[A-Za-z0-9_.-]+/)*[A-Za-z0-9_.-]+", input_path):
+        return False
+    comparison = (
+        r"(?:git\s+diff(?:\s+--[A-Za-z0-9][A-Za-z0-9=-]*)*\s+[^\s-]\S*\s+[^\s-]\S*|"
+        r"nix\s+store\s+diff-closures\s+[^\s-]\S*\s+[^\s-]\S*|"
+        r"nix-store\s+--?diff-closures\s+[^\s-]\S*\s+[^\s-]\S*|"
+        r"(?:diff|cmp|comm)(?:\s+-[A-Za-z0-9]+)*\s+[^\s-]\S*\s+[^\s-]\S*)"
+    )
+    command, separator, outcome = (closure_evidence or "").partition(";")
+    if not separator or not re.fullmatch(comparison, command.strip()):
+        return False
+    if not closure or not re.fullmatch(r"(?:changed|unchanged)", closure, re.I):
+        return False
+    if closure.lower() == "unchanged":
+        return bool(re.fullmatch(r"(?:no differences|exit 0 \(no differences\))\.?", outcome.strip(), re.I))
+    if not re.fullmatch(r"(?:exit 0, )?differences found\.?", outcome.strip(), re.I):
+        return False
+    runtime = field("Deployed runtime")
+    result = field("Runtime result")
+    return bool(runtime and not failed(runtime) and not re.search(r"(?<![\w-])(?:no|not)(?![\w-])", runtime, re.I) and re.search(
+        r"(?:\b[A-Za-z0-9_.-]+\.service\b|\b(?:systemctl|service|nix(?:os-rebuild)?|docker|podman|kubectl|curl|pytest|python(?:3)?|bash)\b|(?:^|\s)/(?:[A-Za-z0-9_.-]+/)*[A-Za-z0-9_.-]+)",
+        runtime, re.I
+    ) and result and re.fullmatch(
+        r"(?:passed|success|ok|healthy|running|active|exit 0)\.?", result, re.I
+    ))
 
 
 FAILLINE = re.compile(r"FAIL|ERROR|error:|not ok|Traceback|\bfatal\b", re.I)
@@ -323,13 +423,19 @@ class Land:
             raise Stop("preflight", self.blocker("harness-first static gates", r))
 
     # ---- stages
+    def tier0_failure(self, r):
+        self.save(tier0_failures=self.cp.get("tier0_failures", 0) + 1)
+        msg = self.blocker("tier0", r)
+        log_path = msg.rsplit("; full output ", 1)[-1]
+        self.record_failure("tier0", "tier0_failed", head=self.head(), detail=f"exit {r.returncode}", log_path=log_path)
+        return Stop("tier0", msg)
+
     def stage_commit(self):
         if not self.a.commit_msg_file or not self.git("diff", "--cached", "--name-only"):
             return False
         r = run([self.tier0, "--pre-commit"], cwd=self.W, timeout=3600, check=False, stage="tier0")
         if r.returncode != 0:
-            self.save(tier0_failures=self.cp.get("tier0_failures", 0) + 1)
-            raise Stop("tier0", self.blocker("tier0", r))
+            raise self.tier0_failure(r)
         r = run(["git", "-C", self.W, "commit", "-q", "-F", self.a.commit_msg_file], timeout=900, check=False, stage="commit")
         if r.returncode != 0:
             raise Stop("commit", self.blocker("commit", r))
@@ -354,7 +460,7 @@ class Land:
             r = run([self.tier0, "--pre-commit"], cwd=str(wt), timeout=3600, check=False, stage="tier0")
             say(f"tier0 on the branch diff against {base[:9]}: exit {r.returncode} in {time.time() - t0:.0f}s")
             if r.returncode != 0:
-                raise Stop("tier0", self.blocker("tier0", r))
+                raise self.tier0_failure(r)
             self.save(tier0="pass", tier0_head=self.head())
         finally:
             shutil.rmtree(wt, ignore_errors=True)  # ours; `worktree remove` needs a force flag the source-guard test bans
@@ -392,11 +498,91 @@ class Land:
         ok, _ = self.crd.merge_only_update(rec["head"], head, self.git("rev-parse", "refs/remotes/origin/main"))
         return ok
 
+    def detect_fast_lane(self, head):
+        """Dependabot + manifest-only net diff of base...head -> 'dependency-bump'.
+
+        Called from review() with the same pinned range the reviewer's diff is built from, on every round.
+        Glob semantics match the harness-first evidence gate.
+        """
+        self.fast_lane = ""
+        self.dependency_change = None
+        if (self.a.author_lane or "").strip().lower() != "dependabot":
+            self.save(fast_lane="")
+            return
+        try:
+            ex = json.loads(Path(os.environ.get("AQ_LAND_POLICY_FILE") or ROOT / "config/harness-first-policy.json").read_text())["dependabot_manifest_exemption"]
+            globs = ex["manifest_globs"]
+        except (OSError, ValueError, KeyError, TypeError):
+            say("fast-lane: policy unreadable, normal review path")
+            self.save(fast_lane="")
+            return
+        if (not isinstance(ex.get("author"), str) or not isinstance(globs, list) or not globs
+                or not all(isinstance(g, str) and g.strip() not in ("", "*", "**") for g in globs)):
+            say("fast-lane: policy invalid, normal review path")
+            self.save(fast_lane="")
+            return
+        names = [n for n in self.nul_names(f"refs/remotes/origin/main...{head}") if n]
+
+        def is_manifest(n):
+            return any(fnmatch.fnmatchcase(n if "/" in g else n.rsplit("/", 1)[-1], g) for g in globs)
+
+        if names and all(is_manifest(n) for n in names):
+            change = self.dependency_change_from_diff(head)
+            if change:
+                package, old, new = change
+                self.fast_lane = "dependency-bump"
+                self.dependency_change = change
+                say(f"fast-lane: dependency-bump ({package} {old} -> {new})")
+            else:
+                say("fast-lane: ambiguous or unsupported dependency diff, normal review path")
+        self.save(fast_lane=self.fast_lane)
+
+    def dependency_change_from_diff(self, head):
+        """Return one simple requirements-style replacement, otherwise use normal review."""
+        subject = f"refs/remotes/origin/main...{head}"
+        metadata = self.git("diff", "--raw", "-z", "--no-renames", subject).split("\0")
+        if (len(metadata) != 3 or not re.fullmatch(r":100(644|755) 100\1 \w+ \w+ M", metadata[0])
+                or not fnmatch.fnmatchcase(Path(metadata[1]).name, "requirements*.txt")):
+            return None
+        patch = self.git("diff", "--no-ext-diff", "--no-textconv", "--unified=0", subject)
+        removed, added = [], []
+        in_hunk = False
+        for line in patch.splitlines():
+            if line.startswith("@@"):
+                in_hunk = True
+                continue
+            if not in_hunk or line.startswith("\\"):
+                continue
+            if line.startswith("-"):
+                removed.append(line[1:])
+            elif line.startswith("+"):
+                added.append(line[1:])
+        if len(removed) != 1 or len(added) != 1:
+            return None
+
+        def requirement(line):
+            match = re.fullmatch(
+                r"[ \t]*([A-Za-z0-9][A-Za-z0-9_.-]*)[ \t]*(==|>=)[ \t]*([0-9]+(?:\.[0-9]+)*)[ \t]*(?:#.*)?",
+                line,
+            )
+            if not match:
+                return None
+            return re.sub(r"[-_.]+", "-", match.group(1)).lower(), match.group(2), match.group(3)
+
+        old, new = requirement(removed[0]), requirement(added[0])
+        if not old or not new or old[:2] != new[:2] or old[2] == new[2]:
+            return None
+        return old[0], old[2], new[2]
+
     def lane_plan(self, diff_bytes):
         author = (self.a.author_lane or "").strip().lower()
         author = "local" if author.startswith("local") else author
         order, skipped = [], []
-        for lane in [x for x in self.a.lanes.split(",") if x]:
+        lanes = self.a.lanes or (
+            (os.environ.get("AQ_LAND_DEP_LANES") or "gemini,codex")
+            if getattr(self, "fast_lane", "") else "gemini,codex,local"
+        )
+        for lane in [x for x in lanes.split(",") if x]:
             if lane not in LANES:
                 raise Stop("review", f"unknown lane {lane!r}")
             if lane == author:
@@ -410,7 +596,9 @@ class Land:
         return order, skipped
 
     def prompt(self, lane, head, diff_file, diff_text):
-        crit = Path(self.a.criteria_file).read_text() if self.a.criteria_file else "Check correctness, tests, and security of the change."
+        dep_crit = (ROOT / "config/review-criteria/dependency-bump.md").read_text() if getattr(self, "fast_lane", "") else ""
+        custom_crit = Path(self.a.criteria_file).read_text() if self.a.criteria_file else ""
+        crit = "\n\n".join(x for x in (dep_crit, custom_crit) if x) or "Check correctness, tests, and security of the change."
         p = [f"Independent review (you are not the author). Subject: branch {self.branch}, head {head}, base origin/main."]
         if lane == "local":
             p += ["Answer from the diff below alone.", "", crit, "", "```diff", diff_text, "```"]
@@ -433,16 +621,24 @@ class Land:
         return res
 
     def _run_lane(self, lane, head, pfile, notes=None):
-        """kind is ok|negative|unavailable. Gemini retries once on another model after a quota error."""
+        """Gemini advances through up to three models on quota errors."""
         if lane != "gemini":
             return self.run_once(lane, head, pfile)
-        model = os.environ.get("AQ_LAND_GEMINI_MODEL") or GEMINI_MODEL
-        res = self.run_once(lane, head, pfile, model)
-        if res[0] == "unavailable" and res[1] == "quota error" and model != GEMINI_FALLBACK_MODEL:
+        primary = os.environ.get("AQ_LAND_GEMINI_MODEL") or GEMINI_MODEL
+        override = os.environ.get("AQ_LAND_GEMINI_FALLBACK_MODELS")
+        fallbacks = [model.strip() for model in override.split(",")] if override else GEMINI_MODEL_CHAIN
+        candidates = list(dict.fromkeys([primary, *(model for model in fallbacks if model and model != primary)]))
+        candidates = candidates[:3]
+        cur = candidates[0]
+        res = self.run_once(lane, head, pfile, cur)
+        for nxt in candidates[1:]:
+            if res[:2] != ("unavailable", "quota error"):
+                break
             if notes is not None:
-                notes.append(f"gemini: model {model} quota error; retried with {GEMINI_FALLBACK_MODEL}")
-            say(f"gemini model {model} hit a quota error; retrying once with {GEMINI_FALLBACK_MODEL}")
-            res = self.run_once(lane, head, pfile, GEMINI_FALLBACK_MODEL)
+                notes.append(f"gemini: model {cur} quota error; retried with {nxt}")
+            say(f"gemini model {cur} hit a quota error; retrying with {nxt}")
+            res = self.run_once(lane, head, pfile, nxt)
+            cur = nxt
         return res
 
     def run_once(self, lane, head, pfile, model=""):
@@ -485,10 +681,11 @@ class Land:
                     except (OSError, subprocess.TimeoutExpired):
                         os.killpg(proc.pid, signal.SIGKILL)
                     return "unavailable", why, "", ""
-        text = out.read_text(errors="replace")
-        m = re.search(r"Output file:\s+(\S+)", text)
-        if m and Path(m.group(1)).is_file():
-            text += "\n" + Path(m.group(1)).read_text(errors="replace")
+        stdout_text = out.read_text(errors="replace")
+        m = re.search(r"Output file:\s+(\S+)", stdout_text)
+        out_file_text = Path(m.group(1)).read_text(errors="replace") if m and Path(m.group(1)).is_file() else ""
+        text = stdout_text + ("\n" + out_file_text if out_file_text else "")
+        reply_text = out_file_text if out_file_text.strip() else stdout_text
         verdicts = re.findall(rf"^Review-Disposition:[ \t]*({'|'.join(VERDICTS)})[ \t]*$", text, re.M)
         heads = re.findall(r"^Reviewed-head-sha:[ \t]*([0-9a-f]{40})[ \t]*$", text, re.M)
         rid = re.search(rf"\b({lane}-\d{{8}}-\d{{6}}-[a-z0-9]+)", text)
@@ -508,15 +705,17 @@ class Land:
             return "unavailable", f"review covers head {(heads or ['none'])[-1][:12]}, not {head[:12]}", "", ""
         if not rid:
             return "unavailable", "no run id in the delegate output", "", ""
-        return ("ok" if verdicts[-1].startswith("PASS") else "negative"), verdicts[-1], rid.group(1), text
+        return ("ok" if verdicts[-1].startswith("PASS") else "negative"), verdicts[-1], rid.group(1), reply_text
 
     def review(self, head):
         base = "refs/remotes/origin/main"
         diff = self.git("diff", f"{base}...{head}")
         diff_file = self.dir / f"subject-{head[:12]}.diff"
         diff_file.write_text(diff + "\n")
+        self.detect_fast_lane(head)
         order, notes = self.lane_plan(len(diff.encode()))
         if not order:
+            self.record_failure("review", "review_exhausted", head=head, detail="; ".join(notes))
             raise Stop("review", "no eligible independent lane: " + "; ".join(notes))
         pfiles = {}
         for lane in order:
@@ -526,6 +725,9 @@ class Land:
         for lane in order:
             say(f"review of {head[:9]} by {lane}")
             kind, detail, rid, rtext = self.run_lane(lane, head, pfiles[lane], notes)
+            if kind == "ok" and self.fast_lane == "dependency-bump" and not has_dependency_upstream_evidence(rtext, self.dependency_change):
+                kind = "unavailable"
+                detail = "malformed PASS: missing substantive Upstream changes reviewed evidence"
             if kind == "unavailable":
                 notes.append(f"{lane}: {detail}")
                 say(f"lane {lane} unavailable ({detail}); trying the next eligible lane")
@@ -533,6 +735,7 @@ class Land:
             if kind == "negative":
                 if detail.startswith("REQUEST_CHANGES"):
                     self.save(rc_rounds=self.cp.get("rc_rounds", 0) + 1)
+                self.record_failure("review", "review_negative", head=head, lane=lane, run_id=rid, detail=detail)
                 if reviewer_could_not_run(rtext):
                     rest = ",".join(order[order.index(lane) + 1:])
                     hint = (f"if that is right, re-run with --lanes {rest}" if rest else "no other eligible lane is left")
@@ -545,6 +748,7 @@ class Land:
             self.save(review=rec)
             say(f"review {rid}: {detail}")
             return rec
+        self.record_failure("review", "review_exhausted", head=head, detail="; ".join(notes))
         raise Stop("review", "no eligible independent lane left: " + "; ".join(notes))
 
     def stage_push(self, head, rec):
@@ -585,30 +789,60 @@ class Land:
         i = next((n for n, l in enumerate(keep) if l.strip() == "## What"), None)
         if i is None:
             raise Stop("pr", "body file has no '## What' heading")
-        return "\n".join(keep[:i] + block + keep[i:]) + "\n"
+        prefix = "\n".join(keep[:i]).rstrip()
+        return "\n\n".join(part for part in (prefix, "\n".join(block + keep[i:])) if part) + "\n"
 
-    def stage_pr(self, rec, edit=True):
+    def stage_pr(self, rec):
         pr = self.find_pr()
-        bf = self.dir / "body.md"
-        bf.write_text(self.body(rec))
-        self.pr_created = pr is None
         if pr is None:
             if not self.a.title or not self.a.body_file:
                 raise Stop("pr", "no open PR: --title and --body-file are required to create one")
-            out = self.gh("pr", "create", "--base", "main", "--head", self.branch, "--title", self.a.title, "--body-file", str(bf)).stdout
+            bf = self.dir / "body.md"
+            body = self.body(rec)
+            bf.write_text(body)
+            draft_body = self.dir / "draft-body.md"
+            # The base workflow also needs an edited event during rollout, before it knows about ready_for_review.
+            draft_body.write_text(body + "\nReview receipt publication is in progress.\n")
+            out = self.gh("pr", "create", "--draft", "--base", "main", "--head", self.branch,
+                          "--title", self.a.title, "--body-file", str(draft_body)).stdout
             m = re.search(r"/pull/(\d+)", out) or re.search(r"(\d+)\s*$", out.strip())
             if not m:
                 raise Stop("pr", "could not read the PR number from gh pr create")
             n = int(m.group(1))
-            say(f"PR #{n} created")
+            say(f"PR #{n} created as draft")
         else:
             n = pr["number"]
-            live = self.ghjson("pr", "view", str(n), "--json", "body").get("body") or ""
-            if edit and live.strip() != bf.read_text().strip():
-                self.gh("pr", "edit", str(n), "--body-file", str(bf))
-                say(f"PR #{n} body updated for reviewed head {rec['head'][:9]}")
         self.save(pr=n)
         return n
+
+    def stage_ready(self, n, rec, head):
+        fields = "state,isDraft,headRefOid,body"
+        deadline = time.time() + min(300, env_int("AQ_LAND_CHECKS_TIMEOUT_S", 14400))
+        live = self.ghjson_poll(deadline, "pr", "view", str(n), "--json", fields)
+        if live["state"] == "MERGED":
+            return
+        if live["state"] != "OPEN" or live["headRefOid"] != head:
+            raise Stop("pr", f"PR #{n} is no longer open at expected head {head[:12]}")
+        body = self.body(rec)
+        bf = self.dir / "body.md"
+        if not bf.is_file() or bf.read_text() != body:
+            bf.write_text(body)
+        if (live.get("body") or "").strip() != body.strip():
+            self.gh("pr", "edit", str(n), "--body-file", str(bf))
+            say(f"PR #{n} body updated for reviewed head {rec['head'][:9]}")
+        if not live["isDraft"]:
+            return
+        r = run([self.receipt_tool, "verify", "--require-revocation-check", "--pr", str(n), "--head", rec["head"]],
+                cwd=self.W, check=False, stage="receipt", timeout=300)
+        if r.returncode != 0:
+            raise Stop("receipt", f"published receipt could not be verified for PR #{n}: {(r.stderr or r.stdout).strip()[:300]}")
+        live = self.ghjson_poll(deadline, "pr", "view", str(n), "--json", fields)
+        if (live["state"] != "OPEN" or live["headRefOid"] != head
+                or (live.get("body") or "").strip() != body.strip()):
+            raise Stop("pr", f"PR #{n} changed during receipt verification; resume aq-land to recheck it")
+        if live["isDraft"]:
+            self.gh("pr", "ready", str(n))
+            say(f"PR #{n} marked ready with verified published receipt")
 
     def stage_receipt(self, n, rec):
         key = f"{n}:{rec['head']}"
@@ -661,6 +895,18 @@ class Land:
                     return name, "pass" if job.get("conclusion") in ("success", "neutral", "skipped") else "fail", run_id
         return name, "pending", run_id
 
+    def verify_receipt_before_merge(self, n, head):
+        """Re-verify the receipt against its recorded run (hash, content, lanes) and the revocation list; refuse on failure."""
+        rh = (self.cp.get("review") or {}).get("head") or head
+        f = self.dir / f"pr{n}-{rh[:12]}.json"
+        # No local receipt (resumed run): verify the published one; absent/unreadable/revoked fails closed.
+        target = [str(f)] if f.is_file() else []
+        r = run([self.receipt_tool, "verify", "--require-revocation-check", *target, "--pr", str(n), "--head", rh],
+                cwd=self.W, check=False,
+                stage="merge", timeout=300)
+        if r.returncode != 0:
+            raise Stop("merge", f"receipt verify refused the merge: {(r.stderr or r.stdout).strip()[:300]}")
+
     def wait_and_merge(self, n, head):
         deadline = time.time() + env_int("AQ_LAND_CHECKS_TIMEOUT_S", 14400)
         repo = self.ghjson_poll(deadline, "repo", "view", "--json", "nameWithOwner")["nameWithOwner"]
@@ -675,6 +921,7 @@ class Land:
             required |= set(carried["names"]) - optional  # a resumed run still owes the ordinary checks the interrupted update reset
         poll = float(os.environ.get("AQ_LAND_POLL_S", "30"))
         fresh = {"was_behind": False, "updates": 0, "t0": None}
+        rank = {"pass": 0, "pending": 1, "fail": 2}
         while True:
             v = self.ghjson_poll(deadline, "pr", "view", str(n), "--json", "headRefOid,state,statusCheckRollup")
             if v["state"] == "MERGED":
@@ -688,7 +935,9 @@ class Land:
             seen = {}
             for c in v.get("statusCheckRollup") or []:
                 name, st, run_id = self.classify(c, repo)
-                seen[name] = (st, run_id)
+                prev = seen.get(name)
+                if prev is None or rank[st] >= rank[prev[0]]:
+                    seen[name] = (st, run_id)
             pending, failed = [], []
             for name in sorted(set(seen) | required):
                 if name in optional and name not in required:
@@ -701,7 +950,10 @@ class Land:
                 (failed if st == "fail" else pending if st == "pending" else []).append(name)
             if failed:
                 self.save(ci_failures=self.cp.get("ci_failures", 0) + 1)
-                raise Stop("checks", "failed: " + ", ".join(failed))
+                detail = "failed: " + ", ".join(failed)
+                checks = [{"name": name, "run_id": seen.get(name, ("", ""))[1] or "", "status": "fail"} for name in failed]
+                self.record_failure("checks", "ci_checks_failed", pr=n, head=head, checks=checks, detail=detail)
+                raise Stop("checks", detail)
             if not pending and seen.get(REVIEW_CHECK, ("pending",))[0] == "pass":
                 owed = sorted((required | set(seen)) - optional - {REVIEW_CHECK})
                 self.save(expected_checks={"head": head, "names": owed})  # persisted before the update so an interrupted run cannot merge the new head on review-disposition alone
@@ -716,15 +968,71 @@ class Land:
             if not pending:
                 pending = [REVIEW_CHECK]
             if time.time() > deadline:
-                raise Stop("checks", "timed out waiting for: " + ", ".join(pending) + "; re-run aq-land to resume")
+                detail = "timed out waiting for: " + ", ".join(pending)
+                checks = [{"name": name, "run_id": seen.get(name, ("", ""))[1] or "", "status": "pending"} for name in pending]
+                self.record_failure("checks", "ci_checks_timeout", pr=n, head=head, checks=checks, detail=detail)
+                raise Stop("checks", detail + "; re-run aq-land to resume")
             time.sleep(poll)
-        self.gh("pr", "merge", str(n), "--squash", "--match-head-commit", head)
-        v = self.ghjson_poll(deadline, "pr", "view", str(n), "--json", "state")
-        if v["state"] != "MERGED":
-            raise Stop("merge", f"PR #{n} is {v['state']} after gh pr merge")
+        self.verify_receipt_before_merge(n, head)
+        r = self.gh("pr", "merge", str(n), "--squash", "--match-head-commit", head, check=False)
+        if r.returncode != 0:
+            err = (r.stderr or r.stdout).strip()
+            if not re.search(r"merge already in progress", err, re.I):
+                raise Stop("gh", f"gh pr merge failed: {err[:200]}")
+            say(f"PR #{n} merge already in progress; waiting for merge completion")
+            merge_deadline = min(deadline, time.time() + env_int("AQ_LAND_MERGE_POLL_TIMEOUT_S", 60))
+            merge_poll = min(poll, 2.0)
+            while True:
+                v = self.ghjson_poll(merge_deadline, "pr", "view", str(n), "--json", "state,headRefOid")
+                if v.get("headRefOid") != head:
+                    raise Stop("merge", f"PR #{n} head changed to {(v.get('headRefOid') or 'none')[:12]} during merge-in-progress; expected {head[:12]}")
+                if v.get("state") == "MERGED":
+                    break
+                if v.get("state") != "OPEN":
+                    raise Stop("merge", f"PR #{n} is {v.get('state')} after merge-in-progress")
+                if time.time() >= merge_deadline:
+                    raise Stop("merge", f"PR #{n} is still OPEN after merge-in-progress; re-run aq-land to resume")
+                time.sleep(merge_poll)
+        else:
+            v = self.ghjson_poll(deadline, "pr", "view", str(n), "--json", "state,headRefOid")
+            if v.get("state") != "MERGED":
+                raise Stop("merge", f"PR #{n} is {v.get('state')} after gh pr merge")
+            if v.get("headRefOid") != head:
+                raise Stop("merge", f"PR #{n} merged head {(v.get('headRefOid') or 'none')[:12]} differs from expected {head[:12]}")
         self.save(expected_checks=None)
         self.log_freshness(n, fresh, True)
         say(f"PR #{n} merged")
+
+    def record_failure(self, stage, kind, *, pr=None, head=None, checks=None, lane="", run_id="", detail="", log_path=""):
+        try:
+            sys.path.insert(0, str(HERE / "lib"))
+            from delegation_dir import resolve_delegation_dir
+
+            d = resolve_delegation_dir(HERE) / "outputs" / "aq-land"
+            d.mkdir(parents=True, exist_ok=True)
+            row = {
+                "schema": 1,
+                "at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                "stage": stage,
+                "kind": kind,
+                "branch": self.branch,
+                "pr": pr if pr is not None else self.cp.get("pr"),
+                "head_sha": head or "",
+                "author_lane": self.a.author_lane,
+                "checks": list(checks or []),
+                "lane": lane,
+                "run_id": run_id,
+                "detail": str(detail)[:240],
+                "log_path": str(log_path) if log_path else "",
+            }
+            line = (json.dumps(row, sort_keys=True) + "\n").encode()
+            fd = os.open(d / "failure-events.jsonl", os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o600)
+            try:
+                os.write(fd, line)
+            finally:
+                os.close(fd)
+        except Exception as e:
+            print(f"aq-land: WARN failure-events not logged: {type(e).__name__}", file=sys.stderr)
 
     def log_freshness(self, n, fresh, merged):
         """One line per merge: what main-freshness cost, for comparing against strict branch protection. Never fails a landing."""
@@ -825,9 +1133,10 @@ class Land:
             raise Stop("merge", "origin/main or the branch kept moving; re-run aq-land")
         self.check_owned(self.changed_paths(), recheck=True)
         self.stage_push(head, rec)
-        n = self.stage_pr(rec, edit=False)
+        n = self.stage_pr(rec)
         self.stage_receipt(n, rec)  # a body edit triggers review-disposition, which needs the receipt already published
-        return n if self.pr_created else self.stage_pr(rec)
+        self.stage_ready(n, rec, head)
+        return n
 
     def go(self):
         self.preflight()
@@ -839,13 +1148,28 @@ class Land:
             self.adopt_remote_update()
         if self.settled(pr):
             say(f"resuming PR #{pr['number']}: pushed, reviewed and receipted")
-            n = self.stage_pr(self.cp["review"])
+            n = pr["number"]
+            self.stage_ready(n, self.cp["review"], self.head())
         else:
             with Lock(self.state_root / "lock", env_int("AQ_LAND_LOCK_WAIT_S", 7200), self.branch):
                 n = self.locked()
         self.wait_and_merge(n, self.head())
         self.record_outcome(n)
+        self.collect_trajectory(n)
         return 0
+
+    def collect_trajectory(self, n):
+        """F3 S5: derive the verified-trajectory row for this landing; warns, never fails the landing.
+
+        Kill switch AQ_TRAJECTORY_COLLECT=0 (honoured by the collector itself).
+        """
+        try:
+            r = subprocess.run([sys.executable, str(HERE.parent / "data" / "collect-verified-trajectories.py"), "--pr", str(n)],
+                               capture_output=True, text=True, timeout=120)
+            if r.returncode:
+                print(f"aq-land: WARN trajectory collector exit {r.returncode}: {r.stderr.strip()[:120]}", file=sys.stderr)
+        except Exception as e:  # noqa: BLE001
+            print(f"aq-land: WARN trajectory not collected: {e.__class__.__name__}: {str(e)[:120]}", file=sys.stderr)
 
     def record_outcome(self, n):
         """Append the outcome receipt; a failure here warns and never fails the landing."""
@@ -894,9 +1218,11 @@ def main():
     ap.add_argument("--title", default="")
     ap.add_argument("--body-file", default="")
     ap.add_argument("--commit-msg-file", default="")
-    ap.add_argument("--criteria-file", default="")
+    ap.add_argument("--criteria-file", default="",
+                    help="additional criteria (added to dependency-bump criteria on that fast lane)")
     ap.add_argument("--author-lane", default="claude")
-    ap.add_argument("--lanes", default=os.environ.get("AQ_LAND_LANES", "gemini,codex,local"))
+    ap.add_argument("--lanes", default=os.environ.get("AQ_LAND_LANES", ""),
+                    help="review lanes in order (default gemini,codex,local; gemini,codex on the dependency-bump fast lane)")
     ap.add_argument("--allow-docs-only", action="store_true")
     ap.add_argument("--max-updates", type=int, default=env_int("AQ_LAND_MAX_UPDATES", 3),
                     help="max gh pr update-branch rounds when main moves past the PR before merge (env AQ_LAND_MAX_UPDATES)")

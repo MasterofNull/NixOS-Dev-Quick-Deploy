@@ -18,149 +18,139 @@
     "codex": {
       "eligible": {
         "architect": {
-          "evidence": "owner ratified renewal 2026-10-14 (chat door): .agents/plans/unified-program/LANE-GRANT-RENEWAL-OWNER-RATIFICATION-20261014.md (supersedes unbacked PR #494 citation)",
-          "expires_at": "2026-11-26T00:00:00Z",
-          "measured_at": "2026-10-12T00:00:00Z"
+          "evidence": "owner ratified renewal 2026-11-25 (chat door): .agents/plans/unified-program/LANE-GRANT-RENEWAL-OWNER-RATIFICATION-20261125.md",
+          "expires_at": "2027-01-09T09:36:44.837869Z",
+          "measured_at": "2026-11-25T09:36:44.837869Z"
         },
         "binding-acceptance": {
-          "evidence": "owner ratified renewal 2026-10-14 (chat door): .agents/plans/unified-program/LANE-GRANT-RENEWAL-OWNER-RATIFICATION-20261014.md (supersedes unbacked PR #494 citation)",
-          "expires_at": "2026-11-26T00:00:00Z",
-          "measured_at": "2026-10-12T00:00:00Z"
+          "evidence": "owner ratified renewal 2026-11-25 (chat door): .agents/plans/unified-program/LANE-GRANT-RENEWAL-OWNER-RATIFICATION-20261125.md",
+          "expires_at": "2027-01-09T09:36:44.898125Z",
+          "measured_at": "2026-11-25T09:36:44.898125Z"
         },
         "implementer": {
-          "evidence": "owner ratified renewal 2026-10-14 (chat door): .agents/plans/unified-program/LANE-GRANT-RENEWAL-OWNER-RATIFICATION-20261014.md (supersedes unbacked PR #494 citation)",
-          "expires_at": "2026-11-26T00:00:00Z",
-          "measured_at": "2026-10-12T00:00:00Z"
+          "evidence": "owner ratified renewal 2026-11-25 (chat door): .agents/plans/unified-program/LANE-GRANT-RENEWAL-OWNER-RATIFICATION-20261125.md",
+          "expires_at": "2027-01-09T09:36:44.959557Z",
+          "measured_at": "2026-11-25T09:36:44.959557Z"
         },
         "orchestrator": {
-          "evidence": "owner ratified renewal 2026-10-14 (chat door): .agents/plans/unified-program/LANE-GRANT-RENEWAL-OWNER-RATIFICATION-20261014.md (supersedes unbacked PR #494 citation)",
-          "expires_at": "2026-11-26T00:00:00Z",
-          "measured_at": "2026-10-12T00:00:00Z"
+          "evidence": "owner ratified renewal 2026-11-25 (chat door): .agents/plans/unified-program/LANE-GRANT-RENEWAL-OWNER-RATIFICATION-20261125.md",
+          "expires_at": "2027-01-09T09:36:45.023523Z",
+          "measured_at": "2026-11-25T09:36:45.023523Z"
         },
         "reviewer": {
-          "evidence": "owner ratified renewal 2026-10-14 (chat door): .agents/plans/unified-program/LANE-GRANT-RENEWAL-OWNER-RATIFICATION-20261014.md (supersedes unbacked PR #494 citation)",
-          "expires_at": "2026-11-26T00:00:00Z",
-          "measured_at": "2026-10-12T00:00:00Z"
+          "evidence": "owner ratified renewal 2026-11-25 (chat door): .agents/plans/unified-program/LANE-GRANT-RENEWAL-OWNER-RATIFICATION-20261125.md",
+          "expires_at": "2027-01-09T09:36:45.093599Z",
+          "measured_at": "2026-11-25T09:36:45.093599Z"
         },
         "rsi": {
-          "evidence": "owner ratified renewal 2026-10-14 (chat door): .agents/plans/unified-program/LANE-GRANT-RENEWAL-OWNER-RATIFICATION-20261014.md (supersedes unbacked PR #494 citation)",
-          "expires_at": "2026-11-26T00:00:00Z",
-          "measured_at": "2026-10-12T00:00:00Z"
+          "evidence": "owner ratified renewal 2026-11-25 (chat door): .agents/plans/unified-program/LANE-GRANT-RENEWAL-OWNER-RATIFICATION-20261125.md",
+          "expires_at": "2027-01-09T09:36:45.173460Z",
+          "measured_at": "2026-11-25T09:36:45.173460Z"
         }
       }
     },
     "gemini": {
       "eligible": {
         "architect": {
-          "evidence": "owner ratified renewal 2026-10-14 (chat door): .agents/plans/unified-program/LANE-GRANT-RENEWAL-OWNER-RATIFICATION-20261014.md (supersedes unbacked PR #494 citation)",
-          "expires_at": "2026-11-26T00:00:00Z",
-          "measured_at": "2026-10-12T00:00:00Z"
-        },
-        "binding-acceptance": {
-          "evidence": "owner ratified renewal 2026-10-14 (chat door): .agents/plans/unified-program/LANE-GRANT-RENEWAL-OWNER-RATIFICATION-20261014.md (supersedes unbacked PR #494 citation)",
-          "expires_at": "2026-11-26T00:00:00Z",
-          "measured_at": "2026-10-12T00:00:00Z"
-        },
-        "orchestrator": {
-          "evidence": "owner ratified renewal 2026-10-14 (chat door): .agents/plans/unified-program/LANE-GRANT-RENEWAL-OWNER-RATIFICATION-20261014.md (supersedes unbacked PR #494 citation)",
-          "expires_at": "2026-11-26T00:00:00Z",
-          "measured_at": "2026-10-12T00:00:00Z"
+          "evidence": "owner ratified renewal 2026-11-25 (chat door): .agents/plans/unified-program/LANE-GRANT-RENEWAL-OWNER-RATIFICATION-20261125.md",
+          "expires_at": "2027-01-09T09:36:45.254434Z",
+          "measured_at": "2026-11-25T09:36:45.254434Z"
         },
         "research": {
-          "evidence": "owner ratified renewal 2026-10-14 (chat door): .agents/plans/unified-program/LANE-GRANT-RENEWAL-OWNER-RATIFICATION-20261014.md (supersedes unbacked PR #494 citation)",
-          "expires_at": "2026-11-26T00:00:00Z",
-          "measured_at": "2026-10-12T00:00:00Z"
+          "evidence": "owner ratified renewal 2026-11-25 (chat door): .agents/plans/unified-program/LANE-GRANT-RENEWAL-OWNER-RATIFICATION-20261125.md",
+          "expires_at": "2027-01-09T09:36:45.457708Z",
+          "measured_at": "2026-11-25T09:36:45.457708Z"
         },
         "reviewer": {
-          "evidence": "owner ratified renewal 2026-10-14 (chat door): .agents/plans/unified-program/LANE-GRANT-RENEWAL-OWNER-RATIFICATION-20261014.md (supersedes unbacked PR #494 citation)",
-          "expires_at": "2026-11-26T00:00:00Z",
-          "measured_at": "2026-10-12T00:00:00Z"
+          "evidence": "owner ratified renewal 2026-11-25 (chat door): .agents/plans/unified-program/LANE-GRANT-RENEWAL-OWNER-RATIFICATION-20261125.md",
+          "expires_at": "2027-01-09T09:36:45.522531Z",
+          "measured_at": "2026-11-25T09:36:45.522531Z"
         },
         "rsi": {
           "capability_note": "orchestrator and reviewer for RSI repair slices",
-          "evidence": "owner ratified renewal 2026-10-14 (chat door): .agents/plans/unified-program/LANE-GRANT-RENEWAL-OWNER-RATIFICATION-20261014.md (supersedes unbacked PR #494 citation)",
-          "expires_at": "2026-11-26T00:00:00Z",
-          "measured_at": "2026-10-12T00:00:00Z"
+          "evidence": "owner ratified renewal 2026-11-25 (chat door): .agents/plans/unified-program/LANE-GRANT-RENEWAL-OWNER-RATIFICATION-20261125.md",
+          "expires_at": "2027-01-09T09:36:45.586355Z",
+          "measured_at": "2026-11-25T09:36:45.586355Z"
         }
       }
     },
     "local": {
       "eligible": {
         "architect": {
-          "evidence": "owner ratified renewal 2026-10-14 (chat door): .agents/plans/unified-program/LANE-GRANT-RENEWAL-OWNER-RATIFICATION-20261014.md (supersedes unbacked PR #494 citation)",
-          "expires_at": "2026-11-26T00:00:00Z",
-          "measured_at": "2026-10-12T00:00:00Z"
+          "evidence": "owner ratified renewal 2026-11-25 (chat door): .agents/plans/unified-program/LANE-GRANT-RENEWAL-OWNER-RATIFICATION-20261125.md",
+          "expires_at": "2027-01-09T09:36:45.646951Z",
+          "measured_at": "2026-11-25T09:36:45.646951Z"
         },
         "binding-acceptance": {
-          "evidence": "owner ratified renewal 2026-10-14 (chat door): .agents/plans/unified-program/LANE-GRANT-RENEWAL-OWNER-RATIFICATION-20261014.md (supersedes unbacked PR #494 citation)",
-          "expires_at": "2026-11-26T00:00:00Z",
-          "measured_at": "2026-10-12T00:00:00Z"
+          "evidence": "owner ratified renewal 2026-11-25 (chat door): .agents/plans/unified-program/LANE-GRANT-RENEWAL-OWNER-RATIFICATION-20261125.md",
+          "expires_at": "2027-01-09T09:36:45.707681Z",
+          "measured_at": "2026-11-25T09:36:45.707681Z"
         },
         "implementer": {
           "capability_note": "measured envelope: bounded single-edit, NOT multi-site",
-          "evidence": "owner ratified renewal 2026-10-14 (chat door): .agents/plans/unified-program/LANE-GRANT-RENEWAL-OWNER-RATIFICATION-20261014.md (supersedes unbacked PR #494 citation)",
-          "expires_at": "2026-11-26T00:00:00Z",
-          "measured_at": "2026-10-12T00:00:00Z"
+          "evidence": "owner ratified renewal 2026-11-25 (chat door): .agents/plans/unified-program/LANE-GRANT-RENEWAL-OWNER-RATIFICATION-20261125.md",
+          "expires_at": "2027-01-09T09:36:45.773257Z",
+          "measured_at": "2026-11-25T09:36:45.773257Z"
         },
         "rsi": {
           "capability_note": "measured envelope: bounded single-edit, NOT multi-site",
-          "evidence": "owner ratified renewal 2026-10-14 (chat door): .agents/plans/unified-program/LANE-GRANT-RENEWAL-OWNER-RATIFICATION-20261014.md (supersedes unbacked PR #494 citation)",
-          "expires_at": "2026-11-26T00:00:00Z",
-          "measured_at": "2026-10-12T00:00:00Z"
+          "evidence": "owner ratified renewal 2026-11-25 (chat door): .agents/plans/unified-program/LANE-GRANT-RENEWAL-OWNER-RATIFICATION-20261125.md",
+          "expires_at": "2027-01-09T09:36:45.839309Z",
+          "measured_at": "2026-11-25T09:36:45.839309Z"
         }
       }
     },
     "opus": {
       "eligible": {
         "architect": {
-          "evidence": "owner ratified renewal 2026-10-14 (chat door): .agents/plans/unified-program/LANE-GRANT-RENEWAL-OWNER-RATIFICATION-20261014.md (supersedes unbacked PR #494 citation)",
-          "expires_at": "2026-11-26T00:00:00Z",
-          "measured_at": "2026-10-12T00:00:00Z"
+          "evidence": "owner ratified renewal 2026-11-25 (chat door): .agents/plans/unified-program/LANE-GRANT-RENEWAL-OWNER-RATIFICATION-20261125.md",
+          "expires_at": "2027-01-09T09:36:45.904883Z",
+          "measured_at": "2026-11-25T09:36:45.904883Z"
         },
         "binding-acceptance": {
-          "evidence": "owner ratified renewal 2026-10-14 (chat door): .agents/plans/unified-program/LANE-GRANT-RENEWAL-OWNER-RATIFICATION-20261014.md (supersedes unbacked PR #494 citation)",
-          "expires_at": "2026-11-26T00:00:00Z",
-          "measured_at": "2026-10-12T00:00:00Z"
+          "evidence": "owner ratified renewal 2026-11-25 (chat door): .agents/plans/unified-program/LANE-GRANT-RENEWAL-OWNER-RATIFICATION-20261125.md",
+          "expires_at": "2027-01-09T09:36:45.981481Z",
+          "measured_at": "2026-11-25T09:36:45.981481Z"
         },
         "implementer": {
           "capability_note": "bounded implementer",
-          "evidence": "owner ratified renewal 2026-10-14 (chat door): .agents/plans/unified-program/LANE-GRANT-RENEWAL-OWNER-RATIFICATION-20261014.md (supersedes unbacked PR #494 citation)",
-          "expires_at": "2026-11-26T00:00:00Z",
-          "measured_at": "2026-10-12T00:00:00Z"
+          "evidence": "owner ratified renewal 2026-11-25 (chat door): .agents/plans/unified-program/LANE-GRANT-RENEWAL-OWNER-RATIFICATION-20261125.md",
+          "expires_at": "2027-01-09T09:36:46.053486Z",
+          "measured_at": "2026-11-25T09:36:46.053486Z"
         },
         "orchestrator": {
-          "evidence": "owner ratified renewal 2026-10-14 (chat door): .agents/plans/unified-program/LANE-GRANT-RENEWAL-OWNER-RATIFICATION-20261014.md (supersedes unbacked PR #494 citation)",
-          "expires_at": "2026-11-26T00:00:00Z",
-          "measured_at": "2026-10-12T00:00:00Z"
+          "evidence": "owner ratified renewal 2026-11-25 (chat door): .agents/plans/unified-program/LANE-GRANT-RENEWAL-OWNER-RATIFICATION-20261125.md",
+          "expires_at": "2027-01-09T09:36:46.113990Z",
+          "measured_at": "2026-11-25T09:36:46.113990Z"
         },
         "reviewer": {
-          "evidence": "owner ratified renewal 2026-10-14 (chat door): .agents/plans/unified-program/LANE-GRANT-RENEWAL-OWNER-RATIFICATION-20261014.md (supersedes unbacked PR #494 citation)",
-          "expires_at": "2026-11-26T00:00:00Z",
-          "measured_at": "2026-10-12T00:00:00Z"
+          "evidence": "owner ratified renewal 2026-11-25 (chat door): .agents/plans/unified-program/LANE-GRANT-RENEWAL-OWNER-RATIFICATION-20261125.md",
+          "expires_at": "2027-01-09T09:36:46.174473Z",
+          "measured_at": "2026-11-25T09:36:46.174473Z"
         },
         "rsi": {
-          "evidence": "owner ratified renewal 2026-10-14 (chat door): .agents/plans/unified-program/LANE-GRANT-RENEWAL-OWNER-RATIFICATION-20261014.md (supersedes unbacked PR #494 citation)",
-          "expires_at": "2026-11-26T00:00:00Z",
-          "measured_at": "2026-10-12T00:00:00Z"
+          "evidence": "owner ratified renewal 2026-11-25 (chat door): .agents/plans/unified-program/LANE-GRANT-RENEWAL-OWNER-RATIFICATION-20261125.md",
+          "expires_at": "2027-01-09T09:36:46.236332Z",
+          "measured_at": "2026-11-25T09:36:46.236332Z"
         }
       }
     },
     "sonnet": {
       "eligible": {
         "implementer": {
-          "evidence": "owner ratified renewal 2026-10-14 (chat door): .agents/plans/unified-program/LANE-GRANT-RENEWAL-OWNER-RATIFICATION-20261014.md (supersedes unbacked PR #494 citation)",
-          "expires_at": "2026-11-26T00:00:00Z",
-          "measured_at": "2026-10-12T00:00:00Z"
+          "evidence": "owner ratified renewal 2026-11-25 (chat door): .agents/plans/unified-program/LANE-GRANT-RENEWAL-OWNER-RATIFICATION-20261125.md",
+          "expires_at": "2027-01-09T09:36:46.297570Z",
+          "measured_at": "2026-11-25T09:36:46.297570Z"
         },
         "reviewer": {
-          "evidence": "owner ratified renewal 2026-10-14 (chat door): .agents/plans/unified-program/LANE-GRANT-RENEWAL-OWNER-RATIFICATION-20261014.md (supersedes unbacked PR #494 citation)",
-          "expires_at": "2026-11-26T00:00:00Z",
-          "measured_at": "2026-10-12T00:00:00Z"
+          "evidence": "owner ratified renewal 2026-11-25 (chat door): .agents/plans/unified-program/LANE-GRANT-RENEWAL-OWNER-RATIFICATION-20261125.md",
+          "expires_at": "2027-01-09T09:36:46.364768Z",
+          "measured_at": "2026-11-25T09:36:46.364768Z"
         },
         "rsi": {
-          "evidence": "owner ratified renewal 2026-10-14 (chat door): .agents/plans/unified-program/LANE-GRANT-RENEWAL-OWNER-RATIFICATION-20261014.md (supersedes unbacked PR #494 citation)",
-          "expires_at": "2026-11-26T00:00:00Z",
-          "measured_at": "2026-10-12T00:00:00Z"
+          "evidence": "owner ratified renewal 2026-11-25 (chat door): .agents/plans/unified-program/LANE-GRANT-RENEWAL-OWNER-RATIFICATION-20261125.md",
+          "expires_at": "2027-01-09T09:36:46.441438Z",
+          "measured_at": "2026-11-25T09:36:46.441438Z"
         }
       }
     }

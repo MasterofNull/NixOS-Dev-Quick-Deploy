@@ -236,9 +236,7 @@ class Config:
     ).lower() == "true"
 
     # Token Optimization Flags
-    QUERY_EXPANSION_ENABLED = os.getenv("QUERY_EXPANSION_ENABLED", "false").lower() == "true"
     REMOTE_LLM_FEEDBACK_ENABLED = os.getenv("REMOTE_LLM_FEEDBACK_ENABLED", "false").lower() == "true"
-    MULTI_TURN_QUERY_EXPANSION = os.getenv("MULTI_TURN_QUERY_EXPANSION", "false").lower() == "true"
     DEFAULT_MAX_TOKENS = int(os.getenv("DEFAULT_MAX_TOKENS", "1000"))
     # Local inference is slow on edge hardware (~3-4 t/s, 7s per 79 prompt tokens).
     # Default 30s caused all synthesis to time out. 180s gives headroom for 500-token prompts.

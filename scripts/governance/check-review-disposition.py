@@ -70,9 +70,11 @@ import re
 import subprocess
 import sys
 import urllib.request
+import uuid
 
 DISPOSITIONS = {"PASS", "PASS_WITH_FOLLOWUPS"}
 RECEIPT_BRANCH = "review-receipts"
+REVOCATION_DIR = "revocations"
 FETCH_REMOTE = "origin"
 TRUSTED_BASE_REF = "main"
 POLICY_VERSION = "review-receipts/1"
@@ -187,6 +189,12 @@ def check_offbranch_receipt(r, repo, pr_number, rhead, reviewer, author, disp):
         errs.append("receipt reviewer_lane == author_lane (self-review)")
     if r["verdict"] != disp or r["verdict"] == "REQUEST_CHANGES":
         errs.append("receipt verdict != Review-Disposition (or is REQUEST_CHANGES)")
+    # CI cannot see the local registry, so it checks that the receipt carries what only the fixed mint
+    # writes: the hash the delegate wrapper recorded for the run, equal to the receipt's output hash.
+    # No date cutoff here: created_at is writable by whoever writes the receipt, so a cutoff would be a bypass.
+    if r.get("registry_output_sha256") != r["output_sha256"] or type(r.get("output_bytes")) is not int:
+        errs.append("receipt lacks the wrapper-recorded output hash (registry_output_sha256/output_bytes); "
+                    "hand-minted or pre-integrity receipts are refused")
     return errs
 
 
@@ -203,15 +211,26 @@ def load_offbranch_receipt(remote, pr_number, rhead):
             return None, f"cannot reach {RECEIPT_BRANCH} on {remote}: {listing.stderr.strip()[:200]}"
         if not listing.stdout.strip():
             return None, None
-        subprocess.run(["git", "fetch", "--no-tags", "-q", remote, f"refs/heads/{RECEIPT_BRANCH}"],
+        tmp = f"refs/aq-receipt-tmp/{os.getpid()}-{uuid.uuid4().hex[:12]}"
+        subprocess.run(["git", "fetch", "--no-tags", "-q", remote, f"+refs/heads/{RECEIPT_BRANCH}:{tmp}"],
                        capture_output=True, text=True, check=True, timeout=180)
-        tip = _git("rev-parse", "FETCH_HEAD")
+        try:
+            tip = _git("rev-parse", "--verify", f"{tmp}^{{commit}}")  # private ref: immune to concurrent FETCH_HEAD rewrites
+        finally:
+            subprocess.run(["git", "update-ref", "-d", tmp], capture_output=True, text=True, timeout=60)
         try:
             mode = _git("ls-tree", tip, "--", path).split()[0]
         except IndexError:
             return None, None
         if mode != "100644":
             return None, f"{path} on {RECEIPT_BRANCH} must be a regular file (mode {mode})"
+        rpath = f"{REVOCATION_DIR}/pr{pr_number}-{rhead[:12]}.json"
+        if _git("ls-tree", tip, "--", rpath).strip():
+            try:
+                reason = str(json.loads(_git("show", f"{tip}:{rpath}")).get("reason", ""))[:200]
+            except (ValueError, subprocess.SubprocessError):
+                reason = "unreadable revocation record"
+            return None, f"receipt for PR {pr_number} head {rhead[:12]} was REVOKED: {reason}"
         data = json.loads(_git("show", f"{tip}:{path}"))
         if not isinstance(data, dict):
             return None, f"{path} on {RECEIPT_BRANCH} is not a JSON object"
