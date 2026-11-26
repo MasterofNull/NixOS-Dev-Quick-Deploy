@@ -36,8 +36,7 @@ def main() -> int:
         )
         mod = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(mod)
-        decision, reason = mod.evaluate(command)
-        token = mod.first_token(command)
+        decision, reason, token = mod.evaluate_detail(command)
     except Exception as exc:  # fail open
         _log("allow", f"error:{type(exc).__name__}", "")
         return 0
