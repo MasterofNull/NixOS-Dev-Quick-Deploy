@@ -232,6 +232,7 @@ nix/hosts/*/.sops.yaml
 # Agent delegation task output logs and local registry are runtime state.
 .agents/delegation/outputs/
 .agents/delegation/fanout/
+.agents/delegation/ledger/
 # CS-1: per-dispatch worktrees are retained locally for recovery alongside
 # private branches and output patches. Cleanup needs separate authorization.
 .agents/delegation/worktrees/
