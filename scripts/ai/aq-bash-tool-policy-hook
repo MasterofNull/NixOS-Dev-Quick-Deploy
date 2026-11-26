@@ -1,0 +1,51 @@
+#!/usr/bin/env python3
+"""PreToolUse hook (Bash): enforce the agent tool contract via lib/bash_tool_policy.
+
+Fails open on any internal error. Telemetry never contains the command text.
+"""
+import importlib.util
+import json
+import os
+import sys
+import time
+
+_HERE = os.path.dirname(os.path.realpath(__file__))
+
+
+def _log(decision: str, rule: str, token: str) -> None:
+    try:
+        root = os.environ.get("CLAUDE_PROJECT_DIR") or os.getcwd()
+        path = os.environ.get("AQ_BASH_POLICY_LOG") or os.path.join(
+            root, ".agents", "telemetry", "bash-tool-policy.jsonl"
+        )
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "a", encoding="utf-8") as fh:
+            fh.write(json.dumps({"ts": time.time(), "decision": decision, "rule": rule, "token": token}) + "\n")
+    except Exception:
+        pass
+
+
+def main() -> int:
+    try:
+        payload = json.load(sys.stdin)
+        command = str((payload.get("tool_input") or {}).get("command") or "")
+        spec = importlib.util.spec_from_file_location(
+            "bash_tool_policy", os.path.join(_HERE, "lib", "bash_tool_policy.py")
+        )
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        decision, reason = mod.evaluate(command)
+        token = mod.first_token(command)
+    except Exception as exc:  # fail open
+        _log("allow", f"error:{type(exc).__name__}", "")
+        return 0
+    rule = reason if decision == "allow" else f"bare-{token}"
+    _log(decision, rule, token)
+    if decision == "deny":
+        print(reason, file=sys.stderr)
+        return 2
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
