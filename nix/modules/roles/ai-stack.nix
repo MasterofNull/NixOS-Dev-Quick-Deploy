@@ -1902,8 +1902,6 @@ in {
       environment.systemPackages = [
         aiHarnessCliWrappers
         (pkgs.callPackage ../../pkgs/agentic-tools.nix {})
-        # Phase 164 Stage B: RTK shell output compression for run_command tool
-        (pkgs.callPackage ../../pkgs/rtk.nix {})
         # Rust owned-path scope gate used by tier0.d/check-owned-scope.sh
         (pkgs.callPackage ../../pkgs/harness-contracts.nix {})
         # Phase 164 Stage D: lean-ctx MCP server (62 tools, 10 read modes)

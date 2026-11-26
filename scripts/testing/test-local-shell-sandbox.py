@@ -4,7 +4,9 @@
 from __future__ import annotations
 
 import asyncio
+import importlib
 import os
+import shlex
 from unittest.mock import patch
 import sys
 from pathlib import Path
@@ -162,6 +164,33 @@ def test_declarative_tool_paths() -> None:
     print("PASS: declarative tool paths preserve isolation and reject invalid repository roots")
 
 
+async def test_run_command_never_invokes_rtk() -> None:
+    import stat
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as d:
+        marker = Path(d) / "rtk-called"
+        fake = Path(d) / "rtk"
+        fake.write_text(f"#!/bin/sh\ntouch {shlex.quote(str(marker))}\n")
+        fake.chmod(fake.stat().st_mode | stat.S_IXUSR)
+        env = {"PATH": d + os.pathsep + os.environ.get("PATH", ""), "RTK_BIN": str(fake), "SWB_RTK_ENABLED": "1"}
+        sandbox = shell_tools.NsjailSandbox()
+        sandbox.available = False
+        sandbox.required = False
+        try:
+            with patch.dict(os.environ, env):
+                importlib.reload(shell_tools)
+                shell_tools._nsjail = sandbox
+                result = await shell_tools.run_command_handler("echo rtk-retired")
+        finally:
+            importlib.reload(shell_tools)
+        assert result.get("success") is True, result
+        assert "rtk-retired" in result.get("stdout", ""), result
+        assert "compressed" not in result, result
+        assert not marker.exists(), "run_command invoked rtk"
+    print("PASS: run_command never invokes rtk even when it is on PATH")
+
+
 async def main_async() -> int:
     test_declarative_tool_paths()
     await test_injection_and_sandbox_failure()
@@ -169,6 +198,7 @@ async def main_async() -> int:
     await test_genuine_envelope_tail_is_stripped()
     await test_parser_boundary_preserves_legitimate_newline_brace_content()
     await test_real_injection_still_rejected()
+    await test_run_command_never_invokes_rtk()
     return 0
 
 
