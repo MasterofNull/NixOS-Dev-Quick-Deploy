@@ -183,20 +183,45 @@ def _ts(v):
         return None
 
 
-def substantive(text: str) -> bool:
-    """Deterministic content floor: a findings section, a no-findings statement that names reviewed
-    paths, or enough review prose. Headers/metadata lines do not count toward the length."""
-    if re.search(r"^#{1,4}[ \t]*(findings|issues|defects)\b|^findings[ \t]*:", text, re.I | re.M):
-        return True
-    if re.search(r"\bno (blocking )?(findings|issues|defects)\b", text, re.I) and \
-            re.search(r"[\w.-]+(?:/[\w.-]+){2,}|[\w.-]+/[\w.-]+\.\w{1,6}\b", text):
-        return True
+def changed_paths_for(root, base, head) -> set[str] | None:
+    """Files the reviewed diff changes (git diff --name-only base...head); None when git cannot say."""
+    try:
+        out = subprocess.run(["git", "-C", str(root), "diff", "--name-only", "-z", f"{base}...{head}"],
+                             capture_output=True, text=True, timeout=GIT_TIMEOUT)
+    except (subprocess.SubprocessError, OSError):
+        return None
+    if out.returncode != 0:
+        return None
+    return {p for p in out.stdout.split("\0") if p}
+
+
+def _names_changed_path(body: str, changed_paths) -> bool:
+    return any(re.search(r"(?:^|(?<=[\s`(-]))" + re.escape(p) + r"(?=$|[\s`:,)]|\.(?:$|\s))", body, re.M)
+               for p in changed_paths)
+
+
+def substantive(text: str, changed_paths: set[str] | None = None) -> bool:
+    """Deterministic content floor. With changed_paths: the review must name a file the reviewed diff
+    changes plus a findings heading or no-findings statement, or carry enough prose. Without it
+    (caller cannot supply the diff): the legacy path-shape heuristic. Metadata lines never count."""
+    path_re = (r"[\w.-]+(?:/[\w.-]+){2,}|[\w.-]+/[\w.-]+\.\w{1,6}\b"
+               r"|(?<![\w./-])[\w-][\w.-]*\.(?:nix|py|md|json|jsonl|sh|bash|toml|ya?ml|js|ts|tsx|rs|lock|txt|cfg|ini|conf)\b")
     body = "\n".join(l for l in text.splitlines()
                      if not re.match(r"^(Reviewer|Timestamp|Reviewed-[\w-]+|Author-lane|Review-Disposition)[ \t]*:", l))
+    head = re.search(r"^#{1,4}[ \t]*(findings|issues|defects)\b|^findings[ \t]*:", body, re.I | re.M)
+    if changed_paths:
+        nofind = re.search(r"\bno (blocking )?(findings|issues|defects)\b", body, re.I)
+        if (head or nofind) and _names_changed_path(body, changed_paths):
+            return True
+        return len(body.strip()) >= MIN_REVIEW_BYTES
+    if head and re.search(path_re, body[head.end():]):
+        return True  # a bare heading plus a pathless approval sentence must not mint a receipt
+    if re.search(r"\bno (blocking )?(findings|issues|defects)\b", text, re.I) and re.search(path_re, text):
+        return True
     return len(body.strip()) >= MIN_REVIEW_BYTES
 
 
-def integrity_errors(entry: dict, full: Path, text: str, head: str, pr, created=None) -> list[str]:
+def integrity_errors(entry: dict, full: Path, text: str, head: str, pr, created=None, changed_paths=None) -> list[str]:
     """Checks that tie a receipt to a real, wrapper-recorded reviewer run (tamper-evident, not tamper-proof)."""
     errs = []
     if created is not None and str(created)[:10] < HASH_ENFORCED_FROM and not entry.get("output_sha256"):
@@ -218,10 +243,18 @@ def integrity_errors(entry: dict, full: Path, text: str, head: str, pr, created=
         errs.append(f"registry row head {str(entry['head'])[:12]} != receipt head {head[:12]}")
     if entry.get("pr") not in (None, "") and entry["pr"] != pr:
         errs.append(f"registry row pr {entry['pr']} != receipt pr {pr}")
-    if not substantive(text):
-        errs.append("output has no substantive review (need a Findings section, a no-findings statement naming "
-                    f"reviewed files, or {MIN_REVIEW_BYTES}+ bytes of review prose)")
+    if not substantive(text, changed_paths):
+        errs.append("output has no substantive review (need a Findings section or no-findings statement naming "
+                    f"a file the reviewed diff changes, or {MIN_REVIEW_BYTES}+ bytes of review prose)")
     return errs
+
+
+def _diff_paths(root, a):
+    try:
+        base = a.base or _git(root, "merge-base", a.head, "refs/remotes/origin/main")
+    except (subprocess.SubprocessError, OSError):
+        return None
+    return changed_paths_for(root, base, a.head)
 
 
 def cmd_mint(a) -> int:
@@ -236,7 +269,7 @@ def cmd_mint(a) -> int:
         errs.append(f"reviewer lane {entry.get('agent')!r} equals author lane")
     verdict = parse_verdict(text)
     if full is not None and full.is_file() and entry:
-        errs += integrity_errors(entry, full, text, a.head, a.pr)
+        errs += integrity_errors(entry, full, text, a.head, a.pr, changed_paths=_diff_paths(root, a))
     if full is not None and full.is_file():
         if not text.strip():
             errs.append("output is empty")
@@ -388,7 +421,9 @@ def verify_data(r, root: Path, registry: Path, revoked=None) -> list[str]:
         elif not text.strip() or (rhead not in text and rhead[:12] not in text):
             errs.append("output is empty or does not mention reviewed head")
         else:
-            errs += integrity_errors(entry, full, text, rhead, r.get("pr"), r.get("created_at"))
+            errs += integrity_errors(entry, full, text, rhead, r.get("pr"), r.get("created_at"),
+                                     changed_paths_for(root, r["base_commit"], rhead)
+                                     if re.fullmatch(r"[0-9a-f]{40}", str(r.get("base_commit", ""))) else None)
         if r.get("verdict") not in VERDICTS or r.get("verdict") != parse_verdict(text):
             errs.append("receipt verdict != last Review-Disposition in output")
     legacy = (str(r.get("created_at", ""))[:10] < HASH_ENFORCED_FROM and entry is not None and not entry.get("output_sha256"))
