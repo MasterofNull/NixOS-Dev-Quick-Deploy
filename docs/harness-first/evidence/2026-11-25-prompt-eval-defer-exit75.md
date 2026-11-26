@@ -29,7 +29,8 @@ Bounded three-file slice; Codex in quota cooldown, so routed to a Claude Sonnet 
 
 ## Validation Evidence
 
-Defer test 2/2 PASS, transport-guard 2/2 PASS, parse checks OK, tier0 72 passed / 0 failed.
+Defer test 5/5 PASS, transport-guard 2/2 PASS, parse checks OK, tier0 72 passed / 0 failed.
+Repair 3ca1623fb (codex/recovery REQUEST_CHANGES): breaker failure is preserved after successful prompts; covered by the defer test.
 
 ## Rollback Plan
 
