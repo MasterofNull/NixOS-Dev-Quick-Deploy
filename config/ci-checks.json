@@ -911,7 +911,8 @@
       ],
       "needs": [
         "python3",
-        "git"
+        "git",
+        "shellcheck"
       ],
       "ci_workflow": ".github/workflows/test.yml#syntax",
       "tests": [

@@ -98,11 +98,14 @@
     {
       "feature": "aq-greenlight isolated merged-tree gates",
       "entrypoint": "scripts/ai/aq-greenlight",
-      "live_caller": "scripts/testing/test-aq-greenlight.py",
+      "live_caller": "scripts/ai/aq-greenlight",
       "enable": null,
-      "health_signal": "scripts/testing/test-aq-greenlight.py:test_clean_merge_runs_on_incoming_main",
-      "state": "live",
-      "observed_by": "scripts/ai/aq-greenlight --show / --verify; scripts/testing/test-aq-greenlight.py"
+      "health_signal": "scripts/ai/aq-greenlight:main",
+      "deferral": {
+        "date": "2026-11-26",
+        "reason": "The G1 CLI ships first; production integration follows in the G2 pre-commit hook and G3 land-runner wiring.",
+        "tracking": ".agents/plans/greenlight-gating-20261119/DESIGN.md G1-G3; docs/harness-first/evidence/2026-11-26-g1-greenlight.md"
+      }
     }
   ]
 }

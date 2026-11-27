@@ -1,74 +1,125 @@
 # G1 greenlight gating evidence — 2026-11-26
 
-## 1. Objective
+## Objective
 
-Implement G1 of `.agents/plans/greenlight-gating-20261119/DESIGN.md`, including
-Revision 1 F1/F2/F6/F12 and Revision 2 P1/J6. The CLI validates an exact staged
-snapshot merged with a pinned base without committing on the user's branch.
+Deliver the G1 CLI for exact staged-tree validation against a pinned base, and
+resolve all seven findings from the second independent review. Evidence headings
+come from `config/harness-first-policy.json` with the eight canonical headings as
+fallback. PR body checks reuse the governance validator. Git and gate subprocesses
+scrub repository-locating environment variables.
 
-## 2. Harness-first discovery
+## Workflow/Session IDs
 
-Consulted the frozen G1 design, existing `aq-baseline` usage hook,
-`test-aq-usage-logging.py`, CI registration and activation-manifest checker.
-The AIDB error-solutions query returned no relevant greenlight precedent.
-The implementation uses Python's standard library and existing Git/gate tools.
+Plan: `.agents/plans/greenlight-gating-20261119/DESIGN.md` G1–G3.
+Reviewed subject: `feat/g1-greenlight`, commit `532c987e4`.
+Independent review: `gemini-20261126-231440-un4wx3` (`REQUEST_CHANGES`).
+Fix worktree: `codex-20261126-232357-rokblw`, dated 2026-11-26.
 
-## 3. Scope and contracts
+## Delegation Decision
 
-Owned surfaces are the greenlight library, executable CLI, executable acceptance
-suite, CI manifest, activation manifest and this evidence file. No branch hooks,
-merge enforcement, deployment or later greenlight slices are introduced.
-Unstaged tracked changes and untracked non-ignored files are refused.
+This bounded headless review-fix slice owns only the greenlight library, CLI,
+acceptance suite, activation manifest and this evidence file. Four files change;
+the CLI already delegates state handling to the library and catches ValueError.
+No further delegation, commit, tier0 run or deployment is performed here.
+The orchestrator owns independent review, integration gates and commit.
 
-## 4. Implementation
+## Commands Executed
 
-A detached throwaway commit captures the staged tree and exact parent. The pinned
-base is merged there, its tree recorded, then a soft reset stages the entire
-merged slice against that base. Default checks run tier0 pre-commit, numbered
-evidence sections and CI coverage; PR body headings are checked only when supplied.
-Explicit command overrides support isolated acceptance fixtures.
-Records are atomically replaced outside the worktree, with private directory/file
-permissions and percent-encoded branch names. Show/verify compare exact staged
-tree, parent, branch and current base, and retain failure diagnostics.
+```text
+python3 -m py_compile scripts/ai/lib/greenlight.py scripts/ai/aq-greenlight scripts/testing/test-aq-greenlight.py
+ruff check scripts/ai/lib/greenlight.py scripts/ai/aq-greenlight scripts/testing/test-aq-greenlight.py
+basedpyright scripts/ai/lib/greenlight.py scripts/ai/aq-greenlight scripts/testing/test-aq-greenlight.py
+python3 scripts/testing/test-aq-greenlight.py
+python3 scripts/testing/test-aq-usage-logging.py
+python3 scripts/governance/check-activation-manifest.py --base origin/main --repo-root .
+git diff --check
+```
 
-## 5. Validation and results
+## Validation Evidence
 
-Seven acceptance tests passed using real temporary repositories and real shellcheck:
-J1 missing sections 7/8, J2 conflicting paths, J6 committed shell error exposed to
-staged-only checking, dirty/untracked refusal, optional/ordered PR body headings,
-private exact-content records and verification, and clean incoming-main integration.
-Every invocation checks preservation of user HEAD, branch, index tree and status,
-and removal of the throwaway worktree, including failure cases.
+Round 5 review-fix verification outputs for
+`gemini-20261127-000355-cxa1vb` on `173c6e1ab` (all exit 0):
 
-`py_compile` passed for all three Python files. Ruff passed. Basedpyright reported
-zero errors and warnings. The existing usage-logging suite passed. CI test coverage
-passed (817 tests: 725 declared, 92 exempt). Activation-manifest validation passed
-with nine entries, zero failures and zero warnings; existing dated deferrals remain.
-JSON parsing of the activation manifest passed.
+```text
+$ python3 -m py_compile scripts/ai/lib/greenlight.py scripts/testing/test-aq-greenlight.py
+(no output)
+$ ruff check scripts/ai/lib/greenlight.py scripts/testing/test-aq-greenlight.py
+All checks passed!
+$ basedpyright scripts/ai/lib/greenlight.py scripts/testing/test-aq-greenlight.py
+0 errors, 0 warnings, 0 notes
+$ python3 scripts/testing/test-aq-greenlight.py
+....................
+----------------------------------------------------------------------
+Ran 20 tests in 11.009s
 
-## 6. Security and failure modes
+OK
+$ git diff --check
+(no output)
+```
 
-No credentials, service ports, network endpoints or dependencies were added.
-Git and gate arguments use subprocess argument lists. Command overrides are explicit
-operator input parsed with shlex. Merge conflicts and gate errors produce FAIL
-records; cleanup runs in finally. Evidence/body failures include missing headings.
-Temporary merge signing and hooks are disabled so unrelated hooks cannot mutate
-the merged snapshot or prevent the subsequent soft reset.
+Round 5 regressions cover three findings. A passing body-gated run stores
+`body_sha256`; verification rejects an edited body file, a different body file
+and a record without the digest. The digest covers the body text the CLI passes
+to the validator (UTF-8, after universal newline translation), so a change of
+line-ending style alone is not detected. A missing
+`check-ci-test-coverage.sh` without an override now records FAIL (exit 1) instead
+of SKIP, and verification rejects that record. Verification also rejects entries
+with status FAIL and exit code 0.
 
-## 7. Activation and observability
+Round 4 regressions reject tampered passed=true records with failed runner or
+cleanup results, boolean false exit codes, passed=false records, subset gate
+lists, and verification with a body file when the saved record lacks the PR body
+gate. A valid body-gated record verifies successfully. An executable post-checkout
+hook stays inactive during the throwaway checkout; a normal checkout then proves
+the hook fixture is active. Both --show and --verify leave a nonexistent state
+directory absent. State resolution is read-only; save alone creates and secures
+the directory.
 
-The executable is available on demand. Its live acceptance caller and named health
-signal are registered in the activation manifest; --show/--verify inspect records.
-The new suite and both implementation paths are registered in tests-aq.
-Validation used injected gate commands in disposable repositories; the full tier0
-wrapper was deliberately not run by this headless slice. This is G1 validation,
-not an attestation that later slices or mandatory merge enforcement are active.
+The existing regression raises both RuntimeError and KeyboardInterrupt in gate 2
+after gate 1 passes. Both saved records have passed=false and explicit failed
+entries for unfinished gates; --verify rejects them. Verification also rejects
+an incomplete record with passed=true. Completion checks retain failures from
+runner and cleanup results. The tests-aq CI dependency list now includes
+shellcheck for the existing real shell-check acceptance journey.
 
-## 8. Handoff and rollback
+Prior-round checks (not rerun in Round 4 or 5) also passed: CI check configuration
+JSON parsing, CI test coverage (818 tests: 726 declared, 92 exempt), aq usage
+logging, and the activation manifest check (10 entries, 0 fail, 0 warn).
 
-Leave all six files unstaged for orchestrator review, tier0 and commit. No deployment,
-commit or production branch mutation occurred. To withdraw the CLI, revert the six
-owned changes through the normal reviewed workflow; existing private records can
-be archived separately. The clean-merge test caught that Git rejects soft reset
-while a no-commit merge is pending; completing the detached merge first fixes the
-producer rather than bypassing the gate. No unresolved test failures remain.
+Acceptance tests exercise real disposable Git repositories, merge conflicts,
+merged-tree shell checks, dirty/untracked refusal, exact private records and
+verification, incoming-main integration, canonical and policy-defined evidence
+headings, and shared PR body rules (nonempty sections, duplicates, preceding
+headings and fenced headings). Caller Git locators are exported while a gate
+asserts it runs in the isolated worktree with those locators removed; caller
+HEAD, branch, staged tree, status and index bytes remain unchanged.
+Malformed JSON record shapes fail cleanly for show/verify, and an empty
+XDG_STATE_HOME falls back to the temporary HOME's `.local/state/aq/greenlight`.
+Test CLI subprocesses disable usage telemetry with AQ_USAGE_TELEMETRY=0.
+
+The first isolation-test run failed because the test's own snapshot helper runs
+write-tree and refreshes the index cache. Taking that snapshot before capturing
+the raw index baseline fixes the fixture; the byte-for-byte assertion remains.
+
+## Rollback Plan
+
+Leave the three Round 4 changed files unstaged for orchestrator review. Withdraw these
+review fixes through the normal reviewed revert workflow if necessary. No
+production services or caller branches were changed. Existing private greenlight
+records can be archived separately if the CLI is withdrawn.
+
+## Residual Risk
+
+Validation used explicit gate-command overrides in disposable repositories.
+The full tier0 wrapper and production pre-commit/land-runner integration were not
+run by this headless slice. The activation manifest explicitly defers production
+wiring, dated 2026-11-26: G1 CLI first, G2 pre-commit hook and G3 land-runner follow.
+This is G1 acceptance evidence, not a claim that mandatory merge enforcement is
+active. No secrets, service URLs, ports or dependencies were introduced.
+
+## Hint Feedback
+
+The original G1 discovery queried AIDB error-solutions without a relevant
+precedent. This review reuses the existing harness-first heading policy and shared
+PR validator to avoid divergent validation rules. The index-cache fixture finding
+and correction are recorded above within this slice's permitted documentation.
