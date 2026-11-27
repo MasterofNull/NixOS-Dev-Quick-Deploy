@@ -1,0 +1,19 @@
+VERDICT: PLAN_READY_WITH_FOLLOWUPS
+
+Round-1 closure:
+- **(a) All round-1 P0/P1 findings are closed** in revision 2:
+  - A1 provenance & containment (`DESIGN.md:37-65`): `project` no longer raises trust; internal collections are explicitly defaulted; flagged identities are diffed in `route_handler.py` across all four result lists; sibling containment runs in both `observe` and `enforce` via a deterministic bottom bucket; `response_text` is rebuilt after filtering; `enforce` default and aq-qa/dashboard coverage are explicitly deferred with date `2026-11-27` into tracker item `A4` (`DESIGN.md:223-228`, `tracker.json:62-70`).
+  - A2 task boundaries & logical requests (`DESIGN.md:93-108`, `tracker.json:44`): mutable `ContextVar` list is installed in `http_server_impl.py:_execute_query_search` before `create_task`/`wait_for`, committed once per final non-cached result (skipping cache-hit cancels and timeout re-runs), and exposed as top-level `memory_nudge`.
+  - A3 math, pruning, guards & cassettes (`DESIGN.md:149-172`): limits `1..40` and wall-time clamping are consistent (`0 < soft_at < hard_at < W`, wall is best-effort); appending the notice to a per-call copy of the last message leaves persisted `messages` and `messages[-4:]` pruning intact; no-action guard yields after `hard`; wall dimension is excluded and text is static under `AQ_LLM_CASSETTE_MODE != off`.
+- **(b) No new P0/P1 defects introduced** in revision 2.
+- **(c) A2 calibration at `0.47`:** The table (`DESIGN.md:129-135`) does **not** strongly justify shipping `memory_nudge` enabled at `0.47` (17.5% single-topic false positives, 50.0% post-pivot recall on synthetic holdout; real engineering sessions will be noisier). Because cooldown=8 / max=4 and `AI_TOPIC_DRIFT_ENABLED=0` bound blast radius, this is a non-blocking follow-up rather than a redesign blocker.
+
+FINDINGS:
+
+1. **[P2] A2 default `0.47` enabled is noisy for an unvalidated user-facing hint**
+   - Evidence: [DESIGN.md](file:///home/hyperd/Documents/NixOS-Dev-Quick-Deploy/.agents/delegation/worktrees/feat-athena-patterns-prd/.agents/plans/athena-patterns-20261127/DESIGN.md#L121-L139), [mcp-bridge-hybrid.py](file:///home/hyperd/Documents/NixOS-Dev-Quick-Deploy/.agents/delegation/worktrees/feat-athena-patterns-prd/scripts/ai/mcp-bridge-hybrid.py#L366-L383).
+   - Exact change: Either add an `observe` mode (count/log velocity without emitting `memory_nudge` until A4 live telemetry measures real-session FP), raise the default threshold to `0.49` (5.0% FP), or ship `AI_TOPIC_DRIFT_ENABLED=0` until A4 validates live distributions.
+
+2. **[P2] A3 per-call copy must copy the last message dict, not only the outer list**
+   - Evidence: [DESIGN.md](file:///home/hyperd/Documents/NixOS-Dev-Quick-Deploy/.agents/delegation/worktrees/feat-athena-patterns-prd/.agents/plans/athena-patterns-20261127/DESIGN.md#L160-L163).
+   - Exact change: During A3 implementation, clone `copy[-1] = {**copy[-1], "content": ...}` so persisted history is never mutated in place.

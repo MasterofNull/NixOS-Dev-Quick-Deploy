@@ -81,6 +81,7 @@ def load_route_handler():
             return None
 
     metrics = types.SimpleNamespace(
+        SOURCE_TRUST_RESULTS=_Metric(),
         ROUTE_DECISIONS=_Metric(),
         ROUTE_ERRORS=_Metric(),
         LLM_BACKEND_SELECTIONS=_Metric(),

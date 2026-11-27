@@ -144,6 +144,7 @@ def test_budget_check_only_flag():
 
         env = {
             OUTPUTS_DIR_ENV: str(outputs_dir),
+            "AQ_ALLOW_VOLATILE_DIR": "1",
             "DELEGATE_CODEX_DAILY_TOKEN_BUDGET": "250000",
         }
 
@@ -182,6 +183,7 @@ def test_budget_window_and_review_reserve():
         outputs_dir = Path(tmpdir) / "outputs"
         outputs_dir.mkdir()
         env = {OUTPUTS_DIR_ENV: str(outputs_dir), "DELEGATE_CODEX_DAILY_TOKEN_BUDGET": "250000",
+               "AQ_ALLOW_VOLATILE_DIR": "1",
                "DELEGATE_CODEX_REVIEW_RESERVE_PCT": "40", "DELEGATE_CODEX_BUDGET_WINDOW_HOURS": "24"}
         chk = lambda role, extra="": run_cmd(f"bash {DELEGATE_SCRIPT} --budget-check-only --role {role} {extra}", env=env)
 
