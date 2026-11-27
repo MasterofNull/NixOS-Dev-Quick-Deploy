@@ -1,0 +1,7 @@
+VERDICT: REVISE
+
+FINDINGS:
+
+1. **P1 — Existing cassette compatibility remains unresolved.** `DESIGN.md:166` excludes only wall-time signals during cassette operation; calls/context notices still change message content. `ai-stack/local-agents/llm_cassette.py:150` includes content in request identity, and `:557` raises `ReplayMiss` on strict misses. The fresh record/replay test at `DESIGN.md:179` does not cover pre-feature recordings. **Exact change:** specify backward-compatible signal selection for existing cassettes, preserve strict identity checks, and require replay of an unchanged pre-feature fixture through a signal threshold.
+
+2. **P1 — Calibration does not justify A2 enabled by default.** `DESIGN.md:121` enables the hint, but `:133` reports 17.5% single-topic nudges and only 50% post-pivot detection. `:136–139` acknowledges weak signal and no demonstrated answer improvement. These measurements support selecting 0.47 for experimentation; they do not establish benefit over disabled operation. **Exact change:** set `AI_TOPIC_DRIFT_ENABLED=0`, retaining 0.47 for opt-in evaluation, until a representative held-out comparison against disabled operation meets explicit false-positive and usefulness acceptance criteria.

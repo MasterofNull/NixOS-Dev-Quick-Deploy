@@ -36,6 +36,11 @@ ROUTE_ERRORS = Counter(
     "Hybrid coordinator route errors",
     ["route"],
 )
+SOURCE_TRUST_RESULTS = Counter(
+    "hybrid_source_trust_results_total",
+    "Source trust result annotations and scoring errors",
+    ["class", "flagged", "mode"],
+)
 DISCOVERY_DECISIONS = Counter(
     "hybrid_capability_discovery_decisions_total",
     "Hybrid capability discovery decisions",
