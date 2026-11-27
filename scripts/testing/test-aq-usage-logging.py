@@ -18,6 +18,9 @@ ROOT = Path(__file__).resolve().parents[2]
 AI = ROOT / "scripts" / "ai"
 sys.path.insert(0, str(AI / "lib"))
 SECRET = "SECRET-TOKEN-xyz123"
+# Hook entrypoints run on every tool call; usage logging there floods the
+# ledger (USAGE-LEDGER-HOOK-FLOOD), so they are deliberately not instrumented.
+USAGE_HOOK_EXEMPT = {"aq-bash-tool-policy-hook"}
 
 
 def check(cond, msg):
@@ -99,7 +102,7 @@ def main():
 
     # coverage: every executable aq-* entrypoint carries the hook
     missing = [p.name for p in sorted(AI.glob("aq-*"))
-               if p.is_file() and os.access(p, os.X_OK)
+               if p.is_file() and os.access(p, os.X_OK) and p.name not in USAGE_HOOK_EXEMPT
                and "aq-usage-hook" not in p.read_text(errors="ignore") and "aq-shim" not in p.read_text(errors="ignore")]
     check(not missing, f"aq-* entrypoints without the usage hook: {missing}")
 

@@ -25,6 +25,8 @@ Bounded implementer slice dispatched by the orchestrator to a Sonnet sub-agent (
 
 ## Validation Evidence
 
+- 2026-11-27 (r3): CI "Manifest test groups" failed because `test-aq-usage-logging.py` requires `aq-usage-hook` in every `aq-*` entrypoint. This hook runs on every Bash tool call, so per-call usage logging would reproduce USAGE-LEDGER-HOOK-FLOOD. It is now an explicit `USAGE_HOOK_EXEMPT` entry with that reason. `test-aq-usage-logging.py` PASS, `test-bash-tool-policy.py` PASS (57 cases).
+
 - Policy test: 57 command cases (incl. escaped heredoc delimiters, stdout vs stderr redirects, escaped/quoted `;` and quotes, comments with quotes, multi-line quotes, `>|`, unbalanced input allowed); telemetry rule/token is the offending segment's first word (`cd x && ls -la` logs `bare-ls`), bare-filename log path, kill switch, hook deny (exit 2, replacement named on stderr), hook allow, fail-open on invalid JSON, telemetry JSONL has no command text (`PASS`).
 - Telemetry: `.agents/telemetry/bash-tool-policy.jsonl` records ts, decision, rule, first token only.
 - Registration in `.claude/settings.json` (PreToolUse `Bash` matcher, next to aq-approval-ask-hook) was applied by the owner (2026-11-26) and is present in `.claude/settings.json` on this branch, not part of this staged delta (the agent edit had been blocked by the host policy protecting hook configuration).

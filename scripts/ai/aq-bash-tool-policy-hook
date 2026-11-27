@@ -34,6 +34,7 @@ def main() -> int:
         spec = importlib.util.spec_from_file_location(
             "bash_tool_policy", os.path.join(_HERE, "lib", "bash_tool_policy.py")
         )
+        assert spec is not None and spec.loader is not None
         mod = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(mod)
         decision, reason, token = mod.evaluate_detail(command)
