@@ -2580,12 +2580,6 @@ in {
           # bump needs ~4-6 steps, so 600s guaranteed a timeout (rehearsal 2026-09-30).
           # 2400s repair dispatch + up to 900s for the RSI convene seats that run after it.
           TimeoutSec = "3360";
-          # Debounce: rsi-incidents.json is rewritten every ~25s by health-spider re-observations
-          # (count/last_seen), so the path unit can re-trigger this unit faster than the default
-          # StartLimitBurst=5/10s and wedge itself in unit-start-limit-hit (2026-11-25). A start
-          # requested during stop-post queues until it ends, capping runs at ~1/min with no start-limit hit.
-          ExecStopPost = "${pkgs.coreutils}/bin/sleep 60";
-          TimeoutStopSec = "120";
           StandardOutput = "journal";
           StandardError = "journal";
           NoNewPrivileges = true;
@@ -2635,7 +2629,10 @@ in {
         description = "Dispatch PRSI when a new incident is recorded";
         wantedBy = ["multi-user.target"];
         pathConfig = {
-          PathChanged = "${mutableRsiDir}/rsi-incidents.json";
+          # Marker rewritten only when an incident is newly opened (rsi_lifecycle.failure). The ledger
+          # itself is rewritten every ~25s by health-spider count/last_seen bumps, which wedged this path
+          # in unit-start-limit-hit (2026-11-25). The 5-minute timer remains the lost-event backstop.
+          PathChanged = "${mutableRsiDir}/rsi-incidents.new";
           Unit = "ai-prsi-rsi-dispatch.service";
         };
       };

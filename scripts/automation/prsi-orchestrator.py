@@ -1195,6 +1195,7 @@ def cmd_rsi_dispatch(args: argparse.Namespace) -> int:
         max_attempts = max(1, min(int(args.max_attempts), _RSI_MAX_ATTEMPTS))
         with _locked():
             queue = _load_queue()
+            before = json.dumps(queue, sort_keys=True)
             resolved = _reconcile_rsi_queue(queue)
             _reconcile_stale_rsi_running(queue, timeout_seconds)
             for row in queue["actions"]:
@@ -1207,7 +1208,8 @@ def cmd_rsi_dispatch(args: argparse.Namespace) -> int:
                 if attempts >= max_attempts:
                     row["status"] = "rsi_stalled"
                     row["execution"] = {**(row.get("execution") or {}), "last_run_at": _now(), "result": "max_attempts_exhausted"}
-            _save_queue(queue)
+            if json.dumps(queue, sort_keys=True) != before:
+                _save_queue(queue)
 
         if not args.execute:
             payload = {"ok": True, "lane": lane, "executed": 0, "resolved": resolved, "dry_run": True, "rsi": _rsi_summary(queue)}

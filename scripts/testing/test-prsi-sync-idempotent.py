@@ -9,6 +9,7 @@ import os
 import tempfile
 import time
 from argparse import Namespace
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -69,13 +70,15 @@ print("PASS: a changed incident still updates its row")
 
 # Presence signal: an unchanged but still-present row keeps last_seen_at fresh (aq-prsi-review
 # staleness reads it), refreshed at most once per day so idle syncs stay byte-stable.
+stale_sentinel = (datetime.now(timezone.utc) - timedelta(days=2)).isoformat()
 data = json.loads(queue.read_text())
 for r in data["actions"]:
-    r["last_seen_at"] = "2026-01-01T00:00:00+00:00"
+    r["last_seen_at"] = stale_sentinel
 queue.write_text(json.dumps(data, indent=2, sort_keys=True) + "\n")
 assert prsi.cmd_sync(Namespace(since="1d"), incidents_only=True) == 0
 fresh = {r["id"]: r for r in json.loads(queue.read_text())["actions"]}
-assert all(r["last_seen_at"] > "2026-11" for r in fresh.values()), "stale last_seen_at not refreshed"
+assert all(r["last_seen_at"] != stale_sentinel for r in fresh.values()), "stale last_seen_at not refreshed"
+assert all(datetime.now(timezone.utc) - datetime.fromisoformat(r["last_seen_at"]) < timedelta(minutes=5) for r in fresh.values())
 settled = queue.read_bytes()
 assert prsi.cmd_sync(Namespace(since="1d"), incidents_only=True) == 0
 assert queue.read_bytes() == settled, "fresh last_seen_at must not trigger a rewrite"

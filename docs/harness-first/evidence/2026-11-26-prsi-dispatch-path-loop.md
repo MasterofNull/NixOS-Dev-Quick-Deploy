@@ -26,10 +26,10 @@ Implemented directly by the delegated slice agent (bounded, single concern). No 
 
 Changes:
 1. scripts/automation/prsi-orchestrator.py `_sync_locked`: an existing row whose meaningful fields are unchanged is skipped (no `last_seen_at`/`seen_count` bump, not counted in `updated`); `_save_queue` runs only when the serialized queue differs from what was loaded. Atomic tmp+rename in `prsi_queue.save` is untouched.
-2. nix/modules/roles/ai-stack.nix `ai-prsi-rsi-dispatch` service: `ExecStopPost = sleep 60`, `TimeoutStopSec = 120`.
+2. nix/modules/roles/ai-stack.nix: `ai-prsi-rsi-dispatch.path` now watches `${mutableRsiDir}/rsi-incidents.new` instead of the ledger. scripts/ai/lib/rsi_lifecycle.py `failure()` atomically rewrites that marker (`{"id","ts"}`, tmp+rename) only when an incident id is newly inserted or re-opened from a non-open status; count/last_seen re-observations never touch it, and `count` semantics are unchanged. The marker lives in the existing tmpfiles-declared `mutableRsiDir` that every ledger writer already has write access to (Rule 13/14). The 5-minute timer stays as the lost-event backstop. `rsi_lifecycle.failure` is the only writer that inserts new incidents (rsi_sweep goes through it).
 3. scripts/testing/test-prsi-sync-idempotent.py (new), registered in config/ci-checks.json next to test-prsi-rsi-intake.py (both lists; check-ci-test-coverage passes).
 
-Why the debounce is an ExecStopPost sleep and not TriggerLimit*/StartLimit*: the wedge comes from the path starting the service faster than the service start limit. A start requested while a oneshot is in stop-post waits for it to finish, so each run occupies the unit for at least 60 s and the rate cannot reach 5 starts in 10 s. TriggerLimit on the path would drop or fail the path when exceeded, and raising/disabling StartLimit removes protection instead of preventing the burst. One extra line, no new units. Trade-off: timer and path runs are now at least 60 s apart.
+Why not a systemd debounce: an earlier version used . Review (Gemini) showed it holds the unit in stop-post about 80% of the time (ledger rewritten every ~25 s), delays stop/shutdown up to 60 s, and PathChanged triggers do not queue during deactivation as claimed. It was removed. TriggerLimit*/StartLimit* only drop or fail the path, or remove the protection. Fixing the trigger source (marker) removes the burst itself.
 
 Not changed on purpose: `rsi_lifecycle.failure()` still bumps `count`/`last_seen` on every call. `rsi_convene.trigger_for` uses `count` for the repeat trigger and test-rsi-lifecycle asserts count == 24 for 24 calls, so a throttle there is a semantic change that needs its own decision (see Residual Risk).
 
@@ -40,6 +40,7 @@ Not changed on purpose: `rsi_lifecycle.failure()` still bumps `count`/`last_seen
 - check-cross-surface-contract.py: PASS. tier0.d/check-ci-test-coverage.sh: PASS (722 declared, 92 exempt).
 - nix-instantiate --parse: ok. ruff on the new test: clean (two pre-existing findings in prsi-orchestrator.py lines 189 and 512, untouched). basedpyright on the new test: clean.
 - Staleness misjudgment found and fixed: the first version of the sync change stopped advancing `last_seen_at` for unchanged rows, so a still-present rejected alert_human row would have looked 14 days stale to aq-prsi-review and been cleared. Fix: refresh `last_seen_at` for unchanged rows when it is at least 1 day old (no `seen_count` bump, not counted in `updated`). The test covers a January `last_seen_at` being refreshed and the next sync leaving the file unchanged. test-rsi-lifecycle.py (14 tests) also passes.
+- Marker tests: test-rsi-lifecycle.py (15 tests) asserts a re-observation leaves the marker bytes and mtime unchanged while a new or re-opened incident rewrites it. test-prsi-sync-idempotent.py now uses a relative 2-day-old sentinel instead of a hardcoded date. `cmd_rsi_dispatch`'s `_save_queue` is guarded by the same serialized-diff check as sync.
 - Not verified live: the Nix change needs a rebuild; behaviour after deploy is unobserved.
 
 ## Rollback Plan
@@ -53,8 +54,8 @@ sudo systemctl reset-failed ai-prsi-rsi-dispatch.path && sudo systemctl start ai
 ## Residual Risk
 
 - Until the Nix change is deployed and the path is reset, the path stays failed; the 5-minute timer still runs the dispatch.
-- The ledger is still rewritten every ~25 s by health-spider re-observations (`rsi_lifecycle.failure` count/last_seen churn, plus 712 KB rewrites). Debounce bounds the consequence; the producer churn remains. Recommended follow-up (owner decision, touches `count` semantics): coalesce repeat observations into at most one ledger write per N seconds per incident.
-- A 60 s minimum between dispatch runs delays event-driven intake of a brand new incident by up to a minute.
+- The ledger is still rewritten every ~25 s by health-spider re-observations (`rsi_lifecycle.failure` count/last_seen churn); it no longer triggers dispatch. Coalescing those writes would change `count` semantics and is a separate owner decision.
+- Incidents opened by a writer that bypasses `rsi_lifecycle.failure` would not touch the marker and wait for the 5-minute timer.
 - `seen_count` now counts real changes, not sync runs; it is display-only in aq-prsi-review. Its staleness check (alert_human rows, 14-day window) reads `last_seen_at`, which is now refreshed at most once per day for unchanged rows, so staleness is accurate to within a day.
 
 ## Hint Feedback
