@@ -610,6 +610,7 @@ jobs:
           ./scripts/governance/run-ci-checks.sh --all \
             --only pm-tracker-untrusted-hold \
             --only pm-tracker-activation-cap \
+            --only ai-stack-health-monitor-tests \
             --only aq-baseline-test \
             --only sweep-tracker-claims \
             --only sweep-tracker-claims-test \

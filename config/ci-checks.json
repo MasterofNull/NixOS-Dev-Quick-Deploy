@@ -107,6 +107,19 @@
       "note": "slow (90-180s): path-triggered in --changed"
     },
     {
+      "id": "ai-stack-health-monitor-tests",
+      "cmd": "scripts/testing/test-ai-stack-health-monitor.py",
+      "paths": [
+        "scripts/health/ai-stack-health-monitor.py",
+        "nix/modules/roles/ai-stack.nix",
+        "scripts/testing/test-ai-stack-health-monitor.py"
+      ],
+      "needs": [
+        "python3"
+      ],
+      "ci_workflow": ".github/workflows/test.yml#syntax"
+    },
+    {
       "id": "prsi-cycle-contract",
       "cmd": "scripts/testing/check-prsi-cycle-contract.sh",
       "paths": [],
@@ -2721,11 +2734,6 @@
       "script": "scripts/testing/test-ai-service-health-monitoring.py",
       "class": "live-service",
       "reason": "host-only: needs a live local service (switchboard/dashboard/coordinator/AIDB); last output: ✗ 11 test(s) FAILED"
-    },
-    {
-      "script": "scripts/testing/test-ai-stack-health-monitor.py",
-      "class": "known-failing",
-      "reason": "fails on main (rc=1): AssertionError: health monitor unit must set TimeoutStartSec >= 490s (harness timeout + ma, tracked in backlog"
     },
     {
       "script": "scripts/testing/test-ai-stack-health.sh",
