@@ -2002,6 +2002,68 @@
       "timeout_seconds": 30,
       "enabled": false,
       "_deferred_reason": "Repo-wide run currently FAILS pre-existing (8 dangling scripts/** refs across test.yml/harness-sdk-release.yml/validate-shell-scripts.yml, from archival commit 44d8da11 + one unexplained ref) that predate and are out of scope for this fix. Flip to enabled:true once those are cleaned up (tracked as a follow-up, not silently routed around — Rule 19)."
+    },
+    {
+      "id": "tier0d-gate-mutation",
+      "description": "Tier0 gate mutation coverage contract",
+      "trigger_paths": [
+        "scripts/governance/tier0.d/",
+        "scripts/testing/test-tier0d-gate-mutation.py"
+      ],
+      "command": [
+        "python3",
+        "scripts/testing/test-tier0d-gate-mutation.py"
+      ],
+      "tier": "behavioral",
+      "timeout_seconds": 90,
+      "enabled": true
+    },
+    {
+      "id": "aq-usage-logging",
+      "description": "Executable aq entrypoints retain usage logging",
+      "trigger_paths": [
+        "scripts/ai/",
+        "scripts/testing/test-aq-usage-logging.py"
+      ],
+      "command": [
+        "python3",
+        "scripts/testing/test-aq-usage-logging.py"
+      ],
+      "tier": "behavioral",
+      "timeout_seconds": 60,
+      "enabled": true
+    },
+    {
+      "id": "plans-index",
+      "description": "Plan index classification contract",
+      "trigger_paths": [
+        ".agents/plans/",
+        "scripts/ai/aq-plans-index",
+        "scripts/testing/test-plans-index.py"
+      ],
+      "command": [
+        "python3",
+        "scripts/testing/test-plans-index.py"
+      ],
+      "tier": "behavioral",
+      "timeout_seconds": 60,
+      "enabled": true
+    },
+    {
+      "id": "local-ci-contract-preflight",
+      "description": "Focused-runner selection and hosted CI contract regression",
+      "trigger_paths": [
+        "config/validation-check-registry.json",
+        "scripts/governance/run-focused-ci-checks.sh",
+        "scripts/testing/test-local-ci-contract-preflight.py"
+      ],
+      "command": [
+        "python3",
+        "scripts/testing/test-local-ci-contract-preflight.py"
+      ],
+      "tier": "behavioral",
+      "timeout_seconds": 60,
+      "enabled": true
     }
   ]
 }
