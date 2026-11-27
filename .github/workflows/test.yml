@@ -585,6 +585,7 @@ jobs:
             --only sweep-tracker-claims \
             --only sweep-tracker-claims-test \
             --only pm-tracker-owner-acceptance \
+            --only health-monitor-stale-checkout \
             --only check-workflow-masks-test \
             --only tier0-gate-placement-tests \
             --only gate-lane-findings-tests \
