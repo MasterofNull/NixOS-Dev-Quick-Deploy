@@ -44,6 +44,7 @@ COVERED_ELSEWHERE = {
     "check-payload-audit.sh": "scripts/testing/test-payload-audit-routine.py",
     "check-plan-paths.py": "scripts/testing/test-check-plan-paths.py",
     "check-review-receipt-integrity.sh": "scripts/testing/test-aq-review-receipt.py",
+    "check-stale-known-failing.py": "scripts/testing/test-tier0-stale-known-failing.py",
 }
 
 

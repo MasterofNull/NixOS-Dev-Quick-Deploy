@@ -610,6 +610,10 @@ jobs:
             --only mobility-sleep-resilience \
             --only ci-test-coverage-gate \
             --only tier0-host-only-tests-gate \
+            --only tier0-stale-known-failing-gate \
+            --only claude-dispatch-payload-safety-test \
+            --only delegate-to-claude-lifecycle-test \
+            --only qa-provider-probe-lifecycle-test \
             --only service-manager-sudo-commands-test \
             --only tier0-qa-admission-test \
             --only tier0-focused-ci-output-test \
