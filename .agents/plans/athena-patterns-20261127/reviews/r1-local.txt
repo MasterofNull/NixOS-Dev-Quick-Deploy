@@ -1,0 +1,16 @@
+VERDICT: REVISE
+
+1. **A3-DUAL-BUDGET Phase Logic Contradiction**: The contract states the overall phase is "the worst" (e.g., if calls are `ok` but tokens are `hard`, phase is `hard`). However, it also requires injecting a "soft" message on first reaching soft and a "finalize" message on first reaching hard. If the phase jumps from `ok` to `hard` (skipping `soft`), the loop misses the soft injection. The logic must either define a cumulative state machine or allow the "worst" phase to trigger all lower-level injections that haven't occurred yet.
+   *Change*: Update A3 contract to specify that reaching a phase level triggers all pending lower-level injections (e.g., reaching `hard` triggers both soft and finalize messages if not already sent).
+
+2. **A1-Source-Trust Session State Scope**: The contract states "State is in memory... keyed by session, never written to Qdrant... No session id: state lives for the request only". This is contradictory. If it's keyed by session but lives for the request only, it cannot persist across requests for the same session (which is required for the `n` count in the trust formula).
+   *Change*: Clarify that session state persists for `_SESSION_TTL_S` and is keyed by `retrieval_session_id`. Remove "No session id: state lives for the request only" or rephrase to "State is scoped to the session, not global."
+
+3. **A2-Topic-Drift Nudge Vector Source**: The contract says "the tracker only receives the vector hybrid_search already computed". However, `hybrid_search` in `search_router.py` may return multiple vectors (e.g., from different sub-searches) or no vector if fallbacks are used. It is unclear which vector is used for the centroid update.
+   *Change*: Specify that the tracker uses the primary semantic vector returned by the final hybrid search result, or explicitly define how to handle cases where `hybrid_search` returns multiple vectors (e.g., use the first non-zero vector).
+
+4. **A1-Source-Trust External Trust Formula Division**: The formula `prior + (max - prior) * min(n, ramp) / ramp` involves division by `ramp`. If `_RAMP_INTERACTIONS` is 0 or negative (invalid input), this crashes. The contract requires `ramp >= 1`, but validation must be explicit in the code to prevent runtime errors if env vars are misconfigured.
+   *Change*: Add explicit validation for `_RAMP_INTERACTIONS >= 1` with a fallback to default and log, ensuring division safety.
+
+5. **A3-Dual-Budget Token Estimation**: The contract mentions `estimated prompt tokens (_estimate_prompt_tokens)`. This function is not defined in the provided context or owned paths. If it relies on external state or is missing, the phase calculation will fail.
+   *Change*: Define `_estimate_prompt_tokens` in `context_boundary.py` or specify its source (e.g., existing utility). Ensure it handles cases where token count is unknown by defaulting to a safe conservative estimate or skipping that dimension.

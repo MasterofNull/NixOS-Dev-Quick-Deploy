@@ -613,6 +613,7 @@ jobs:
             --only aq-baseline-test \
             --only sweep-tracker-claims \
             --only sweep-tracker-claims-test \
+            --only source-trust-tests \
             --only pm-tracker-owner-acceptance \
             --only check-workflow-masks-test \
             --only tier0-gate-placement-tests \

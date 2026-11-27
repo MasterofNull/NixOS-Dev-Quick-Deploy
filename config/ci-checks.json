@@ -2313,6 +2313,20 @@
       ]
     },
     {
+      "id": "source-trust-tests",
+      "cmd": "scripts/testing/run-test-group.py source-trust-tests",
+      "paths": [
+        "ai-stack/mcp-servers/hybrid-coordinator/knowledge/source_trust.py",
+        "ai-stack/mcp-servers/hybrid-coordinator/core/route_handler.py",
+        "ai-stack/mcp-servers/hybrid-coordinator/core/metrics.py",
+        "scripts/testing/test-source-trust.py",
+        "config/ci-checks.json"
+      ],
+      "needs": ["python3"],
+      "ci_workflow": ".github/workflows/test.yml#manifest-tests",
+      "tests": ["scripts/testing/test-source-trust.py"]
+    },
+    {
       "id": "sweep-tracker-claims",
       "cmd": "scripts/governance/sweep-tracker-claims.py",
       "paths": [
