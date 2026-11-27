@@ -1,0 +1,20 @@
+{
+  "schema": 2,
+  "pr": 891,
+  "reviewed_head_sha": "ac1214eb049c096c1c6caf979912f73e8811a708",
+  "run_id": "gemini-20261127-151152-9cgp09",
+  "reviewer_lane": "gemini",
+  "author_lane": "sonnet",
+  "verdict": "PASS_WITH_FOLLOWUPS",
+  "reviewer_instance": "Simurg@gemini/unknown#gemini-2",
+  "author_instance": "Simurg@sonnet/unknown",
+  "output_file": ".agents/delegation/outputs/gemini-20261127-151152-9cgp09.log",
+  "output_sha256": "afd95170d09a7c461fc0bf42ff8f74dfcae76e92650bb2b433383cc6fc0b47d8",
+  "output_bytes": 1877,
+  "registry_output_sha256": "afd95170d09a7c461fc0bf42ff8f74dfcae76e92650bb2b433383cc6fc0b47d8",
+  "created_at": "2026-11-27T23:16:08Z",
+  "repo": "MasterofNull/NixOS-Dev-Quick-Deploy",
+  "policy_version": "review-receipts/1",
+  "tree": "e0dd2710025f8e573071e21d70ba5cbeb6e0da8a",
+  "base_commit": "ed2406fa64aef4aed0752d5e7460beea2429c31b"
+}
