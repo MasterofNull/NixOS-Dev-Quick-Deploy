@@ -75,6 +75,37 @@
         "reason": "Code default is off (RSI_CONVENE unset). The ai-prsi-rsi-dispatch unit sets RSI_CONVENE=1, the ~/.gemini write path, pkgs.nodejs on PATH and a 2G memory cap in nix/modules/roles/ai-stack.nix, so rounds run only after the next rebuild (nixos-rebuild switch). Until then no seat runs.",
         "tracking": ".agents/plans/delivery-loop-simplification/DESIGN.md S5; docs/harness-first/evidence/2026-11-06-rsi-convene-rounds.md"
       }
+    },
+    {
+      "feature": "aq-baseline measurement snapshots (experience-capture S-M1)",
+      "entrypoint": "scripts/ai/aq-baseline",
+      "live_caller": "scripts/testing/harness_qa/phases/phase0.py",
+      "enable": null,
+      "health_signal": "scripts/testing/harness_qa/phases/phase0.py:_check_baseline_snapshot"
+    },
+    {
+      "feature": "durable work ledger CLI (aq-ledger, S1 core)",
+      "entrypoint": "scripts/ai/aq-ledger",
+      "live_caller": "scripts/ai/aq-ledger",
+      "enable": null,
+      "health_signal": "scripts/ai/aq-ledger:_run",
+      "deferral": {
+        "date": "2026-11-26",
+        "reason": "The S1 core library and CLI land first; nothing in a production path calls them yet. Delegation wrapper writes and the tier0 ledger check land in S1b immediately after S5 merges.",
+        "tracking": ".agents/plans/agent-work-durability-20261119/DESIGN.md S1; docs/harness-first/evidence/2026-11-26-s1-work-ledger.md"
+      }
+    },
+    {
+      "feature": "aq-greenlight isolated merged-tree gates",
+      "entrypoint": "scripts/ai/aq-greenlight",
+      "live_caller": "scripts/ai/aq-greenlight",
+      "enable": null,
+      "health_signal": "scripts/ai/aq-greenlight:main",
+      "deferral": {
+        "date": "2026-11-26",
+        "reason": "The G1 CLI ships first; production integration follows in the G2 pre-commit hook and G3 land-runner wiring.",
+        "tracking": ".agents/plans/greenlight-gating-20261119/DESIGN.md G1-G3; docs/harness-first/evidence/2026-11-26-g1-greenlight.md"
+      }
     }
   ]
 }
