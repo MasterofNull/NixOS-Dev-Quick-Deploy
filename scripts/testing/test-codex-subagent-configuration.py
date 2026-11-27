@@ -3,6 +3,7 @@
 
 import copy
 from pathlib import Path
+import sys
 import tomllib
 
 
@@ -100,6 +101,10 @@ def assert_rejected(mutator, project: dict, agents: dict[str, dict], label: str)
 
 
 def main() -> int:
+    if not PROJECT_CONFIG.is_file() or not AGENT_DIR.is_dir():
+        # .codex/ is gitignored local operator config; exit 77 = host prerequisite absent.
+        print(f"SKIP: host prerequisite absent: {PROJECT_CONFIG.relative_to(ROOT)} or .codex/agents/", file=sys.stderr)
+        return 77
     project = load_toml(PROJECT_CONFIG)
     validate_project(project)
     actual_files = {path.name for path in AGENT_DIR.glob("*.toml")}

@@ -1,0 +1,5 @@
+{
+  "classification": "durable_plan",
+  "tracking_route": "tracker.json",
+  "evidence": "tracker.json declares plan.id=experience-capture-20261119, an owner, a goal, prd_ref=.agents/plans/experience-capture-20261119/DESIGN.md (exists, frozen rev5 PLAN_READY_WITH_FOLLOWUPS, sha 1869c40c3) and 12 items; the MVP is slice S-M1 (aq-baseline), Phase 2 is gated by entry criteria."
+}

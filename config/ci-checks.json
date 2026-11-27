@@ -172,6 +172,27 @@
       "ci_workflow": ".github/workflows/test.yml#syntax"
     },
     {
+      "id": "aq-baseline-test",
+      "cmd": "scripts/testing/test-aq-baseline.py",
+      "paths": [
+        "scripts/ai/aq-baseline",
+        "scripts/ai/lib/aq_baseline.py",
+        "scripts/ai/aq-pm-tracker",
+        "scripts/ai/aq-report",
+        "scripts/testing/test-aq-baseline.py",
+        "scripts/testing/harness_qa/phases/phase0.py",
+        "scripts/governance/tier0.d/check-pm-tracker.sh",
+        "dashboard/backend/api/routes/aistack.py",
+        ".agents/plans/experience-capture-20261119/**",
+        "config/ci-checks.json"
+      ],
+      "needs": [
+        "python3",
+        "git"
+      ],
+      "ci_workflow": ".github/workflows/test.yml#syntax"
+    },
+    {
       "id": "pm-tracker-owner-acceptance",
       "cmd": "scripts/testing/test-pm-tracker-owner-acceptance.py",
       "paths": [
@@ -522,6 +543,20 @@
       "ci_workflow": ".github/workflows/test.yml#syntax"
     },
     {
+      "id": "tier0-host-only-tests-gate",
+      "cmd": "scripts/testing/test-tier0-host-only-tests.py",
+      "paths": [
+        "scripts/governance/tier0.d/check-host-only-tests.py",
+        "scripts/testing/test-tier0-host-only-tests.py",
+        "scripts/governance/lib/clean_git_env.py",
+        "config/ci-checks.json"
+      ],
+      "needs": [
+        "python3"
+      ],
+      "ci_workflow": ".github/workflows/test.yml#manifest-tests"
+    },
+    {
       "id": "service-manager-sudo-commands-test",
       "cmd": "scripts/testing/test-service-manager-sudo-commands.py",
       "paths": [
@@ -766,7 +801,15 @@
       "id": "tests-aq",
       "cmd": "scripts/testing/run-test-group.py tests-aq",
       "paths": [
+        "scripts/testing/test-no-tmpfs-guard.py",
         "scripts/testing/run-test-group.py",
+        "scripts/ai/lib/delegation-dir.sh",
+        "scripts/ai/lib/delegation_dir.py",
+        "scripts/ai/delegate-to-codex",
+        "scripts/ai/delegate-to-gemini",
+        "scripts/ai/delegate-to-local",
+        "scripts/ai/delegate-to-claude",
+        "scripts/ai/aq-local-review",
         "scripts/ai/aq-land",
         "scripts/ai/lib/merge_manifests.py",
         "scripts/ai/aq-context-packet",
@@ -869,6 +912,7 @@
       ],
       "ci_workflow": ".github/workflows/test.yml#syntax",
       "tests": [
+        "scripts/testing/test-no-tmpfs-guard.py",
         "scripts/testing/test-approval-recovery.py",
         "scripts/testing/test-approval-runbook-engine.py",
         "scripts/testing/test-approval-signer.py",

@@ -77,6 +77,13 @@
       }
     },
     {
+      "feature": "aq-baseline measurement snapshots (experience-capture S-M1)",
+      "entrypoint": "scripts/ai/aq-baseline",
+      "live_caller": "scripts/testing/harness_qa/phases/phase0.py",
+      "enable": null,
+      "health_signal": "scripts/testing/harness_qa/phases/phase0.py:_check_baseline_snapshot"
+    },
+    {
       "feature": "durable work ledger CLI (aq-ledger, S1 core)",
       "entrypoint": "scripts/ai/aq-ledger",
       "live_caller": "scripts/ai/aq-ledger",

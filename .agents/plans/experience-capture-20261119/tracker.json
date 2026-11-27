@@ -1,0 +1,282 @@
+{
+  "plan": {
+    "id": "experience-capture-20261119",
+    "title": "Experience capture: per model/agent/role/version tracking with recency+version weighting",
+    "prd_ref": ".agents/plans/experience-capture-20261119/DESIGN.md",
+    "owner": "hyperd",
+    "goal": "MVP: baseline snapshot (aq-baseline) with before/after comparison and metric-trust rules over existing producers for learning loops, feature activations and improvement cycles. Phase 2 (capture, join, adjudication, cards) is gated by entry criteria in DESIGN.md.",
+    "success_criteria": [
+      "Each snapshot reproducible from retained digest-addressed input copies (J0)",
+      "Compare bound to a feature or cycle effective start, with rejection cases (J0b, J0c)",
+      "Independent units (PR) with n>=20 floor; unknowns and in-flight shown"
+    ],
+    "decisions": [
+      {
+        "id": 1,
+        "decided": "2026-11-25",
+        "owner": "hyperd",
+        "decision": "S-M1 allowed during feature freeze"
+      },
+      {
+        "id": 2,
+        "decided": "2026-11-25",
+        "owner": "hyperd",
+        "decision": "no_baseline = WARN on every commit, HARD only in scheduled maintenance"
+      },
+      {
+        "id": 3,
+        "decided": "2026-11-25",
+        "owner": "hyperd",
+        "decision": "Drop rework/cycle-time/useful_ratio on 2027-02-25 if below minimum sample or without denominator"
+      },
+      {
+        "id": 4,
+        "decided": "2026-11-25",
+        "owner": "hyperd",
+        "decision": "No Phase 2 until S-M1 has run 30 days and entry criteria are met"
+      }
+    ],
+    "freeze": {
+      "state": "FROZEN",
+      "date": "2026-11-26",
+      "owner": "hyperd",
+      "disposition": "PLAN_READY_WITH_FOLLOWUPS (owner override after 5 Codex rounds)",
+      "reviewed_sha": "1869c40c3",
+      "revision": "rev5",
+      "followups": "AT-1..AT-5 in DESIGN.md"
+    }
+  },
+  "phases": [
+    {
+      "id": "P0",
+      "name": "Freeze",
+      "goal": "Frozen rev5 PRD (PLAN_READY_WITH_FOLLOWUPS) and owner decisions 1-4",
+      "order": 0
+    },
+    {
+      "id": "P1",
+      "name": "Baseline (MVP)",
+      "goal": "aq-baseline snapshot/verify/compare plus aq-qa and pm-tracker checks",
+      "order": 1
+    },
+    {
+      "id": "P2",
+      "name": "Phase 2 (gated)",
+      "goal": "Capture, join, adjudication, cards; starts only after entry criteria",
+      "order": 2
+    },
+    {
+      "id": "P3",
+      "name": "Post-Phase-2",
+      "goal": "Wrappers, priors, rollup, alerts, exploration, ranking, routing",
+      "order": 3
+    }
+  ],
+  "items": [
+    {
+      "id": "EC-0",
+      "name": "Freeze rev5 PRD and owner decisions",
+      "phase": "P0",
+      "kind": "milestone",
+      "goal": "Rev5 frozen 2026-11-26 by owner hyperd as PLAN_READY_WITH_FOLLOWUPS (override after 5 Codex rounds, reviewed sha 1869c40c3); owner decisions 1-4 decided 2026-11-25.",
+      "validation_goal": "Freeze record in DESIGN.md header with reviewed sha 1869c40c3.",
+      "deps": [],
+      "detection": {
+        "freeze_record": ".agents/plans/experience-capture-20261119/DESIGN.md",
+        "reviewed_sha": "1869c40c3"
+      }
+    },
+    {
+      "id": "EC-M1",
+      "name": "Baseline snapshot and metric-trust checks",
+      "phase": "P1",
+      "kind": "slice",
+      "goal": "aq-baseline snapshot/verify/compare with snapshot_id, captured_at, pinned input window and source rev; aq-qa CheckResult; aq-pm-tracker no_baseline WARN; trust rules (full population primary, concentration as sensitivity); digest-addressed input copies; live age/verify indicator; rollback stops the schedule first..",
+      "validation_goal": "J0 live capture and verify from retained inputs; J0b feature and J0c cycle bound compare with rejection cases; live indicator in aq-qa/aq-report.",
+      "deps": [
+        "EC-0"
+      ],
+      "detection": {
+        "commit_match": [
+          "aq-baseline"
+        ]
+      },
+      "acceptance_criteria": [
+        "AT-1 compare binding incl. capture-time (pre.captured_at < effective_start), subject match; rejection of retrospective capture, different subject, changed min_effect",
+        "AT-2 unit and time coverage per metric; current-only aggregates descriptive; independent-unit resampling (duplicate events on one PR leave interval unchanged)",
+        "AT-3 retained timestamped mint-failure source with one recovered failure, else no_data / gap no_producer",
+        "AT-4 existing dashboard path (aistack.py aq-report artifact + /aq-qa/run) shows snapshot age and verify status; same missing-baseline case gives commit WARN and maintenance failure",
+        "AT-5 naming and freeze record aligned to rev5"
+      ]
+    },
+    {
+      "id": "EC-C1",
+      "name": "Capture lib, sanitizer, codex+gemini wrappers",
+      "phase": "P2",
+      "kind": "slice",
+      "goal": "[Phase 2/3, entry criteria in DESIGN.md] experience_emit over make_event; spool/flock/0600/token-redaction fixes; prompt-safe sanitizer and gitignore; model/quota fields (quota emission conditional on a real fallback); codex and gemini foreground+background wrappers and quota fallback emit. Depends on a dated baseline snapshot existing before merge.",
+      "validation_goal": "Real dispatches on two lanes give complete prompt_load+model_call; secret quarantined hash-only (J1, J7).",
+      "deps": [
+        "EC-M1"
+      ],
+      "detection": {
+        "wired_caller": {
+          "file": "scripts/ai/delegate-to-codex",
+          "pattern": "experience_emit"
+        }
+      }
+    },
+    {
+      "id": "EC-C2",
+      "name": "Join review receipt, author and reviewer outcomes",
+      "phase": "P2",
+      "kind": "slice",
+      "goal": "[Phase 2/3, entry criteria in DESIGN.md] review event; D5/D5b outcomes; author_run_ids[]/reviewed_run_ids[]; redo/revert links; idempotent event_id and supersession; aq-land plumbing.",
+      "validation_goal": "Real landing yields full chain; repeated same-head review collapses to one outcome plus waste (J2, J4).",
+      "deps": [
+        "EC-C1"
+      ],
+      "detection": {
+        "wired_caller": {
+          "file": "scripts/ai/lib/outcome_receipt.py",
+          "pattern": "author_run_ids"
+        }
+      }
+    },
+    {
+      "id": "EC-M3",
+      "name": "Cards, efficiency metric, report/dashboard/QA/hints",
+      "phase": "P2",
+      "kind": "slice",
+      "goal": "[Phase 2/3, entry criteria in DESIGN.md] experience_cards.py, experience-weighting.json, one is_learning_eligible, aq-report section, dashboard route+card, aq-qa CheckResult, advisory hint, trustworthy efficiency metric. Ranking deferred (EC-P8).",
+      "validation_goal": "Hand recomputation to 3 decimals; unknown outcome leaves S unchanged; live report (J3, J5, J6).",
+      "deps": [
+        "EC-C2",
+        "EC-M1"
+      ],
+      "detection": {
+        "wired_caller": {
+          "file": "scripts/ai/aq-report",
+          "pattern": "experience_cards"
+        }
+      }
+    },
+    {
+      "id": "EC-P1",
+      "name": "Wire claude, local and fanout wrappers",
+      "phase": "P3",
+      "kind": "slice",
+      "goal": "[Phase 2/3, entry criteria in DESIGN.md] Remaining delegate wrappers emit with dispatch_id==run_id.",
+      "validation_goal": "Real dispatches on each lane give J1 chain.",
+      "deps": [
+        "EC-C2"
+      ],
+      "detection": {
+        "commit_match": [
+          "experience_emit claude",
+          "experience_emit local"
+        ]
+      }
+    },
+    {
+      "id": "EC-P2",
+      "name": "Version priors and release-note intake",
+      "phase": "P3",
+      "kind": "slice",
+      "goal": "[Phase 2/3, entry criteria in DESIGN.md] Version-change detector, sourced version_priors, carry-over prior, stale-assumption flag.",
+      "validation_goal": "Real or replayed version change yields a sourced prior-driven cell (J8).",
+      "deps": [
+        "EC-M3"
+      ],
+      "detection": {
+        "commit_match": [
+          "version_priors"
+        ]
+      }
+    },
+    {
+      "id": "EC-P5",
+      "name": "Rollup and retention",
+      "phase": "P3",
+      "kind": "slice",
+      "goal": "[Phase 2/3, entry criteria in DESIGN.md] Daily rollup with sufficient statistics and quantile buckets, immutable cutover, verified compression of raw events over 90 days.",
+      "validation_goal": "Rollup totals equal raw totals for a real month; size drop measured; restore test.",
+      "deps": [
+        "EC-M3"
+      ],
+      "detection": {
+        "commit_match": [
+          "experience-rollup"
+        ]
+      }
+    },
+    {
+      "id": "EC-P6",
+      "name": "Divergence alerts, replay, per-instance cards",
+      "phase": "P3",
+      "kind": "slice",
+      "goal": "[Phase 2/3, entry criteria in DESIGN.md] Divergence alert job, aq-prompt-eval --replay, instance cards at n>=10.",
+      "validation_goal": "Replay on two lanes writes comparable rows; alert or honest none.",
+      "deps": [
+        "EC-M3"
+      ],
+      "detection": {
+        "commit_match": [
+          "prompt-eval replay"
+        ]
+      }
+    },
+    {
+      "id": "EC-P3",
+      "name": "Experiment engine with bounded exploration",
+      "phase": "P3",
+      "kind": "slice",
+      "goal": "[Phase 2/3, entry criteria in DESIGN.md] experiments.jsonl, atomic slot reservation, epsilon-greedy selector, promotion, setting_change with revert. Not started until owner decision on a non-empty eligible list (Rule 23).",
+      "validation_goal": "Bounded experiment, gate task refused, revert verified (J9, J10).",
+      "deps": [
+        "EC-M3",
+        "EC-P2"
+      ],
+      "detection": {
+        "commit_match": [
+          "experiment engine",
+          "setting_change"
+        ]
+      }
+    },
+    {
+      "id": "EC-P8",
+      "name": "Calibrated ranking",
+      "phase": "P3",
+      "kind": "slice",
+      "goal": "[Phase 2/3, entry criteria in DESIGN.md] Introduce a rank value only after an interval is calibrated for the scoring unit (distinct reviewed work item) on real data; then the advisory ranked hint.",
+      "validation_goal": "Coverage check on real or replayed data shows nominal coverage; ranking used only if it passes.",
+      "deps": [
+        "EC-M3"
+      ],
+      "detection": {
+        "commit_match": [
+          "calibrated ranking"
+        ]
+      }
+    },
+    {
+      "id": "EC-P7",
+      "name": "Routing weights and automatic promotion",
+      "phase": "P3",
+      "kind": "slice",
+      "goal": "[Phase 2/3, entry criteria in DESIGN.md] Optional enforcement after 30 days of data and independent review.",
+      "validation_goal": "Owner decision recorded.",
+      "deps": [
+        "EC-P3",
+        "EC-P8"
+      ],
+      "detection": {
+        "commit_match": [
+          "routing weights"
+        ]
+      }
+    }
+  ],
+  "issues": []
+}
