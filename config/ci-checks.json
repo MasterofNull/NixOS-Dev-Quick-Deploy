@@ -815,6 +815,9 @@
         "scripts/ai/aq-context-packet",
         "scripts/ai/aq-gap-import",
         "scripts/ai/aq-knowledge-import.sh",
+        "scripts/ai/aq-ledger",
+        "scripts/ai/lib/work_ledger.py",
+        "scripts/testing/test-work-ledger.py",
         "scripts/testing/test-aq-a2a-audit.py",
         "scripts/testing/test-aq-context-packet.py",
         "scripts/testing/test-aq-agent-launcher.py",
@@ -996,7 +999,8 @@
         "scripts/testing/test-aq-usage-logging.py",
         "scripts/testing/test-aq-workspace.py",
         "scripts/testing/test-aq-worktree-reap.py",
-        "scripts/testing/test-rsi-convene-rounds.py"
+        "scripts/testing/test-rsi-convene-rounds.py",
+        "scripts/testing/test-work-ledger.py"
       ]
     },
     {
