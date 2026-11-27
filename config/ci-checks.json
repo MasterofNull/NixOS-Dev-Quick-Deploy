@@ -904,11 +904,15 @@
         "scripts/testing/test-approval-recovery.py",
         "scripts/testing/test-approval-runbook-engine.py",
         "scripts/testing/test-approval-signer.py",
-        "scripts/testing/test-aq-approve-headless.py"
+        "scripts/testing/test-aq-approve-headless.py",
+        "scripts/testing/test-aq-greenlight.py",
+        "scripts/ai/aq-greenlight",
+        "scripts/ai/lib/greenlight.py"
       ],
       "needs": [
         "python3",
-        "git"
+        "git",
+        "shellcheck"
       ],
       "ci_workflow": ".github/workflows/test.yml#syntax",
       "tests": [
@@ -1000,7 +1004,8 @@
         "scripts/testing/test-aq-workspace.py",
         "scripts/testing/test-aq-worktree-reap.py",
         "scripts/testing/test-rsi-convene-rounds.py",
-        "scripts/testing/test-work-ledger.py"
+        "scripts/testing/test-work-ledger.py",
+        "scripts/testing/test-aq-greenlight.py"
       ]
     },
     {
@@ -2695,7 +2700,7 @@
     {
       "script": "scripts/testing/test-agent-status-integration.py",
       "class": "known-failing",
-      "reason": "fails on main (rc=1): \u274c Some tests failed, tracked in backlog"
+      "reason": "fails on main (rc=1): ❌ Some tests failed, tracked in backlog"
     },
     {
       "script": "scripts/testing/test-ai-coordinator.py",
@@ -2705,7 +2710,7 @@
     {
       "script": "scripts/testing/test-ai-insights-dashboard.py",
       "class": "live-service",
-      "reason": "host-only: needs a live local service (switchboard/dashboard/coordinator/AIDB); last output: \u2717 11 test(s) FAILED"
+      "reason": "host-only: needs a live local service (switchboard/dashboard/coordinator/AIDB); last output: ✗ 11 test(s) FAILED"
     },
     {
       "script": "scripts/testing/test-ai-insights-roadmap-surfaces.py",
@@ -2715,7 +2720,7 @@
     {
       "script": "scripts/testing/test-ai-service-health-monitoring.py",
       "class": "live-service",
-      "reason": "host-only: needs a live local service (switchboard/dashboard/coordinator/AIDB); last output: \u2717 11 test(s) FAILED"
+      "reason": "host-only: needs a live local service (switchboard/dashboard/coordinator/AIDB); last output: ✗ 11 test(s) FAILED"
     },
     {
       "script": "scripts/testing/test-ai-stack-health-monitor.py",
@@ -2785,7 +2790,7 @@
     {
       "script": "scripts/testing/test-chat-intent.py",
       "class": "known-failing",
-      "reason": "fails on main (rc=1): FAIL  single word 'hello' \u2192 agentic (conservative default), tracked in backlog"
+      "reason": "fails on main (rc=1): FAIL  single word 'hello' → agentic (conservative default), tracked in backlog"
     },
     {
       "script": "scripts/testing/test-check-mcp-health-defaults.sh",
@@ -3000,7 +3005,7 @@
     {
       "script": "scripts/testing/test-llm-router-integration.py",
       "class": "known-failing",
-      "reason": "known-failing (2026-11-07): imports and config now load (path + AI_STRICT_ENV fixed), but the script only prints PASS/FAIL and exits 0, so it cannot gate; its Test 2 expects a 'free' tier for 'implement a new REST API endpoint' while the router now returns local (visible '\u2717 FAIL'). Needs a routing-policy decision, then conversion to real asserts"
+      "reason": "known-failing (2026-11-07): imports and config now load (path + AI_STRICT_ENV fixed), but the script only prints PASS/FAIL and exits 0, so it cannot gate; its Test 2 expects a 'free' tier for 'implement a new REST API endpoint' while the router now returns local (visible '✗ FAIL'). Needs a routing-policy decision, then conversion to real asserts"
     },
     {
       "script": "scripts/testing/test-local-agent-offline-resilience.py",
