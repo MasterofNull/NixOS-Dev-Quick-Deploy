@@ -1,0 +1,73 @@
+{
+  "plan": {
+    "id": "athena-patterns-20261127",
+    "title": "Athena patterns: source trust, topic-drift nudge, dual-threshold budget",
+    "prd_ref": ".agents/plans/athena-patterns-20261127/DESIGN.md",
+    "owner": "hyperd",
+    "goal": "Add three bounded, stdlib-only, option-driven behaviors to existing harness modules",
+    "success_criteria": [
+      "Journeys J1-J3 pass in registered tests and are validated live after deployment",
+      "Each feature has a kill switch and an observable counter or event",
+      "No new dependency and no ranking-quality claim without promotion_gate evidence"
+    ]
+  },
+  "phases": [
+    {"id": "build", "name": "Bounded slices", "goal": "One PR per pattern", "order": 1},
+    {"id": "activate", "name": "Activate", "goal": "Live validation after deployment", "order": 2}
+  ],
+  "items": [
+    {
+      "id": "A1",
+      "name": "Skeptical-prior source trust",
+      "phase": "build",
+      "kind": "slice",
+      "goal": "Session-local trust scoring of retrieved sources; summary rebuilt from filtered results",
+      "validation_goal": "Journey J1",
+      "deps": [],
+      "detection": {
+        "commit_match": ["A1-SOURCE-TRUST "],
+        "tests": ["scripts/testing/test-source-trust.py"],
+        "wired_caller": {"file": "ai-stack/mcp-servers/hybrid-coordinator/core/route_handler.py", "pattern": "source_trust"}
+      }
+    },
+    {
+      "id": "A2",
+      "name": "Rate-limited topic-drift memory nudge",
+      "phase": "build",
+      "kind": "slice",
+      "goal": "EWMA drift over the already computed query vector; measure-only by default, bounded constant hint opt-in",
+      "validation_goal": "Journey J2",
+      "deps": ["A1"],
+      "detection": {
+        "commit_match": ["A2-TOPIC-DRIFT-NUDGE "],
+        "tests": ["scripts/testing/test-topic-drift.py"],
+        "wired_caller": {"file": "ai-stack/mcp-servers/hybrid-coordinator/http_server_impl.py", "pattern": "topic_drift"}
+      }
+    },
+    {
+      "id": "A3",
+      "name": "Dual-threshold loop budget",
+      "phase": "build",
+      "kind": "slice",
+      "goal": "Soft wrap-up and hard finalize signals with a reserve floor in the local agent loop",
+      "validation_goal": "Journey J3",
+      "deps": [],
+      "detection": {
+        "commit_match": ["A3-DUAL-BUDGET "],
+        "tests": ["scripts/testing/test-agent-budget-phase.py"],
+        "wired_caller": {"file": "ai-stack/local-agents/agent_executor.py", "pattern": "budget_phase"}
+      }
+    },
+    {
+      "id": "A4",
+      "name": "Live validation and enforce decision",
+      "phase": "activate",
+      "kind": "slice",
+      "goal": "Validate J1-J3 live after deployment; add aq-qa probes and dashboard surfacing; decide A1 enforce and A2 hint defaults from promotion_gate evidence",
+      "validation_goal": "Live journeys recorded with evidence",
+      "deps": ["A1", "A2", "A3"],
+      "detection": {"commit_match": ["A4-ATHENA-ACTIVATION "]}
+    }
+  ],
+  "issues": []
+}

@@ -6629,6 +6629,23 @@ def format_md(
     return "\n".join(lines)
 
 
+def baseline_snapshot_status() -> Dict[str, Any]:
+    """Newest aq-baseline snapshot age and last verify (experience-capture S-M1); read-only, never raises."""
+    try:
+        import aq_baseline  # scripts/ai/lib on sys.path
+        return aq_baseline.snapshot_status()
+    except Exception as exc:  # a broken indicator must show as such, not vanish
+        return {"available": False, "status": "error", "reason": f"{type(exc).__name__}: {exc}"[:200]}
+
+
+def _baseline_status_line(st: Dict[str, Any]) -> str:
+    try:
+        import aq_baseline
+        return aq_baseline.status_line(st) if st.get("status") != "error" else f"Baseline snapshot: ERROR {st.get('reason')}"
+    except Exception as exc:
+        return f"Baseline snapshot: ERROR {type(exc).__name__}"
+
+
 def format_text(
     since_label: str,
     tool_stats: Dict[str, dict],
@@ -6674,6 +6691,7 @@ def format_text(
     ragas_metrics: Optional[Dict[str, Any]] = None,
     intent_dist: Optional[Dict[str, Any]] = None,
     gaps_all_suppressed: bool = False,
+    baseline_status: Optional[Dict[str, Any]] = None,
 ) -> str:
     sep = "─" * 60
     now = datetime.now(tz=timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
@@ -7582,6 +7600,9 @@ def format_text(
         else:
             lines.append("  Waste buckets: no data (populates after quality-gate failures or rework events)")
 
+    if baseline_status is not None:
+        lines += ["", "[ Experience and baselines ]", "  " + _baseline_status_line(baseline_status)]
+
     lines += ["", sep]
     return "\n".join(lines)
 
@@ -8334,6 +8355,7 @@ def format_json(
     intent_dist: Optional[Dict[str, Any]] = None,
     aq_eval_static: Optional[Dict[str, Any]] = None,
     local_agent_monitor: Optional[Dict[str, Any]] = None,
+    baseline_status: Optional[Dict[str, Any]] = None,
 ) -> str:
     doc = {
         "generated_at": datetime.now(tz=timezone.utc).isoformat(),
@@ -8394,6 +8416,7 @@ def format_json(
         "validation_health": validation_health_summary or {"available": False, "status": "no_data", "reason": "not computed"},
         "effectiveness_scorecard": effectiveness_scorecard_summary or {"overall_status": "no_data", "blocking_reasons": []},
         "attention_contention": attention_contention_summary or {"available": False, "status": "no_data", "reason": "not computed"},
+        "baseline_snapshot": baseline_status or {"available": False, "status": "no_data", "reason": "not computed"},
     }
     return json.dumps(doc, indent=2, default=str)
 
@@ -8630,6 +8653,7 @@ def main() -> None:
     local_agent_monitor = local_agent_monitor_summary()
     # Phase 93.14 — attention queue lock contention
     attention_contention = attention_contention_summary(since_dt)
+    baseline_status = baseline_snapshot_status()
     # Phase 93.12 — effectiveness scorecard (computed after all inputs are ready)
     effectiveness_scorecard_result = effectiveness_scorecard(
         tool_stats,
@@ -8739,6 +8763,7 @@ def main() -> None:
         intent_dist=_intent_dist,
         aq_eval_static=aq_eval_static,
         local_agent_monitor=local_agent_monitor,
+        baseline_status=baseline_status,
     )
     _persist_latest_report_json(json_output)
 
@@ -8756,7 +8781,7 @@ def main() -> None:
             json_output["executive_summary"] = summary_text.strip().replace("# EXECUTIVE SUMMARY\n\n", "")
         output = json_output
     else:
-        output = summary_text + format_text(*fmt_args, useful_tokens=useful_tokens_summary, ragas_metrics=_ragas_metrics, intent_dist=_intent_dist, gaps_all_suppressed=_gaps_all_suppressed)
+        output = summary_text + format_text(*fmt_args, useful_tokens=useful_tokens_summary, ragas_metrics=_ragas_metrics, intent_dist=_intent_dist, gaps_all_suppressed=_gaps_all_suppressed, baseline_status=baseline_status)
 
     print(output)
 
