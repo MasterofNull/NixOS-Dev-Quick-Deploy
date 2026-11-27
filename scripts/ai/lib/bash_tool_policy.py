@@ -3,7 +3,7 @@
 CONTRACT: this is a best-effort efficiency nudge, NOT a security boundary.
 It denies only when a command segment is CLEARLY a bare read: the first word of
 a pipeline is exactly `cat`, `ls`, `find` or `grep` and, for `cat`, it reads
-files (no stdout redirect to a file, no heredoc/stdin-only use). Whenever
+files (any redirect, heredoc or stdin-only use allows). Whenever
 tokenizing fails or is ambiguous (shlex ValueError, unbalanced quotes,
 unterminated constructs, unusual syntax) the command is ALLOWED. False allows
 are acceptable; false denies must be rare. Tokenizing uses stdlib shlex only.
@@ -29,8 +29,6 @@ _ENV_ASSIGN = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
 _PUNCT = frozenset("();<>|&")
 _SEPARATORS = frozenset({"&&", "||", ";", "|", "&", "|&", ";;"})
 _PIPES = frozenset({"|", "|&"})
-_STDOUT_REDIRECTS = frozenset({">", ">>", ">|", "&>", "&>>"})
-_STDIN_REDIRECTS = frozenset({"<", "<<", "<<<"})
 
 Token = tuple[str, bool]  # (text, is_unquoted_operator)
 
@@ -101,26 +99,10 @@ def _scan(text: str) -> list[list[Token]]:
 
 
 def _cat_reads_files(args: list[Token]) -> bool:
-    """True when `cat` clearly reads named files (not a write, stdin or heredoc use)."""
-    names: list[str] = []
-    skip = False
-    for i, (tok, op) in enumerate(args):
-        if skip:
-            skip = False
-            continue
-        if not op:
-            names.append(tok)
-        elif tok in _STDIN_REDIRECTS:
-            return False
-        elif tok in _STDOUT_REDIRECTS:
-            prev = args[i - 1] if i else ("", True)
-            if prev[1] or not prev[0].isdigit() or prev[0] == "1":
-                return False  # stdout to a file: a write
-            names.pop()  # `2>file`: stderr redirect, fd token was not a filename
-            skip = True
-        elif tok not in _SEPARATORS:
-            skip = True  # `>&2`, `<&3`: target is not a filename
-    return any(n != "-" and not n.startswith("-") for n in names)
+    """True only for a plain `cat <file>...`; any redirect operator is ambiguous and allows."""
+    if any(op for _, op in args):
+        return False
+    return any(n != "-" and not n.startswith("-") for n, _ in args)
 
 
 def _offender(cmd: list[Token]) -> str:
