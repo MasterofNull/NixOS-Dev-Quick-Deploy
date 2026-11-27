@@ -152,7 +152,27 @@ jobs:
       - name: Flake show/check
         env:
           NIXPKGS_ALLOW_UNFREE: 1
+          SAMPLE_INTERVAL: "60"
         run: |
+          mkdir -p .reports
+          (
+            set +e +o pipefail
+            sleep_pid=""
+            trap '[[ -n "$sleep_pid" ]] && kill "$sleep_pid" 2>/dev/null; exit 0' TERM
+            while :; do
+              mem=$(free -m | awk '/^Mem:/{print "mem_used_mb="$3" mem_avail_mb="$7}')
+              swap=$(free -m | awk '/^Swap:/{print "swap_used_mb="$3}')
+              disk=$(df -BG / | awk 'END{print "root_avail_gb="$4}')
+              load=$(awk '{print "load="$1","$2","$3}' /proc/loadavg)
+              top=$(ps -eo rss=,comm= --sort=-rss | awk 'NR==1{p=$2":"int($1/1024)"MB"} END{print "top_rss="p}')
+              printf '%s %s %s %s %s %s\n' "$(date -u +%FT%TZ)" "$mem" "$swap" "$disk" "$load" "$top" | tee -a .reports/resource-samples.log
+              sleep "${SAMPLE_INTERVAL:-60}" &
+              sleep_pid=$!
+              wait "$sleep_pid" 2>/dev/null
+            done
+          ) </dev/null &
+          sampler_pid=$!
+          trap 'kill "$sampler_pid" 2>/dev/null || :; wait "$sampler_pid" 2>/dev/null || :' EXIT
           nix flake show --no-write-lock-file .
           nix flake check --offline --no-build --no-write-lock-file .
 
@@ -278,6 +298,14 @@ jobs:
         with:
           name: flake-validation-report
           path: .reports/flake-validation-report.*
+
+      - name: Upload flake validation resource samples
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
+        with:
+          name: flake-validation-resource-samples
+          path: .reports/resource-samples.log
+          if-no-files-found: ignore
 
   nix-static-analysis:
     name: Nix Static Analysis
@@ -582,6 +610,7 @@ jobs:
           ./scripts/governance/run-ci-checks.sh --all \
             --only pm-tracker-untrusted-hold \
             --only pm-tracker-activation-cap \
+            --only aq-baseline-test \
             --only sweep-tracker-claims \
             --only sweep-tracker-claims-test \
             --only pm-tracker-owner-acceptance \

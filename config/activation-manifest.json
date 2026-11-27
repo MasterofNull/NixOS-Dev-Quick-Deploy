@@ -77,6 +77,13 @@
       }
     },
     {
+      "feature": "aq-baseline measurement snapshots (experience-capture S-M1)",
+      "entrypoint": "scripts/ai/aq-baseline",
+      "live_caller": "scripts/testing/harness_qa/phases/phase0.py",
+      "enable": null,
+      "health_signal": "scripts/testing/harness_qa/phases/phase0.py:_check_baseline_snapshot"
+    },
+    {
       "feature": "bash tool policy PreToolUse hook (deny shell-native cat/find/grep/ls in Bash tool calls, 2026-11-25)",
       "entrypoint": "scripts/ai/aq-bash-tool-policy-hook",
       "live_caller": ".claude/settings.json",

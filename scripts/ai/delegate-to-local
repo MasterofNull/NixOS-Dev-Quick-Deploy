@@ -309,6 +309,7 @@ case "${SUBCMD:-}" in
     "")
         # Resolve prompt from file if needed
         if [[ -n "$PROMPT_FILE" ]]; then
+            validate_durable_artifact_path "$PROMPT_FILE" "--prompt-file" "$DELEGATION_DIR" || exit 1
             [[ -f "$PROMPT_FILE" ]] || die "Prompt file not found: $PROMPT_FILE"
             PROMPT="$(cat "$PROMPT_FILE")"
             # Slice-brief caps: output_tokens becomes the max-tokens budget unless --max-tokens was given;
