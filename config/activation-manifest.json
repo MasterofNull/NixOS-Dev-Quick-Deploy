@@ -82,6 +82,15 @@
       "live_caller": "scripts/testing/harness_qa/phases/phase0.py",
       "enable": null,
       "health_signal": "scripts/testing/harness_qa/phases/phase0.py:_check_baseline_snapshot"
+    },
+    {
+      "feature": "aq-greenlight isolated merged-tree gates",
+      "entrypoint": "scripts/ai/aq-greenlight",
+      "live_caller": "scripts/testing/test-aq-greenlight.py",
+      "enable": null,
+      "health_signal": "scripts/testing/test-aq-greenlight.py:test_clean_merge_runs_on_incoming_main",
+      "state": "live",
+      "observed_by": "scripts/ai/aq-greenlight --show / --verify; scripts/testing/test-aq-greenlight.py"
     }
   ]
 }

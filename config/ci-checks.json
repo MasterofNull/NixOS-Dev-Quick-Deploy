@@ -901,7 +901,10 @@
         "scripts/testing/test-approval-recovery.py",
         "scripts/testing/test-approval-runbook-engine.py",
         "scripts/testing/test-approval-signer.py",
-        "scripts/testing/test-aq-approve-headless.py"
+        "scripts/testing/test-aq-approve-headless.py",
+        "scripts/testing/test-aq-greenlight.py",
+        "scripts/ai/aq-greenlight",
+        "scripts/ai/lib/greenlight.py"
       ],
       "needs": [
         "python3",
@@ -996,7 +999,8 @@
         "scripts/testing/test-aq-usage-logging.py",
         "scripts/testing/test-aq-workspace.py",
         "scripts/testing/test-aq-worktree-reap.py",
-        "scripts/testing/test-rsi-convene-rounds.py"
+        "scripts/testing/test-rsi-convene-rounds.py",
+        "scripts/testing/test-aq-greenlight.py"
       ]
     },
     {
