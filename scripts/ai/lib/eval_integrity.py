@@ -26,10 +26,14 @@ scores. This is the human/orchestrator sign-off, mechanized.
 
 from __future__ import annotations
 
+import hashlib
+import json
+import math
 import os
 import statistics
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
-from typing import Any, Callable, Optional
+from typing import Any, Callable
 
 # A scorer under test: (response_text, task_dict) -> {"score": 0..1, "abstain": bool}
 Scorer = Callable[[str, dict], dict]
@@ -48,6 +52,162 @@ class GateResult:
     abstention: dict = field(default_factory=dict)       # {ok, failures[]}
     isolation: dict = field(default_factory=dict)        # {ok, reason}
     reason: str = ""
+
+
+@dataclass
+class PromotionResult:
+    promoted: bool
+    reason: str
+    selection: dict[str, Any]
+    holdout: dict[str, Any] | None
+    checks: dict[str, bool]
+
+
+@dataclass
+class FutilityDecision:
+    halt: bool
+    reason: str
+    consecutive_non_promoted: int
+    latest_crash_rate: float
+
+
+def baseline_cache_key(
+    model_id: str, quant: str, dataset_sha: str, decode_params: Mapping[str, Any],
+) -> str:
+    """Bind a baseline to the model, quantization, dataset and decoding config."""
+    for name, value in (("model_id", model_id), ("quant", quant), ("dataset_sha", dataset_sha)):
+        if not value.strip():
+            raise ValueError(f"{name} must not be empty")
+    payload = json.dumps(
+        {"model_id": model_id, "quant": quant, "dataset_sha": dataset_sha,
+         "decode_params": dict(decode_params)},
+        separators=(",", ":"), sort_keys=True,
+    )
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def _paired_summary(base: Mapping[str, str], candidate: Mapping[str, str]) -> dict[str, Any]:
+    labels = ("pass", "fail", "crash")
+    valid = (bool(base) and base.keys() == candidate.keys()
+             and all(value in labels for value in base.values())
+             and all(value in labels for value in candidate.values()))
+    if not valid:
+        return {"valid": False}
+    n = len(base)
+    base_crashes = sum(value == "crash" for value in base.values())
+    candidate_crashes = sum(value == "crash" for value in candidate.values())
+    base_errors = sum(value == "fail" for value in base.values())
+    non_crash_n = n - base_crashes
+    w_to_c = sum(base[key] == "fail" and candidate[key] == "pass" for key in base)
+    c_to_w = sum(base[key] == "pass" and candidate[key] == "fail" for key in base)
+    discordant = w_to_c + c_to_w
+    difference = abs(w_to_c - c_to_w)
+    z = (difference - 1.0) / math.sqrt(discordant) if discordant and difference >= 1 else 0.0
+    return {
+        "valid": True, "n": n, "non_crash_n": non_crash_n,
+        "base_acc": (non_crash_n - base_errors) / non_crash_n if non_crash_n else 0.0,
+        "base_errors": base_errors, "base_crash_rate": base_crashes / n,
+        "candidate_crash_rate": candidate_crashes / n,
+        "w_to_c": w_to_c, "c_to_w": c_to_w, "z_score": z,
+    }
+
+
+def _rate_threshold(value: float, name: str) -> None:
+    if not math.isfinite(value) or not 0.0 <= value <= 1.0:
+        raise ValueError(f"{name} must be finite and between 0 and 1")
+
+
+def promotion_gate(
+    base_outcomes: Mapping[str, str],
+    candidate_outcomes: Mapping[str, str],
+    holdout_base_outcomes: Mapping[str, str] | None = None,
+    holdout_candidate_outcomes: Mapping[str, str] | None = None,
+    *,
+    min_n: int = 40,
+    max_base_acc: float = 0.95,
+    min_error_headroom: int = 20,
+    max_crash_rate: float = 0.10,
+    min_z: float = 1.96,
+    require_holdout: bool = True,
+) -> PromotionResult:
+    """Require usable selection data and a significant gain on a disjoint holdout.
+
+    Crashes count toward crash rates, never toward paired capability changes.
+    Holdout locking is a caller responsibility; this gate verifies ID separation.
+    """
+    _rate_threshold(max_base_acc, "max_base_acc")
+    _rate_threshold(max_crash_rate, "max_crash_rate")
+    if (isinstance(min_n, bool) or not isinstance(min_n, int) or min_n < 1
+            or isinstance(min_error_headroom, bool)
+            or not isinstance(min_error_headroom, int) or min_error_headroom < 0
+            or not math.isfinite(min_z) or min_z < 0):
+        raise ValueError("sample/headroom thresholds must be valid integers and min_z finite/nonnegative")
+    selection = _paired_summary(base_outcomes, candidate_outcomes)
+    checks = {"selection_inputs": bool(selection["valid"])}
+
+    def check_pair(prefix: str, summary: dict[str, Any]) -> None:
+        valid = bool(summary["valid"])
+        checks[f"{prefix}_crash_rate"] = (
+            valid and summary["base_crash_rate"] <= max_crash_rate
+            and summary["candidate_crash_rate"] <= max_crash_rate
+        )
+        checks[f"{prefix}_improvement"] = valid and summary["w_to_c"] > summary["c_to_w"]
+        checks[f"{prefix}_significance"] = valid and summary["z_score"] >= min_z
+
+    check_pair("selection", selection)
+    valid = checks["selection_inputs"]
+    checks["selection_min_n"] = valid and selection["n"] >= min_n
+    checks["selection_saturation"] = (
+        valid and selection["non_crash_n"] > 0 and selection["base_acc"] <= max_base_acc
+    )
+    checks["selection_headroom"] = valid and selection["base_errors"] >= min_error_headroom
+    holdout = None
+    if require_holdout or holdout_base_outcomes is not None or holdout_candidate_outcomes is not None:
+        holdout = _paired_summary(
+            holdout_base_outcomes if holdout_base_outcomes is not None else {},
+            holdout_candidate_outcomes if holdout_candidate_outcomes is not None else {},
+        )
+        checks["holdout_inputs"] = bool(holdout["valid"])
+        checks["holdout_disjoint"] = (
+            checks["holdout_inputs"]
+            and base_outcomes.keys().isdisjoint(
+                holdout_base_outcomes.keys() if holdout_base_outcomes is not None else ()
+            )
+        )
+        check_pair("holdout", holdout)
+    failed = [name for name, passed in checks.items() if not passed]
+    return PromotionResult(
+        promoted=not failed,
+        reason="PROMOTED: all checks passed" if not failed else "NOT PROMOTED: " + ", ".join(failed),
+        selection=selection, holdout=holdout, checks=checks,
+    )
+
+
+def futility_breaker(
+    run_history: Sequence[Mapping[str, Any]], *,
+    max_consecutive_non_promoted: int = 2, max_crash_rate: float = 0.10,
+) -> FutilityDecision:
+    """Stop a queue after repeated failed promotions or an unhealthy latest run."""
+    _rate_threshold(max_crash_rate, "max_crash_rate")
+    if (isinstance(max_consecutive_non_promoted, bool)
+            or not isinstance(max_consecutive_non_promoted, int)
+            or max_consecutive_non_promoted < 1):
+        raise ValueError("max_consecutive_non_promoted must be a positive integer")
+    if any(type(run.get("promoted")) is not bool for run in run_history):
+        raise ValueError("every run must have a boolean promoted field")
+    latest_crash_rate = float(run_history[-1].get("crash_rate", 0.0)) if run_history else 0.0
+    _rate_threshold(latest_crash_rate, "latest crash_rate")
+    streak = 0
+    for run in reversed(run_history):
+        if run["promoted"]:
+            break
+        streak += 1
+    reasons = []
+    if latest_crash_rate > max_crash_rate:
+        reasons.append("latest crash rate exceeds threshold")
+    if streak >= max_consecutive_non_promoted:
+        reasons.append("consecutive non-promoted runs reached threshold")
+    return FutilityDecision(bool(reasons), "; ".join(reasons) or "continue", streak, latest_crash_rate)
 
 
 # ── individual checks ─────────────────────────────────────────────────────────
