@@ -27,10 +27,12 @@ Evidence on cause:
 Most likely cause: resource starvation of the runner agent (memory/IO pressure from `--max-jobs 2` plus unpacking ~31 GiB into the store on a shared-CPU hosted runner), intermittent (2 of ~12 recent runs). Not provable from logs: no signal distinguishes memory from disk-IO. Disk exhaustion is the least likely (117G free at start, cleanup already present). Honest limit: the root trigger is not isolated; the fix removes exposure rather than tuning the build.
 
 Fix (.github/workflows/security.yml):
-- New job `closure-changes` (fetch-depth 2, `git diff --name-only HEAD^1 HEAD` on the PR merge commit) emits scan=true/false. Job `nix-closure-vuln-scan` now `needs: [security-audit, closure-changes]` and `if: needs.closure-changes.outputs.scan == 'true'`. Job id and name unchanged (config/ci-checks.json and code-scanning scripts reference them).
+- New job `closure-changes` (fetch-depth 2, `git diff --no-renames --name-only HEAD^1 HEAD` (`--no-renames` so a closure file moved/archived still lists its source path) on the PR merge commit) emits scan=true/false. Job `nix-closure-vuln-scan` now `needs: [security-audit, closure-changes]` and `if: needs.closure-changes.outputs.scan == 'true'`. Job id and name unchanged (config/ci-checks.json and code-scanning scripts reference them).
 - Path filter = nix/, flake.nix, flake.lock, Cargo.toml/lock, crates/, config/, data/, patches/, pins/, templates/, and the specific scripts/ and ai-stack/ files that nix modules import via `../` (derived by rg), plus security.yml, aq-closure-scan, .grype.yaml.
 - Schedule weekly (Mon) -> daily 09:00 UTC.
-- Not changed: build parallelism and the disk-cleanup step (no evidence supports a specific value).
+- Not changed: build parallelism and the disk-cleanup logic (no evidence supports a specific value). The only edit there is `|| true  # NON-GATING` -> `|| :  # NON-GATING` on the docker-prune line, because test-security-nix-closure-scan.py forbids the literal `|| true` in the job.
+- Added a resource sampler in the build step plus an `if: always()` artifact upload (see Residual Risk).
+- Test coverage for the gate added to scripts/testing/test-security-nix-closure-scan.py.
 
 Branch protection (main): required checks = `review-disposition` only; `enforce_admins` true. No ruleset names a security job. The scan is not required, so a skipped job cannot block merges. (A skipped job also reports as not-failed.)
 
@@ -42,10 +44,10 @@ Behaviour:
 YAML parses (`yaml.safe_load`); actionlint/yamllint not installed here.
 
 ## Rollback Plan
-Revert the single security.yml change (remove the closure-changes job, restore `needs: security-audit` and the weekly cron). No other files touched.
+Revert the single security.yml change (remove the closure-changes job, restore `needs: security-audit` and the weekly cron). Also revert the sampler block in the "Build hyperd-ai-dev system closure" step and the "Upload resource samples" step (diagnostics only; independent of the gate), and the added tests in scripts/testing/test-security-nix-closure-scan.py.
 
 ## Residual Risk
-- Root trigger of the runner loss is unproven; the build still can lose the runner when it does run (flake.lock/nix PRs, main, schedule). If it recurs on those, next steps: `--max-jobs 1`, a background `free`/`df` sampler echoed to the log every 60s to capture the signal, or a larger runner.
+- Root trigger of the runner loss is unproven; the build still can lose the runner when it does run (flake.lock/nix PRs, main, schedule). If it recurs on those, next steps: `--max-jobs 1`, more swap, or a larger runner (chosen from the sampler data below).
 - Diagnostics added: the "Build hyperd-ai-dev system closure" step now runs a background sampler (every 60s: UTC time, mem used/avail MB, swap used MB, `/` avail GB, loadavg, top-RSS process) that writes one line to the step log and to `resource-samples.log`, uploaded as artifact `nix-closure-resource-samples` with `if: always()`. Limit: if the runner is lost, the artifact upload cannot run, so the live step log (lines streamed before the loss) is the primary signal; the artifact covers failures where the runner survives. The sampler covers the closure build only, not the earlier llama-cpp pre-build (which passed in both failures). Sample line validated locally. Next step on the next loss: read the last sampler line in the log to decide memory vs disk vs load, then act on that (`--max-jobs 1`, more swap, or larger runner).
 - The path list is a static snapshot of `../` imports; a new out-of-tree import in nix is missed on PRs until the post-merge main run or the daily schedule catches it. Should be re-derived when nix imports new top-level dirs.
 - A PR-time vulnerability regression from a non-listed path is detected post-merge, not pre-merge.

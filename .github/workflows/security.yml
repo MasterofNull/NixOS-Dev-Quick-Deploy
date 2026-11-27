@@ -104,7 +104,7 @@ jobs:
           # (rg for '\.\./' in nix/**/*.nix).  A path missed here is still scanned on
           # push to main and by the daily schedule.
           pattern='^(nix/|flake\.nix$|flake\.lock$|Cargo\.(toml|lock)$|crates/|config/|data/|patches/|pins/|templates/|scripts/(agent-tools|deploy/|services/|ai/lib/|ai/aq-herdr$|ai/aq-network-policy$|maintenance/aq-auto-update$|security/publish-credential-status\.py$)|ai-stack/(mcp-servers/shared/audit_sidecar\.py|switchboard/(capability_lease_gate|execution_cell_runner|execution_cell_validator)\.py)$|\.github/workflows/security\.yml$|scripts/security/aq-closure-scan$|\.grype\.yaml$)'
-          changed="$(git diff --name-only HEAD^1 HEAD)"
+          changed="$(git diff --no-renames --name-only HEAD^1 HEAD)"
           echo "changed files:"; echo "$changed"
           if grep -Eq "$pattern" <<< "$changed"; then
             echo "scan=true" >> "$GITHUB_OUTPUT"
