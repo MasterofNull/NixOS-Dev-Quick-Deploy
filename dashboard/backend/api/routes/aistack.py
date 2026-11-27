@@ -6975,6 +6975,8 @@ async def get_effectiveness_scorecard() -> Dict[str, Any]:
         "blocking_reasons": scorecard.get("blocking_reasons", []),
         "remediation": scorecard.get("operator_action"),
         "effectiveness_scorecard": scorecard,
+        # aq-baseline S-M1: snapshot age + last verify status carried by the aq-report artifact
+        "baseline_snapshot": report.get("baseline_snapshot"),
     }
 
 
