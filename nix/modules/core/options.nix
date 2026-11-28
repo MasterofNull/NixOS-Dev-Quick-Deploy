@@ -597,6 +597,18 @@
         };
       };
 
+      # Units run code from mySystem.mcpServers.repoPath; this timer fast-forwards that
+      # checkout to origin/main (scripts/maintenance/aq-main-sync) so they never run stale code.
+      # The script itself skips on a non-main branch, in-progress git operations, or dirty
+      # build-affecting files. Off here; profiles/ai-dev.nix turns it on.
+      mainSync = {
+        enable = lib.mkOption {
+          type = lib.types.bool;
+          default = false;
+          description = "Enable the periodic safe fast-forward of the live main checkout to origin/main (aq-main-sync).";
+        };
+      };
+
       bootloaderEspMinFreeMb = lib.mkOption {
         type = lib.types.ints.positive;
         default = 128;

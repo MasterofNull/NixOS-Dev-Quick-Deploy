@@ -266,6 +266,7 @@ scripts/maintenance/aq-update
 scripts/maintenance/aq-auto-update
 scripts/maintenance/aq-pin-watch
 scripts/maintenance/aq-update-tiers
+scripts/maintenance/aq-main-sync
 scripts/mangohud-profile.sh
 scripts/nix-static-analysis.sh
 scripts/npm-security-monitor.sh

@@ -1,0 +1,81 @@
+#!/usr/bin/env bash
+# aq-main-sync — fast-forward the owner's live main checkout to origin/main, safely and unattended.
+# Why: systemd units run code straight from mySystem.mcpServers.repoPath, which otherwise only
+# advances when the owner runs aq-deploy-current (stale-code false alerts 2026-11-25/26).
+#
+# Fast-forwards only when ALL hold: branch is main; no merge/rebase/cherry-pick/revert/bisect in
+# progress; no build-affecting tracked file is dirty. Inert paths (rule read from
+# check-deploy-source.sh, the same single source aq-deploy-current uses: .agent/**, .agents/**,
+# docs/**, *.md outside nix/) never block. Never stashes, resets, discards or autostashes.
+# One journal line per run: "synced <before>..<after>" or "skip: <reason>". Skips exit 0;
+# only unexpected errors exit non-zero.
+#
+# Usage: aq-main-sync [--repo <dir>] [--help]
+# Kill switch: AQ_MAIN_SYNC=0 (or AQ_MAIN_SYNC_DISABLE=1). Run as the checkout's owner, not root.
+set -uo pipefail
+
+TAG="[aq-main-sync]"
+REPO="${AQ_MAIN_SYNC_REPO:-}"
+while (($#)); do
+  case "$1" in
+    --repo) (($# >= 2)) || { echo "$TAG --repo needs a value" >&2; exit 2; }; REPO="$2"; shift ;;
+    --help|-h) sed -n '2,15p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    *) echo "$TAG unknown option: $1" >&2; exit 2 ;;
+  esac
+  shift
+done
+
+skip() { echo "$TAG skip: $*"; exit 0; }
+fail() { echo "$TAG ERROR: $*" >&2; exit 1; }
+
+if [[ "${AQ_MAIN_SYNC:-1}" == "0" || "${AQ_MAIN_SYNC_DISABLE:-0}" == "1" ]]; then
+  skip "disabled by kill switch (AQ_MAIN_SYNC=0)"
+fi
+if [[ -z "$REPO" ]]; then
+  REPO="$(git -C "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)" rev-parse --show-toplevel)" || fail "not inside a git checkout"
+fi
+[[ "$(id -u)" -ne 0 ]] || fail "refusing to run as root (would create root-owned files in .git)"
+g() { git -C "$REPO" "$@"; }
+gitdir="$(g rev-parse --absolute-git-dir 2>/dev/null)" || fail "$REPO is not a git checkout"
+
+branch="$(g symbolic-ref -q --short HEAD || echo DETACHED)"
+[[ "$branch" == "main" ]] || skip "on '$branch', not main"
+
+for marker in MERGE_HEAD CHERRY_PICK_HEAD REVERT_HEAD rebase-merge rebase-apply BISECT_LOG; do
+  [[ -e "$gitdir/$marker" ]] && skip "operation in progress ($marker)"
+done
+
+inert_re="$(sed -n "s/^inert_re='\(.*\)'\$/\1/p" "$REPO/scripts/governance/check-deploy-source.sh" 2>/dev/null)"
+[[ -n "$inert_re" ]] || fail "could not read inert_re from scripts/governance/check-deploy-source.sh"
+
+fetch_note=""
+if ! GIT_TERMINAL_PROMPT=0 timeout 30 git -C "$REPO" fetch --quiet origin main 2>/dev/null; then
+  # The service cannot reach keyring-held credentials; agents and aq-land fetch constantly and
+  # share this git dir, so the local origin/main is usually fresh. Fall back to it.
+  remote="$(g rev-parse --verify -q refs/remotes/origin/main)" || skip "fetch failed and no local origin/main"
+  ts="$(g log -g -1 --format=%ct refs/remotes/origin/main 2>/dev/null)"
+  [[ -n "$ts" ]] || ts="$(g log -1 --format=%ct refs/remotes/origin/main)"
+  fetch_note="fetch failed; using local origin/main ${remote:0:8} (ref updated $(( ($(date +%s) - ts) / 60 ))m ago)"
+  echo "$TAG $fetch_note"
+fi
+
+before="$(g rev-parse HEAD)" || fail "rev-parse HEAD failed"
+remote="$(g rev-parse origin/main)" || fail "rev-parse origin/main failed"
+[[ "$before" != "$remote" ]] || skip "already at origin/main (${before:0:8})"
+if g merge-base --is-ancestor "$remote" "$before"; then
+  skip "local main ${before:0:8} is ahead of origin/main ${remote:0:8}"
+fi
+g merge-base --is-ancestor "$before" "$remote" || skip "local main ${before:0:8} diverged from origin/main ${remote:0:8} (not fast-forwardable)"
+
+dirty=()
+while IFS= read -r -d '' f; do
+  if [[ "$f" != nix/* && "$f" =~ $inert_re ]]; then continue; fi
+  dirty+=("$f")
+done < <(g diff --name-only -z HEAD)
+if ((${#dirty[@]})); then
+  skip "build-affecting tracked file(s) dirty: ${dirty[*]:0:5}"
+fi
+
+out="$(g merge --ff-only origin/main 2>&1)" || skip "merge --ff-only refused (local change overlaps incoming): ${out//$'\n'/ }"
+after="$(g rev-parse HEAD)"
+echo "$TAG synced ${before:0:8}..${after:0:8}"

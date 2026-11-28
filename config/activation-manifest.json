@@ -75,6 +75,13 @@
         "reason": "Code default is off (RSI_CONVENE unset). The ai-prsi-rsi-dispatch unit sets RSI_CONVENE=1, the ~/.gemini write path, pkgs.nodejs on PATH and a 2G memory cap in nix/modules/roles/ai-stack.nix, so rounds run only after the next rebuild (nixos-rebuild switch). Until then no seat runs.",
         "tracking": ".agents/plans/delivery-loop-simplification/DESIGN.md S5; docs/harness-first/evidence/2026-11-06-rsi-convene-rounds.md"
       }
+    },
+    {
+      "feature": "aq-main-sync live main checkout fast-forward timer",
+      "entrypoint": "scripts/maintenance/aq-main-sync",
+      "live_caller": "nix/modules/roles/ai-stack.nix",
+      "enable": "mySystem.deployment.mainSync.enable",
+      "health_signal": "scripts/maintenance/aq-main-sync:synced"
     }
   ]
 }

@@ -2210,6 +2210,49 @@ in {
       };
     })
 
+    # Keep the live main checkout (the code every repoPath unit executes) at origin/main.
+    # Fast-forward only; the script skips on non-main, in-progress git ops or dirty build files.
+    (lib.mkIf (roleEnabled && cfg.deployment.mainSync.enable) {
+      systemd.services.aq-main-sync = {
+        description = "Fast-forward the live main checkout to origin/main (ff-only, skips when unsafe)";
+        after = ["network-online.target"];
+        wants = ["network-online.target"];
+        path = [pkgs.git pkgs.gnused pkgs.coreutils];
+        serviceConfig = {
+          Type = "oneshot";
+          User = cfg.primaryUser;
+          WorkingDirectory = cfg.mcpServers.repoPath;
+          # Git needs the owner's HOME for its config and credentials (read-only under ProtectHome).
+          Environment = [
+            "HOME=${config.users.users.${cfg.primaryUser}.home}"
+            "GIT_TERMINAL_PROMPT=0"
+          ];
+          ExecStart = "${pkgs.bash}/bin/bash ${cfg.mcpServers.repoPath}/scripts/maintenance/aq-main-sync --repo ${cfg.mcpServers.repoPath}";
+          StandardOutput = "journal";
+          StandardError = "journal";
+          NoNewPrivileges = true;
+          ProtectSystem = "strict";
+          ProtectHome = "read-only";
+          # fetch writes .git; the merge rewrites tracked files anywhere in the checkout.
+          ReadWritePaths = [cfg.mcpServers.repoPath];
+          PrivateTmp = true;
+          TimeoutStartSec = "120";
+          MemoryMax = "256M";
+        };
+      };
+
+      systemd.timers.aq-main-sync = {
+        description = "Live main checkout sync timer (every 15 min)";
+        wantedBy = ["timers.target"];
+        timerConfig = {
+          OnCalendar = "*:0/15";
+          RandomizedDelaySec = "2min";
+          Persistent = true;
+          Unit = "aq-main-sync.service";
+        };
+      };
+    })
+
     # db-4 F2 — weekly garbage collector for stale ephemeral agent-ctx-*
     # Qdrant scratch collections (scripts/ai/qdrant-scratch-gc.py). One
     # bounded sweep and exit — no in-flight state, so this is the
