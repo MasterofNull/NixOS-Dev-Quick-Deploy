@@ -837,3 +837,11 @@ Owner deployed via `scripts/maintenance/aq-deploy-current`: system and Home Mana
 
 ## 2026-11-18 sweep-lanes natural exit
 Existing live QA path; repaired producer and full regression suite pass, independent Codex review PASS. Integration and main CI pending landing. No system activation required for this repository script; owner rebuild remains separately deferred. Evidence: docs/harness-first/evidence/2026-11-18-sweep-lanes-exit.md.
+
+## 2026-11-27 A1 source trust (athena-patterns-20261127)
+- Integrated: `ai-stack/mcp-servers/hybrid-coordinator/core/route_handler.py` filter block calls `knowledge/source_trust.py`.
+- Turned ON: code default `AI_SOURCE_TRUST_MODE=observe` with flagged-source containment. Live only after owner deploy (deferred 2026-11-27).
+- Validated: 11 unit/journey tests incl. real `route_search` with stubs; live journey deferred 2026-11-27 (tracker A4).
+- Observable: `hybrid_source_trust_results_total{class,flagged,mode}`, `rag_injection_filtered` log; aq-qa probe and dashboard deferred 2026-11-27 (A4).
+- Intervenable: `AI_SOURCE_TRUST_MODE=off|observe|enforce`.
+- PM-tracked: `.agents/plans/athena-patterns-20261127/tracker.json`.
