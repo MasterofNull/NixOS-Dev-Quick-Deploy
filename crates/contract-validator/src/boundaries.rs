@@ -230,6 +230,25 @@ fn module_matches(module: &str, pattern: &str) -> bool {
         || module.contains(&format!(".{pattern}."))
 }
 
+/// Owner of an imported dotted module. A module rooted at a repo path a context declares (`dashboard.x.y`,
+/// `scripts.ai.lib.z`) is owned by the context whose `paths` cover that file, never by leaf name; only
+/// bare or sys.path-style names (`approval_inbox`, `lib.trace`) fall back to the declared `modules`.
+fn import_owner<'a>(reg: &'a Registry, module: &str) -> Option<&'a Context> {
+    let first = module.split('.').next().unwrap_or("");
+    let rooted = reg
+        .contexts
+        .iter()
+        .flat_map(|c| c.paths.iter())
+        .any(|p| p.split_once('/').is_some_and(|(top, _)| top == first));
+    if rooted {
+        let path = module.replace('.', "/");
+        return context_of(reg, &format!("{path}.py")).or_else(|| context_of(reg, &path));
+    }
+    reg.contexts
+        .iter()
+        .find(|c| c.modules.iter().any(|m| module_matches(module, m)))
+}
+
 type Annotations = BTreeMap<usize, String>;
 
 fn annotation_map(toks: &[Tok]) -> Annotations {
@@ -391,11 +410,7 @@ fn scan_python(fc: &FileCtx<'_>, src: &str) -> Result<Vec<Raw>, String> {
                 }
                 let mut seen = BTreeSet::new();
                 for module in candidates {
-                    let Some(owner) = reg
-                        .contexts
-                        .iter()
-                        .find(|c| c.modules.iter().any(|m| module_matches(&module, m)))
-                    else {
+                    let Some(owner) = import_owner(reg, &module) else {
                         continue;
                     };
                     if owner.id == fc.own
@@ -992,6 +1007,34 @@ mod tests {
         .unwrap()
         .unwrap()
         .is_empty());
+    }
+
+    #[test]
+    fn qualified_import_is_owned_by_path_not_leaf_name() {
+        let y = "contexts:\n  - {id: K3, paths: [scripts/ai/lib/approval_], modules: [approval_inbox], allowed_imports: [], contract_package: contracts/trust}\n  - {id: K5, paths: [dashboard/], modules: [], allowed_imports: []}\n  - {id: K2, paths: [ai-stack/switchboard/], allowed_imports: []}\ndecisions:\n  - {id: D05, decision: land, context: K3, owner: aq-land, tag: OV}\nscan_scope:\n  include: [scripts/, ai-stack/, dashboard/]\n  exclude: []\n";
+        let r = parse(y).unwrap();
+        let scan_at = |path: &str, src: &str| scan_file(&r, path, src.as_bytes()).unwrap().unwrap();
+        // collision: a dashboard module that merely shares the leaf name
+        assert!(scan_at(
+            "dashboard/backend/api/main.py",
+            "from .routes import approval_inbox as m\n"
+        )
+        .is_empty());
+        assert!(scan_at(
+            "dashboard/backend/api/main.py",
+            "import dashboard.backend.api.routes.approval_inbox\n"
+        )
+        .is_empty());
+        // the real K3 module is still flagged: bare, sys.path-style and fully qualified
+        for src in [
+            "import approval_inbox\n",
+            "from approval_inbox import X\n",
+            "from scripts.ai.lib import approval_inbox\n",
+        ] {
+            let raws = scan_at("ai-stack/switchboard/a.py", src);
+            assert_eq!(kinds(&raws), vec!["import"], "{src}");
+            assert_eq!(raws[0].owner, "K3", "{src}");
+        }
     }
 
     #[test]

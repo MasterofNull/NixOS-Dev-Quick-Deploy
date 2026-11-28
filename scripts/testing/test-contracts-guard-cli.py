@@ -146,6 +146,10 @@ def main() -> int:
            env={"HARNESS_CONTRACTS_BIN": BIN})
     text = p.stdout + p.stderr
     expect("broken registry is reported as a registry error", p.returncode != 0 and "is unavailable" not in text and "system-state-authorities.yaml" in text, text)
+    # Root cause of the PR 898 CI miss: pre-commit scans staged blobs only, CI scans the whole tree.
+    # The repo itself must pass the whole-tree guard exactly as tier0 --ci runs it.
+    whole = sh(ROOT, "bash", "scripts/governance/tier0.d/check-contracts.sh", "--ci", env={"HARNESS_CONTRACTS_BIN": BIN})
+    expect("repo passes the whole-tree guard (tier0 --ci mode)", whole.returncode == 0, whole.stdout + whole.stderr)
     if FAILED:
         print(f"test-contracts-guard-cli: {len(FAILED)} case(s) failed")
         return 1
