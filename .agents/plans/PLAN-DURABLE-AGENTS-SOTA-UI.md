@@ -30,7 +30,7 @@
 ### Slice 3: Human Intervention Dock & Steering Modal (`human-intervention-dock`)
 - **Objective**: Allow the human operator to pause, inject prompts, or skip steps directly from the cockpit without killing the process.
 - **Files**:
-  - `scripts/ai/aq-human-intervention`
+  - `scripts/ai/aq-agent-send` (replaced `aq-human-intervention`, archived 2026-11-27: only inject and cancel were ever consumed)
   - `config/zellij/aq-agentic-workspace.kdl`
   - `scripts/testing/test-human-intervention.py`
 - **Verification**: Verify that injecting an intervention updates the agent's active memory and pulse log immediately.

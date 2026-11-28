@@ -4013,8 +4013,6 @@
   "ruff|scripts/testing/test-herdr-h3-execution-boundary.py|F401|`os` imported but unused": 1,
   "ruff|scripts/testing/test-herdr-h4-cutover.py|F401|`json` imported but unused": 1,
   "ruff|scripts/testing/test-hints-feedback-aidb-producer.py|F401|`os` imported but unused": 1,
-  "ruff|scripts/testing/test-human-intervention.py|F401|`os` imported but unused": 1,
-  "ruff|scripts/testing/test-human-intervention.py|F401|`tempfile` imported but unused": 1,
   "ruff|scripts/testing/test-ingest-project-knowledge-incremental.py|F401|`os` imported but unused": 1,
   "ruff|scripts/testing/test-ingest-project-knowledge-incremental.py|F401|`sys` imported but unused": 1,
   "ruff|scripts/testing/test-integration-completeness.py|B007|Loop control variable `expected` not used within loop body": 1,
