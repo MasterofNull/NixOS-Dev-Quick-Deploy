@@ -1,0 +1,20 @@
+{
+  "schema": 2,
+  "pr": 903,
+  "reviewed_head_sha": "9f82b6ab502bcabef94cb968b3d870b217224646",
+  "run_id": "claude-20261128-033710-8400ul",
+  "reviewer_lane": "claude",
+  "author_lane": "sonnet",
+  "verdict": "PASS_WITH_FOLLOWUPS",
+  "reviewer_instance": "Simurg@claude/claude-opus-5-5#claude-2",
+  "author_instance": "Simurg@sonnet/unknown",
+  "output_file": ".agents/delegation/outputs/claude-20261128-033710-8400ul.log",
+  "output_sha256": "3534d38af352a3d2144a9d2406e8c731e57602be610c80fc1860892ff66a1f9a",
+  "output_bytes": 3573,
+  "registry_output_sha256": "3534d38af352a3d2144a9d2406e8c731e57602be610c80fc1860892ff66a1f9a",
+  "created_at": "2026-11-28T11:39:13Z",
+  "repo": "MasterofNull/NixOS-Dev-Quick-Deploy",
+  "policy_version": "review-receipts/1",
+  "tree": "c1f3e6e032a2a8dc5ff713ea1c9730122cca610f",
+  "base_commit": "35e7d6826811ae03d6d40b7e4244f7c0899bb22f"
+}
