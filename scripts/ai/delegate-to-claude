@@ -35,7 +35,26 @@ set -euo pipefail
 # re-execute the arg parser.
 [[ "${BASH_SOURCE[0]}" == "$0" ]] || return 0
 
+# Work ledger (agent-work-durability S1): lifecycle record only; a ledger error never breaks a delegation.
+ledger() {
+    python3 "$(dirname "${BASH_SOURCE[0]}")/aq-ledger" --delegation-dir "${AQ_DELEGATION_DIR:-}" "$@" >/dev/null 2>&1 || true
+}
+
+# Internal re-entry (not public CLI): a background launch runs its command through this so the ledger gets
+# a terminal status. Stays above all setup so the command inherits an untouched environment and cwd.
+if [[ "${1:-}" == "--internal-ledger-run" ]]; then
+    _ledger_id="$2"; shift 2
+    trap 'ledger status --id="$_ledger_id" --status=failed --reason=signal --pid="$$"; exit 143' TERM INT HUP
+    _ledger_rc=0
+    "$@" || _ledger_rc=$?
+    _ledger_status=failed
+    [[ "$_ledger_rc" -ne 0 ]] || _ledger_status=done
+    ledger status --id="$_ledger_id" --status="$_ledger_status" --reason="exit=$_ledger_rc" --pid="$$"
+    exit "$_ledger_rc"
+fi
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_PATH="$SCRIPT_DIR/$(basename "${BASH_SOURCE[0]}")"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 # shellcheck source=lib/delegation-dir.sh
 source "${SCRIPT_DIR}/lib/delegation-dir.sh" 2>/dev/null || resolve_delegation_dir() { echo "WARN: delegation-dir.sh not sourceable; delegation dir falls back to script-relative path" >&2; echo "$(cd "$1/../.." && pwd)/.agents/delegation"; }
@@ -216,6 +235,7 @@ record_terminal() {
     [[ "$TERMINAL_RECORDED" == "true" ]] && return 0
     TERMINAL_RECORDED=true
     local ts; ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    ledger status --id="$CURRENT_TASK_ID" --status="$status" --reason="${reason:-provider_exit_$code}" --pid="$$"
     reg_update "$CURRENT_TASK_ID" "status=$status" "exit_code=$code" "finished_at=$ts" \
         "terminal_reason=${reason:-provider_exit_$code}" "heartbeat_at=$ts" \
         || echo "[delegate-to-claude] WARN: terminal registry write failed for $CURRENT_TASK_ID" >&2
@@ -461,6 +481,11 @@ ${prompt}"
     trap on_exit_reconcile EXIT
     trap 'exit 143' TERM
     trap 'exit 130' INT
+    local ledger_task="${prompt:0:120}"
+    local ledger_args=(init --id="$id" --lane=claude --role="$role" --task="${ledger_task//$'\n'/ }"
+        --pid="$$" --resume-policy=confirm)
+    [[ -z "$PROMPT_FILE" ]] || ledger_args+=(--brief-path="$PROMPT_FILE")
+    ledger "${ledger_args[@]}"
     audit_event_start "claude" "$id" "${prompt:0:200}" || true
 
     if [[ "$wait_mode" == "true" ]]; then
@@ -506,6 +531,7 @@ ${prompt}"
         local _coord_url="${HYBRID_COORDINATOR_URL:-http://127.0.0.1:8003}"
         local _audit_helper; _audit_helper="$SCRIPT_DIR/lib/audit-post.sh"
         if source "$SCRIPT_DIR/lib/sleep-inhibit.sh" 2>/dev/null; then aq_sleep_inhibit_prefix "$id"; else AQ_INHIBIT_PREFIX=(); echo "WARN: sleep-inhibit.sh not sourceable; task runs without an idle inhibitor" >&2; fi
+        cmd=(bash "$SCRIPT_PATH" --internal-ledger-run "$id" "${cmd[@]}")
         # own session: `aq-delegation-registry stop` signals the whole group, never the caller's
         setsid nohup "${AQ_INHIBIT_PREFIX[@]}" bash "$SCRIPT_DIR/lib/claude-background-worker.sh" \
             "$output_file" "$_audit_helper" "$_coord_url" "$REGISTRY" "$id" "$role" "$prompt" \
@@ -515,6 +541,7 @@ ${prompt}"
         release_slot
         # Worker is the lifecycle owner from here; it writes the terminal state.
         TERMINAL_RECORDED=true
+        ledger heartbeat --id="$id" --pid="$pid"  # rebind the entry to the worker process
         python3 "$SCRIPT_DIR/lib/registry-update.py" set "$REGISTRY" "$id" pid "$pid" || true  # records pid_start_time
         reg_update "$id" "pid=$pid" "heartbeat_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)" || true
 

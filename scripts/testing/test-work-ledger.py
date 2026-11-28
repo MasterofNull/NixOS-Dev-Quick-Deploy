@@ -1,13 +1,16 @@
 #!/usr/bin/env python3
-"""Tests for scripts/ai/lib/work_ledger.py and scripts/ai/aq-ledger (all state in temp dirs)."""
+"""Tests for scripts/ai/lib/work_ledger.py, scripts/ai/aq-ledger, the tier0 ledger check and the delegation
+wrappers' ledger writes (all state in temp dirs; wrappers run from a throwaway copy of scripts/ai)."""
 from __future__ import annotations
 
 import json
 import os
+import shutil
 import stat
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -17,6 +20,7 @@ from unittest import mock
 REPO = Path(__file__).resolve().parents[2]
 LIB = REPO / "scripts/ai/lib"
 CLI = REPO / "scripts/ai/aq-ledger"
+TIER0_CHECK = REPO / "scripts/governance/tier0.d/check-work-ledger.sh"
 sys.path.insert(0, str(LIB))
 
 import work_ledger as wl  # noqa: E402
@@ -243,6 +247,30 @@ class TornAndCorruptTest(LedgerCase):
         self.init()
         self.assertEqual(self.reduce()["status"], "running")
 
+    def assert_refused_untouched(self, event: str, dispatch_id: str = "d1", **fields: Any) -> None:
+        path = self.path(dispatch_id)
+        path.chmod(0o640)
+        before = (path.read_bytes(), path.stat().st_mtime_ns, path.stat().st_mode)
+        with self.assertRaises(wl.LedgerError):
+            self.add(event, dispatch_id, **fields)
+        self.assertEqual((path.read_bytes(), path.stat().st_mtime_ns, path.stat().st_mode), before)
+        self.assertFalse(Path(f"{path}.torn").exists())
+
+    def test_refused_init_leaves_torn_entry_untouched(self) -> None:
+        self.init()
+        with self.path().open("ab") as handle:
+            handle.write(b'{"schema":1,"event":"st')
+        self.assert_refused_untouched("init", lane="l", role="r", task="t")
+
+    def test_refused_event_leaves_torn_only_file_untouched(self) -> None:
+        self.init()
+        for fragment in (b'{"schema":1,', b"{garbage\n"):
+            self.path().write_bytes(fragment)
+            for event, fields in (("heartbeat", {}), ("status", {"status": "done"}),
+                                  ("step", {"name": "s", "status": "done"})):
+                with self.subTest(event=event, fragment=fragment):
+                    self.assert_refused_untouched(event, **fields)
+
     def assert_fails_closed(self, line_number: int) -> dict:
         got = self.reduce(current_boot_id="new")
         self.assertEqual(got["status"], "needs-attention")
@@ -362,6 +390,33 @@ class CliTest(LedgerCase):
         (self.root / "ledger").mkdir(parents=True)
         self.cli("check")
 
+    def test_invalid_window_rejected_without_ledger_dir(self) -> None:
+        os.environ[wl.WINDOW_ENV] = "zero"
+        with self.assertRaises(wl.LedgerError):
+            wl.list_entries(self.root)
+        for command in ("check", "list"):
+            self.assertIn(wl.WINDOW_ENV, self.cli(command, rc=2).stderr)
+        self.assertFalse(self.root.exists())
+
+    def test_worker_pid(self) -> None:
+        worker = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"])
+        self.addCleanup(worker.wait)
+        self.addCleanup(worker.kill)
+        ticks = wl.read_pid_start_ticks(worker.pid)
+        self.assertIsNotNone(ticks)
+        pid = ("--pid", str(worker.pid))
+        self.cli("init", "--id", "p", "--lane", "l", "--role", "r", "--task", "t", *pid)
+        self.cli("step", "--id", "p", "--name", "s", "--status", "done", *pid)
+        self.cli("heartbeat", "--id", "p", *pid)
+        self.cli("status", "--id", "p", "--status", "done", *pid)
+        records = [json.loads(line) for line in self.lines("p")]
+        self.assertEqual([(r["pid"], r["pid_start_ticks"]) for r in records], [(worker.pid, ticks)] * 4)
+        before = self.path("p").read_bytes()
+        for bad in ("0", "-1", "abc", "1.5", ""):
+            with self.subTest(pid=bad):
+                self.cli("heartbeat", "--id", "p", f"--pid={bad}", rc=2)
+        self.assertEqual(self.path("p").read_bytes(), before)
+
     def test_check_stale(self) -> None:
         self.init("stale")
         record = json.loads(self.path("stale").read_bytes())
@@ -383,6 +438,187 @@ class CliTest(LedgerCase):
             handle.write(b"junk\n")
         self.assertIn("FAIL", self.cli("check", rc=1).stdout)
         self.assertFalse(json.loads(self.cli("check", "--json", "--warn-only").stdout)["ok"])
+
+
+class Tier0CheckTest(LedgerCase):
+    def check(self, rc: int = 0, env: dict[str, str] | None = None) -> str:
+        result = subprocess.run(
+            ["bash", str(TIER0_CHECK), "--pre-commit"], capture_output=True, text=True, timeout=60,
+            env={**os.environ, "AQ_USAGE_TELEMETRY": "0", "AQ_DELEGATION_DIR": str(self.root), **(env or {})})
+        self.assertEqual(result.returncode, rc, result.stdout + result.stderr)
+        return result.stdout
+
+    def test_executable(self) -> None:
+        self.assertTrue(os.access(TIER0_CHECK, os.X_OK))
+
+    def test_empty_and_valid_pass(self) -> None:
+        self.assertEqual(self.check().strip(), "[tier0.d/check-work-ledger] PASS (0 entries)")
+        self.assertFalse(self.root.exists())
+        self.init()
+        self.assertIn("PASS (1 entries)", self.check())
+
+    def test_stale_heartbeat_warns_and_passes(self) -> None:
+        self.init("old")
+        record = json.loads(self.path("old").read_bytes())
+        record["at"] = (datetime.now(timezone.utc) - timedelta(seconds=300)).strftime(wl.TIME_FORMAT)
+        self.path("old").write_text(json.dumps(record) + "\n")
+        out = self.check(env={wl.WINDOW_ENV: "60"})
+        self.assertIn("WARN: stale heartbeat: old", out)
+        self.assertIn("PASS (1 entries)", out)
+
+    def test_mid_file_corruption_fails(self) -> None:
+        self.init("bad")
+        original = self.path("bad").read_bytes()
+        self.path("bad").write_bytes(original + b"junk\n" + original)
+        out = self.check(rc=1)
+        self.assertIn("FAIL: needs-attention: bad", out)
+        self.assertNotIn("PASS", out)
+
+    def test_unrunnable_check_fails(self) -> None:
+        self.assertIn("FAIL", self.check(rc=1, env={wl.WINDOW_ENV: "zero"}))
+
+
+class WrapperLedgerTest(unittest.TestCase):
+    """Real wrappers, stub providers: every dispatch writes one entry that ends done or failed."""
+
+    PROMPT = "-dash $(touch PWNED) `touch PWNED2` \"q\" 'q'\nsecond line " + "x" * 200
+
+    def setUp(self) -> None:
+        tmp = tempfile.TemporaryDirectory(prefix="aq-ledger-wrapper-")
+        self.addCleanup(tmp.cleanup)
+        self.root = Path(tmp.name)
+        shutil.copytree(REPO / "scripts/ai", self.root / "scripts/ai", symlinks=True,
+                        ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
+        (self.root / "config").mkdir()
+        shutil.copy2(REPO / "config/remote-lane-egress.json", self.root / "config")
+        self.delegation = self.root / ".agents/delegation"
+        (self.delegation / "outputs").mkdir(parents=True)
+        self.stub = self.script("stub-provider", 'printf "stub-ok\\n"\nexit "${STUB_RC:-0}"\n')
+        # delegate-to-local has no provider binary: intercept its preflight and dispatcher.
+        self.script("bin/python3", '''case "$1" in
+  */local_preflight.py) exit 0 ;;
+  */dispatch.py)
+    while [ "$#" -gt 0 ]; do
+      case "$1" in --task-id) task="$2" ;; --output) output="$2" ;; esac
+      shift
+    done
+    printf "stub-ok\\n" > "$output"
+    printf '{"id":"%s","status":"done"}\\n' "$task" >> "$AQ_DELEGATION_DIR/registry.jsonl"
+    exit "${STUB_RC:-0}" ;;
+esac
+exec "$REAL_PYTHON" "$@"
+''')
+        drop = ("GIT_", "DELEGATE_", "AQ_")
+        self.env = {
+            **{k: v for k, v in os.environ.items() if not k.startswith(drop)},
+            "PATH": f"{self.root / 'bin'}:{os.environ['PATH']}", "REAL_PYTHON": sys.executable,
+            "HOME": str(self.root), "AQ_DELEGATION_DIR": str(self.delegation), "AQ_ALLOW_VOLATILE_DIR": "1",
+            "AQ_USAGE_TELEMETRY": "0", "HYBRID_COORDINATOR_URL": "http://127.0.0.1:9", "A2A_BUDGET_BYPASS": "1",
+            "DELEGATE_CODEX_IGNORE_COOLDOWN": "1", "CODEX_BIN": str(self.stub), "GEMINI_BIN": str(self.stub),
+            "CLAUDE_BIN": str(self.stub),
+        }
+
+    def script(self, name: str, body: str) -> Path:
+        path = self.root / name
+        path.parent.mkdir(exist_ok=True)
+        path.write_text("#!/bin/sh\n" + body)
+        path.chmod(0o755)
+        return path
+
+    ARGS: dict[str, tuple[str, ...]] = {
+        "codex": ("--shared",), "gemini": (), "claude": (),
+        "local": ("--mode", "hybrid", "--no-consult", "--ignore-power-gate"),
+    }
+
+    def dispatch(self, lane: str, *extra: str, **env: str) -> subprocess.CompletedProcess[str]:
+        return subprocess.run(
+            [str(self.root / f"scripts/ai/delegate-to-{lane}"), *self.ARGS[lane], *extra],
+            cwd=self.root, env={**self.env, **env}, capture_output=True, text=True, timeout=60)
+
+    def entry(self) -> dict[str, Any]:
+        """Wait for the single entry to end and for background workers to finish writing."""
+        deadline = time.monotonic() + 60
+        entries: list[dict[str, Any]] = []
+        registry = self.delegation / "registry.jsonl"
+        while time.monotonic() < deadline:
+            entries = wl.list_entries(self.delegation)
+            rows = [json.loads(x) for x in registry.read_text().splitlines()] if registry.exists() else []
+            if (entries and entries[0]["status"] in wl.TERMINAL_STATUSES
+                    and rows and rows[-1]["status"] != "running"):
+                break
+            time.sleep(0.1)
+        self.assertEqual(len(entries), 1, entries)
+        return entries[0]
+
+    def assert_lifecycle(self, lane: str, wait: bool, rc: int) -> None:
+        shutil.rmtree(self.delegation / "ledger", ignore_errors=True)
+        (self.delegation / "registry.jsonl").unlink(missing_ok=True)
+        extra = ("--prompt", self.PROMPT, *(("--wait",) if wait else ()))
+        result = self.dispatch(lane, *extra, STUB_RC=str(rc))
+        if rc == 0 or not wait:
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        got = self.entry()
+        expected = "done" if rc == 0 else "failed"
+        self.assertEqual((got["status"], got["lane"], got["resume_policy"], got["warnings"]),
+                         (expected, lane, "confirm", []), result.stdout + result.stderr)
+        self.assertTrue(got["role"])
+        self.assertTrue(got["task"].startswith("-dash $(touch PWNED)"), got["task"])
+        self.assertNotIn("\n", got["task"])
+        self.assertLessEqual(len(got["task"]), 120)
+        records = [json.loads(x) for x in Path(got["path"]).read_bytes().splitlines()]
+        self.assertEqual((records[0]["event"], records[0]["status"]), ("init", "running"))
+        self.assertEqual([r["status"] for r in records if r["event"] == "status"], [expected])
+        self.assertEqual(list(self.root.rglob("PWNED*")), [])
+
+    def test_blocking_and_background_lifecycles(self) -> None:
+        for lane in self.ARGS:
+            for wait in (True, False):
+                for rc in (0, 3):
+                    with self.subTest(lane=lane, wait=wait, rc=rc):
+                        self.assert_lifecycle(lane, wait, rc)
+
+    def test_brief_path_worktree_and_handback(self) -> None:
+        git_env = {k: v for k, v in self.env.items() if not k.startswith("GIT_")}
+        for args in (("init", "-q"), ("add", "scripts", "config"),
+                     ("-c", "user.name=f", "-c", "user.email=f@example.invalid", "commit", "-qm", "base")):
+            subprocess.run(["git", "-C", str(self.root), *args], env=git_env, check=True, capture_output=True)
+        brief = self.root / "brief.md"
+        brief.write_text("do the slice\n")
+        self.ARGS = {**type(self).ARGS, "codex": ()}
+        identity = {"GIT_AUTHOR_NAME": "f", "GIT_AUTHOR_EMAIL": "f@example.invalid",
+                    "GIT_COMMITTER_NAME": "f", "GIT_COMMITTER_EMAIL": "f@example.invalid"}
+        result = self.dispatch("codex", "--prompt-file", str(brief), **identity)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        got = self.entry()
+        self.assertEqual((got["status"], got["brief_path"], got["branch"]),
+                         ("done", str(brief), f"delegate/{got['id']}"), got)
+        self.assertEqual(got["worktree"], str(self.delegation / "worktrees" / got["id"]))
+
+        # A failed handback overrides the provider's success.
+        shutil.rmtree(self.delegation / "ledger")
+        (self.delegation / "registry.jsonl").unlink()
+        self.script(".git/hooks/pre-commit", "exit 44\n")
+        self.stub = self.script("stub-provider", 'printf "change\\n" > child.txt\n')
+        self.dispatch("codex", "--prompt-file", str(brief), "--wait", **identity)
+        got = self.entry()
+        self.assertEqual((got["status"], got["status_reason"]), ("failed", "worktree_handback_failed"))
+
+    def test_ledger_failure_never_breaks_a_delegation(self) -> None:
+        (self.root / "scripts/ai/aq-ledger").write_text("raise SystemExit(2)\n")
+        for lane in self.ARGS:
+            for wait in (True, False):
+                with self.subTest(lane=lane, wait=wait):
+                    registry = self.delegation / "registry.jsonl"
+                    registry.unlink(missing_ok=True)
+                    result = self.dispatch(lane, "--prompt", "hi", *(("--wait",) if wait else ()))
+                    self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                    deadline = time.monotonic() + 60
+                    status = "running"
+                    while status == "running" and time.monotonic() < deadline:
+                        time.sleep(0.1)
+                        status = json.loads(registry.read_text().splitlines()[-1])["status"]
+                    self.assertEqual(status, "done")
+        self.assertFalse((self.delegation / "ledger").exists())
 
 
 if __name__ == "__main__":

@@ -86,14 +86,11 @@
     {
       "feature": "durable work ledger CLI (aq-ledger, S1 core)",
       "entrypoint": "scripts/ai/aq-ledger",
-      "live_caller": "scripts/ai/aq-ledger",
+      "live_caller": "scripts/ai/delegate-to-codex",
       "enable": null,
       "health_signal": "scripts/ai/aq-ledger:_run",
-      "deferral": {
-        "date": "2026-11-26",
-        "reason": "The S1 core library and CLI land first; nothing in a production path calls them yet. Delegation wrapper writes and the tier0 ledger check land in S1b immediately after S5 merges.",
-        "tracking": ".agents/plans/agent-work-durability-20261119/DESIGN.md S1; docs/harness-first/evidence/2026-11-26-s1-work-ledger.md"
-      }
+      "state": "live: delegate-to-{codex,gemini,local,claude} record dispatch lifecycle entries under .agents/delegation/ledger/<id>.jsonl",
+      "observed_by": "scripts/governance/tier0.d/check-work-ledger.sh; scripts/ai/aq-ledger list --json; scripts/testing/test-work-ledger.py"
     },
     {
       "feature": "aq-greenlight isolated merged-tree gates",
