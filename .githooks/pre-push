@@ -81,7 +81,7 @@ run_upstream_sync_check() {
     cat >&2 <<EOF
 pre-push: local branch '${current_branch}' is behind '${upstream_ref}' by ${behind_count} commit(s).
 Sync before pushing:
-  git pull --rebase --autostash ${remote_name} ${upstream_branch}
+  git pull --rebase ${remote_name} ${upstream_branch}
 
 Then re-run your push.
 
