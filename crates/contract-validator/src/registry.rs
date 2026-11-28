@@ -174,6 +174,11 @@ pub fn parse(text: &str) -> Result<Registry, String> {
     Ok(reg)
 }
 
+/// A registry path that could leave the repo root: absolute, or containing a `..` component.
+pub fn unsafe_path(p: &str) -> bool {
+    p.starts_with('/') || p.split('/').any(|c| c == "..")
+}
+
 /// Prefix match used for context paths, scan scope and exclusions.
 pub fn path_matches(path: &str, pattern: &str) -> bool {
     path == pattern || path.starts_with(pattern)

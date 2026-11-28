@@ -72,10 +72,16 @@ fn git(root: &Path, args: &[&str]) -> Result<Vec<u8>, String> {
 }
 
 fn read_working(root: &Path, rel: &str) -> Option<Vec<u8>> {
+    if registry::unsafe_path(rel) {
+        return None;
+    }
     fs::read(root.join(rel)).ok()
 }
 
 fn read_index(root: &Path, rel: &str) -> Option<Vec<u8>> {
+    if registry::unsafe_path(rel) {
+        return None;
+    }
     git(root, &["show", &format!(":{rel}")]).ok()
 }
 
@@ -156,8 +162,27 @@ fn run_contracts(
             .as_ref()
             .and_then(|p| fs::read_to_string(p).ok());
     } else if let Some(rev) = &o.base_ref {
-        // A base without the registry (pre-S1) is a bootstrap, not a failure.
-        if let Ok(bytes) = git(root, &["show", &format!("{rev}:{REGISTRY_PATH}")]) {
+        // An unresolvable rev (unfetched sha, shallow clone, typo) must never read as "no base".
+        git(
+            root,
+            &[
+                "rev-parse",
+                "--verify",
+                "--quiet",
+                &format!("{rev}^{{commit}}"),
+            ],
+        )
+        .map_err(|e| {
+            vec![format!(
+                "--base-ref {rev} does not resolve to a commit; base ratchet cannot run: {e}"
+            )]
+        })?;
+        let listed = git(root, &["ls-tree", "--name-only", rev, "--", REGISTRY_PATH])
+            .map_err(|e| vec![format!("cannot read base {rev}: {e}")])?;
+        // Only a valid base that never had the registry (pre-S1) is a bootstrap, not a failure.
+        if !listed.is_empty() {
+            let bytes = git(root, &["show", &format!("{rev}:{REGISTRY_PATH}")])
+                .map_err(|e| vec![format!("cannot read {REGISTRY_PATH} at base {rev}: {e}")])?;
             let text = String::from_utf8_lossy(&bytes).to_string();
             base_registry = Some(
                 registry::parse(&text).map_err(|e| vec![format!("base registry at {rev}: {e}")])?,

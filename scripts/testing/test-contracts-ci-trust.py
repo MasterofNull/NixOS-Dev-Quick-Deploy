@@ -76,6 +76,30 @@ jobs:
           BIN=target/release/harness-contracts
           "$BIN" --root cand contracts
 """
+BAD_ARG_NAMED = """name: bad
+on: pull_request_target
+jobs:
+  j:
+    steps:
+      - run: git fetch origin refs/pull/1/head
+      - run: cargo build --release --locked -p harness-contracts
+"""
+BAD_ARG_NAMED_BASH = """name: bad
+on: pull_request_target
+jobs:
+  j:
+    steps:
+      - run: git fetch origin refs/pull/1/head
+      - run: bash evil.sh harness-contracts
+"""
+OK_PATH_BIN = """name: ok
+on: pull_request_target
+jobs:
+  j:
+    steps:
+      - run: git fetch origin refs/pull/1/head
+      - run: ./target/release/harness-contracts --root cand contracts
+"""
 NOT_PRIVILEGED = """name: fine
 on:
   pull_request:
@@ -107,6 +131,9 @@ def n8() -> None:
     for name, text in (("checkout-head", BAD_CHECKOUT), ("fetch-then-build", BAD_FETCH_BUILD), ("same-step", BAD_SAME_STEP)):
         assert trust.scan_text(text), f"N8: lint must fail '{name}'"
         assert masks.scan_text(text) == [], f"N8 control: the old mask lint is blind to '{name}' (no fix, no detection)"
+    assert trust.scan_text(BAD_ARG_NAMED), "N8: a build whose argument names harness-contracts is not the checker"
+    assert trust.scan_text(BAD_ARG_NAMED_BASH), "N8: a script run with harness-contracts as an argument is not the checker"
+    assert trust.scan_text(OK_PATH_BIN) == [], "N8: the prebuilt checker invoked by path is allowed"
     assert trust.scan_text(OK_BASE_ONLY) == [], "N8: base build, candidate as data, prebuilt checker only must pass"
     assert trust.scan_text(NOT_PRIVILEGED) == [], "N8: pull_request jobs may build the PR head"
     assert trust.main(["x", str(ROOT)]) == 0, "N8: every real workflow must pass"
@@ -115,7 +142,10 @@ def n8() -> None:
     assert "secrets." not in code and "GH_TOKEN" not in code, "privileged job must hold no secrets or token"
     assert "pull_request_target" in code and "permissions:\n  contents: read\n" in code
     assert code.index("cargo build") < code.index("refs/pull/"), "base checker must be built before the candidate exists"
+    assert "HEAD_SHA: ${{ github.event.pull_request.head.sha }}" in code, "head must be pinned to the event sha"
+    assert 'worktree add --detach "$RUNNER_TEMP/candidate" "$HEAD_SHA"' in code and '!= "$HEAD_SHA"' in code
     cand = (ROOT / ".github/workflows/contracts-candidate.yml").read_text()
+    assert "paths:" not in trust.strip_comments(cand), "a required check must not be path-filtered"
     ccode = trust.strip_comments(cand)
     assert "pull_request_target" not in ccode and "secrets." not in ccode and "permissions:\n  contents: read\n" in ccode
 

@@ -29,7 +29,8 @@ BUILD = re.compile(
     r"|(?:^|[\s;&|(`])\./\S",
     re.M,
 )
-ALLOWED_CMD = re.compile(r'^\s*"?\$\{?BIN\}?"?\s|harness-contracts\s')
+# Command position only: an argument that merely contains the name (cargo build -p harness-contracts) is not the checker.
+ALLOWED_CMD = re.compile(r'^\s*(?:"?\$\{?BIN\}?"?|(?:[^\s;|&(`]*/)?harness-contracts)\s')
 
 
 def strip_comments(text: str) -> str:

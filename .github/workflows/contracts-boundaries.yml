@@ -31,21 +31,27 @@ jobs:
           persist-credentials: false
       - name: Build the base-ref checker (base checkout only; the candidate is not on disk yet)
         run: cargo build --release --locked -p harness-contracts
-      - name: Fetch the candidate as data into a separate worktree
+      - name: Fetch the candidate as data into a separate worktree, pinned to the event head sha
         env:
           PR_NUMBER: ${{ github.event.pull_request.number }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           set -euo pipefail
           git fetch --no-tags origin "refs/pull/${PR_NUMBER}/head:refs/remotes/pull/head"
+          # refs/pull/N/head is mutable: the checked tree must be exactly the commit this event is about.
+          if [[ "$(git rev-parse refs/remotes/pull/head)" != "$HEAD_SHA" ]]; then
+            echo "::error::refs/pull/${PR_NUMBER}/head moved past the event head ${HEAD_SHA}; a newer run will check the new head"
+            exit 1
+          fi
           git -c core.hooksPath=/dev/null -c filter.lfs.smudge= -c filter.lfs.process= -c filter.lfs.required=false \
-            worktree add --detach "$RUNNER_TEMP/candidate" refs/remotes/pull/head
+            worktree add --detach "$RUNNER_TEMP/candidate" "$HEAD_SHA"
       - name: Run the base checker over the candidate tree
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: |
           set -euo pipefail
           BIN="$PWD/target/release/harness-contracts"
-          if ! "$BIN" --root "$PWD" decisions --count >/dev/null 2>&1; then
+          if ! "$BIN" --guard-version >/dev/null 2>&1; then
             echo "::warning::base checker predates the contract guard subcommands (bootstrap PR); nothing to enforce yet"
             exit 0
           fi

@@ -2,7 +2,8 @@
 //! versioned contract files and the lock, plus the base-ref ratchet that stops a
 //! candidate from weakening its own checker's inputs (DESIGN N1, N3, N6, N7).
 
-use crate::registry::{Exception, Registry};
+use crate::json::{self, Json};
+use crate::registry::{unsafe_path, Exception, Registry};
 use crate::sha256::hex_digest;
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -102,27 +103,17 @@ pub fn referenced_contracts(reg: &Registry) -> Vec<String> {
     paths
 }
 
-fn json_string_after(text: &str, key: &str) -> Option<String> {
-    let needle = format!("\"{key}\"");
-    let start = text.find(&needle)? + needle.len();
-    let rest = text[start..].trim_start().strip_prefix(':')?.trim_start();
-    let rest = rest.strip_prefix('"')?;
-    Some(rest[..rest.find('"')?].to_string())
+/// Top-level `$id` of a schema, read structurally.
+fn schema_id(doc: &Json) -> Option<String> {
+    doc.get("$id").and_then(Json::as_str).map(str::to_string)
 }
 
-fn json_const_after(text: &str, key: &str) -> Option<u32> {
-    let needle = format!("\"{key}\"");
-    let start = text.find(&needle)? + needle.len();
-    let rest = &text[start..];
-    let c = rest.find("\"const\"")? + "\"const\"".len();
-    let digits: String = rest[c..]
-        .trim_start()
-        .trim_start_matches(':')
-        .trim_start()
-        .chars()
-        .take_while(char::is_ascii_digit)
-        .collect();
-    digits.parse().ok()
+/// `properties.schema_version.const`, read structurally (not the first `const` after a text match).
+fn schema_version_const(doc: &Json) -> Option<u32> {
+    doc.get("properties")?
+        .get("schema_version")?
+        .get("const")?
+        .as_u32()
 }
 
 pub fn check(inp: &Inputs<'_>) -> Outcome {
@@ -277,6 +268,15 @@ pub fn check(inp: &Inputs<'_>) -> Outcome {
         }
     }
 
+    let mut unsafe_paths: BTreeSet<String> = referenced_contracts(reg).into_iter().collect();
+    unsafe_paths.extend(reg.tools.iter().map(|t| t.path.clone()));
+    for p in unsafe_paths.iter().filter(|p| unsafe_path(p)) {
+        fail(
+            &mut out,
+            format!("registry path '{p}' is absolute or contains '..' (must stay inside the repo)"),
+        );
+    }
+
     check_versions(inp, &mut out);
     check_lock(inp, &mut out);
     check_exceptions(inp, &mut out);
@@ -313,7 +313,17 @@ fn check_versions(inp: &Inputs<'_>, out: &mut Outcome) {
             continue;
         };
         let text = String::from_utf8_lossy(&data).to_string();
-        if let Some(id) = json_string_after(&text, "$id") {
+        let doc = match json::parse(&text) {
+            Ok(d) => Some(d),
+            Err(e) if version_of(&path).is_some() => {
+                out.failures
+                    .push(format!("contracts: {path} is not valid JSON: {e}"));
+                continue;
+            }
+            Err(_) => None,
+        };
+        let id = doc.as_ref().and_then(schema_id);
+        if let Some(id) = &id {
             if let Some(prev) = ids.insert(id.clone(), path.clone()) {
                 if prev != path {
                     out.failures.push(format!(
@@ -322,19 +332,21 @@ fn check_versions(inp: &Inputs<'_>, out: &mut Outcome) {
                 }
             }
         }
-        if let Some((_, n)) = version_of(&path) {
-            let id = json_string_after(&text, "$id").unwrap_or_default();
+        if let (Some((_, n)), Some(doc)) = (version_of(&path), &doc) {
+            let id = id.unwrap_or_default();
             if !id.ends_with(&format!("v{n}.schema.json")) {
                 out.failures.push(format!(
                     "contracts: {path} $id '{id}' does not carry version v{n}"
                 ));
             }
-            if let Some(c) = json_const_after(&text, "schema_version") {
-                if c != n {
-                    out.failures.push(format!(
-                        "contracts: {path} schema_version const {c} != path version {n}"
-                    ));
-                }
+            match schema_version_const(doc) {
+                Some(c) if c == n => {}
+                Some(c) => out.failures.push(format!(
+                    "contracts: {path} schema_version const {c} != path version {n}"
+                )),
+                None => out.failures.push(format!(
+                    "contracts: {path} is a versioned schema but declares no properties.schema_version.const"
+                )),
             }
         }
     }
@@ -473,13 +485,45 @@ fn check_base(inp: &Inputs<'_>, base: &Base<'_>, out: &mut Outcome) {
         }
     }
     for bc in &b.contexts {
-        if !reg.contexts.iter().any(|c| c.id == bc.id) {
-            fail(format!("context {} was deleted", bc.id));
+        match reg.contexts.iter().find(|c| c.id == bc.id) {
+            None => fail(format!("context {} was deleted", bc.id)),
+            Some(c) => {
+                for m in bc.modules.iter().filter(|m| !c.modules.contains(m)) {
+                    fail(format!("context {} dropped owned module {m}", bc.id));
+                }
+                for p in bc.paths.iter().filter(|p| !c.paths.contains(p)) {
+                    fail(format!("context {} dropped owned path {p}", bc.id));
+                }
+                for i in c
+                    .allowed_imports
+                    .iter()
+                    .filter(|i| !bc.allowed_imports.contains(i))
+                {
+                    fail(format!(
+                        "context {} widened allowed_imports with {i} (permissions only narrow in a candidate)",
+                        bc.id
+                    ));
+                }
+            }
         }
     }
     for bt in &b.tools {
-        if !reg.tools.iter().any(|t| t.id == bt.id) {
-            fail(format!("tool {} was removed from the registry", bt.id));
+        match reg.tools.iter().find(|t| t.id == bt.id) {
+            None => fail(format!("tool {} was removed from the registry", bt.id)),
+            Some(t) => {
+                if t.path != bt.path || t.owner != bt.owner {
+                    fail(format!(
+                        "tool {} path/owner changed from {} ({}) to {} ({})",
+                        bt.id, bt.path, bt.owner, t.path, t.owner
+                    ));
+                }
+                for c in t.callers.iter().filter(|c| !bt.callers.contains(c)) {
+                    fail(format!(
+                        "tool {} gained caller {c} (permissions only narrow in a candidate)",
+                        bt.id
+                    ));
+                }
+            }
         }
     }
     for be in &b.endpoints {
@@ -490,6 +534,18 @@ fn check_base(inp: &Inputs<'_>, base: &Base<'_>, out: &mut Outcome) {
                     || be.literals.iter().any(|v| !e.literals.contains(v))
                 {
                     fail(format!("endpoint {} lost detection patterns", be.id));
+                }
+                if e.owner != be.owner {
+                    fail(format!(
+                        "endpoint {} owner changed from {} to {}",
+                        be.id, be.owner, e.owner
+                    ));
+                }
+                for c in e.callers.iter().filter(|c| !be.callers.contains(c)) {
+                    fail(format!(
+                        "endpoint {} gained caller {c} (permissions only narrow in a candidate)",
+                        be.id
+                    ));
                 }
             }
         }
@@ -529,8 +585,8 @@ fn check_base(inp: &Inputs<'_>, base: &Base<'_>, out: &mut Outcome) {
                 }
             }
         }
-    } else if !reg.exceptions.is_empty() && !b.exceptions.is_empty() {
-        fail("exceptions appeared against a base that has none".into());
+    } else if !reg.exceptions.is_empty() {
+        fail("exceptions appeared against a base that has no boundary_exceptions section".into());
     }
     if let Some(base_lock_text) = base.lock {
         match (parse_lock(base_lock_text), inp.lock.map(parse_lock)) {
@@ -723,5 +779,79 @@ mod tests {
             maintenance: false,
         });
         assert!(has(&out, "no decisions[] section"));
+    }
+
+    #[test]
+    fn dead_exception_branch_is_closed() {
+        let base = BASE_YAML.split("boundary_exceptions:").next().unwrap();
+        let out = run(BASE_YAML, Some(base), None, SCHEMA);
+        assert!(
+            has(&out, "exceptions appeared against a base"),
+            "{:?}",
+            out.failures
+        );
+    }
+
+    #[test]
+    fn candidate_cannot_widen_its_own_permissions() {
+        let base = "contexts:\n  - {id: K1, paths: [scripts/a/], modules: [m1], allowed_imports: [event_log]}\n  - {id: K3, paths: [scripts/b/]}\ndecisions:\n  - {id: D01, decision: route, context: K1, owner: c, contract: contracts/k1/route/v1.schema.json, tag: OK}\ntools:\n  - {id: t1, path: scripts/ai/x.py, owner: K1, decision: D01, callers: []}\nendpoints:\n  - {id: e1, owner: K1, contract: contracts/k1/route/v1.schema.json, env_vars: [U], literals: [], callers: []}\nscan_scope:\n  include: [scripts/]\n  exclude: []\n";
+        assert!(run(base, Some(base), None, SCHEMA).failures.is_empty());
+        for (from, to, needle) in [
+            ("modules: [m1]", "modules: []", "dropped owned module m1"),
+            ("paths: [scripts/a/]", "paths: []", "dropped owned path"),
+            (
+                "allowed_imports: [event_log]",
+                "allowed_imports: [event_log, task_registry]",
+                "widened allowed_imports",
+            ),
+            (
+                "callers: []}\nendpoints",
+                "callers: [K3]}\nendpoints",
+                "tool t1 gained caller",
+            ),
+            (
+                "path: scripts/ai/x.py",
+                "path: scripts/ai/other.py",
+                "path/owner changed",
+            ),
+            (
+                "env_vars: [U], literals: [], callers: []",
+                "env_vars: [U], literals: [], callers: [K3]",
+                "endpoint e1 gained caller",
+            ),
+        ] {
+            let cand = base.replace(from, to);
+            assert_ne!(cand, base, "{from}");
+            let out = run(&cand, Some(base), None, SCHEMA);
+            assert!(has(&out, needle), "{needle}: {:?}", out.failures);
+        }
+    }
+
+    #[test]
+    fn absolute_and_parent_paths_are_rejected() {
+        let abs = BASE_YAML.replace("contracts/k1/route/v1.schema.json", "/etc/hosts");
+        assert!(has(&run(&abs, None, None, SCHEMA), "absolute or contains"));
+        let up =
+            format!("{BASE_YAML}tools:\n  - {{id: t, path: ../../x, owner: K1, decision: D01}}\n");
+        assert!(has(&run(&up, None, None, SCHEMA), "absolute or contains"));
+    }
+
+    #[test]
+    fn schema_version_is_read_precisely_and_required() {
+        let missing = "{\"$id\": \"https://x/k1/route/v1.schema.json\", \"required\": [\"schema_version\"], \"properties\": {\"other\": {\"const\": 1}}}";
+        assert!(has(
+            &run(BASE_YAML, None, None, missing),
+            "declares no properties.schema_version.const"
+        ));
+        let wrong = SCHEMA.replace("\"const\": 1", "\"const\": 2");
+        assert!(has(
+            &run(BASE_YAML, None, None, &wrong),
+            "schema_version const 2 != path version 1"
+        ));
+        let not_json = "{\"$id\": ";
+        assert!(has(
+            &run(BASE_YAML, None, None, not_json),
+            "is not valid JSON"
+        ));
     }
 }

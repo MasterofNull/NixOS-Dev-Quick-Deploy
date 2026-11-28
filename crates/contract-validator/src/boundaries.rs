@@ -253,6 +253,8 @@ fn annotation_for(anns: &Annotations, line: usize) -> Option<String> {
 
 struct FileCtx<'a> {
     reg: &'a Registry,
+    /// Dotted package of the file's directory (`scripts/ai/lib/x.py` -> `scripts.ai.lib`), for relative imports.
+    pkg: Vec<String>,
     own: String,
     own_allowed: Vec<String>,
 }
@@ -330,11 +332,12 @@ fn scan_python(fc: &FileCtx<'_>, src: &str) -> Result<Vec<Raw>, String> {
                         }
                     }
                 } else {
-                    let mut relative = false;
+                    let mut level = 0usize;
                     while op_at(&toks, j, '.') {
-                        relative = true;
+                        level += 1;
                         j += 1;
                     }
+                    let relative = level > 0;
                     let mut base = String::new();
                     while let Some(part) = name_at(&toks, j) {
                         if part == "import" {
@@ -349,14 +352,33 @@ fn scan_python(fc: &FileCtx<'_>, src: &str) -> Result<Vec<Raw>, String> {
                             break;
                         }
                     }
-                    if !relative && !base.is_empty() {
-                        candidates.push(base.clone());
+                    if relative || !base.is_empty() {
+                        // `.` is this file's package, `..` its parent, and so on.
+                        let keep = fc.pkg.len().saturating_sub(level.saturating_sub(1));
+                        let mut parts: Vec<&str> = if relative {
+                            fc.pkg[..keep].iter().map(String::as_str).collect()
+                        } else {
+                            Vec::new()
+                        };
+                        if !base.is_empty() {
+                            parts.push(base.trim_end_matches('.'));
+                        }
+                        let base = parts.join(".");
+                        // `from . import x` names the bare package, not a module.
+                        let bare_pkg = relative && fc.pkg[..keep].join(".") == base;
+                        if !base.is_empty() && !bare_pkg {
+                            candidates.push(base.clone());
+                        }
                         if name_at(&toks, j) == Some("import") {
                             j += 1;
                             while let Some(tok) = toks.get(j) {
                                 match &tok.kind {
                                     Kind::Name(part) if part != "as" => {
-                                        candidates.push(format!("{base}.{part}"));
+                                        candidates.push(if base.is_empty() {
+                                            part.clone()
+                                        } else {
+                                            format!("{base}.{part}")
+                                        });
                                     }
                                     Kind::Newline => break,
                                     Kind::Op(';') => break,
@@ -755,6 +777,10 @@ pub fn scan_file(reg: &Registry, path: &str, bytes: &[u8]) -> Result<Option<Vec<
     let ctx = context_of(reg, path);
     let fc = FileCtx {
         reg,
+        pkg: path
+            .rsplit_once('/')
+            .map(|(dir, _)| dir.split('/').map(str::to_string).collect())
+            .unwrap_or_default(),
         own: ctx
             .map(|c| c.id.clone())
             .unwrap_or_else(|| "UNASSIGNED".to_string()),
@@ -935,6 +961,37 @@ mod tests {
         assert_eq!(kinds(&raws), vec!["event", "event"]);
         let raws = scan("ai-stack/switchboard/a.py", "import importlib\nm = importlib.import_module(name)\nx = getattr(obj, name)\neval(s)\nok = getattr(obj, \"a\", None)\n");
         assert_eq!(kinds(&raws), vec!["dynamic", "dynamic", "dynamic"]);
+    }
+
+    #[test]
+    fn relative_imports_resolve_against_the_file_directory() {
+        let y = "contexts:\n  - {id: K1, paths: [scripts/ai/lib/task_registry.py], modules: [task_registry], contract_package: contracts/k1}\n  - {id: K3, paths: [scripts/ai/lib/review_gate.py], allowed_imports: []}\ndecisions:\n  - {id: D05, decision: land, context: K3, owner: aq-land, tag: OV}\nscan_scope:\n  include: [scripts/]\n  exclude: []\n";
+        let r = parse(y).unwrap();
+        let scan_rel = |src: &str| {
+            scan_file(&r, "scripts/ai/lib/review_gate.py", src.as_bytes())
+                .unwrap()
+                .unwrap()
+        };
+        for src in [
+            "from . import task_registry\n",
+            "from .task_registry import TaskRegistry\n",
+            "from ..lib import task_registry\n",
+            "from . import os, task_registry\n",
+        ] {
+            let raws = scan_rel(src);
+            assert_eq!(kinds(&raws), vec!["import"], "{src}");
+            assert_eq!(raws[0].owner, "K1", "{src}");
+        }
+        assert!(scan_rel("from . import review_helpers\nfrom .other import x\n").is_empty());
+        // inside the owning context the same relative import is fine
+        assert!(scan_file(
+            &r,
+            "scripts/ai/lib/task_registry.py",
+            b"from . import task_registry\n"
+        )
+        .unwrap()
+        .unwrap()
+        .is_empty());
     }
 
     #[test]

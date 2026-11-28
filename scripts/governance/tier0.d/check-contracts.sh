@@ -13,8 +13,8 @@ TAG="[tier0.d/check-contracts]"
 REPO_ROOT="$(git rev-parse --show-toplevel)"
 MODE="${1:---pre-commit}"
 
-usable() { # a binary that predates the guard subcommands rejects them: treat as unavailable
-    [[ -n "$1" && -x "$1" ]] && "$1" --root "$REPO_ROOT" decisions --count >/dev/null 2>&1
+usable() { # a binary that predates the guard rejects --guard-version; no registry is read, so a broken registry is reported as one
+    [[ -n "$1" && -x "$1" ]] && "$1" --guard-version >/dev/null 2>&1
 }
 
 BIN="${HARNESS_CONTRACTS_BIN:-}"

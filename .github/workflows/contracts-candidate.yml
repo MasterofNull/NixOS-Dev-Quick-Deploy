@@ -7,15 +7,7 @@ name: contracts-candidate
 # input (N2). The privileged, base-ref half is contracts-boundaries.yml.
 on:
   pull_request:
-    paths:
-      - "crates/**"
-      - "Cargo.toml"
-      - "Cargo.lock"
-      - "config/system-state-authorities.yaml"
-      - "contracts/**"
-      - "tests/contracts-corpus/**"
-      - "scripts/governance/contracts-corpus.sh"
-      - ".github/workflows/contracts-*.yml"
+    # No `paths:` filter: a required check that is skipped never reports, so it would block unrelated PRs.
 
 permissions:
   contents: read

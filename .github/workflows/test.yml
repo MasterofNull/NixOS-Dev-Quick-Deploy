@@ -619,6 +619,7 @@ jobs:
             --only check-workflow-masks-test \
             --only check-workflow-trust-test \
             --only config-schema-derived-test \
+            --only contracts-guard-cli-test \
             --only tier0-gate-placement-tests \
             --only gate-lane-findings-tests \
             --only gemini-quota-fallback-tests \

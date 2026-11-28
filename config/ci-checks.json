@@ -285,6 +285,17 @@
       "ci_workflow": ".github/workflows/test.yml#syntax"
     },
     {
+      "id": "contracts-guard-cli-test",
+      "cmd": "scripts/testing/test-contracts-guard-cli.py",
+      "paths": [],
+      "needs": [
+        "python3",
+        "cargo",
+        "git"
+      ],
+      "ci_workflow": ".github/workflows/test.yml#syntax"
+    },
+    {
       "id": "validate-echo-colors",
       "cmd": "scripts/testing/validate-echo-colors.sh",
       "paths": [
