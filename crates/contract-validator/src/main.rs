@@ -1,4 +1,11 @@
+mod boundaries;
+mod contracts;
+mod decisions;
+mod guard;
+mod registry;
 mod scope_gate;
+mod sha256;
+mod yaml;
 use std::collections::HashSet;
 use std::env;
 use std::fs;
@@ -97,6 +104,20 @@ fn main() -> ExitCode {
 }
 
 fn run_cli(args: Vec<String>) -> Result<String, Vec<String>> {
+    if let Some(at) = args
+        .iter()
+        .position(|a| guard::SUBCOMMANDS.contains(&a.as_str()))
+    {
+        let mut root =
+            env::current_dir().map_err(|err| vec![format!("cannot resolve cwd: {err}")])?;
+        if let Some(r) = args[..at].iter().position(|a| a == "--root") {
+            let Some(value) = args.get(r + 1) else {
+                return Err(vec!["--root requires a path".to_string()]);
+            };
+            root = PathBuf::from(value);
+        }
+        return guard::run(&root, &args[at], &args[at + 1..]);
+    }
     let mut check = Check::All;
     let mut root = env::current_dir().map_err(|err| vec![format!("cannot resolve cwd: {err}")])?;
     let mut index = 0;
@@ -140,7 +161,7 @@ fn run_cli(args: Vec<String>) -> Result<String, Vec<String>> {
             value => {
                 let Some(parsed) = Check::parse(value) else {
                     return Err(vec![format!(
-                        "unknown check '{value}' (expected all, writable-state, memory-surface, or scope-gate)"
+                        "unknown check '{value}' (expected all, writable-state, memory-surface, scope-gate, contracts, boundaries, or decisions)"
                     )]);
                 };
                 check = parsed;

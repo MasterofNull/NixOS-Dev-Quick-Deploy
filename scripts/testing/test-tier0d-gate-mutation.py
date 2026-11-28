@@ -219,6 +219,41 @@ def validator_bin():
     return out.stdout.split()[-1] + "/bin/harness-contracts"
 
 
+def contracts_bin():
+    """A harness-contracts that has the contracts/boundaries subcommands (an older PATH binary lacks them)."""
+    env = os.environ.get("HARNESS_CONTRACTS_BIN")
+    cand = Path(env) if env else REPO / "target/release/harness-contracts"
+    if not cand.exists() and shutil.which("cargo"):
+        subprocess.run(["cargo", "build", "--release", "-p", "harness-contracts"], cwd=REPO, capture_output=True)
+    if not cand.exists():
+        cand = Path(validator_bin())
+    return str(cand)
+
+
+CONTRACTS_COPY = ["config/system-state-authorities.yaml", "config/schemas", "contracts",
+                  "scripts/ai/aq-land", "scripts/ai/aq-review-receipt", "scripts/ai/aq-approve", "scripts/ai/aq-role-route",
+                  "scripts/ai/aq-collab-round", "scripts/ai/delegate-to-codex", "scripts/ai/delegate-to-claude",
+                  "scripts/ai/delegate-to-gemini", "scripts/ai/aq-memory"]
+
+
+def contracts_setup(sb, violation):
+    sb.commit()
+    if violation:
+        sb.put("scripts/ai/zz-corpus-canary.sh", '#!/usr/bin/env bash\neval "$CMD"\n', 0o755)
+    sb.stage()
+    return {"env": {"HARNESS_CONTRACTS_BIN": contracts_bin()}}
+
+
+def contracts_no_binary(sb):
+    sb.commit()
+    stub = sb.root / "_stubbin"
+    stub.mkdir()
+    for tool in ("bash", "dirname", "git", "tail", "sed", "mktemp"):
+        (stub / tool).symlink_to(shutil.which(tool))
+    sb.put("_stubbin/nix", "#!/usr/bin/env bash\nexit 1\n", 0o755)
+    return {"env": {"PATH": str(stub), "HARNESS_CONTRACTS_BIN": ""}}
+
+
 def owned_setup(sb, touch):
     stub = sb.root / "_stubbin"
     stub.mkdir()
@@ -353,9 +388,9 @@ CASES = [
          lambda sb: evidence_msg(sb, "feat: x\n\nno trailers\n"), "warn", r"does not contain independent review trailers"),
 
     Case("check-config-contracts.sh", "good: registered switchboard config validates", config_good, "pass", r"PASS: 1 registered config",
-         copy=["contracts", "scripts/ai/lib/config_loader.py", "config/switchboard-profiles.yaml"]),
+         copy=["contracts", "scripts/ai/lib/config_loader.py", "config/switchboard-profiles.yaml", "config/system-state-authorities.yaml"]),
     Case("check-config-contracts.sh", "bad: registered config violates its schema", config_bad, "fail", r"FAIL \(validate\)",
-         copy=["contracts", "scripts/ai/lib/config_loader.py", "config/switchboard-profiles.yaml"]),
+         copy=["contracts", "scripts/ai/lib/config_loader.py", "config/switchboard-profiles.yaml", "config/system-state-authorities.yaml"]),
 
     Case("check-deleted-links.sh", "good: deleting an unreferenced doc passes", lambda sb: links_setup(sb, "docs/b.md"), "pass", r"PASS: 1 deleted doc",
          args=("--pre-commit",)),
@@ -365,6 +400,13 @@ CASES = [
     Case("check-dependency-cve.sh", "good: audit reports no high/critical", lambda sb: cve_setup(sb, {"high": 0, "critical": 0}), "pass", r"PASS: 0 high/critical CVEs"),
     Case("check-dependency-cve.sh", "bad: audit reports a high CVE in a modified manifest", lambda sb: cve_setup(sb, {"high": 1, "critical": 0}), "fail", r"FAIL: high/critical CVEs in pkg/package.json"),
     Case("check-dependency-cve.sh", "bad: audit reports a critical CVE", lambda sb: cve_setup(sb, {"high": 0, "critical": 2}), "fail", r"critical=2"),
+
+    Case("check-contracts.sh", "good: staged tree with no boundary violation", lambda sb: contracts_setup(sb, False), "pass", r"PASS: boundaries",
+         args=("--pre-commit",), copy=CONTRACTS_COPY),
+    Case("check-contracts.sh", "bad: staged unannotated dynamic call in scanned scope", lambda sb: contracts_setup(sb, True), "fail", r"zz-corpus-canary\.sh:2: dynamic",
+         args=("--pre-commit",), copy=CONTRACTS_COPY),
+    Case("check-contracts.sh", "bad: checker unavailable fails closed", contracts_no_binary, "fail", r"FAIL: harness-contracts with the contracts/boundaries subcommands is unavailable",
+         args=("--pre-commit",), copy=CONTRACTS_COPY),
 
     Case("check-owned-scope.sh", "good: change inside the owned path", lambda sb: owned_setup(sb, "owned/a.txt"), "pass", r"(?s)^(?!.*FAIL|.*violation)"),
     Case("check-owned-scope.sh", "bad: change outside the owned path", lambda sb: owned_setup(sb, "other/b.txt"), "fail", r"other/b\.txt"),

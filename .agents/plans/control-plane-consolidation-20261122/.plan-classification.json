@@ -1,0 +1,4 @@
+{
+  "classification": "unclassified",
+  "reason": "tracker.json is an editorial plan tracker for the control-plane consolidation (rev 5.1) and the plan is under active work; its S1 slice ships in this PR. Classification is left to the plan owner."
+}

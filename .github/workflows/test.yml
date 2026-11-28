@@ -617,6 +617,8 @@ jobs:
             --only source-trust-tests \
             --only pm-tracker-owner-acceptance \
             --only check-workflow-masks-test \
+            --only check-workflow-trust-test \
+            --only config-schema-derived-test \
             --only tier0-gate-placement-tests \
             --only gate-lane-findings-tests \
             --only gemini-quota-fallback-tests \
