@@ -13,7 +13,7 @@ Replaces .agents/delegation/outputs/landing/land.sh (design: delivery-loop-simpl
 
 Dependency-bump fast lane: with --author-lane dependabot and a net diff (vs origin/main) made only of files matching
 dependabot_manifest_exemption.manifest_globs in config/harness-first-policy.json and one supported package-version
-replacement, aq-land reviews with config/review-criteria/dependency-bump.md plus any --criteria-file and defaults the lanes to
+replacement, aq-land reviews with config/review-criteria/dependency-bump.md plus any --criteria-file (every review also gets config/review-criteria/default.md) and defaults the lanes to
 gemini,codex (env AQ_LAND_DEP_LANES; local cannot read release notes). An explicit --lanes or AQ_LAND_LANES always wins.
 Any non-manifest file in the diff means the normal path. Receipt, review record, CI wait and merge are unchanged.
 
@@ -651,7 +651,12 @@ class Land:
     def prompt(self, lane, head, diff_file, diff_text):
         dep_crit = (ROOT / "config/review-criteria/dependency-bump.md").read_text() if getattr(self, "fast_lane", "") else ""
         custom_crit = Path(self.a.criteria_file).read_text() if self.a.criteria_file else ""
-        crit = "\n\n".join(x for x in (dep_crit, custom_crit) if x) or "Check correctness, tests, and security of the change."
+        try:
+            base_crit = (ROOT / "config/review-criteria/default.md").read_text()
+        except OSError as e:
+            say(f"WARN default review criteria unreadable ({type(e).__name__}); using the built-in one-line criterion")
+            base_crit = "Check correctness, tests, and security of the change."
+        crit = "\n\n".join(x for x in (base_crit, dep_crit, custom_crit) if x)
         p = [f"Independent review (you are not the author). Subject: branch {self.branch}, head {head}, base origin/main."]
         if lane == "local":
             p += ["Answer from the diff below alone.", "", crit, "", "```diff", diff_text, "```"]

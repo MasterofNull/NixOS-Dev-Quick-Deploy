@@ -857,6 +857,7 @@
       "id": "tests-aq",
       "cmd": "scripts/testing/run-test-group.py tests-aq",
       "paths": [
+        "scripts/maintenance/aq-main-sync",
         "scripts/testing/test-no-tmpfs-guard.py",
         "scripts/testing/run-test-group.py",
         "scripts/ai/lib/delegation-dir.sh",
@@ -873,6 +874,7 @@
         "scripts/ai/aq-knowledge-import.sh",
         "scripts/ai/aq-ledger",
         "scripts/ai/lib/work_ledger.py",
+        "scripts/governance/tier0.d/check-work-ledger.sh",
         "scripts/testing/test-work-ledger.py",
         "scripts/testing/test-aq-a2a-audit.py",
         "scripts/testing/test-aq-context-packet.py",
@@ -915,6 +917,7 @@
         "scripts/testing/test-aq-land-pre-review-gate.py",
         "scripts/testing/test-aq-local-dogfood-run-guard.py",
         "scripts/testing/test-aq-local-review.py",
+        "scripts/testing/test-aq-main-sync.py",
         "scripts/testing/test-aq-mcp-conformance.py",
         "scripts/testing/test-aq-model-switch-nixos.py",
         "scripts/testing/test-aq-oncalld.py",
@@ -1018,6 +1021,7 @@
         "scripts/testing/test-aq-land-pre-review-gate.py",
         "scripts/testing/test-aq-local-dogfood-run-guard.py",
         "scripts/testing/test-aq-local-review.py",
+        "scripts/testing/test-aq-main-sync.py",
         "scripts/testing/test-aq-mcp-conformance.py",
         "scripts/testing/test-aq-model-switch-nixos.py",
         "scripts/testing/test-aq-oncalld.py",
@@ -2636,6 +2640,19 @@
       ],
       "needs": [
         "python3"
+      ],
+      "ci_workflow": ".github/workflows/test.yml#manifest-tests"
+    },
+    {
+      "id": "health-monitor-stale-checkout",
+      "cmd": "scripts/testing/test-health-monitor-stale-checkout.py",
+      "paths": [
+        "scripts/health/ai-stack-health-monitor.py",
+        "scripts/testing/test-health-monitor-stale-checkout.py"
+      ],
+      "needs": [
+        "python3",
+        "git"
       ],
       "ci_workflow": ".github/workflows/test.yml#manifest-tests"
     }

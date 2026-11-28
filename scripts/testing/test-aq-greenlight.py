@@ -23,10 +23,30 @@ EVIDENCE_HEADINGS = [
 ]
 
 CLI = Path(__file__).resolve().parents[1] / "ai/aq-greenlight"
+ROOT = CLI.parents[2]
+HOOK_GUARDS = [
+    "scripts/governance/check-repo-allowlist-integrity.sh",
+    "scripts/governance/check-root-file-hygiene.sh",
+    "scripts/governance/check-generated-artifact-hygiene.sh",
+    "scripts/governance/check-doc-links.sh",
+    "scripts/governance/check-doc-metadata-standards.sh",
+    "scripts/governance/check-doc-script-path-migration.sh",
+    "scripts/governance/check-script-shim-consistency.sh",
+    "scripts/governance/check-archive-path-consistency.sh",
+    "scripts/governance/check-legacy-deprecated-root.sh",
+]
 
 
 class GreenlightTests(unittest.TestCase):
     def setUp(self) -> None:
+        # A caller's hook environment or options must not steer the disposable repositories.
+        environment = patch.dict(os.environ)
+        environment.start()
+        self.addCleanup(environment.stop)
+        for key in list(os.environ):
+            if key.startswith(("GIT_", "AQ_GREENLIGHT_")) or key in (
+                    "SKIP_SECRET_SCAN", "SKIP_CVE_SCAN", "AQ_DELEGATE_HANDBACK"):
+                del os.environ[key]
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name) / "repo"
@@ -378,6 +398,261 @@ class GreenlightTests(unittest.TestCase):
         process = self.invoke(tier=gate)
         self.assertEqual(process.returncode, 0, process.stdout + process.stderr)
         self.assertNotEqual(self.record()["merged_tree_sha"], self.git("write-tree"))
+
+    def verify(self, *args: str, env: dict[str, str] | None = None
+               ) -> subprocess.CompletedProcess[str]:
+        return subprocess.run(
+            [sys.executable, str(CLI), str(self.root), "--state-dir", str(self.state),
+             "--verify", "--audit", *args],
+            capture_output=True, text=True,
+            env=os.environ | {"AQ_USAGE_TELEMETRY": "0"} | (env or {}),
+        )
+
+    def greenlight_slice(self) -> str:
+        self.write("slice", "staged\n")
+        self.git("add", ".")
+        process = self.invoke()
+        self.assertEqual(process.returncode, 0, process.stdout + process.stderr)
+        return self.record()["main_sha"]
+
+    def advance_base(self, name: str, remove: str | None = None,
+                     content: str | None = None) -> None:
+        """Add one commit to origin/main without touching the slice branch or its index."""
+        env = os.environ | {"GIT_INDEX_FILE": str(Path(self.temp.name) / "base-index")}
+
+        def plumbing(*args: str, data: str = "") -> str:
+            return subprocess.run(["git", "-C", str(self.root), *args], input=data, env=env,
+                                  check=True, capture_output=True, text=True).stdout.strip()
+
+        plumbing("read-tree", "origin/main")
+        if remove:
+            plumbing("update-index", "--force-remove", remove)
+        blob = plumbing("hash-object", "-w", "--stdin", data=content or f"{name}\n")
+        plumbing("update-index", "--add", "--cacheinfo", f"100644,{blob},{name}")
+        commit = plumbing("commit-tree", plumbing("write-tree"), "-p", "origin/main",
+                          data="advance base\n")
+        plumbing("update-ref", "refs/remotes/origin/main", commit)
+
+    def audit_rows(self) -> list[dict[str, Any]]:
+        log = self.state / "audit.jsonl"
+        return [json.loads(line) for line in log.read_text().splitlines()] if log.exists() else []
+
+    def assert_rejected(self, process: subprocess.CompletedProcess[str], message: str) -> None:
+        self.assertNotEqual(process.returncode, 0, process.stdout)
+        self.assertNotIn("accepted", process.stdout)
+        self.assertIn(message, process.stderr)
+        self.assertNotIn("Traceback", process.stderr)
+
+    def test_j3_accept_prints_and_audits(self) -> None:
+        main = self.greenlight_slice()
+        self.assertEqual(self.audit_rows(), [])
+        path = next(self.state.glob("*.json"))
+        for count in (1, 2):
+            process = self.verify()
+            self.assertEqual(process.returncode, 0, process.stderr)
+            self.assertEqual(process.stdout, f"greenlight {path.stem} accepted\n")
+            self.assertEqual(len(self.audit_rows()), count)
+        row = self.audit_rows()[0]
+        self.assertEqual(set(row), {"at", "branch", "staged_tree_sha", "parent_sha",
+                                    "main_sha", "record_path", "gate_list"})
+        self.assertEqual(
+            (row["branch"], row["staged_tree_sha"], row["parent_sha"], row["main_sha"]),
+            ("feat/x/y", self.git("write-tree"), self.git("rev-parse", "HEAD"), main))
+        self.assertEqual(row["record_path"], str(path))
+        self.assertEqual(row["gate_list"], self.record()["gate_list"])
+        self.assertEqual((self.state / "audit.jsonl").stat().st_mode & 0o777, 0o600)
+        self.assertEqual(self.invoke("--verify").returncode, 0)
+        self.assertEqual(len(self.audit_rows()), 2, "--verify without --audit must not log")
+
+    def test_j3_edit_invalidates(self) -> None:
+        self.greenlight_slice()
+        self.write("slice", "edited\n")
+        self.assert_rejected(self.verify(), "unstaged")
+        self.git("add", ".")
+        self.assert_rejected(self.verify(), self.git("write-tree"))
+        self.assertEqual(self.audit_rows(), [])
+
+    def test_freshness_commit_bound(self) -> None:
+        self.greenlight_slice()
+        for number in range(20):
+            self.advance_base(f"notes-{number}")
+        self.assertEqual(self.verify().returncode, 0, "exactly the default bound is fresh")
+        self.advance_base("notes-20")
+        self.assert_rejected(self.verify(), "stale greenlight: base advanced 21 commits (max 20)")
+        self.assertEqual(self.verify("--max-behind", "21").returncode, 0)
+        env = {"AQ_GREENLIGHT_MAX_BEHIND": "21"}
+        self.assertEqual(self.verify(env=env).returncode, 0)
+        self.assert_rejected(self.verify("--max-behind", "20", env=env), "stale greenlight")
+        self.assertEqual(len(self.audit_rows()), 3)
+        self.assertNotEqual(self.invoke("--show").returncode, 0)
+
+    def test_max_behind_must_be_positive(self) -> None:
+        self.greenlight_slice()
+        for value in ("0", "-1", "many"):
+            with self.subTest(value=value):
+                self.assert_rejected(self.verify(env={"AQ_GREENLIGHT_MAX_BEHIND": value}),
+                                     "positive integer")
+        self.assert_rejected(self.verify("--max-behind", "0"), "positive integer")
+        self.assertEqual(self.audit_rows(), [])
+
+    def test_f13_gate_covered_base_change_is_stale(self) -> None:
+        main = self.greenlight_slice()
+        for name in ("config/foo.json", "scripts/governance/gate.sh", "scripts/testing/test.py",
+                     "nix/module.nix", ".githooks/pre-push"):
+            with self.subTest(name=name):
+                self.git("update-ref", "refs/remotes/origin/main", main)
+                self.advance_base(name)
+                self.assert_rejected(self.verify(), f"gate-listed path changed on base: {name}")
+        self.assertEqual(self.audit_rows(), [])
+
+    def test_f13_move_out_of_covered_path_is_stale(self) -> None:
+        self.advance_base("config/moved.json")
+        self.greenlight_slice()
+        # Identical content under a new name is what rename detection would collapse.
+        self.advance_base("docs/moved.json", remove="config/moved.json",
+                          content="config/moved.json\n")
+        self.assert_rejected(self.verify(), "gate-listed path changed on base: config/moved.json")
+
+    def test_non_gate_base_change_stays_fresh(self) -> None:
+        self.greenlight_slice()
+        self.advance_base("README.md")
+        process = self.verify()
+        self.assertEqual(process.returncode, 0, process.stderr)
+        self.assertIn("accepted", process.stdout)
+
+    def test_base_ref_environment_override(self) -> None:
+        self.greenlight_slice()
+        self.git("update-ref", "refs/heads/other-base", "origin/main")
+        self.advance_base("config/foo.json")
+        self.assert_rejected(self.verify(), "gate-listed path")
+        self.assertEqual(
+            self.verify(env={"AQ_GREENLIGHT_BASE_REF": "other-base"}).returncode, 0)
+
+    def test_rewritten_base_and_forged_main_are_rejected(self) -> None:
+        self.greenlight_slice()
+        path = next(self.state.glob("*.json"))
+        valid = self.record()
+        for forged in ("--output=x", "origin/main", None):
+            with self.subTest(forged=forged):
+                path.write_text(json.dumps(valid | {"main_sha": forged}))
+                self.assert_rejected(self.verify(), "main_sha is not a commit id")
+        path.write_text(json.dumps(valid))
+        unrelated = self.git("commit-tree", "origin/main^{tree}", "-m", "rewritten")
+        self.git("update-ref", "refs/remotes/origin/main", unrelated)
+        self.assert_rejected(self.verify(), "not an ancestor")
+
+    def test_foreign_commit_index_is_rejected(self) -> None:
+        self.greenlight_slice()
+        index = Path(self.temp.name) / "other-index"
+        env = {"GIT_INDEX_FILE": str(index)}
+        subprocess.run(["git", "-C", str(self.root), "read-tree", "HEAD"], check=True,
+                       env=os.environ | env, capture_output=True)
+        self.assert_rejected(self.verify(env=env), "Index being committed does not match")
+        self.assertEqual(
+            self.verify(env={"GIT_INDEX_FILE": str(self.root / ".git/index")}).returncode, 0)
+
+    def test_unwritable_audit_log_fails_closed(self) -> None:
+        self.greenlight_slice()
+        (self.state / "audit.jsonl").mkdir()
+        self.assert_rejected(self.verify(), "audit.jsonl")
+
+    def test_audit_requires_verify(self) -> None:
+        process = self.invoke("--audit")
+        self.assertEqual(process.returncode, 2)
+        self.assertIn("--audit requires --verify", process.stderr)
+
+    def install_hook(self) -> Path:
+        """Commit the real hook and verifier, with logging stubs for every other check."""
+        calls = Path(self.temp.name) / "calls.log"
+        for name in (".githooks/pre-commit", "scripts/ai/aq-greenlight",
+                     "scripts/ai/lib/greenlight.py"):
+            self.write(name, (ROOT / name).read_text())
+            (self.root / name).chmod(0o755)
+        self.write("scripts/ai/lib/integration_guard.py", "")
+        self.write(".gitignore", "__pycache__/\n")
+        for name in [*HOOK_GUARDS, "scripts/governance/repo-structure-lint.sh",
+                     "scripts/governance/lint-color-echo-usage.sh",
+                     "scripts/governance/run-focused-ci-checks.sh"]:
+            self.write(name, f"#!/bin/sh\necho {Path(name).name} >> {shlex.quote(str(calls))}\n")
+            (self.root / name).chmod(0o755)
+        gitleaks = Path(self.temp.name) / "bin/gitleaks"
+        gitleaks.parent.mkdir()
+        gitleaks.write_text(f"#!/bin/sh\necho gitleaks >> {shlex.quote(str(calls))}\n")
+        gitleaks.chmod(0o755)
+        self.git("add", ".")
+        self.git("commit", "-m", "install hook")
+        self.git("update-ref", "refs/remotes/origin/main", "HEAD")
+        self.git("config", "core.hooksPath", ".githooks")
+        os.environ.update(PATH=f"{gitleaks.parent}{os.pathsep}{os.environ['PATH']}",
+                          AQ_GREENLIGHT_DIR=str(self.state), AQ_USAGE_TELEMETRY="0")
+        return calls
+
+    def commit(self, calls: Path, *args: str, env: dict[str, str] | None = None
+               ) -> tuple[str, list[str]]:
+        calls.write_text("")
+        process = subprocess.run(["git", "-C", str(self.root), "commit", "-m", "slice", *args],
+                                 capture_output=True, text=True, env=os.environ | (env or {}))
+        self.assertEqual(process.returncode, 0, process.stdout + process.stderr)
+        ran = calls.read_text().split()
+        for guard in ("gitleaks", "lint-color-echo-usage.sh", "repo-structure-lint.sh",
+                      *(Path(name).name for name in HOOK_GUARDS)):
+            self.assertIn(guard, ran, "security/structure guards must always run")
+        return process.stdout + process.stderr, ran
+
+    def test_hook_accepts_greenlight_but_runs_guards(self) -> None:
+        calls = self.install_hook()
+        self.greenlight_slice()
+        stem = next(self.state.glob("*.json")).stem
+        output, ran = self.commit(calls)
+        self.assertIn(f"greenlight {stem} accepted", output)
+        self.assertNotIn("run-focused-ci-checks.sh", ran)
+        self.assertEqual(len(self.audit_rows()), 1)
+
+    def test_hook_runs_focused_ci_after_edit(self) -> None:
+        calls = self.install_hook()
+        self.greenlight_slice()
+        self.write("slice", "edited\n")
+        self.git("add", ".")
+        output, ran = self.commit(calls)
+        self.assertNotIn("accepted", output)
+        self.assertIn("run-focused-ci-checks.sh", ran)
+        self.assertEqual(self.audit_rows(), [])
+
+    def test_hook_fallbacks_run_focused_ci(self) -> None:
+        calls = self.install_hook()
+        for label, env in [("disabled", {"AQ_GREENLIGHT_DISABLE": "1"}),
+                           ("no base ref", {"AQ_GREENLIGHT_BASE_REF": "missing-ref"}),
+                           ("verifier error", {"AQ_GREENLIGHT_MAX_BEHIND": "0"})]:
+            with self.subTest(case=label):
+                self.write("slice", f"{label}\n")
+                self.git("add", ".")
+                self.assertEqual(self.invoke().returncode, 0)
+                output, ran = self.commit(calls, env=env)
+                self.assertNotIn("accepted", output)
+                self.assertIn("run-focused-ci-checks.sh", ran)
+                for path in self.state.glob("*.json"):
+                    path.unlink()
+        self.assertEqual(self.audit_rows(), [])
+
+    def test_hook_rejects_partial_commit(self) -> None:
+        calls = self.install_hook()
+        self.write("other", "second\n")
+        self.greenlight_slice()
+        output, ran = self.commit(calls, "--", "slice")
+        self.assertNotIn("accepted", output)
+        self.assertIn("run-focused-ci-checks.sh", ran)
+        self.assertEqual(self.audit_rows(), [])
+
+    def test_hook_blocks_commit_when_focused_ci_fails(self) -> None:
+        self.install_hook()
+        self.write("scripts/governance/run-focused-ci-checks.sh", "#!/bin/sh\nexit 1\n")
+        self.git("add", ".")
+        head = self.git("rev-parse", "HEAD")
+        process = subprocess.run(["git", "-C", str(self.root), "commit", "-m", "blocked"],
+                                 capture_output=True, text=True)
+        self.assertNotEqual(process.returncode, 0)
+        self.assertIn("focused CI-sensitive checks failed", process.stderr)
+        self.assertEqual(self.git("rev-parse", "HEAD"), head)
 
 
 if __name__ == "__main__":

@@ -90,3 +90,9 @@ This table documents what tool names each agent lane actually exposes. Calling a
 ## Why this exists
 
 The repo standardizes on Agentic CLI tools because they are more context-efficient than raw Unix defaults. Each agent lane has a distinct tool API — treating them as identical wastes turns on "Tool not found" errors that cannot be retried. This table is the SSOT for resolving those differences at session start, not mid-task.
+
+## Agent hygiene rules
+
+- Searches that may touch canon/agent files use `rg --hidden` (or `ctx_search`); `.agent/` is hidden and plain `rg` skips it.
+- Never run bare `git stash` / `git stash pop`: the stash stack is shared across worktrees. Use a WIP commit, or `git stash push -m <tag>` and `git stash apply <sha>`.
+- Never `pkill -f` / `pgrep -f` with a pattern the caller's own command line contains; stop processes by PID.
