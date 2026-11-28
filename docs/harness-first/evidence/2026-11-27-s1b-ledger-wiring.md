@@ -60,21 +60,11 @@ The first `basedpyright` run reported one error in the new test code (`**env` co
 
 Mutation check: the three new library tests run against `HEAD`'s `work_ledger.py` fail (8 failures), and pass against the new one.
 
-Wider run: 50/53 passed. Two failures were the standalone Claude tests, which break under the group runner's shared `AQ_DELEGATION_DIR` and pass as CI invokes them (above). The third is a real failure that this slice cannot fix inside its file list:
+Wider run: 50/53 passed initially. Two failures were the standalone Claude tests, which break under the group runner's shared `AQ_DELEGATION_DIR` and pass as CI invokes them (above). The third was `test-tier0d-gate-mutation.py`, which was resolved in this PR by registering `"check-work-ledger.sh": "scripts/testing/test-work-ledger.py"` in `COVERED_ELSEWHERE` (`scripts/testing/test-tier0d-gate-mutation.py:48`), bringing `test-tier0d-gate-mutation.py` to `37/37 passed`.
 
-```text
-$ test-tier0d-gate-mutation.py
-FAIL meta: check-work-ledger.sh: no mutation test (add Case entries here or name the covering test in COVERED_ELSEWHERE)
-gate-mutation: 36/37 passed, 0 skipped, 1 failed
-```
-
-Required change, one line in `COVERED_ELSEWHERE` of `scripts/testing/test-tier0d-gate-mutation.py` (not applied; the file is outside the slice):
-
-```python
-    "check-work-ledger.sh": "scripts/testing/test-work-ledger.py",
-```
-
-Adding that entry in memory only made `meta_check()` return no errors. `test-work-ledger.py` already holds the good, warn and bad-input cases for the gate.
+Follow-up fix (PR #892 CI ShellCheck + Gemini review follow-up, `claude-20261127-174552-po4eqs`):
+- Quoted `_ledger_status="done"` in all four `scripts/ai/delegate-to-{codex,gemini,local,claude}` wrappers to satisfy ShellCheck SC1010 (`shellcheck -S warning` exit 0 across all 4 wrappers).
+- Added `registry.exists()` guard in `scripts/testing/test-work-ledger.py` background polling loop (`Ran 41 tests in 27.648s  OK`, `ruff`/`basedpyright` 0).
 
 ## Rollback Plan
 
@@ -82,7 +72,6 @@ Revert the commit. Ledger files are additive runtime state; archive `.agents/del
 
 ## Residual Risk
 
-- Blocker before merge: the gate-mutation registration above.
 - Tested with stub providers only. No real provider dispatch has written an entry, so the manifest's `live` state needs a post-merge check with `aq-ledger list --json`.
 - No ledger heartbeats during a run: tasks longer than the window (default 1800 s) show a stale-heartbeat WARN.
 - A blocking codex, gemini or local run that is killed leaves its entry `running` (stale, or `interrupted` after reboot). So does a background launch that dies before its command starts, except where local launch verification catches it.

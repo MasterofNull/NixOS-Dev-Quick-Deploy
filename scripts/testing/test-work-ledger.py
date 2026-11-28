@@ -616,7 +616,9 @@ exec "$REAL_PYTHON" "$@"
                     status = "running"
                     while status == "running" and time.monotonic() < deadline:
                         time.sleep(0.1)
-                        status = json.loads(registry.read_text().splitlines()[-1])["status"]
+                        lines = registry.read_text().splitlines() if registry.exists() else []
+                        if lines:
+                            status = json.loads(lines[-1])["status"]
                     self.assertEqual(status, "done")
         self.assertFalse((self.delegation / "ledger").exists())
 

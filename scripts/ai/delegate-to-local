@@ -76,7 +76,7 @@ if [[ "${1:-}" == "--internal-ledger-run" ]]; then
     _ledger_rc=0
     "$@" || _ledger_rc=$?
     _ledger_status=failed
-    [[ "$_ledger_rc" -ne 0 ]] || _ledger_status=done
+    [[ "$_ledger_rc" -ne 0 ]] || _ledger_status="done"
     ledger status --id="$_ledger_id" --status="$_ledger_status" --reason="exit=$_ledger_rc" --pid="$$"
     exit "$_ledger_rc"
 fi
