@@ -1,0 +1,52 @@
+# Upstream candidates: inventory only (2026-11-27)
+
+Scope: inventory per the section 5b scope addition. No decisions, no upstream contact, no upstream AI-contribution-policy research (every `ai_policy` is TODO). The licence/ownership column is a FLAG for the owner; nothing is cleared. Standing owner rule: upstream contributions are owner-authored and propose-not-push (fork + PR for maintainer review), validated live first (`canon/blocks/dependency-hygiene.md:14`; memory file `feedback-upstream-contribution-owner-authored-propose-not-push.md`). Value/effort are rough guesses (H/M/L).
+
+Sources mined: `.agent/WORKAROUND-REGISTER.md` (564 lines, origin/main), `.agent/memory/issues-backlog.md` (32 lines mention "upstream"; none record a PR we filed), `git grep -n -E 'overlays|patches|overrideAttrs|fetchpatch|substituteInPlace' origin/main -- flake.nix nix`, `scripts/upstream/`, `.forks/`, `.upstream/`.
+
+## 1. What exists today for the upstream workflow
+
+| Item | State | Evidence |
+|---|---|---|
+| `scripts/upstream/dev` | Tracked executable bash script, 20 KB (NOT a directory). Subcommands `setup`, `branch`, `test`, `validate`, `diff`, `submit`, `sync`, `status` for forks of nixpkgs, COSMIC, Linux kernel | `git ls-files scripts/upstream`; `scripts/upstream/dev:1-26` |
+| `scripts/upstream/track` | Tracked executable bash script, 17.7 KB. Subcommands `status`, `nixpkgs search/watch`, `cosmic status/issues`, `kernel cves`, `propose`, `extract <module>`, `pr-template`. Writes to `${REPO_ROOT}/.upstream`, calls AIDB `:8002` | `scripts/upstream/track:1-30` |
+| `.upstream/` | Local state. Dirs `cosmic/` (empty), `kernel/` (empty), `nixpkgs/503255.json`, `proposals/`, `extracted/{lore-sync.nix,nvd-sync.nix}`. Git-ignore status not checked (only `.forks/` verified ignored, `.gitignore:168`) | `ls .upstream` |
+| `.forks/` | Local clones: `nixpkgs` (branches `lore-sync-init`, `nvd-sync-init`, many `upstream/backport-*` remotes), `cosmic-comp` (origin `MasterofNull/cosmic-comp`, uncommitted `flake.nix`/`flake.lock` edits), `nltk-src`, `nltk-v3103`, `poc.py` | `ls .forks`; `git -C .forks/nixpkgs branch -a` |
+| Register | Does not exist. `scripts/upstream/track/REGISTER.json` cannot be created at that path because `track` is a file | `delta.md` |
+| Upstream PRs actually filed by us | None found. `WR-SEC-2` cites diskcache PRs #361/#364, which are third-party PRs. Whether a nixpkgs PR exists for `lore-sync-init`/`nvd-sync-init`: UNVERIFIED | `.agent/WORKAROUND-REGISTER.md:391-392` |
+
+## 2. Candidates
+
+| # | Type | Target repo | Summary | Evidence path | Licence / ownership flag (owner decides) | Value / effort |
+|---|---|---|---|---|---|---|
+| U1 | extraction (NixOS module) | NixOS/nixpkgs | `services.lore-sync`: periodic sync of lore.kernel.org patches for monitored subsystems. Staged on branch `lore-sync-init` (commit 6aee26e7e7 "nixos/lore-sync: init") and `.upstream/extracted/lore-sync.nix` | `nix/modules/services/lore-sync.nix:1-6`; `.forks/nixpkgs` | Our file is AGPL-3.0-or-later; nixpkgs is MIT, so contributing needs the owner to relicense code they authored (NOTICE: copyright MasterofNull). Possibly harness-specific via AIDB coupling | M / M |
+| U2 | extraction (NixOS module) | NixOS/nixpkgs | `services.nvd-sync`: syncs kernel CVEs from NIST NVD "to AIDB". Branch `nvd-sync-init` | `nix/modules/services/nvd-sync.nix:1-6`; `.upstream/extracted/nvd-sync.nix` | As U1; the AIDB sink is harness-specific and would be dropped in a generic extract | L / M |
+| U3 | packaging | NixOS/nixpkgs | `lean-ctx` (Rust MCP server). Not in nixpkgs at our pin (`nix eval` errors) | `nix/pkgs/lean-ctx.nix` | Upstream is Apache-2.0 (yvgude/lean-ctx per the file header); packaging is ours | M / L |
+| U4 | packaging | NixOS/nixpkgs | `herdr` v0.7.5, pinned by `builtins.fetchTree` over the upstream's own `nix/package.nix`. Not in nixpkgs at our pin | `nix/pkgs/herdr.nix` | Upstream already ships its Nix package; inclusion is for its maintainers | L / L |
+| U5 | packaging | NixOS/nixpkgs | `continue-cli` (prebuilt npm tarball wrapped with node). Not in nixpkgs at our pin. Conflicts with C2 | `nix/pkgs/continue-cli.nix` | Packaging ours; probably drop instead of upstream | L / M |
+| U6 | retire (opposite direction) | ours | Our packaging of `opencode` + `models-dev` ("staged locally pending upstream nixpkgs inclusion") is now in nixpkgs: `opencode` 1.15.10, `models-dev` 0-unstable-2026-05-19, and also `maigret` 0.6.1, `pi-coding-agent` 0.75.4 (our `nix/pkgs/pi-agent.nix` never built: `lib.fakeHash`). The removal trigger has fired | `nix/lib/overlays/opencode.nix`; `nix/pkgs/by-name/opencode/package.nix`; `nix/pkgs/maigret.nix`; `nix/pkgs/pi-agent.nix`; `nix eval --inputs-from . nixpkgs#opencode.version` | none | H (removes bespoke code, helps C3) / L |
+| U7 | fix (security floor) | NixOS/nixpkgs | `nix/overlays/security-fixes.nix`: floors for pgvector 0.8.7 (CVE-2026-103484) and openssh 10.6p1 (CVE-2026-106587); self-disable once nixpkgs catches up (`versionOlder` guards) | `nix/overlays/security-fixes.nix:1-35` | n/a (version bumps) | M / L |
+| U8 | workaround against third party | NixOS/nixpkgs or xdg-desktop-portal | `doCheck = false` for `xdg-desktop-portal` globally; two tests fail headless. `WR-XDP-DOCHECK-20261014` OPEN. Upstream fix: skip those tests without a session | `nix/overlays/security-fixes.nix:45`; `.agent/WORKAROUND-REGISTER.md:372-376` | none | L / M |
+| U9 | workaround against third party | diskcache | Pickle deserialization default (PYSEC-2026-2447, CVE-2025-69872). Local branch `fix/nixos-docs-diskcache-no-pickle` (`NoPickleDisk`) plus a time-boxed exception; upstream PRs #361/#364 already open (not ours) | `.agent/WORKAROUND-REGISTER.md:388-396`; `ai-stack/mcp-servers/nixos-docs/server.py:45,194` | Better to test/review the existing PRs than file ours. Removal trigger: diskcache release with a fix | L / L |
+| U10 | workaround against third party | nltk | PYSEC-2026-3740 excepted; `.forks/nltk-src`, `.forks/nltk-v3103`, `.forks/poc.py` exist locally | `.agent/WORKAROUND-REGISTER.md:379-387`; `ls .forks` | Vulnerability disclosure rules apply (responsible disclosure, class not exploit) | L / M |
+| U11 | overlay | ggml-org/llama.cpp, nixpkgs | `llama-cpp-latest.nix` tracks a newer llama.cpp than nixpkgs; pins the web UI `npmDeps` hash per version, drops `npm-config-hook` when the UI is off. Pins in `nix/pins/llama-cpp.json` | `nix/lib/overlays/llama-cpp-latest.nix:64-130` | none (Nix glue). Idea for nixpkgs: an option to build without the web UI, avoiding npm fixed-output breakage | M / M |
+| U12 | overlay | nixpkgs (aarch64) | `llama-cpp-aarch64.nix` overrideAttrs (NEON) | `nix/lib/overlays/llama-cpp-aarch64.nix:15-26` | none | L / L |
+| U13 | library | Linux kernel / nixpkgs | `nix/lib/kernel-patches.nix` and `nix/modules/core/custom-kernel.nix` (`fetchpatch`, a `patches` option): patch-management helpers for lore.kernel.org patches. No concrete patch confirmed in the tree; `fetchpatch` hits are library code and doc comments | `nix/lib/kernel-patches.nix:1-36`; `nix/modules/core/custom-kernel.nix:9,41,212` | Could become a nixpkgs lib helper; value unclear | L / M |
+| U14 | fork | System76 cosmic-comp | `.forks/cosmic-comp`, origin `MasterofNull/cosmic-comp`; recent commits "fix: remove double slashes from cosmic-protocols patch URLs"; uncommitted `flake.nix`/`flake.lock`. Purpose and diff vs upstream not examined | `git -C .forks/cosmic-comp log --oneline -2` | Fork under the owner's account; upstream status UNVERIFIED | ? / ? |
+| U15 | overlay (local policy) | nixpkgs | `fast-lane` overlay swaps `pkgs.X` for `unstablePkgs.X` per manifest (incident WR-FAST-LANE-PIPEWIRE-LEAF-REBUILD). Local policy, not upstreamable, but needs a register entry under the DoD | `nix/overlays/fast-lane.nix`, `fast-lane-manifest.nix`; `.agent/WORKAROUND-REGISTER.md:325-331` | n/a | none |
+| U16 | integration | yvgude/lean-ctx | Workspace-identity guard: the Nix package keeps the upstream binary as a private sibling and installs a guard at the public path; design notes say an "upstream atomic load-by-digest API would be required" for stronger isolation. Candidate: propose that API upstream | `.agents/plans/lean-ctx-workspace-identity/C0-DESIGN.md:80-152` | Upstream Apache-2.0; guard code ours | M / M |
+| U17 | workaround against third party | Gemini CLI, Codex CLI | Wrappers around quota/model behavior (`scripts/ai/lib/gemini-quota-fallback.sh`, `gemini-model-guard.sh`), and registry `model_id` capture because the Gemini CLI does not expose which id served a run. Upstream feature request: report the serving model | `.claude/worktrees/agent-a53e94db3008695b8/docs/harness-first/evidence/2026-11-27-registry-model-id.md` (uncommitted) | Vendor repo openness varies: UNVERIFIED | M / L (issue, not patch) |
+| U18 | limitation (not a patch) | GitHub Dependabot | `DEPENDABOT-REBASE-NOOP-AFTER-FOREIGN-PUSH`: Dependabot refuses to rebase once anyone else pushed; seven recreations | `.agent/memory/issues-backlog.md:10954,11063` | not a code contribution | L / n/a |
+| U19 | workaround against third party | nixpkgs package metadata | `.grype.yaml` ignores for ffmpeg, glib, sqlite, harfbuzz, prometheus, libmodplug, speex, libical (`WR-SEC-3..9`): version-matching mismatches. Register entries needed; removal trigger is a nixpkgs update | `.agent/WORKAROUND-REGISTER.md:397-455` | n/a | n/a |
+| U20 | workaround | llama.cpp unit / local | `WR-LLAMA-STATE-DIR-MODE-0700`: state dir mode vs service UID (Rule 13 declarative fix) | `.agent/WORKAROUND-REGISTER.md:333-339` | n/a | L / L |
+
+## 3. Counts for DoD planning
+
+20 third-party-facing sites found. By disposition: 1 retire now (U6), 2 module extractions (U1, U2), 3 packaging (U3-U5), 1 integration proposal (U16), the rest only need a register entry with a removal trigger. The DoD pattern in `delta.md` will under-count: shell wrappers like U17 contain none of the grep keywords, and `.grype.yaml` ignores are not Nix patches.
+
+## 4. TODO (explicitly not done)
+
+- `ai_policy` per target (nixpkgs, yvgude/lean-ctx, diskcache, nltk, llama.cpp, System76): TODO per instruction. Whether nixpkgs restricts AI-assisted contributions: UNVERIFIED; read before any submission.
+- `license_cleared`: false for all (owner decides).
+- Confirm ignore status of `.upstream/`.
+- Read `.upstream/proposals/` and `.upstream/nixpkgs/503255.json` to see whether any proposal was ever submitted.

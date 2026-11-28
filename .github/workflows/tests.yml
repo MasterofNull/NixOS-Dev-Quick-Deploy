@@ -53,6 +53,10 @@ jobs:
         uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0  # v7.1.0
         with:
           python-version: "3.11"
+      - name: Build harness-contracts for tier0 check-contracts (fail-closed without it)
+        run: |
+          cargo build --release --locked -p harness-contracts
+          echo "HARNESS_CONTRACTS_BIN=$GITHUB_WORKSPACE/target/release/harness-contracts" >> "$GITHUB_ENV"
       - name: Install validation dependencies
         run: |
           sudo apt-get update -qq && sudo apt-get install -y -qq bubblewrap apparmor-utils

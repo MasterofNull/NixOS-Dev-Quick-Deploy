@@ -1,0 +1,61 @@
+name: contracts-boundaries
+
+# Required check (control-plane consolidation S1, D-R5-3). Modelled on review-disposition.yml.
+#
+# Trust boundary: this workflow is `pull_request_target`, so GitHub runs the definition and the
+# checkout from the BASE branch. A PR cannot edit this file, the checker source or the corpus to
+# judge itself. INVARIANT: candidate code is never built or executed here. Step 1 builds the checker
+# from the base checkout before the candidate exists on disk; step 2 fetches the PR head as DATA
+# (git objects into a separate worktree, hooks and filters disabled); step 3 runs only that prebuilt
+# base binary over the candidate tree. No secrets or write token: `contents: read`, no
+# `GH_TOKEN`, credentials not persisted. scripts/governance/check-workflow-trust.py fails any
+# `pull_request_target` job that checks out the PR head or runs a build or script after fetching it.
+# Candidate-code tests (the candidate's own checker on the trusted known-bad corpus) run in the
+# unprivileged contracts-candidate.yml.
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: read
+
+jobs:
+  contracts-boundaries:
+    name: contracts-boundaries
+    runs-on: ubuntu-latest
+    steps:
+      # No `ref:`: the default is the base branch tip.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Build the base-ref checker (base checkout only; the candidate is not on disk yet)
+        run: cargo build --release --locked -p harness-contracts
+      - name: Fetch the candidate as data into a separate worktree, pinned to the event head sha
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin "refs/pull/${PR_NUMBER}/head:refs/remotes/pull/head"
+          # refs/pull/N/head is mutable: the checked tree must be exactly the commit this event is about.
+          if [[ "$(git rev-parse refs/remotes/pull/head)" != "$HEAD_SHA" ]]; then
+            echo "::error::refs/pull/${PR_NUMBER}/head moved past the event head ${HEAD_SHA}; a newer run will check the new head"
+            exit 1
+          fi
+          git -c core.hooksPath=/dev/null -c filter.lfs.smudge= -c filter.lfs.process= -c filter.lfs.required=false \
+            worktree add --detach "$RUNNER_TEMP/candidate" "$HEAD_SHA"
+      - name: Run the base checker over the candidate tree
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -euo pipefail
+          BIN="$PWD/target/release/harness-contracts"
+          if ! "$BIN" --guard-version >/dev/null 2>&1; then
+            echo "::warning::base checker predates the contract guard subcommands (bootstrap PR); nothing to enforce yet"
+            exit 0
+          fi
+          rc=0
+          "$BIN" --root "$RUNNER_TEMP/candidate" contracts --base-ref "$BASE_SHA" || rc=1
+          "$BIN" --root "$RUNNER_TEMP/candidate" boundaries || rc=1
+          exit "$rc"

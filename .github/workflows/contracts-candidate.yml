@@ -1,0 +1,41 @@
+name: contracts-candidate
+
+# Unprivileged half of the contracts-boundaries gate (control-plane consolidation S1, N2/N4).
+# Runs the CANDIDATE's own checker, so it is `pull_request` with `contents: read` and no secrets or
+# write token. The known-bad corpus and the runner come from the BASE checkout (trusted/), never from
+# the candidate, so a PR cannot weaken the corpus (N4) or ship a checker that returns success on known-bad
+# input (N2). The privileged, base-ref half is contracts-boundaries.yml.
+on:
+  pull_request:
+    # No `paths:` filter: a required check that is skipped never reports, so it would block unrelated PRs.
+
+permissions:
+  contents: read
+
+jobs:
+  contracts-candidate:
+    name: contracts-candidate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          path: trusted
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          path: candidate
+          persist-credentials: false
+      - name: Build and unit-test the candidate checker
+        run: |
+          cargo test --locked --manifest-path candidate/Cargo.toml -p harness-contracts
+          cargo build --release --locked --manifest-path candidate/Cargo.toml -p harness-contracts
+      - name: Run the candidate checker on the trusted known-bad corpus
+        run: |
+          set -euo pipefail
+          if [[ ! -x trusted/scripts/governance/contracts-corpus.sh ]]; then
+            echo "::warning::base has no known-bad corpus yet (bootstrap PR); using the candidate's own copy once"
+            candidate/scripts/governance/contracts-corpus.sh candidate/target/release/harness-contracts candidate
+          else
+            trusted/scripts/governance/contracts-corpus.sh candidate/target/release/harness-contracts trusted
+          fi

@@ -1,4 +1,12 @@
+mod boundaries;
+mod contracts;
+mod decisions;
+mod guard;
+mod json;
+mod registry;
 mod scope_gate;
+mod sha256;
+mod yaml;
 use std::collections::HashSet;
 use std::env;
 use std::fs;
@@ -96,7 +104,36 @@ fn main() -> ExitCode {
     }
 }
 
+/// A guard subcommand is the first positional after any leading `--root <path>` pairs; a subcommand
+/// name appearing later (an option value such as `--owned contracts`) never selects it.
+fn guard_subcommand(args: &[String]) -> Result<Option<(Option<String>, usize)>, Vec<String>> {
+    let mut root = None;
+    let mut i = 0;
+    while args.get(i).map(String::as_str) == Some("--root") {
+        let Some(value) = args.get(i + 1) else {
+            return Err(vec!["--root requires a path".to_string()]);
+        };
+        root = Some(value.clone());
+        i += 2;
+    }
+    Ok(match args.get(i) {
+        Some(a) if guard::SUBCOMMANDS.contains(&a.as_str()) => Some((root, i)),
+        _ => None,
+    })
+}
+
 fn run_cli(args: Vec<String>) -> Result<String, Vec<String>> {
+    // Capability probe that reads no registry: a binary without the guard subcommands rejects this flag.
+    if args.first().map(String::as_str) == Some("--guard-version") {
+        return Ok("contract-guard 1".to_string());
+    }
+    if let Some((root_arg, at)) = guard_subcommand(&args)? {
+        let root = match root_arg {
+            Some(r) => PathBuf::from(r),
+            None => env::current_dir().map_err(|err| vec![format!("cannot resolve cwd: {err}")])?,
+        };
+        return guard::run(&root, &args[at], &args[at + 1..]);
+    }
     let mut check = Check::All;
     let mut root = env::current_dir().map_err(|err| vec![format!("cannot resolve cwd: {err}")])?;
     let mut index = 0;
@@ -140,7 +177,7 @@ fn run_cli(args: Vec<String>) -> Result<String, Vec<String>> {
             value => {
                 let Some(parsed) = Check::parse(value) else {
                     return Err(vec![format!(
-                        "unknown check '{value}' (expected all, writable-state, memory-surface, or scope-gate)"
+                        "unknown check '{value}' (expected all, writable-state, memory-surface, scope-gate, contracts, boundaries, or decisions)"
                     )]);
                 };
                 check = parsed;
@@ -649,5 +686,36 @@ mod tests {
             ".agents/telemetry/*.jsonl",
             ".agents/attention/a.jsonl"
         ));
+    }
+
+    #[test]
+    fn guard_subcommand_ignores_option_values_and_roots() {
+        let v = |a: &[&str]| a.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+        assert_eq!(
+            guard_subcommand(&v(&["--root", "/r", "contracts", "--base-ref", "HEAD"])).unwrap(),
+            Some((Some("/r".to_string()), 2))
+        );
+        assert_eq!(
+            guard_subcommand(&v(&[
+                "--root",
+                "/r",
+                "scope-gate",
+                "--owned",
+                "contracts",
+                "--base",
+                "HEAD"
+            ]))
+            .unwrap(),
+            None
+        );
+        assert_eq!(
+            guard_subcommand(&v(&["--root", "contracts", "scope-gate"])).unwrap(),
+            None
+        );
+        assert_eq!(
+            guard_subcommand(&v(&["boundaries"])).unwrap(),
+            Some((None, 0))
+        );
+        assert!(guard_subcommand(&v(&["--root"])).is_err());
     }
 }

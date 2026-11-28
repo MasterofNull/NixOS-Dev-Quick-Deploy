@@ -7,6 +7,129 @@
   "additionalProperties": false,
   "required": ["meta", "authorities"],
   "properties": {
+    "contexts": {
+      "type": "array",
+      "description": "Bounded contexts K1-K5 (control-plane consolidation rev5): the paths they own, the python modules they own, and the imports they may take from another context. Checked by `harness-contracts contracts|boundaries`.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "paths"],
+        "properties": {
+          "id": {"type": "string", "pattern": "^K[0-9]+$"},
+          "name": {"type": "string"},
+          "paths": {"type": "array", "items": {"type": "string"}},
+          "modules": {"type": "array", "items": {"type": "string"}},
+          "allowed_imports": {"type": "array", "items": {"type": "string"}},
+          "contract_package": {"type": "string"}
+        }
+      }
+    },
+    "decisions": {
+      "type": "array",
+      "description": "Decision ownership matrix rows (one authoritative writer and one admission point per decision at target).",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "decision", "context", "owner", "tag"],
+        "properties": {
+          "id": {"type": "string", "pattern": "^D[0-9]{2}$"},
+          "decision": {"type": "string"},
+          "context": {"type": "string"},
+          "kind": {"type": "string"},
+          "owner": {"type": "string"},
+          "current_owner": {"type": "string"},
+          "admission": {"type": "string"},
+          "readers": {"type": "array", "items": {"type": "string"}},
+          "contract": {"type": "string"},
+          "config_files": {"type": "array", "items": {"type": "string"}, "description": "Config files whose pydantic model is registered in contracts/config; CONFIG_SCHEMA_REGISTRY is derived from these."},
+          "recovery_owner": {"type": "string"},
+          "compat": {"type": "string"},
+          "tag": {"enum": ["OK", "OV", "OVc", "OR", "UQ", "NEW"]},
+          "events": {"type": "array", "items": {"type": "string"}},
+          "writers": {"type": "array", "items": {"type": "string"}},
+          "writers_verified": {"type": "boolean"},
+          "slice": {"type": "string"}
+        }
+      }
+    },
+    "endpoints": {
+      "type": "array",
+      "description": "Service endpoints a context owns; callers outside the owner must name the contract. Detection patterns only: real ports live in nix/modules/core/options.nix.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "owner", "contract"],
+        "properties": {
+          "id": {"type": "string"},
+          "owner": {"type": "string"},
+          "contract": {"type": "string"},
+          "env_vars": {"type": "array", "items": {"type": "string"}},
+          "literals": {"type": "array", "items": {"type": "string"}},
+          "callers": {"type": "array", "items": {"type": "string"}}
+        }
+      }
+    },
+    "tools": {
+      "type": "array",
+      "description": "CLI tools owned by a context (subprocess/exec/source boundary).",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "path", "owner", "decision"],
+        "properties": {
+          "id": {"type": "string"},
+          "path": {"type": "string"},
+          "owner": {"type": "string"},
+          "decision": {"type": "string"},
+          "callers": {"type": "array", "items": {"type": "string"}}
+        }
+      }
+    },
+    "scan_scope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["include", "exclude"],
+      "description": "Files the boundary scanner must cover. Narrowing it fails against the base ref.",
+      "properties": {
+        "include": {"type": "array", "items": {"type": "string"}},
+        "exclude": {"type": "array", "items": {"type": "string"}}
+      }
+    },
+    "reference_exceptions": {
+      "type": "array",
+      "description": "Dated exceptions for a config that references a schema file that does not exist; the owning slice repairs it. Enforced by scripts/testing/test-config-schema-derived.py.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["path", "ref", "owner", "reason", "slice", "expiry"],
+        "properties": {
+          "path": {"type": "string"},
+          "ref": {"type": "string"},
+          "owner": {"type": "string"},
+          "reason": {"type": "string"},
+          "slice": {"type": "string"},
+          "expiry": {"type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"}
+        }
+      }
+    },
+    "boundary_exceptions": {
+      "type": "array",
+      "description": "Dated baseline of pre-existing boundary violations, per (path, kind) with a count ratchet. May only shrink against the base ref.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["path", "kind", "count", "owner", "reason", "expiry", "source_sha256"],
+        "properties": {
+          "path": {"type": "string"},
+          "kind": {"enum": ["import", "subprocess", "http", "event", "dynamic"]},
+          "count": {"type": "integer", "minimum": 1},
+          "owner": {"type": "string"},
+          "reason": {"type": "string"},
+          "expiry": {"type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"},
+          "source_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+        }
+      }
+    },
     "meta": {
       "type": "object",
       "additionalProperties": false,

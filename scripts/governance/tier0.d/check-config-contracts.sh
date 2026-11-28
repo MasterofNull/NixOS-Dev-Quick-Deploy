@@ -5,6 +5,16 @@
 set -euo pipefail
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 
+if ! out=$(cd "$REPO" && python3 -c '
+import sys
+from contracts.config import verify_derived
+problems = verify_derived()
+print("\n".join(problems))
+sys.exit(1 if problems else 0)' 2>&1); then
+    echo "[tier0.d/check-config-contracts] FAIL (derived registry is not 1:1 with the YAML config_files rows): $out" >&2
+    exit 1
+fi
+
 mapfile -t PATHS < <(cd "$REPO" && python3 - <<'PY'
 try:
     from contracts.config import registry
