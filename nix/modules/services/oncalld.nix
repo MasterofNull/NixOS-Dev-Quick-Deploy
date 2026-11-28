@@ -22,6 +22,24 @@ in {
       description = "Directory where sandboxed incident reproduction worktrees are provisioned.";
     };
 
+    repoDir = mkOption {
+      type = types.str;
+      default = "/home/hyperd/Documents/NixOS-Dev-Quick-Deploy";
+      description = "Owner checkout the daemon runs from. Read-only to the unit; used only as the clone source.";
+    };
+
+    cloneDir = mkOption {
+      type = types.str;
+      default = "/var/lib/aq-oncalld/repo";
+      description = "Daemon-owned clone (git clone --no-hardlinks from repoDir, local fetch only). Repair worktrees are created from it, never from repoDir.";
+    };
+
+    repairs.enable = mkOption {
+      type = types.bool;
+      default = false;
+      description = "Allow repair worktrees. Off: the daemon only records incidents (monitoring). Enable after the clone path is validated live (see evidence 2026-11-27-oncalld-activation.md).";
+    };
+
     interval = mkOption {
       type = types.int;
       default = 60;
@@ -30,9 +48,19 @@ in {
   };
 
   config = mkIf cfg.enable {
+    # The engine derives the worktree root from AQ_DELEGATION_DIR + "/worktrees"; keep them in step.
+    assertions = [{
+      assertion = cfg.cloneDir != cfg.repoDir;
+      message = "services.aiOncalld.cloneDir must differ from repoDir (the owner checkout is never written).";
+    } {
+      assertion = baseNameOf cfg.worktreesDir == "worktrees";
+      message = "services.aiOncalld.worktreesDir must end in /worktrees (engine appends it to AQ_DELEGATION_DIR).";
+    }];
+
     systemd.tmpfiles.rules = [
       "d '${cfg.stateDir}' 0750 hyperd users - -"
       "d '${cfg.worktreesDir}' 0750 hyperd users - -"
+      "d '${cfg.cloneDir}' 0750 hyperd users - -"
     ];
 
     security.apparmor.policies."aq-oncalld" = mkIf config.security.apparmor.enable {
@@ -59,8 +87,9 @@ in {
           ${cfg.stateDir}/** rwk,
           ${cfg.worktreesDir}/** rwk,
           /tmp/** rwk,
+          ${cfg.cloneDir}/** rwk,
 
-          /home/hyperd/Documents/NixOS-Dev-Quick-Deploy/** r,
+          ${cfg.repoDir}/** r,
         }
       '';
     };
@@ -70,12 +99,22 @@ in {
       after = [ "network.target" ];
       wantedBy = [ "multi-user.target" ];
 
+      # git: clone + worktree creation; bubblewrap + bash: confined reproduction. Without git here
+      # every claim failed with ENOENT 'git' (unit PATH is not the login PATH).
+      path = [ pkgs.git pkgs.bubblewrap pkgs.bash ];
+      environment = {
+        AQ_DELEGATION_DIR = dirOf cfg.worktreesDir;
+        AQ_ONCALL_CLONE_DIR = cfg.cloneDir;
+        AQ_ONCALL_SOURCE_REPO = cfg.repoDir;
+        AQ_ONCALL_REPAIRS = if cfg.repairs.enable then "1" else "0";
+      };
+
       serviceConfig = {
         Type = "simple";
         User = "hyperd";
         Group = "users";
         ExecStart = "${pkgs.python3}/bin/python3 scripts/ai/aq-oncalld --daemon --interval ${toString cfg.interval} --state-dir ${cfg.stateDir}";
-        WorkingDirectory = "/home/hyperd/Documents/NixOS-Dev-Quick-Deploy";
+        WorkingDirectory = cfg.repoDir;
         Restart = "on-failure";
         RestartSec = "10s";
 
@@ -86,6 +125,7 @@ in {
         ReadWritePaths = [
           cfg.stateDir
           cfg.worktreesDir
+          cfg.cloneDir
         ];
       };
     };

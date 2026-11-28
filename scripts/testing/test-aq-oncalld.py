@@ -41,6 +41,10 @@ from oncalld_engine import (
 )
 
 
+_AQ_ONCALL_ENV = ("AQ_ONCALL_CLONE_DIR", "AQ_ONCALL_SOURCE_REPO", "AQ_ONCALL_SOURCE_BRANCH",
+                  "AQ_ONCALL_REPAIRS", "AQ_ONCALL_LOG_LEVEL")
+
+
 class TestOnCallDaemon(unittest.TestCase):
     def setUp(self) -> None:
         self.temp_dir = tempfile.mkdtemp(prefix="test_oncalld_")
@@ -54,6 +58,7 @@ class TestOnCallDaemon(unittest.TestCase):
         os.environ["AQ_ONCALL_SIMULATE_WORKTREE"] = "1"
         self._orig_test_mode = os.environ.get("AQ_ONCALL_TEST_MODE")
         os.environ["AQ_ONCALL_TEST_MODE"] = "1"
+        self._saved_env = {k: os.environ.pop(k) for k in _AQ_ONCALL_ENV if k in os.environ}
         self.engine = OnCallDaemonEngine(
             repo_root=_REPO_ROOT,
             state_dir=self.state_dir,
@@ -61,6 +66,9 @@ class TestOnCallDaemon(unittest.TestCase):
         )
 
     def tearDown(self) -> None:
+        for k in _AQ_ONCALL_ENV:
+            os.environ.pop(k, None)
+        os.environ.update(self._saved_env)
         if self._orig_delegation is not None:
             os.environ["AQ_DELEGATION_DIR"] = self._orig_delegation
         else:
@@ -342,14 +350,15 @@ class TestOnCallDaemon(unittest.TestCase):
 
     # ── DP-3 review-revision regressions (F1-F6) ─────────────────────────────
 
-    def _admit_claim(self, iid: str, key: str):
-        inc = self.engine.admit_incident({
+    def _admit_claim(self, iid: str, key: str, engine=None):
+        engine = engine or self.engine
+        inc = engine.admit_incident({
             "incident_id": iid, "source": "svc", "severity": "high", "incident_class": "crash",
             "actionable": True, "confidence": 0.9, "correlation_key": key, "summary": "s",
             "reproduction_cmd": "exit 1",
         })
         self.assertIsNotNone(inc)
-        return self.engine.claim_incident(inc.incident_id, claimant_lane="codex")
+        return engine.claim_incident(inc.incident_id, claimant_lane="codex")
 
     def test_08_f1_no_fabricated_pass_or_pr(self) -> None:
         claim = self._admit_claim("f1", "k-f1")
@@ -369,6 +378,150 @@ class TestOnCallDaemon(unittest.TestCase):
             self.engine.create_isolated_worktree(claim)
         self.assertFalse(Path(claim.worktree_path).exists())
         self.assertEqual(self.engine.storage.get_claim(claim.claim_id).state, "FAILED")
+
+    def test_09b_worktree_missing_git_is_typed_logged_error(self) -> None:
+        """A PATH without git (the systemd unit default) must fail closed, typed and logged."""
+        from unittest import mock
+        os.environ.pop("AQ_ONCALL_SIMULATE_WORKTREE", None)
+        claim = self._admit_claim("f2b", "k-f2b")
+        with mock.patch.dict(os.environ, {"PATH": str(self.temp_dir)}), \
+             self.assertRaises(WorktreeIsolationError) as ctx:
+            self.engine.create_isolated_worktree(claim)
+        self.assertIn("git", str(ctx.exception))
+        self.assertEqual(self.engine.storage.get_claim(claim.claim_id).state, "FAILED")
+
+    def test_09c_worktree_created_when_git_on_path(self) -> None:
+        if not shutil.which("git"):
+            self.skipTest("git not on PATH")
+        os.environ.pop("AQ_ONCALL_SIMULATE_WORKTREE", None)
+        repo = Path(self.temp_dir) / "repo"
+        repo.mkdir()
+        env = {**os.environ, "GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@t",
+               "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@t"}
+        for argv in (["git", "init", "-q"], ["git", "commit", "-q", "--allow-empty", "-m", "i"]):
+            subprocess.run(argv, cwd=repo, check=True, env=env, capture_output=True)
+        engine = OnCallDaemonEngine(repo_root=repo, state_dir=self.state_dir,
+                                    confidence_threshold=0.70)
+        claim = self._admit_claim("f2c", "k-f2c", engine=engine)
+        wt = engine.create_isolated_worktree(claim)
+        self.assertTrue((wt / ".git").exists())
+
+    def _make_source_repo(self) -> Path:
+        src = Path(self.temp_dir) / "owner-repo"
+        src.mkdir()
+        env = {**os.environ, "GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@t",
+               "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@t"}
+        for argv in (["git", "init", "-q", "-b", "main"],
+                     ["git", "commit", "-q", "--allow-empty", "-m", "i"]):
+            subprocess.run(argv, cwd=src, check=True, env=env, capture_output=True)
+        return src
+
+    def _tree_snapshot(self, root: Path) -> dict:
+        return {str(p.relative_to(root)): p.stat().st_mtime_ns
+                for p in root.rglob("*") if p.is_file()}
+
+    def test_09d_worktree_from_separate_clone_leaves_owner_repo_untouched(self) -> None:
+        if not shutil.which("git"):
+            self.skipTest("git not on PATH")
+        os.environ.pop("AQ_ONCALL_SIMULATE_WORKTREE", None)
+        src = self._make_source_repo()
+        before = self._tree_snapshot(src)
+        clone = Path(self.temp_dir) / "daemon-clone"
+        clone.mkdir()  # tmpfiles pre-creates the clone dir empty
+        engine = OnCallDaemonEngine(repo_root=src, state_dir=self.state_dir, repairs_enabled=True,
+                                    clone_dir=clone, source_repo=src)
+        claim = self._admit_claim("f2d", "k-f2d", engine=engine)
+        wt = engine.create_isolated_worktree(claim)
+        self.assertTrue((wt / ".git").exists())
+        self.assertTrue((clone / ".git").exists())
+        self.assertEqual(self._tree_snapshot(src), before)  # no write into the owner repo
+        # refresh path: a second incident re-fetches into the same clone
+        claim2 = self._admit_claim("f2e", "k-f2e", engine=engine)
+        self.assertTrue((engine.create_isolated_worktree(claim2) / ".git").exists())
+        self.assertEqual(self._tree_snapshot(src), before)
+
+    def test_09e_clone_failure_is_typed(self) -> None:
+        os.environ.pop("AQ_ONCALL_SIMULATE_WORKTREE", None)
+        engine = OnCallDaemonEngine(repo_root=_REPO_ROOT, state_dir=self.state_dir,
+                                    repairs_enabled=True,
+                                    clone_dir=Path(self.temp_dir) / "c2",
+                                    source_repo=Path(self.temp_dir) / "does-not-exist")
+        claim = self._admit_claim("f2f", "k-f2f", engine=engine)
+        with self.assertRaises(WorktreeIsolationError):
+            engine.create_isolated_worktree(claim)
+        self.assertEqual(engine.storage.get_claim(claim.claim_id).state, "FAILED")
+
+    def test_09f_repairs_off_records_incident_without_worktree(self) -> None:
+        from types import SimpleNamespace
+        from unittest import mock
+        engine = OnCallDaemonEngine(repo_root=_REPO_ROOT, state_dir=self.state_dir,
+                                    repairs_enabled=False)
+        rec = SimpleNamespace(incident_id="f2g", source="svc", severity="HIGH",
+                              incident_class="CRASH", confidence=0.9, correlation_key="k-f2g",
+                              actionable=True, summary="s", suggested_lane="codex")
+        triage = SimpleNamespace(ingest_live_journal=lambda limit: [rec])
+        with mock.patch("oncalld_engine.subprocess.run") as run:
+            claims = engine.run_once(triage_engine=triage)
+        run.assert_not_called()
+        self.assertEqual(claims, [])
+        self.assertIsNotNone(engine.storage.get_incident("f2g"))
+        self.assertEqual(engine.storage.count_summary()["active_claims"], 0)
+
+    def test_09g_clone_dir_must_be_separate_from_source(self) -> None:
+        src = self._make_source_repo()
+        before = self._tree_snapshot(src)
+        for clone in (src, src / "sub-clone", src.parent):
+            engine = OnCallDaemonEngine(repo_root=src, state_dir=self.state_dir,
+                                        repairs_enabled=True, clone_dir=clone, source_repo=src)
+            with self.assertRaises(WorktreeIsolationError):
+                engine.ensure_clone()
+        self.assertEqual(self._tree_snapshot(src), before)
+
+    def test_09h_unsafe_branch_name_refused(self) -> None:
+        src = self._make_source_repo()
+        os.environ["AQ_ONCALL_SOURCE_BRANCH"] = "--upload-pack=touch /tmp/pwned"
+        engine = OnCallDaemonEngine(repo_root=src, state_dir=self.state_dir, repairs_enabled=True,
+                                    clone_dir=Path(self.temp_dir) / "c-branch", source_repo=src)
+        with self.assertRaises(WorktreeIsolationError):
+            engine.ensure_clone()
+        self.assertFalse((Path(self.temp_dir) / "c-branch").exists())
+
+    def test_09i_clone_git_calls_disable_hooks_and_fetch_from_source_path(self) -> None:
+        from unittest import mock
+        src = self._make_source_repo()
+        clone = Path(self.temp_dir) / "c-hooks"
+        engine = OnCallDaemonEngine(repo_root=src, state_dir=self.state_dir, repairs_enabled=True,
+                                    clone_dir=clone, source_repo=src)
+        calls = []
+
+        def fake_run(argv, **kw):
+            calls.append(list(argv))
+            if "clone" in argv:
+                (clone / ".git").mkdir(parents=True)
+            return subprocess.CompletedProcess(argv, 0, "", "")
+        with mock.patch("oncalld_engine.subprocess.run", side_effect=fake_run):
+            engine.ensure_clone()
+        self.assertEqual([c[3] for c in calls], ["clone", "fetch", "checkout"])
+        for argv in calls:
+            self.assertIn("core.hooksPath=/dev/null", argv)
+        fetch = calls[1]
+        self.assertNotIn("origin", fetch)
+        self.assertIn(str(src.resolve()), fetch)
+        self.assertEqual(fetch[fetch.index("--") + 2], "main")
+
+    def test_09j_daemon_entrypoint_emits_info_logs(self) -> None:
+        """Without logging config only WARNING+ reaches the journal; the INFO line must too."""
+        probe = (
+            "import importlib.machinery as m, importlib.util as u, logging, sys\n"
+            f"sys.argv = ['aq-oncalld', '--list', '--state-dir', {str(self.state_dir)!r}]\n"
+            f"l = m.SourceFileLoader('aqo', {str(_REPO_ROOT / 'scripts/ai/aq-oncalld')!r})\n"
+            "mod = u.module_from_spec(u.spec_from_loader('aqo', l)); l.exec_module(mod); mod.main()\n"
+            "logging.getLogger('aq-oncalld').info('Incident x recorded; repairs disabled (monitoring only)')\n"
+        )
+        env = {k: v for k, v in os.environ.items() if k != "AQ_ONCALL_LOG_LEVEL"}
+        res = subprocess.run([sys.executable, "-c", probe], capture_output=True, text=True, env=env)
+        self.assertEqual(res.returncode, 0, res.stderr)
+        self.assertIn("recorded; repairs disabled", res.stderr)
 
     def test_10_f3_reproduction_is_confined_or_deferred(self) -> None:
         import shutil as _sh

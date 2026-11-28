@@ -6,12 +6,9 @@
       "entrypoint": "scripts/ai/aq-oncalld",
       "live_caller": "nix/modules/services/oncalld.nix",
       "enable": "services.aiOncalld.enable",
-      "health_signal": "dashboard/backend/api/routes/aistack.py:oncalld_unavailable",
-      "deferral": {
-        "date": "2026-10-28",
-        "reason": "Merged in #506/#573 but the NixOS option services.aiOncalld.enable (nix/modules/services/oncalld.nix:11) is set to true nowhere under nix/, so the systemd unit never runs; the dashboard route only loads lib/oncalld_engine.py on demand. Found in the 2026-10-28 P3 retro-review.",
-        "tracking": ".agent/memory/issues-backlog.md: 2026-10-28 P3 retro-review"
-      }
+      "health_signal": "scripts/ai/lib/oncalld_engine.py:health_summary",
+      "state": "monitoring-on, repairs-off: ai-oncalld.service enabled via services.aiOncalld.enable in nix/hosts/hyperd/default.nix (active since 2026-11-19) and records incidents; repair worktrees are gated by services.aiOncalld.repairs.enable (default false) and come from a daemon-owned clone at /var/lib/aq-oncalld/repo, never the owner checkout (owner decision 2026-11-27 after Codex+Gemini review). Unblock criteria: (1) clone created and refreshed by the unit, (2) one synthetic incident repaired in a worktree under /var/lib/aq-oncalld/worktrees, (3) no write to the owner repo (mtime/status unchanged). Review date 2026-12-11.",
+      "observed_by": "journalctl -u ai-oncalld (incident recorded, 'repairs disabled' info line; after enabling: claim-* worktree created, no ENOENT); dashboard aistack oncalld health summary (heartbeat, active_claims); scripts/testing/test-aq-oncalld.py"
     },
     {
       "feature": "operator guidance spool (aq-human-intervention control queue)",

@@ -20,6 +20,7 @@ import os
 import re
 import shutil
 import sqlite3
+import sys
 import subprocess
 import tempfile
 import time
@@ -29,6 +30,14 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 logger = logging.getLogger("aq-oncalld")
+_SAFE_BRANCH_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._/-]*")
+
+
+def configure_logging() -> None:
+    """Daemon entrypoint logging: INFO (override AQ_ONCALL_LOG_LEVEL) to stderr, i.e. the journal."""
+    level = getattr(logging, os.getenv("AQ_ONCALL_LOG_LEVEL", "INFO").upper(), logging.INFO)
+    logging.basicConfig(level=level, stream=sys.stderr,
+                        format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 
 _DEFAULT_REPO_ROOT = Path(__file__).resolve().parents[3]
 _DEFAULT_STATE_DIR = Path(
@@ -536,9 +545,21 @@ class OnCallDaemonEngine:
         self,
         repo_root: Optional[Path] = None,
         state_dir: Optional[Path] = None,
-        confidence_threshold: float = 0.70
+        confidence_threshold: float = 0.70,
+        repairs_enabled: Optional[bool] = None,
+        clone_dir: Optional[Path] = None,
+        source_repo: Optional[Path] = None,
     ) -> None:
         self.repo_root = (repo_root or _DEFAULT_REPO_ROOT).resolve()
+        # Repairs are opt-in: without it the daemon only records incidents (monitoring).
+        self.repairs_enabled = (os.getenv("AQ_ONCALL_REPAIRS") == "1"
+                                if repairs_enabled is None else repairs_enabled)
+        # Worktrees come from a daemon-owned clone so the owner checkout is never written.
+        clone_env = os.getenv("AQ_ONCALL_CLONE_DIR")
+        clone_choice = clone_dir or clone_env
+        self.clone_dir = Path(clone_choice).resolve() if clone_choice else None
+        source_env = os.getenv("AQ_ONCALL_SOURCE_REPO")
+        self.source_repo = Path(source_repo or source_env or self.repo_root).resolve()
         self.state_dir = (state_dir or _DEFAULT_STATE_DIR).resolve()
         self.confidence_threshold = confidence_threshold
         self.storage = OnCallStorage(self.state_dir / "oncall.db")
@@ -710,6 +731,38 @@ class OnCallDaemonEngine:
         self._release_incident(incident_id, status="ADMITTED", actor=actor,
                                action="requeue", note=note)
 
+    def ensure_clone(self) -> Path:
+        """Create or refresh the daemon-owned clone from the (read-only) source repo.
+
+        Local file fetch only: no network, no token. Fails closed with WorktreeIsolationError.
+        """
+        if self.clone_dir is None:
+            return self.repo_root
+        branch = os.getenv("AQ_ONCALL_SOURCE_BRANCH", "main")
+        if not _SAFE_BRANCH_RE.fullmatch(branch):
+            raise WorktreeIsolationError(f"Refusing unsafe source branch name {branch!r}")
+        src, clone = self.source_repo, self.clone_dir
+        if clone == src or src in clone.parents or clone in src.parents:
+            raise WorktreeIsolationError(
+                f"clone_dir {clone} must be separate from source_repo {src} (owner repo is never written)")
+        # hooksPath off: no template/global hook may run in the daemon; fetch straight from the
+        # source path rather than trusting an `origin` URL stored in the clone's config.
+        git = ["git", "-c", "core.hooksPath=/dev/null"]
+        try:
+            if not (clone / ".git").exists():
+                clone.parent.mkdir(parents=True, exist_ok=True)
+                subprocess.run([*git, "clone", "--no-hardlinks", "-q", "--", str(src), str(clone)],
+                               check=True, capture_output=True, text=True, timeout=300)
+            subprocess.run([*git, "fetch", "-q", "--", str(src), branch], cwd=str(clone),
+                           check=True, capture_output=True, text=True, timeout=120)
+            subprocess.run([*git, "checkout", "-q", "--detach", "FETCH_HEAD"],
+                           cwd=str(clone), check=True, capture_output=True, text=True,
+                           timeout=60)
+        except (subprocess.CalledProcessError, OSError, subprocess.TimeoutExpired) as err:
+            detail = getattr(err, "stderr", None) or str(err)
+            raise WorktreeIsolationError(f"Clone refresh failed for {self.clone_dir}: {detail}") from err
+        return self.clone_dir
+
     def create_isolated_worktree(self, claim: RemediationClaim) -> Path:
         """Create the git worktree for a claim. Fails closed: no plain-directory fallback."""
         wt_dir = Path(claim.worktree_path)
@@ -729,7 +782,7 @@ class OnCallDaemonEngine:
                 subprocess.run(
                     ["git", "-c", "core.hooksPath=/dev/null", "worktree", "add", "-q",
                      "-b", claim.worktree_branch, str(wt_dir), "HEAD"],
-                    cwd=str(self.repo_root),
+                    cwd=str(self.ensure_clone()),
                     check=True,
                     capture_output=True,
                     text=True,
@@ -965,6 +1018,10 @@ class OnCallDaemonEngine:
                     continue
                 incident = self.admit_incident(rec)
                 if incident:
+                    if not self.repairs_enabled:
+                        logger.info("Incident %s recorded; repairs disabled (monitoring only)",
+                                    incident.incident_id)
+                        continue
                     lane = getattr(rec, "suggested_lane", "codex") or "codex"
                     try:
                         claim = self.claim_incident(incident.incident_id, claimant_lane=lane)

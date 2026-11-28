@@ -37,6 +37,7 @@ from oncalld_engine import (
     verify_candidate_binding,
     verify_worktree_containment,
     health_summary,
+    configure_logging,
 )
 
 
@@ -59,6 +60,7 @@ def main() -> int:
     parser.add_argument("--json", action="store_true", help="Output machine-readable JSON")
 
     args = parser.parse_args()
+    configure_logging()
     engine = OnCallDaemonEngine(repo_root=_REPO_ROOT, state_dir=args.state_dir)
 
     if args.resolve or args.requeue:
