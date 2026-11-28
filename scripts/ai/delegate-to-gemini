@@ -35,7 +35,26 @@
 
 set -euo pipefail
 
+# Work ledger (agent-work-durability S1): lifecycle record only; a ledger error never breaks a delegation.
+ledger() {
+    python3 "$(dirname "${BASH_SOURCE[0]}")/aq-ledger" --delegation-dir "${AQ_DELEGATION_DIR:-}" "$@" >/dev/null 2>&1 || true
+}
+
+# Internal re-entry (not public CLI): a background launch runs its command through this so the ledger gets
+# a terminal status. Stays above all setup so the command inherits an untouched environment and cwd.
+if [[ "${1:-}" == "--internal-ledger-run" ]]; then
+    _ledger_id="$2"; shift 2
+    trap 'ledger status --id="$_ledger_id" --status=failed --reason=signal --pid="$$"; exit 143' TERM INT HUP
+    _ledger_rc=0
+    "$@" || _ledger_rc=$?
+    _ledger_status=failed
+    [[ "$_ledger_rc" -ne 0 ]] || _ledger_status="done"
+    ledger status --id="$_ledger_id" --status="$_ledger_status" --reason="exit=$_ledger_rc" --pid="$$"
+    exit "$_ledger_rc"
+fi
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_PATH="$SCRIPT_DIR/$(basename "${BASH_SOURCE[0]}")"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 # shellcheck source=lib/delegation-dir.sh
 source "${SCRIPT_DIR}/lib/delegation-dir.sh" 2>/dev/null || resolve_delegation_dir() { echo "WARN: delegation-dir.sh not sourceable; delegation dir falls back to script-relative path" >&2; echo "$(cd "$1/../.." && pwd)/.agents/delegation"; }
@@ -433,6 +452,12 @@ ${prompt}"
     "$SCRIPT_DIR/lib/pending-update" add "$id" "gemini" "$rel_output" "${prompt:0:120}" 2>/dev/null || true
     audit_event_start "gemini" "$id" "${prompt:0:200}"
 
+    local ledger_task="${prompt:0:120}"
+    local ledger_args=(init --id="$id" --lane=gemini --role="$role" --task="${ledger_task//$'\n'/ }"
+        --pid="$$" --resume-policy=confirm)
+    [[ -z "$PROMPT_FILE" ]] || ledger_args+=(--brief-path="$PROMPT_FILE")
+    ledger "${ledger_args[@]}"
+
     if [[ "$wait_mode" == "true" ]]; then
         # Blocking mode: run in foreground, tee to output file
         info "Running in blocking mode..."
@@ -444,6 +469,7 @@ ${prompt}"
         python3 "$SCRIPT_DIR/lib/registry-update.py" model-report "$REGISTRY" "$id" "$model_report" || true
         local meaningful_bytes; meaningful_bytes="$(_gemini_meaningful_bytes "$output_file")"
         if [[ "$exit_code" -eq 0 ]]; then
+            ledger status --id="$id" --status=done --pid="$$"
             registry_update_status "$id" "done"
             "$SCRIPT_DIR/lib/pending-update" "done" "$id" 2>/dev/null || true
             audit_event_end "gemini" "$id" "success" "0" "completed: ${prompt:0:100}" "$role"
@@ -451,12 +477,15 @@ ${prompt}"
             info "Task $id completed successfully."
         elif [[ "$meaningful_bytes" -gt "$GEMINI_MIN_CONTENT_BYTES" ]] && ! grep -q '^GEMINI_LANE_UNAVAILABLE' "$output_file"; then
             # Non-zero exit but model produced real content — treat as partial-success.
+            # The ledger has no partial state: a non-zero exit is recorded as failed, with the reason.
+            ledger status --id="$id" --status=failed --reason="partial-success exit=$exit_code" --pid="$$"
             registry_update_status "$id" "partial-success"
             "$SCRIPT_DIR/lib/pending-update" partial-success "$id" 2>/dev/null || true
             audit_event_end "gemini" "$id" "partial-success" "0" "partial-success exit=${exit_code}: ${prompt:0:100}" "$role"
             audit_save_session "gemini" "$id" "$prompt" "$output_file"
             info "Task $id partial-success (exit $exit_code, meaningful ${meaningful_bytes}B)."
         else
+            ledger status --id="$id" --status=failed --reason="exit=$exit_code" --pid="$$"
             registry_update_status "$id" "failed"
             "$SCRIPT_DIR/lib/pending-update" failed "$id" 2>/dev/null || true
             audit_event_end "gemini" "$id" "error" "0" "failed exit=${exit_code}: ${prompt:0:100}" "$role"
@@ -480,6 +509,7 @@ ${prompt}"
         local _coord_url="${HYBRID_COORDINATOR_URL:-http://127.0.0.1:8003}"
         local _audit_helper; _audit_helper="$SCRIPT_DIR/lib/audit-post.sh"
         if source "$SCRIPT_DIR/lib/sleep-inhibit.sh" 2>/dev/null; then aq_sleep_inhibit_prefix "$id"; else AQ_INHIBIT_PREFIX=(); echo "WARN: sleep-inhibit.sh not sourceable; task runs without an idle inhibitor" >&2; fi
+        cmd=(bash "$SCRIPT_PATH" --internal-ledger-run "$id" "${cmd[@]}")
         # own session: `aq-delegation-registry stop` signals the whole group, never the caller's
         setsid nohup "${AQ_INHIBIT_PREFIX[@]}" bash "$SCRIPT_DIR/lib/gemini-background-worker.sh" \
             "$output_file" "$_audit_helper" "$_coord_url" "$REGISTRY" "$id" "$role" "$prompt" \
@@ -487,6 +517,7 @@ ${prompt}"
             </dev/null >> "$output_file" 2>&1 &
         local pid=$!
         disown "$pid"
+        ledger heartbeat --id="$id" --pid="$pid"  # rebind the entry to the worker process
 
         # Update registry with PID (transactional)
         python3 "$SCRIPT_DIR/lib/registry-update.py" set "$REGISTRY" "$id" pid "$pid"

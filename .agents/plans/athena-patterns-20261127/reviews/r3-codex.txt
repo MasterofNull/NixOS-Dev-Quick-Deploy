@@ -1,0 +1,8 @@
+VERDICT: PLAN_READY
+
+Both prior P1 findings are closed:
+
+- Section 5 disables the entire budget signal whenever cassette mode is not `off`, preserves identity checks, and requires strict replay of an existing recording across both thresholds.
+- Section 4 defaults A2 to `observe`, keeps hints opt-in, and requires held-out false-positive and usefulness evidence before promotion. Sections 7–8 reflect this behavior and track the promotion decision.
+
+No new P0/P1 findings in the reviewed sections.

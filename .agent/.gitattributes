@@ -1,0 +1,5 @@
+# Append-only collaboration logs: concurrent appends merge as a union of lines.
+# Lives here, not at the repo root, so root-file hygiene holds; patterns are relative to .agent/.
+collaboration/PULSE.log merge=union
+memory/issues-backlog.md merge=union
+collaboration/AGENT-CATCHUP-QUEUE.md merge=union

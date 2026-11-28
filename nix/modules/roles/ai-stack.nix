@@ -2159,7 +2159,7 @@ in {
         wants = ["ai-hybrid-coordinator.service"];
         # bwrap: execution-cell checks (0.10.44) need it; it was only in the user
         # profile, so the unit reported skipped-no-bwrap and failed.
-        path = [pkgs.bubblewrap];
+        path = [pkgs.bubblewrap pkgs.git];
         serviceConfig = {
           Type = "oneshot";
           User = cfg.primaryUser;
@@ -2193,9 +2193,8 @@ in {
           # TimeoutStartSec: must exceed harness subprocess timeout + margin for cleanup.
           # Subprocess timeout is 705s; add 60s margin = 765s (< 15min timer period).
           TimeoutStartSec = "765";
-          # MemoryMax: measured MemoryPeak 551M with all checks running (2026-10-08);
-          # ~1.6x headroom.
-          MemoryMax = "1280M";
+          # MemoryMax: measured MemoryPeak 1.2G with all checks running (2026-11-26); 2048M ~1.7x headroom, a kill would silence the alert pipeline.
+          MemoryMax = "2048M";
         };
       };
 
@@ -2206,6 +2205,49 @@ in {
           OnBootSec = "5min";
           OnUnitActiveSec = "15min";
           Persistent = false;
+        };
+      };
+    })
+
+    # Keep the live main checkout (the code every repoPath unit executes) at origin/main.
+    # Fast-forward only; the script skips on non-main, in-progress git ops or dirty build files.
+    (lib.mkIf (roleEnabled && cfg.deployment.mainSync.enable) {
+      systemd.services.aq-main-sync = {
+        description = "Fast-forward the live main checkout to origin/main (ff-only, skips when unsafe)";
+        after = ["network-online.target"];
+        wants = ["network-online.target"];
+        path = [pkgs.git pkgs.gnused pkgs.coreutils];
+        serviceConfig = {
+          Type = "oneshot";
+          User = cfg.primaryUser;
+          WorkingDirectory = cfg.mcpServers.repoPath;
+          # Git needs the owner's HOME for its config and credentials (read-only under ProtectHome).
+          Environment = [
+            "HOME=${config.users.users.${cfg.primaryUser}.home}"
+            "GIT_TERMINAL_PROMPT=0"
+          ];
+          ExecStart = "${pkgs.bash}/bin/bash ${cfg.mcpServers.repoPath}/scripts/maintenance/aq-main-sync --repo ${cfg.mcpServers.repoPath}";
+          StandardOutput = "journal";
+          StandardError = "journal";
+          NoNewPrivileges = true;
+          ProtectSystem = "strict";
+          ProtectHome = "read-only";
+          # fetch writes .git; the merge rewrites tracked files anywhere in the checkout.
+          ReadWritePaths = [cfg.mcpServers.repoPath];
+          PrivateTmp = true;
+          TimeoutStartSec = "120";
+          MemoryMax = "256M";
+        };
+      };
+
+      systemd.timers.aq-main-sync = {
+        description = "Live main checkout sync timer (every 15 min)";
+        wantedBy = ["timers.target"];
+        timerConfig = {
+          OnCalendar = "*:0/15";
+          RandomizedDelaySec = "2min";
+          Persistent = true;
+          Unit = "aq-main-sync.service";
         };
       };
     })
@@ -2629,7 +2671,10 @@ in {
         description = "Dispatch PRSI when a new incident is recorded";
         wantedBy = ["multi-user.target"];
         pathConfig = {
-          PathChanged = "${mutableRsiDir}/rsi-incidents.json";
+          # Marker rewritten only when an incident is newly opened (rsi_lifecycle.failure). The ledger
+          # itself is rewritten every ~25s by health-spider count/last_seen bumps, which wedged this path
+          # in unit-start-limit-hit (2026-11-25). The 5-minute timer remains the lost-event backstop.
+          PathChanged = "${mutableRsiDir}/rsi-incidents.new";
           Unit = "ai-prsi-rsi-dispatch.service";
         };
       };

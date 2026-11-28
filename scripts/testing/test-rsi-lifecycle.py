@@ -44,6 +44,21 @@ class RecorderTests(unittest.TestCase):
         self.record()
         self.assertEqual(json.loads((rsi._RUNTIME / "rsi-incidents.json").read_text())["incidents"][ids[0]]["status"], "open")
 
+    def test_new_incident_marker_untouched_by_reobservation(self):
+        marker = rsi._RUNTIME / "rsi-incidents.new"
+        iid = self.record()
+        first = json.loads(marker.read_text())
+        self.assertEqual(first["id"], iid)
+        before = (marker.read_bytes(), marker.stat().st_mtime_ns)
+        for _ in range(3):
+            self.record()
+        self.assertEqual((marker.read_bytes(), marker.stat().st_mtime_ns), before)
+        rsi.resolve(iid, "cause", "regression", "validated ok")
+        self.record()  # reopened incident is a new-open transition
+        self.assertNotEqual(marker.stat().st_mtime_ns, before[1])
+        other = rsi.failure("codex", "t", "hook2", "path", "policy", "other error")
+        self.assertEqual(json.loads(marker.read_text())["id"], other)
+
     def test_resolve_appends_single_done_line_and_is_idempotent(self):
         iid = self.record()
         before = rsi._BACKLOG.read_text()

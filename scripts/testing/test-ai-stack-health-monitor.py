@@ -29,11 +29,12 @@ def isolate_queue(aq, root: Path) -> None:
 
 def load_monitor() -> Any:
     spec = importlib.util.spec_from_file_location("ai_stack_health_monitor_under_test", MONITOR)
-    module = importlib.util.module_from_spec(spec)
+    module: Any = importlib.util.module_from_spec(spec)
     assert spec.loader is not None
     spec.loader.exec_module(module)
     import attention_queue as aq
     isolate_queue(aq, Path(tempfile.mkdtemp(prefix="health-monitor-queue-")))
+    module.checkout_staleness = lambda repo, failing=None: {"behind": 0}  # staleness is covered by test-health-monitor-stale-checkout.py; the live repo must not change severity here
     module.run_payload_audit = lambda: {"state": "ok", "findings": []}  # payload audit is covered by test-payload-audit-routine.py
     return module
 
