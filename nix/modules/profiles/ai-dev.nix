@@ -28,6 +28,8 @@ in {
     mySystem.autoUpdate.enable = lib.mkDefault true;
     mySystem.autoUpdate.run.enable = lib.mkDefault false;
     mySystem.monitoring.commandCenter.enable = lib.mkDefault true;
+    # Owner 2026-11-26: repoPath units run the live checkout; keep it ff-synced to origin/main.
+    mySystem.deployment.mainSync.enable = lib.mkDefault true;
     mySystem.localhostIsolation.enable = lib.mkDefault true;
     mySystem.aiStack.switchboard.enable = lib.mkDefault true;
     # agent-auth AUTH-S2: shadow-only (never blocks); expiry is a runtime health signal.

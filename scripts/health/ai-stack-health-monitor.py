@@ -10,6 +10,7 @@ Designed to run as a systemd timer every 15 minutes.
 from __future__ import annotations
 import json
 import os
+import re
 import subprocess
 import sys
 import time
@@ -49,6 +50,63 @@ def push_alert(**spec) -> None:
         push(**spec)
     except (ValueError, TypeError) as exc:
         print(f"[{_SOURCE}] Skipping invalid alert: {exc}", file=sys.stderr)
+
+
+_GIT_TIMEOUT_S = 15
+_PATH_RE = re.compile(r"[\w.-]+(?:/[\w.@+-]+)+")
+
+
+def _git(repo: Path, *args: str) -> str | None:
+    # The systemd unit's PATH lacks git; _SYSTEM_BIN carries it (same reason run_aq_qa extends PATH).
+    env = {**os.environ, "PATH": f"{os.environ.get('PATH', '')}:{_SYSTEM_BIN}"}
+    try:
+        r = subprocess.run(["git", "-C", str(repo), *args], capture_output=True, text=True,
+                           timeout=_GIT_TIMEOUT_S, env=env)
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    return r.stdout.strip() if r.returncode == 0 else None
+
+
+def checkout_staleness(repo: Path, failing: list[dict] | None = None) -> dict:
+    """How far this checkout's HEAD trails the local origin/main ref (no fetch: the unit cannot write .git).
+
+    The units run code from the owner's main checkout, which only fast-forwards at deploy time, so a failing
+    check may already be fixed on main. `fixing` lists commits behind that touch paths named in failing checks.
+    """
+    head = _git(repo, "rev-parse", "HEAD")
+    base = _git(repo, "rev-parse", "--verify", "-q", "refs/remotes/origin/main")
+    if not head or not base:
+        return {"behind": None}
+    count = _git(repo, "rev-list", "--count", f"{head}..{base}")
+    if count is None or not count.isdigit():
+        return {"behind": None}
+    out: dict = {"behind": int(count), "head": head[:9], "origin_main": base[:9]}
+    if out["behind"] == 0:
+        return out
+    text = "\n".join(f"{c.get('name') or ''} {c.get('description') or ''} {c.get('message') or c.get('detail') or ''}"
+                     for c in failing or [])
+    # A path outside the repo (`..`) makes `git log -- <path>` exit 128 and would drop every valid match.
+    paths = sorted({p for p in _PATH_RE.findall(text) if ".." not in p.split("/")})[:20]
+    rng = f"{head}..{base}"
+    log = _git(repo, "log", "--format=%h %s", "-n", "5", rng, "--", *paths) if paths else ""
+    out["fixing"] = (log or "").splitlines()
+    out["recent"] = (_git(repo, "log", "--format=%h %s", "-n", "5", rng) or "").splitlines()
+    return out
+
+
+def stale_note(st: dict) -> str:
+    if not st.get("behind"):
+        return ""
+    lines = [f"STALE CHECKOUT: {_REPO_ROOT} is {st['behind']} commit(s) behind origin/main "
+             f"({st['head']} vs {st['origin_main']}); the failing check(s) may already be fixed on main."]
+    if st.get("fixing"):
+        lines.append("Commits behind touching the failing check files:")
+        lines += [f"  {c}" for c in st["fixing"]]
+    elif st.get("recent"):
+        lines.append("Most recent commits not yet in this checkout:")
+        lines += [f"  {c}" for c in st["recent"]]
+    lines.append("Fast-forward the checkout (aq-deploy-current) and re-run before treating this as an outage.")
+    return "\n".join(lines)
 
 
 def _bounded_phase0_budget_s(raw: str | None, outer_timeout_s: int) -> str:
@@ -331,14 +389,23 @@ def main() -> int:
                for c in failures]
         shown = ", ".join(ids[:3]) + (f" +{len(ids) - 3} more" if len(ids) > 3 else "")
         noun = "check" if len(failures) == 1 else "checks"
+        staleness = checkout_staleness(_REPO_ROOT, failures)
+        note = stale_note(staleness)
+        phase_results[-1]["checkout"] = staleness
+        severity = "critical" if len(failures) >= 3 else "high"
+        title = f"QA phase {phase}: {len(failures)} {noun} failing ({shown})"
+        if note:  # stale code is a different problem from an outage: never page critical for it
+            severity = "high"
+            title = f"[stale checkout {staleness['behind']} behind] {title}"
         push_alert(
             source=_SOURCE,
-            severity="critical" if len(failures) >= 3 else "high",
+            severity=severity,
             autonomy_boundary="human_gate",
-            title=f"QA phase {phase}: {len(failures)} {noun} failing ({shown})",
+            title=title,
             detail=(
                 f"Scheduled health monitor found {len(failures)} failing {noun}:\n"
                 + "\n".join(lines)
+                + (f"\n\n{note}" if note else "")
             ),
             proposed_action=f"Re-run `aq-qa {phase} --machine` and fix the failing check(s).",
             ttl_s=_ALERT_TTL_S,
