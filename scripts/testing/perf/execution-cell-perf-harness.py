@@ -172,6 +172,7 @@ _KNOWN_RUNNER_REASONS = frozenset({
     runner.REASON_UNKNOWN_TRUSTED_REPO, runner.REASON_TREE_NOT_PROVEN_ABSENT,
     runner.REASON_MALFORMED_RESULT, runner.REASON_COMMAND_FAILED, runner.REASON_FINAL_FENCE_FAILED,
     runner.REASON_RUNNER_INTERNAL_ERROR, runner.REASON_RUNNER_BUSY, runner.REASON_OK,
+    runner.REASON_CGROUP_ATTACH_FAILED,
 })
 _KNOWN_R1_DENIALS = frozenset({
     eg.DENY_MALFORMED, eg.DENY_BAD_SIGNATURE, eg.DENY_EXPIRED, eg.DENY_NOT_YET_VALID,
@@ -569,11 +570,34 @@ def detect_delegated_cgroup_parent() -> "Optional[str]":
         probe = os.path.join(base, f"aq-r4-probe-{os.getpid()}")
         try:
             os.mkdir(probe)
-            os.rmdir(probe)
-            _CGROUP_PARENT_CACHE = base
-            return base
         except OSError:
             continue
+        # Creating a child dir is not enough: moving a pid in needs write access
+        # to the common ancestor (EACCES from a login session scope). Without a
+        # real migration every kill proof is vacuous, so treat it as unavailable.
+        migrated = False
+        child = None
+        try:
+            child = subprocess.Popen(["sleep", "5"], start_new_session=True)
+            migrated = runner.add_pid_to_cgroup(probe, child.pid)
+        except OSError:
+            migrated = False
+        finally:
+            if child is not None:
+                child.kill()
+                child.wait()
+            # cgroup v2 teardown of a just-emptied cgroup is async: EBUSY is transient.
+            for _ in range(20):
+                try:
+                    os.rmdir(probe)
+                    break
+                except FileNotFoundError:
+                    break
+                except OSError:
+                    time.sleep(0.05)
+        if migrated:
+            _CGROUP_PARENT_CACHE = base
+            return base
     return None
 
 
@@ -1239,8 +1263,15 @@ def run_revocation_under_load(
             return result
         cgroup_paths.append(cgroup_path)
         proc = subprocess.Popen(["sleep", str(sleep_seconds)], start_new_session=True)
-        runner.add_pid_to_cgroup(cgroup_path, proc.pid)
         procs.append(proc)
+        if not runner.add_pid_to_cgroup(cgroup_path, proc.pid):
+            result["failures"].append("pid did not enter the cell cgroup (EACCES?); kill proof would be vacuous")
+            for stray in procs:
+                stray.kill()
+                stray.wait()
+            for created in cgroup_paths:
+                runner._cleanup_cgroup_dir(created)
+            return result
 
     supervise_config = runner.RunnerConfig(
         socket_path="", client_uid=None, client_gid=None, public_key_bytes=harness.public_key_bytes,

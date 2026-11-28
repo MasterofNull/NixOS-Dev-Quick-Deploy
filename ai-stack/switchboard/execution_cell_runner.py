@@ -121,6 +121,7 @@ REASON_UNKNOWN_TRUSTED_REPO = "unknown-trusted-repo"
 REASON_TREE_NOT_PROVEN_ABSENT = "tree-not-proven-absent"
 REASON_MALFORMED_RESULT = "malformed-cell-result"
 REASON_COMMAND_FAILED = "command-failed"
+REASON_CGROUP_ATTACH_FAILED = "cgroup-attach-failed"
 REASON_FINAL_FENCE_FAILED = "final-epoch-fence-failed"
 REASON_RUNNER_INTERNAL_ERROR = "runner-internal-error"
 REASON_RUNNER_BUSY = "runner-busy"
@@ -515,6 +516,22 @@ def terminate_cgroup_tree(cgroup_path: str, sigterm_grace_s: float, kill_proof_b
         return False, cgroup_kill_used
 
 
+def _kill_unattached_child(popen: "subprocess.Popen") -> None:
+    """Best-effort direct kill of a child that could not be placed in its
+    cgroup, so the cgroup kill path cannot be relied on."""
+    try:
+        os.killpg(popen.pid, signal.SIGKILL)
+    except OSError:
+        try:
+            popen.kill()
+        except OSError:
+            pass
+    try:
+        popen.communicate(timeout=2.0)
+    except Exception:  # noqa: BLE001
+        pass
+
+
 def _cleanup_cgroup_dir(cgroup_path: Optional[str]) -> None:
     if not cgroup_path:
         return
@@ -758,7 +775,17 @@ def _confine_run_validate(
                 grant_digest=grant_digest, command_kind=command.kind, duration_ms=_elapsed_ms(),
                 base_oid=cell.base_oid,
             )
-        add_pid_to_cgroup(cgroup_path, popen.pid)
+        if not add_pid_to_cgroup(cgroup_path, popen.pid):
+            # Fail closed: a pid that never entered its cgroup would let the
+            # empty-cgroup kill proof pass vacuously. Kill the session
+            # directly (start_new_session => pgid == pid); tree_proven_absent=False
+            # (schema: quarantined pairs with false), never a proof.
+            _kill_unattached_child(popen)
+            return Decision(
+                DECISION_QUARANTINED, REASON_CGROUP_ATTACH_FAILED, STAGE_CONFINE_RUN, receipt_id,
+                grant_digest=grant_digest, command_kind=command.kind, tree_proven_absent=False,
+                duration_ms=_elapsed_ms(), base_oid=cell.base_oid,
+            )
 
         outcome, trigger, cgroup_kill_used, proven = _supervise(popen, cgroup_path, verified, config)
 

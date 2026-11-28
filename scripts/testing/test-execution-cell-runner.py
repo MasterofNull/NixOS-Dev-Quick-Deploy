@@ -333,6 +333,9 @@ def _base_config(mirror: str, trusted_repo_id: str, public_key_bytes: bytes, **o
 
 
 def test_valid_write_grant_green():
+    if not _CGROUP_MIGRATION_OK:
+        skip("write_grant_green", _MIGRATION_SKIP_NOTE)
+        return
     private_key, public_key_bytes = eg.generate_keypair()
     source_repo, head_oid = _build_source_repo()
     mirror = _build_bare_mirror(source_repo)
@@ -370,6 +373,9 @@ def test_valid_write_grant_green():
 
 
 def test_valid_read_validate_grant_green():
+    if not _CGROUP_MIGRATION_OK:
+        skip("read_validate_grant_green", _MIGRATION_SKIP_NOTE)
+        return
     import hashlib
 
     private_key, public_key_bytes = eg.generate_keypair()
@@ -662,6 +668,9 @@ class _CountingEpoch:
 
 
 def test_final_epoch_fence_flips_green_to_red():
+    if not _CGROUP_MIGRATION_OK:
+        skip("final_epoch_fence_flips_green_to_red", _MIGRATION_SKIP_NOTE)
+        return
     private_key, public_key_bytes = eg.generate_keypair()
     source_repo, head_oid = _build_source_repo()
     mirror = _build_bare_mirror(source_repo)
@@ -753,6 +762,74 @@ def test_kill_cannot_prove_removal_quarantines():
 # 10. Non-client SO_PEERCRED peer -> dropped; same-uid peer -> accepted.
 #     Real UDS, real kernel credential check.
 # --------------------------------------------------------------------------
+
+
+def test_add_pid_failure_fails_closed():
+    """A pid that cannot enter its cgroup (EACCES) must never reach
+    supervision: the child is killed directly, the cell is QUARANTINED with
+    cgroup-attach-failed, and no kill proof is claimed. Pure stub: needs no
+    systemd, bwrap or real cgroup."""
+    from types import SimpleNamespace
+
+    cgroup_dir = _mkdtemp("attach-fail-cgroup")
+    state_root = _mkdtemp("attach-fail-state")
+    spawned: list = []
+    real_popen = subprocess.Popen
+
+    def _spawn(argv, **kw):
+        proc = real_popen(["sleep", "60"], **kw)
+        spawned.append(proc)
+        return proc
+
+    def _supervise_must_not_run(*_a, **_kw):
+        raise AssertionError("_supervise reached after add_pid_to_cgroup failure")
+
+    saved = (runner.build_bwrap_argv, runner.create_cgroup, runner.add_pid_to_cgroup,
+             runner._supervise, runner.subprocess.Popen)
+    runner.build_bwrap_argv = lambda *a, **k: ["unused"]
+    runner.create_cgroup = lambda *a, **k: cgroup_dir
+    runner.add_pid_to_cgroup = lambda *a, **k: False
+    runner._supervise = _supervise_must_not_run
+    runner.subprocess.Popen = _spawn
+    try:
+        config = SimpleNamespace(cell_state_root=state_root, cgroup_parent=cgroup_dir, python_bin=_PYTHON_BIN)
+        decision = runner._confine_run_validate(
+            SimpleNamespace(cell_root=_mkdtemp("attach-fail-cell"), base_oid="deadbeef"),
+            runner.CommandDescriptor(kind="read-validate"),
+            SimpleNamespace(), "digest", "receipt-attach-fail", "/fake/bwrap", config, time.monotonic(),
+        )
+        # Sampled BEFORE the cleanup below, which would otherwise kill the child itself.
+        child_dead = False
+        if spawned:
+            try:
+                spawned[0].wait(timeout=1.0)
+            except subprocess.TimeoutExpired:
+                pass
+            child_dead = spawned[0].poll() is not None
+    finally:
+        (runner.build_bwrap_argv, runner.create_cgroup, runner.add_pid_to_cgroup,
+         runner._supervise, runner.subprocess.Popen) = saved
+        for proc in spawned:
+            if proc.poll() is None:
+                proc.kill()
+                proc.wait()
+
+    check("add_pid_fail_spawned_child", len(spawned) == 1)
+    check("add_pid_fail_quarantined", decision.decision == runner.DECISION_QUARANTINED, decision.decision)
+    check("add_pid_fail_reason", decision.reason == runner.REASON_CGROUP_ATTACH_FAILED, decision.reason)
+    check("add_pid_fail_no_kill_proof", decision.tree_proven_absent is False, repr(decision.tree_proven_absent))
+    check("add_pid_fail_child_dead", child_dead, "child still alive after fail-closed return")
+    try:
+        import jsonschema
+    except ImportError:
+        skip("add_pid_fail_receipt_schema_valid", "jsonschema not installed")
+        return
+    schema = json.loads((_REPO_ROOT / "config" / "schemas" / "execution-cell-runner-decision.schema.json").read_text())
+    try:
+        jsonschema.validate(runner.receipt_of(decision), schema)
+        check("add_pid_fail_receipt_schema_valid", True)
+    except jsonschema.ValidationError as exc:
+        check("add_pid_fail_receipt_schema_valid", False, exc.message)
 
 
 def test_peer_authentication_real_uds():
@@ -929,6 +1006,7 @@ def main() -> None:
         test_epoch_bump_mid_run_kills_tree,
         test_final_epoch_fence_flips_green_to_red,
         test_kill_cannot_prove_removal_quarantines,
+        test_add_pid_failure_fails_closed,
         test_peer_authentication_real_uds,
         test_replayed_grant_denied,
         test_flag_off_refuses_cell,
