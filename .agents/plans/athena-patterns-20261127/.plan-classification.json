@@ -1,0 +1,5 @@
+{
+  "classification": "durable_plan",
+  "tracking_route": "tracker.json",
+  "evidence": "tracker.json declares plan.id=athena-patterns-20261127 with build and activation items and goal: three bounded, stdlib-only, option-driven behaviors in existing harness modules"
+}

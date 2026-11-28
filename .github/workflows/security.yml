@@ -6,8 +6,9 @@ on:
   pull_request:
     branches: [ "main" ]
   schedule:
-    # Run weekly on Mondays at 9:00 AM UTC
-    - cron: '0 9 * * 1'
+    # Daily at 9:00 AM UTC: the closure scan is skipped on PRs that cannot change
+    # the closure, so push-to-main and this schedule are the coverage backstop.
+    - cron: '0 9 * * *'
   workflow_dispatch:
 
 permissions:
@@ -70,6 +71,48 @@ jobs:
               body: body
             });
 
+  closure-changes:
+    name: Detect closure-affecting changes
+    # The closure scan builds ~577 derivations and fetches ~31 GiB; run it only when a
+    # changed path can alter the hyperd-ai-dev closure.  Always succeeds, so the
+    # downstream job is either run or skipped, never blocked.
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      scan: ${{ steps.diff.outputs.scan }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          fetch-depth: 2
+
+      - name: Decide whether the closure can have changed
+        id: diff
+        env:
+          EVENT: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT" != "pull_request" ]; then
+            echo "scan=true" >> "$GITHUB_OUTPUT"
+            echo "event=$EVENT: always scan"
+            exit 0
+          fi
+          # pull_request checks out the merge commit: HEAD^1 is the base tip.
+          # Paths = everything flake.nix / nix/** import or readFile from outside nix/
+          # (rg for '\.\./' in nix/**/*.nix).  A path missed here is still scanned on
+          # push to main and by the daily schedule.
+          pattern='^(nix/|flake\.nix$|flake\.lock$|Cargo\.(toml|lock)$|crates/|config/|data/|patches/|pins/|templates/|scripts/(agent-tools|deploy/|services/|ai/lib/|ai/aq-herdr$|ai/aq-network-policy$|maintenance/aq-auto-update$|security/publish-credential-status\.py$)|ai-stack/(mcp-servers/shared/audit_sidecar\.py|switchboard/(capability_lease_gate|execution_cell_runner|execution_cell_validator)\.py)$|\.github/workflows/security\.yml$|scripts/security/aq-closure-scan$|\.grype\.yaml$)'
+          changed="$(git diff --no-renames --name-only HEAD^1 HEAD)"
+          echo "changed files:"; echo "$changed"
+          if grep -Eq "$pattern" <<< "$changed"; then
+            echo "scan=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "scan=false" >> "$GITHUB_OUTPUT"
+            echo "no closure-affecting paths changed: skipping closure scan"
+          fi
+
   nix-closure-vuln-scan:
     name: Nix Closure Vulnerability Scan
     # Nix is the single source of truth for deployed dependencies (owner decision
@@ -77,7 +120,8 @@ jobs:
     # or pip manifests.  Findings go to code scanning (non-blocking, as the former
     # Trivy jobs were); a build or scanner failure fails the job.
     runs-on: ubuntu-latest
-    needs: security-audit
+    needs: [security-audit, closure-changes]
+    if: needs.closure-changes.outputs.scan == 'true'
     timeout-minutes: 120
     permissions:
       contents: read
@@ -100,7 +144,7 @@ jobs:
             /usr/local/share/boost \
             /var/lib/docker \
             /var/run/docker.sock
-          docker system prune --all --volumes -f 2>/dev/null || true  # NON-GATING: disk cleanup
+          docker system prune --all --volumes -f 2>/dev/null || :  # NON-GATING: disk cleanup
           df -h /
 
       - name: Install Nix
@@ -126,6 +170,17 @@ jobs:
 
       - name: Build hyperd-ai-dev system closure
         run: |
+          # CI-VULN-SCAN-RUNNER-LOST diagnosis: one sample line per 60s to this step's log
+          # (the last line before a lost runner shows the pressure) and to a file.
+          ( set +e +o pipefail
+            trap 'kill "$spid" 2>/dev/null; exit 0' TERM
+            while :; do
+              echo "$(date -u +%FT%TZ) mem_used/avail_MB=$(free -m | awk '/Mem:/{print $3"/"$7}') swap_used_MB=$(free -m | awk '/Swap:/{print $3}') disk_avail=$(df -BG --output=avail / | awk 'END{print $1}') load=$(cut -d' ' -f1-3 /proc/loadavg) top_rss=$(ps -eo rss=,comm= --sort=-rss | awk 'NR==1{p=$2":"int($1/1024)"MB"} END{print p}')" | tee -a resource-samples.log
+              sleep "${SAMPLE_INTERVAL:-60}" & spid=$!
+              wait "$spid"
+            done ) </dev/null &
+          sampler_pid=$!
+          trap 'kill "$sampler_pid" 2>/dev/null || :; wait "$sampler_pid" 2>/dev/null || :' EXIT
           # Bounded parallelism: llama-cpp's Vulkan shader generation forks many compilers per
           # job; the hosted runner's default (max-jobs=auto x all cores) exhausted it
           # ("Failed to fork process", then ld failure) on 2026-10-02.
@@ -152,6 +207,14 @@ jobs:
         with:
           sarif_file: nix-closure.sarif
           category: nix-closure
+
+      - name: Upload resource samples
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
+        with:
+          name: nix-closure-resource-samples
+          path: resource-samples.log
+          if-no-files-found: ignore
 
       - name: Upload closure SBOM and summary
         if: always()

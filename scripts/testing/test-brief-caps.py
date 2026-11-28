@@ -66,7 +66,7 @@ class DelegateGate(unittest.TestCase):
         import subprocess
         d = tempfile.mkdtemp()
         Path(d, "brief.md").write_text(text)
-        env = dict(os.environ, **(env_extra or {}))
+        env = dict(os.environ, AQ_ALLOW_VOLATILE_DIR="1", **(env_extra or {}))
         return subprocess.run([str(ROOT / "scripts/ai/delegate-to-local"), "--prompt-file", "brief.md"],
                               cwd=d, env=env, capture_output=True, text=True)
 
@@ -162,6 +162,7 @@ class DelegateGate(unittest.TestCase):
                 env.update({
                     "AQ_BRIEF_CHECKS_FAIL_FROM": "2000-01-01",
                     "AQ_DELEGATION_DIR": str(deleg_dir),
+                    "AQ_ALLOW_VOLATILE_DIR": "1",
                     "LLAMA_PORT": str(srv.server_port),
                     "AQ_CONTEXT_ASSEMBLER": "0",
                     "AQ_CONTEXT_PACKET": "0",
