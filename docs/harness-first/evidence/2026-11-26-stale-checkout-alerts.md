@@ -26,9 +26,16 @@ Choice: (b). The monitor compares HEAD with the local `refs/remotes/origin/main`
 
 Tests: new hermetic `scripts/testing/test-health-monitor-stale-checkout.py` (fake upstream and clone, upstream advanced: behind=0 silent, behind=2 with a path-matched fixing commit, no-path fallback to recent commits, missing repo / no origin ref return None).
 
+## Review r2 Fixes (Gemini REQUEST_CHANGES)
+
+- `_git` resolved `git` from the unit PATH only: now appends `_SYSTEM_BIN` and the unit declares `pkgs.git`. Test fails without the env fallback (`git must resolve via _SYSTEM_BIN`).
+- `..` path tokens in failing-check output made `git log -- <paths>` exit 128 and dropped valid fixing commits: tokens with a `..` component are filtered. Test fails on the old code (`fixing: []`).
+- `test-ai-stack-health-monitor.py` ran `main()` against the live repo, so severity assertions broke on any checkout behind origin/main: `checkout_staleness` is stubbed in `load_monitor()`. Added a `main()` integration test in the stale-checkout test (severity cap, title prefix, detail note, `phase_results[-1].checkout`, critical again when current).
+- `ci_workflow` for `health-monitor-stale-checkout` pointed at `#syntax`; the job is `#manifest-tests`.
+
 ## Rollback Plan
 
-Revert the commit; alerts return to the unannotated form. No Nix change, so no rebuild is needed (script is read from the checkout).
+Revert the commit; alerts return to the unannotated form. The unit now declares `pkgs.git` on its `path` (review r2: the unit PATH had no git, so staleness silently returned None), which needs an owner rebuild; `_git` also falls back to `/run/current-system/sw/bin`.
 
 ## Residual Risk
 

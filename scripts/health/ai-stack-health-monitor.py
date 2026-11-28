@@ -57,8 +57,11 @@ _PATH_RE = re.compile(r"[\w.-]+(?:/[\w.@+-]+)+")
 
 
 def _git(repo: Path, *args: str) -> str | None:
+    # The systemd unit's PATH lacks git; _SYSTEM_BIN carries it (same reason run_aq_qa extends PATH).
+    env = {**os.environ, "PATH": f"{os.environ.get('PATH', '')}:{_SYSTEM_BIN}"}
     try:
-        r = subprocess.run(["git", "-C", str(repo), *args], capture_output=True, text=True, timeout=_GIT_TIMEOUT_S)
+        r = subprocess.run(["git", "-C", str(repo), *args], capture_output=True, text=True,
+                           timeout=_GIT_TIMEOUT_S, env=env)
     except (OSError, subprocess.TimeoutExpired):
         return None
     return r.stdout.strip() if r.returncode == 0 else None
@@ -82,7 +85,8 @@ def checkout_staleness(repo: Path, failing: list[dict] | None = None) -> dict:
         return out
     text = "\n".join(f"{c.get('name') or ''} {c.get('description') or ''} {c.get('message') or c.get('detail') or ''}"
                      for c in failing or [])
-    paths = sorted(set(_PATH_RE.findall(text)))[:20]
+    # A path outside the repo (`..`) makes `git log -- <path>` exit 128 and would drop every valid match.
+    paths = sorted({p for p in _PATH_RE.findall(text) if ".." not in p.split("/")})[:20]
     rng = f"{head}..{base}"
     log = _git(repo, "log", "--format=%h %s", "-n", "5", rng, "--", *paths) if paths else ""
     out["fixing"] = (log or "").splitlines()

@@ -2525,7 +2525,7 @@
         "python3",
         "git"
       ],
-      "ci_workflow": ".github/workflows/test.yml#syntax"
+      "ci_workflow": ".github/workflows/test.yml#manifest-tests"
     }
   ],
   "ci_exempt": [
