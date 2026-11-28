@@ -814,6 +814,7 @@
       "id": "tests-aq",
       "cmd": "scripts/testing/run-test-group.py tests-aq",
       "paths": [
+        "scripts/maintenance/aq-main-sync",
         "scripts/testing/test-no-tmpfs-guard.py",
         "scripts/testing/run-test-group.py",
         "scripts/ai/lib/delegation-dir.sh",

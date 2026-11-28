@@ -4,6 +4,7 @@
 Each case builds a bare upstream + clone in a temp dir; no network, sudo or nix.
 """
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -146,6 +147,39 @@ with tempfile.TemporaryDirectory() as tmp:
     rc, out = run(work)
     check(rc == 0 and git(work, "rev-parse", "HEAD") == new, f"fetch-fail fallback: {rc} {out}")
     check("fetch failed; using local origin/main" in out and "ago)" in out and "synced" in out, f"fallback log: {out}")
+
+# fallback log reports how long ago the ref MOVED, not the age of the commit it points at
+with tempfile.TemporaryDirectory() as tmp:
+    work, other = fixture(tmp)
+    old = {**os.environ, "GIT_COMMITTER_DATE": "2020-01-01T00:00:00Z", "GIT_AUTHOR_DATE": "2020-01-01T00:00:00Z"}
+    with open(os.path.join(other, "app.py"), "a") as f:
+        f.write("old\n")
+    git(other, "add", "app.py")
+    subprocess.run(["git", "-C", other, "commit", "-qm", "ancient"], check=True, env=old)
+    git(other, "push", "-q", "origin", "main")
+    git(work, "fetch", "-q", "origin", "main")
+    git(work, "remote", "set-url", "origin", os.path.join(tmp, "does-not-exist.git"))
+    rc, out = run(work)
+    m = re.search(r"ref updated (\d+)m ago", out)
+    check(rc == 0 and m is not None and int(m.group(1)) < 5, f"ref-update age must be recent, not commit age: {out}")
+
+# a post-merge hook (aq-graph-build/aq-wiki in the repo) must not run inside the unit
+with tempfile.TemporaryDirectory() as tmp:
+    work, other = fixture(tmp)
+    marker = os.path.join(tmp, "hook-ran")
+    hook = os.path.join(work, ".git", "hooks", "post-merge")
+    with open(hook, "w") as f:
+        f.write(f"#!/bin/sh\ntouch {marker}\n")
+    os.chmod(hook, 0o755)
+    new = upstream_advance(other)
+    rc, out = run(work)
+    check(rc == 0 and git(work, "rev-parse", "HEAD") == new, f"hook case did not sync: {rc} {out}")
+    check(not os.path.exists(marker), "post-merge hook ran inside aq-main-sync")
+
+# --help prints the header comment only, not the first line of code
+h = subprocess.run(["bash", SCRIPT, "--help"], capture_output=True, text=True)
+rc, out = h.returncode, h.stdout
+check(rc == 0 and "Kill switch" in out and "set -uo pipefail" not in out, f"--help output: {out}")
 
 # fetch fails and no local origin/main ref -> skip
 with tempfile.TemporaryDirectory() as tmp:

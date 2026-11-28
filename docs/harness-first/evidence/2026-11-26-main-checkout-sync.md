@@ -30,6 +30,13 @@ Activation (Rule 15): integrated (service in `ai-stack.nix`, manifest entry in `
 
 Tests: `scripts/testing/test-aq-main-sync.py`, registered in `config/ci-checks.json`. Cases: clean and behind fast-forwards; dirty `app.py` skips; tracked-dirty `nix/x.md` skips (nix is never inert); only `.agent/collaboration/PULSE.log` dirty fast-forwards; not on main skips; diverged skips; MERGE_HEAD present skips; kill switch skips; dirty inert file overlapping an incoming change skips and keeps the local edit; no stash is ever created. Output: `OK: test-aq-main-sync`. shellcheck and ruff clean. Gate outputs are in the implementer report.
 
+## Review r2 Fixes (Gemini REQUEST_CHANGES)
+
+- Fallback log used `%ct` (commit time) for "ref updated": now reads the reflog entry time (`--date=unix --format=%gd`). Test builds a 2020-dated upstream commit and asserts the age is under 5m; fails on the old script.
+- `tests-aq.paths` lacked `scripts/maintenance/aq-main-sync`: added so path-filtered CI runs on script-only changes.
+- `merge --ff-only origin/main` ran repo hooks and merged by name: now `-c core.hooksPath=/dev/null merge --ff-only "$remote"` (verified SHA). Test installs a post-merge hook and asserts it does not run; fails on the old script.
+- `--help` printed line 15 (`set -uo pipefail`): range now `2,14p`; asserted in the test.
+
 ## Rollback Plan
 
 Revert the commit, or set `mySystem.deployment.mainSync.enable = false` and rebuild. Immediate stop without a rebuild: `systemctl stop aq-main-sync.timer`, or set `AQ_MAIN_SYNC=0` in the unit environment.

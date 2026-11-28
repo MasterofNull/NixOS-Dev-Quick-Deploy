@@ -19,7 +19,7 @@ REPO="${AQ_MAIN_SYNC_REPO:-}"
 while (($#)); do
   case "$1" in
     --repo) (($# >= 2)) || { echo "$TAG --repo needs a value" >&2; exit 2; }; REPO="$2"; shift ;;
-    --help|-h) sed -n '2,15p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    --help|-h) sed -n '2,14p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) echo "$TAG unknown option: $1" >&2; exit 2 ;;
   esac
   shift
@@ -53,7 +53,8 @@ if ! GIT_TERMINAL_PROMPT=0 timeout 30 git -C "$REPO" fetch --quiet origin main 2
   # The service cannot reach keyring-held credentials; agents and aq-land fetch constantly and
   # share this git dir, so the local origin/main is usually fresh. Fall back to it.
   remote="$(g rev-parse --verify -q refs/remotes/origin/main)" || skip "fetch failed and no local origin/main"
-  ts="$(g log -g -1 --format=%ct refs/remotes/origin/main 2>/dev/null)"
+  # Reflog entry time = when the ref last moved (fetch); %ct would be the commit's own age.
+  ts="$(g log -g -1 --date=unix --format=%gd refs/remotes/origin/main 2>/dev/null | sed -n 's/.*@{\([0-9]*\)}.*/\1/p')"
   [[ -n "$ts" ]] || ts="$(g log -1 --format=%ct refs/remotes/origin/main)"
   fetch_note="fetch failed; using local origin/main ${remote:0:8} (ref updated $(( ($(date +%s) - ts) / 60 ))m ago)"
   echo "$TAG $fetch_note"
@@ -76,6 +77,7 @@ if ((${#dirty[@]})); then
   skip "build-affecting tracked file(s) dirty: ${dirty[*]:0:5}"
 fi
 
-out="$(g merge --ff-only origin/main 2>&1)" || skip "merge --ff-only refused (local change overlaps incoming): ${out//$'\n'/ }"
+# Hooks (post-merge runs aq-graph-build/aq-wiki) must not run inside the 256M oneshot unit; merge the verified SHA.
+out="$(g -c core.hooksPath=/dev/null merge --ff-only "$remote" 2>&1)" || skip "merge --ff-only refused (local change overlaps incoming): ${out//$'\n'/ }"
 after="$(g rev-parse HEAD)"
 echo "$TAG synced ${before:0:8}..${after:0:8}"
