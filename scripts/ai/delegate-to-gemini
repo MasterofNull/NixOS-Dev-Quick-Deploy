@@ -424,7 +424,8 @@ ${prompt}"
     local cmd=(env NO_COLOR=1 TERM=dumb "PATH=${_augmented_path}" "$GEMINI_BIN" "-p" "$full_prompt" "--mode" "$cli_mode")
     [[ -n "$model_flag" ]] && cmd+=("--model" "$model_flag")
     # One logged retry on gemini-4-hydrogen when Argon (the CLI default) is quota-exhausted.
-    cmd=(bash "$SCRIPT_DIR/lib/gemini-quota-fallback.sh" "${cmd[@]}")
+    local model_report="$OUTPUTS_DIR/${id}.model.json"
+    cmd=(env "AQ_MODEL_REPORT=$model_report" bash "$SCRIPT_DIR/lib/gemini-quota-fallback.sh" "${cmd[@]}")
 
     # Register before launching so the task is findable even if we die
     registry_append "$id" "$prompt" "$rel_output" "" "$role"
@@ -440,6 +441,7 @@ ${prompt}"
         "${cmd[@]}" 2>&1 | tee "$output_file"
         local exit_code="${PIPESTATUS[0]}"
         set -e
+        python3 "$SCRIPT_DIR/lib/registry-update.py" model-report "$REGISTRY" "$id" "$model_report" || true
         local meaningful_bytes; meaningful_bytes="$(_gemini_meaningful_bytes "$output_file")"
         if [[ "$exit_code" -eq 0 ]]; then
             registry_update_status "$id" "done"
@@ -481,7 +483,7 @@ ${prompt}"
         # own session: `aq-delegation-registry stop` signals the whole group, never the caller's
         setsid nohup "${AQ_INHIBIT_PREFIX[@]}" bash "$SCRIPT_DIR/lib/gemini-background-worker.sh" \
             "$output_file" "$_audit_helper" "$_coord_url" "$REGISTRY" "$id" "$role" "$prompt" \
-            "$GEMINI_MIN_CONTENT_BYTES" -- "${cmd[@]}" \
+            "$GEMINI_MIN_CONTENT_BYTES" "$model_report" -- "${cmd[@]}" \
             </dev/null >> "$output_file" 2>&1 &
         local pid=$!
         disown "$pid"

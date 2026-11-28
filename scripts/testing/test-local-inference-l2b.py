@@ -37,6 +37,33 @@ def load(path: Path, name: str):
 T = load(ROOT / "scripts/ai/lib/local_inference_transport.py", "l2b_transport_test")
 
 
+GOLDEN = "scripts/testing/fixtures/local-inference-l2b-payload-golden.json"
+
+
+def write_golden(root: Path) -> int:
+    """Regenerate only the live_source_manifest pins; never run on a plain test."""
+    fixture = root / GOLDEN
+    text = fixture.read_text(encoding="utf-8")
+    manifest = json.loads(text)["live_source_manifest"]
+    missing = [rel for rel in manifest if not (root / rel).is_file()]
+    if missing:
+        print(f"write-golden refused, missing manifest paths: {missing}")
+        return 1
+    for rel, old in manifest.items():
+        new = hashlib.sha256((root / rel).read_bytes()).hexdigest()
+        print(f"{rel}: {old} -> {new}")
+        text = text.replace(f'"{rel}": "{old}"', f'"{rel}": "{new}"', 1)
+    fixture.write_text(text, encoding="utf-8")
+    return 0
+
+
+if "--write-golden" in sys.argv:
+    _root = ROOT
+    if "--root" in sys.argv:
+        _root = Path(sys.argv[sys.argv.index("--root") + 1]).resolve()
+    raise SystemExit(write_golden(_root))
+
+
 def expect(reason: str, fn, label: str) -> None:
     try:
         fn()

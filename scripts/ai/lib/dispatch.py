@@ -704,6 +704,7 @@ class DirectRunner:
                 tokens_out: Optional[int] = None
                 _stream_toks = 0  # content-chunk count; proxy for tokens_out mid-stream
                 _finish_reason = None
+                _served_model = None
                 resp.fp.raw._sock.settimeout(config.timeout_secs)
                 # Phase 163: open file at stream start — write each content chunk
                 # immediately so tail -f / dispatch.py watch sees live output.
@@ -717,6 +718,7 @@ class DirectRunner:
                             break
                         try:
                             chunk = json.loads(data_str)
+                            _served_model = chunk.get("model") or _served_model
                             # Usage chunk (include_usage=True) has choices:[] — independent
                             choices = chunk.get("choices") or []
                             if choices:
@@ -781,10 +783,10 @@ class DirectRunner:
                     Path(str(output_file) + ".verdict.json").write_text(result)
                     output_file.write_text(_rendered)
                     result = _rendered
-            if tokens_in is not None or tokens_out is not None or _finish_reason:
+            if tokens_in is not None or tokens_out is not None or _finish_reason or _served_model:
                 Path(str(output_file) + ".usage.json").write_text(
                     json.dumps({"tokens_in": tokens_in, "tokens_out": tokens_out,
-                                "finish_reason": _finish_reason})
+                                "finish_reason": _finish_reason, "model": _served_model})
                 )
             # Emit agent_step_complete to feed training ingest pipeline.
             _emit_training_event(prompt, result, tokens_in, tokens_out, config.role)
@@ -910,10 +912,11 @@ class HybridRunner:
                 )
                 output_file.write_text(result)
                 usage = data.get("usage") or data.get("token_usage") or {}
-                if usage:
+                if usage or data.get("model"):
                     Path(str(output_file) + ".usage.json").write_text(json.dumps({
                         "tokens_in":  usage.get("prompt_tokens") or usage.get("input_tokens"),
                         "tokens_out": usage.get("completion_tokens") or usage.get("output_tokens"),
+                        "model": data.get("model"),
                     }))
             return True
         except urllib.error.HTTPError as e:
@@ -1772,9 +1775,11 @@ def dispatch_task(
 
     # Update token usage sidecar if present
     usage_file = Path(str(output_file) + ".usage.json")
+    served_model = None
     if usage_file.exists():
         try:
             usage = json.loads(usage_file.read_text())
+            served_model = usage.get("model")
             registry.update_tokens(
                 task_id,
                 usage.get("tokens_in"),
@@ -1785,6 +1790,10 @@ def dispatch_task(
         except Exception:
             pass
 
+    try:
+        registry.update_model(task_id, served_model)
+    except Exception as e:  # evidence is additive; never fail a delegation on it
+        print(f"[dispatch] model record skipped: {e}", file=sys.stderr)
     status = "done" if success else "failed"
     registry.update_status(task_id, status)
     registry.record_completion(task_id, status)

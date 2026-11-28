@@ -4,6 +4,9 @@
   registry-update.py set    <registry.jsonl> <task_id> <field> <value>
   registry-update.py append <registry.jsonl> <json-row>
   registry-update.py stamp  <registry.jsonl> <task_id>   (record output sha256 + bytes)
+  registry-update.py model  <registry.jsonl> <task_id> <served|""> <source> [requested]
+  registry-update.py model-report <registry.jsonl> <task_id> <report.json>  ({model,source,requested})
+  registry-update.py model-codex  <registry.jsonl> <task_id> <output.log> [flag]
 
 All values arrive as argv (never shell-parsed). Writes go through TaskRegistry's
 shared lock + atomic replace, so concurrent readers never see a truncated file.
@@ -13,6 +16,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+from dispatch_evidence import codex_served_model, model_fields  # noqa: E402
 from task_registry import TaskRegistry, proc_start_time  # noqa: E402
 
 
@@ -39,6 +43,21 @@ def main(argv: list[str]) -> int:
         return 0
     if op == "stamp" and len(argv) == 3:
         reg.stamp_output(argv[2])
+        return 0
+    if op == "model" and len(argv) in (5, 6):
+        reg.update_fields_atomic(argv[2], model_fields(argv[3], argv[4], argv[5] if len(argv) == 6 else None))
+        return 0
+    if op == "model-report" and len(argv) == 4:
+        try:
+            rep = json.loads(Path(argv[3]).read_text())
+        except (OSError, ValueError):
+            rep = {}
+        rep = rep if isinstance(rep, dict) else {}
+        reg.update_fields_atomic(argv[2], model_fields(rep.get("model"), rep.get("source"), rep.get("requested")))
+        return 0
+    if op == "model-codex" and len(argv) in (4, 5):
+        served, source = codex_served_model(argv[3], argv[4] if len(argv) == 5 else None)
+        reg.update_fields_atomic(argv[2], model_fields(served, source))
         return 0
     print(__doc__, file=sys.stderr)
     return 2
