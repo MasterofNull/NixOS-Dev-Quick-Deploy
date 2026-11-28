@@ -34,7 +34,7 @@ from typing import Optional
 _LIB_DIR = str(Path(__file__).resolve().parent)
 if _LIB_DIR not in sys.path:
     sys.path.insert(0, _LIB_DIR)
-from dispatch_evidence import normalize_row, summarize as summarize_dispatch_evidence  # noqa: E402
+from dispatch_evidence import model_fields, normalize_row, summarize as summarize_dispatch_evidence  # noqa: E402
 
 
 def proc_start_time(pid: object) -> Optional[int]:
@@ -497,6 +497,10 @@ class TaskRegistry:
             updates["tokens_out"] = tokens_out
         if updates:
             self._update_registry(task_id, updates)
+
+    def update_model(self, task_id: str, served: Optional[str], source: str = "llama_response") -> None:
+        """Record the model that served the run; null + source "unknown" when it was not reported."""
+        self._update_registry(task_id, model_fields(served, source))
 
     def update_finish_reason(self, task_id: str, finish_reason: Optional[str]) -> None:
         """Record llama.cpp's stop type; "length" means the output hit the token limit (cut off mid-answer)."""

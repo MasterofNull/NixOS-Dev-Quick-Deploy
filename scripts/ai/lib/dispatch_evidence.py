@@ -45,6 +45,55 @@ def _lane_of(agent: Any) -> str:
     return "unknown"
 
 
+_MODEL_UNKNOWN = {"", "none", "null", "unknown", "n/a"}
+
+
+def model_known(value: Any) -> bool:
+    return str(value if value is not None else "").strip().lower() not in _MODEL_UNKNOWN
+
+
+def model_fields(served: Any, source: Optional[str] = None, requested: Any = None) -> dict:
+    """Additive registry keys for the model that SERVED a run (after any fallback).
+
+    Never inferred: an unreported model is model_id None + model_source "unknown".
+    model_effective mirrors model_id when known so existing readers see it; it is left
+    untouched when unknown. model_requested is written only when it differs.
+    """
+    out: dict = {}
+    if model_known(served):
+        out["model_id"] = str(served).strip()
+        out["model_effective"] = out["model_id"]
+        out["model_source"] = source or "reported"
+    else:
+        out["model_id"] = None
+        out["model_source"] = "unknown"
+    if model_known(requested) and str(requested).strip() != out["model_id"]:
+        out["model_requested"] = str(requested).strip()
+    return out
+
+
+def codex_served_model(log_path: Any, flag: Any = None) -> tuple[Optional[str], str]:
+    """Model codex served: the -m flag, else the 'model:' header it prints, else its config.toml."""
+    if model_known(flag):
+        return str(flag).strip(), "cli_flag"
+    try:
+        for line in Path(log_path).read_text(errors="replace").splitlines()[:200]:
+            m = re.match(r"^model:\s*(\S+)\s*$", line.strip())
+            if m:
+                return m.group(1), "cli_output"
+    except (OSError, TypeError):
+        pass
+    try:
+        import tomllib
+        cfg = Path(os.environ.get("CODEX_HOME") or Path.home() / ".codex") / "config.toml"
+        value = tomllib.loads(cfg.read_text()).get("model")
+        if model_known(value):
+            return str(value).strip(), "codex_config"
+    except (OSError, ValueError, ImportError):
+        pass
+    return None, "unknown"
+
+
 def normalize_row(row: dict) -> dict:
     """Return row with the normalized evidence fields added (never overwritten)."""
     lane = _lane_of(row.get("agent"))
@@ -55,6 +104,8 @@ def normalize_row(row: dict) -> dict:
         "complexity": "unknown",
         "model_requested": row.get("requested_model_tier") or "unknown",
         "model_effective": row.get("resolved_model") or "unknown",
+        "model_id": row.get("resolved_model") or None,
+        "model_source": "cli_flag" if row.get("resolved_model") else "unknown",
         "effort": "n/a",
         "requested_lane": os.environ.get("AQ_REQUESTED_LANE") or "unknown",
         "effective_lane": lane,

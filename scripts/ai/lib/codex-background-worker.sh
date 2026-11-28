@@ -19,6 +19,8 @@ end_ms="$(date +%s%3N 2>/dev/null || echo 0)"
 latency_ms=$(( end_ms - start_ms ))
 prompt_brief="${prompt:0:100}"
 
+python3 "$lib_dir/registry-update.py" model-codex "$registry" "$task_id" "$output_file" "${AQ_CODEX_MODEL_FLAG:-}" \
+    || echo "[codex-background-worker] model record failed for $task_id" >> "$output_file"
 "$script_path" --internal-quota-capture "$output_file" >/dev/null 2>&1 || true
 handback_rc=0
 "$script_path" --internal-worktree-handback "$task_id" "$wt_path" "$wt_branch" >/dev/null 2>&1 || handback_rc=$?

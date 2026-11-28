@@ -2,12 +2,12 @@
 # Fixed background worker for delegate-to-gemini. Every dynamic value is argv data and
 # is never re-parsed by a shell; launch/run errors land in the task output file.
 #   gemini-background-worker.sh OUTPUT AUDIT_HELPER COORD_URL REGISTRY ID ROLE PROMPT \
-#       MIN_CONTENT_BYTES -- CMD...
+#       MIN_CONTENT_BYTES MODEL_REPORT -- CMD...
 set -uo pipefail
 
 output_file="$1"; audit_helper="$2"; coord_url="$3"; registry="$4"; task_id="$5"
-role="$6"; prompt="$7"; min_bytes="$8"
-shift 8
+role="$6"; prompt="$7"; min_bytes="$8"; model_report="$9"
+shift 9
 [[ "${1:-}" == "--" ]] && shift
 
 lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -22,6 +22,8 @@ set_status() {
 start_ms="$(date +%s%3N 2>/dev/null || echo 0)"
 "$@" >> "$output_file" 2>&1
 exit_code=$?
+python3 "$lib_dir/registry-update.py" model-report "$registry" "$task_id" "$model_report" \
+    || echo "[gemini-background-worker] model record failed for $task_id" >> "$output_file"
 end_ms="$(date +%s%3N 2>/dev/null || echo 0)"
 latency_ms=$(( end_ms - start_ms ))
 

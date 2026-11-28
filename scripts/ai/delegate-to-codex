@@ -665,6 +665,7 @@ cmd_delegate() {
             ( cd "${AQ_DELEGATE_CWD:-$REPO_ROOT}" && "${cmd[@]}" < /dev/null ) 2>&1 | tee "$output_file" || exit_code="${PIPESTATUS[0]}"
         fi
         quota_capture_from_output "$output_file" || true
+        python3 "$SCRIPT_DIR/lib/registry-update.py" model-codex "$REGISTRY" "$id" "$output_file" "$model_flag" || true
         # CS-1: hand back the isolated worktree's changes (patch + commit on
         # its own delegate/<id> branch) and tear it down — regardless of
         # exit_code, so a failed/partial run's edits are still captured.
@@ -699,7 +700,7 @@ cmd_delegate() {
         if source "$SCRIPT_DIR/lib/sleep-inhibit.sh" 2>/dev/null; then aq_sleep_inhibit_prefix "$id"; else AQ_INHIBIT_PREFIX=(); echo "WARN: sleep-inhibit.sh not sourceable; task runs without an idle inhibitor" >&2; fi
         cmd=(bash "$SCRIPT_PATH" --internal-ledger-run "$id" "${cmd[@]}")
         # own session: `aq-delegation-registry stop` signals the whole group, never the caller's
-        setsid nohup "${AQ_INHIBIT_PREFIX[@]}" bash "$SCRIPT_DIR/lib/codex-background-worker.sh" \
+        AQ_CODEX_MODEL_FLAG="$model_flag" setsid nohup "${AQ_INHIBIT_PREFIX[@]}" bash "$SCRIPT_DIR/lib/codex-background-worker.sh" \
             "$output_file" "$_audit_helper" "$_coord_url" "$REGISTRY" "$id" "$mode" "$prompt" \
             "$SCRIPT_PATH" "$wt_path" "$wt_branch" "$_cd_dir" -- "${cmd[@]}" \
             </dev/null >> "$output_file" 2>&1 &

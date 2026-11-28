@@ -159,6 +159,7 @@ with open(registry + ".lock", "a") as lk:
            "tokens_in": None, "tokens_out": None,
            "requested_model_tier": tier or None, "resolved_model": model or None,
            "model_requested": tier or "unknown", "model_effective": model or "unknown",
+           "model_id": model or None, "model_source": "cli_flag" if model else "unknown",
            "created": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")}
     sys.path.insert(0, os.environ["AQ_LIB_DIR"])
     try:

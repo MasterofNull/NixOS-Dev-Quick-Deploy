@@ -438,10 +438,10 @@ def _model_known_row(data: bytes | None, window: tuple[datetime, datetime], lane
         rid = str(r.get("id") or "")
         if rid and (not lane_filter or str(r.get("agent")) == lane_filter) and _in_window(_registry_ts(r), window):
             latest[rid] = r
-    known = [rid for rid, r in latest.items() if str(r.get("model_effective")) not in ("None", "unknown", "n/a", "")]
+    known = [rid for rid, r in latest.items() if any(str(r.get(k)) not in ("None", "unknown", "n/a", "") for k in ("model_id", "model_effective"))]
     n = len(latest)
     return new_row("registry_model_known_share", improves_when="up", unit_label="dispatch", time_coverage="windowed",
-                   producer="registry.jsonl", eligibility_filter="dated dispatches with model_effective not unknown/n/a",
+                   producer="registry.jsonl", eligibility_filter="dated dispatches with model_id (or legacy model_effective) not unknown/n/a",
                    numerator=len(known), denominator=n, value=(len(known) / n) if n else None, n=n,
                    unknown_n=n - len(known),
                    observations=[{"u": rid, "v": 1 if rid in known else 0} for rid in sorted(latest)],
