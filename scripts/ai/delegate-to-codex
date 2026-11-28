@@ -64,6 +64,9 @@ DELEGATION_DIR="${AQ_DELEGATION_DIR:-$(resolve_delegation_dir "$SCRIPT_DIR")}"
 export AQ_DELEGATION_DIR="$DELEGATION_DIR"
 export AQ_INSTANCE_LANE="codex"
 OUTPUTS_DIR="$DELEGATION_DIR/outputs"
+if [[ -n "${DELEGATE_OUTPUTS_DIR:-}" ]]; then
+    validate_durable_artifact_path "$DELEGATE_OUTPUTS_DIR" "DELEGATE_OUTPUTS_DIR" "$DELEGATION_DIR" || exit 1
+fi
 REGISTRY="$DELEGATION_DIR/registry.jsonl"
 CODEX_BIN="${CODEX_BIN:-$HOME/.npm-global/bin/codex}"
 # delegate-codex-quota-precheck: single ISO-8601 UTC timestamp = the parsed
@@ -761,6 +764,7 @@ case "${SUBCMD:-}" in
         ;;
     "")
         if [[ -n "$PROMPT_FILE" ]]; then
+            validate_durable_artifact_path "$PROMPT_FILE" "--prompt-file" "$DELEGATION_DIR" || exit 1
             [[ -f "$PROMPT_FILE" ]] || die "Prompt file not found: $PROMPT_FILE"
             PROMPT="$(cat "$PROMPT_FILE")"
         fi

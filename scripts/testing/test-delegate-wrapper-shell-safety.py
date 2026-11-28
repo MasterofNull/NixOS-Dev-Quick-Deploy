@@ -79,7 +79,7 @@ def wait_terminal(root: Path, timeout: float = 30.0) -> dict:
 
 def _fixture_env(root: Path, **extra: str) -> dict:
     """Ambient env with the wrappers' state dir pinned to the fixture (the group runner sets AQ_DELEGATION_DIR elsewhere)."""
-    return {**os.environ, "AQ_DELEGATION_DIR": str(root / ".agents" / "delegation"), **extra}
+    return {**os.environ, "AQ_ALLOW_VOLATILE_DIR": "1", "AQ_DELEGATION_DIR": str(root / ".agents" / "delegation"), **extra}
 
 
 def run_wrapper(provider: str, root: Path, fail: bool, extra: tuple = ()) -> tuple[subprocess.CompletedProcess, Path]:

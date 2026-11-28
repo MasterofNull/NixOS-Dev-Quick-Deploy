@@ -550,6 +550,7 @@ case "${SUBCMD:-}" in
     check)  ensure_dirs; cmd_check "$SUBCMD_ARG" ;;
     "")
         if [[ -n "$PROMPT_FILE" ]]; then
+            validate_durable_artifact_path "$PROMPT_FILE" "--prompt-file" "$DELEGATION_DIR" || exit 1
             [[ -f "$PROMPT_FILE" ]] || die "Prompt file not found: $PROMPT_FILE"
             PROMPT="$(cat "$PROMPT_FILE")"
         fi

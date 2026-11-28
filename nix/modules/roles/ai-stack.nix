@@ -2193,9 +2193,8 @@ in {
           # TimeoutStartSec: must exceed harness subprocess timeout + margin for cleanup.
           # Subprocess timeout is 705s; add 60s margin = 765s (< 15min timer period).
           TimeoutStartSec = "765";
-          # MemoryMax: measured MemoryPeak 551M with all checks running (2026-10-08);
-          # ~1.6x headroom.
-          MemoryMax = "1280M";
+          # MemoryMax: measured MemoryPeak 1.2G with all checks running (2026-11-26); 2048M ~1.7x headroom, a kill would silence the alert pipeline.
+          MemoryMax = "2048M";
         };
       };
 
