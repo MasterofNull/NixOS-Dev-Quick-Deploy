@@ -1,6 +1,7 @@
 """Isolated staged-tree validation and private, exact-content greenlight records."""
 from __future__ import annotations
 
+import fcntl
 import hashlib
 import importlib.util
 import json
@@ -15,6 +16,9 @@ from urllib.parse import quote
 from typing import Any
 
 VERSION = "1.0"
+DEFAULT_MAX_BEHIND = 20
+# A base change under any of these can alter what a gate checks, so it voids a greenlight.
+GATE_COVERED_PATHS = ("scripts/governance/", "scripts/testing/", "config/", "nix/", ".githooks/")
 CANONICAL_EVIDENCE_SECTIONS = [
     "## Objective", "## Workflow/Session IDs", "## Delegation Decision",
     "## Commands Executed", "## Validation Evidence", "## Rollback Plan",
@@ -91,13 +95,17 @@ def body_check(body: str) -> dict[str, Any]:
     return result(int(bool(errors)), "\n".join(errors) or "PR body format OK")
 
 
+def record_name(branch: str, tree: str) -> str:
+    return f"{quote(branch, safe='')}-{tree}"
+
+
 def state_path(root: Path, state_dir: str | None, branch: str, tree: str) -> Path:
     directory = Path(state_dir or os.environ.get("AQ_GREENLIGHT_DIR") or
                      str(Path(os.environ.get("XDG_STATE_HOME") or str(Path.home() / ".local" / "state")) /
                          "aq/greenlight")).expanduser().resolve()
     if directory.is_relative_to(root):
         raise ValueError("Greenlight state directory must be outside the worktree")
-    return directory / f"{quote(branch, safe='')}-{tree}.json"
+    return directory / f"{record_name(branch, tree)}.json"
 
 
 def save(path: Path, record: dict[str, Any]) -> None:
@@ -122,9 +130,75 @@ def _passed_entry(entry: Any) -> bool:
             type(entry.get("exit_code")) is int and entry["exit_code"] == 0)
 
 
+def resolve_max_behind(value: int | None) -> int:
+    if value is None:
+        raw = os.environ.get("AQ_GREENLIGHT_MAX_BEHIND") or str(DEFAULT_MAX_BEHIND)
+        try:
+            value = int(raw)
+        except ValueError:
+            raise ValueError(f"AQ_GREENLIGHT_MAX_BEHIND must be a positive integer: {raw!r}") from None
+    if value <= 0:
+        raise ValueError(f"max-behind must be a positive integer: {value}")
+    return value
+
+
+def check_commit_index(root: Path, tree: str) -> None:
+    """Hooks receive the index being committed in GIT_INDEX_FILE; it must hold the same tree."""
+    index = os.environ.get("GIT_INDEX_FILE")
+    if not index:
+        return
+    committed = subprocess.run(
+        ["git", "-C", str(root), "write-tree"], check=True, capture_output=True, text=True,
+        env=clean_git_env() | {"GIT_INDEX_FILE": str(root / index)},
+    ).stdout.strip()
+    if committed != tree:
+        raise ValueError("Index being committed does not match the staged tree (partial commit?)")
+
+
+def check_freshness(root: Path, recorded: Any, base: str, max_behind: int) -> None:
+    # The record is untrusted input: only a full object id may reach a Git argument.
+    if not isinstance(recorded, str) or not re.fullmatch(r"[0-9a-f]{40}|[0-9a-f]{64}", recorded):
+        raise ValueError("Invalid greenlight record: main_sha is not a commit id")
+    ancestry = subprocess.run(
+        ["git", "-C", str(root), "merge-base", "--is-ancestor", recorded, base],
+        capture_output=True, env=clean_git_env(),
+    )
+    if ancestry.returncode:
+        raise ValueError(f"stale greenlight: recorded main {recorded[:12]} is not an ancestor "
+                         f"of base {base[:12]}")
+    behind = int(git(root, "rev-list", "--count", f"{recorded}..{base}"))
+    if behind > max_behind:
+        raise ValueError(f"stale greenlight: base advanced {behind} commits (max {max_behind})")
+    # --no-renames reports both sides, so moving a file out of a covered path still counts.
+    changed = git(root, "diff", "--no-renames", "--name-only", "-z",
+                  f"{recorded}..{base}").split("\0")
+    covered = [name for name in changed if name.startswith(GATE_COVERED_PATHS)]
+    if covered:
+        raise ValueError("stale greenlight: gate-listed path changed on base: "
+                         + ", ".join(covered[:5]))
+
+
+def append_audit(path: Path, record: dict[str, Any]) -> None:
+    """Append one acceptance row beside the record; raises so an unlogged accept cannot happen."""
+    row = {"at": datetime.now(timezone.utc).isoformat()}
+    row.update({key: record[key] for key in
+                ("branch", "staged_tree_sha", "parent_sha", "main_sha")})
+    row.update(record_path=str(path), gate_list=record["gate_list"])
+    path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    fd = os.open(path.parent / "audit.jsonl",
+                 os.O_WRONLY | os.O_APPEND | os.O_CREAT | os.O_NOFOLLOW, 0o600)
+    with os.fdopen(fd, "a") as stream:
+        os.fchmod(stream.fileno(), 0o600)
+        fcntl.flock(stream.fileno(), fcntl.LOCK_EX)
+        stream.write(json.dumps(row, separators=(",", ":")) + "\n")
+        stream.flush()
+        os.fsync(stream.fileno())
+
+
 def run(worktree: Path, *, base_ref: str = "origin/main", state_dir: str | None = None,
         overrides: dict[str, str] | None = None, body: str | None = None,
-        mode: str = "run") -> dict[str, Any]:
+        mode: str = "run", max_behind: int | None = None,
+        audit: bool = False) -> dict[str, Any]:
     root = Path(git(worktree, "rev-parse", "--show-toplevel"))
     # git status output must retain its leading index-column space.
     if dirty(root):
@@ -141,6 +215,8 @@ def run(worktree: Path, *, base_ref: str = "origin/main", state_dir: str | None 
         gates.append("pr_body_format")
         body_sha256 = hashlib.sha256(body.encode("utf-8")).hexdigest()
     if mode != "run":
+        if not path.exists():
+            raise ValueError(f"No greenlight record for branch {branch} and staged tree {tree}")
         record: dict[str, Any] = json.loads(path.read_text())
         if (not isinstance(record, dict) or not isinstance(record.get("passed"), bool) or
                 not isinstance(record.get("results"), dict)):
@@ -150,8 +226,10 @@ def run(worktree: Path, *, base_ref: str = "origin/main", state_dir: str | None 
                not isinstance(outcome.get("detail"), str)
                for outcome in record["results"].values()):
             raise ValueError("Invalid greenlight record: malformed result")
-        if (record.get("schema"), record.get("branch"), record.get("staged_tree_sha"),
-            record.get("parent_sha"), record.get("main_sha")) != (1, branch, tree, parent, main):
+        # verify bounds base drift below (check_freshness); show still requires the exact base.
+        if ((record.get("schema"), record.get("branch"), record.get("staged_tree_sha"),
+             record.get("parent_sha")) != (1, branch, tree, parent) or
+                (mode != "verify" and record.get("main_sha") != main)):
             raise ValueError("Greenlight record does not match exact tree, parent, branch and base")
         if mode == "verify":
             gate_list = record.get("gate_list")
@@ -165,6 +243,10 @@ def run(worktree: Path, *, base_ref: str = "origin/main", state_dir: str | None 
                 raise ValueError("Invalid greenlight record: declared gates did not all pass")
             if body_sha256 is not None and record.get("body_sha256") != body_sha256:
                 raise ValueError("Greenlight record body digest does not match --body-file")
+            check_commit_index(root, tree)
+            check_freshness(root, record.get("main_sha"), main, resolve_max_behind(max_behind))
+            if audit:
+                append_audit(path, record)
         return record
     commands = DEFAULT_GATES | (overrides or {})
     unknown = commands.keys() - DEFAULT_GATES.keys()

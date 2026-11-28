@@ -99,6 +99,23 @@ def _save(path: Path, state: dict) -> None:
             temporary.unlink(missing_ok=True)
 
 
+def _touch_new_marker(incident_id: str, stamp: str) -> None:
+    """Dispatch trigger: rewritten only when an incident is newly opened, never on count/last_seen bumps.
+
+    ai-prsi-rsi-dispatch.path watches this file instead of the ledger, which health-spider
+    re-observations rewrite every ~25s.
+    """
+    marker = _RUNTIME / "rsi-incidents.new"
+    with tempfile.NamedTemporaryFile(mode="w", dir=_RUNTIME, delete=False) as handle:
+        temporary = Path(handle.name)
+        try:
+            json.dump({"id": incident_id, "ts": stamp}, handle)
+            handle.flush()
+            os.replace(temporary, marker)
+        finally:
+            temporary.unlink(missing_ok=True)
+
+
 def failure(agent: str, subject: str, producer: str, path: str, authority: str,
             os_error: str, *, severity: str = "medium", root_fix: str = "",
             workaround: str = "") -> str:
@@ -140,6 +157,8 @@ def failure(agent: str, subject: str, producer: str, path: str, authority: str,
                         count=incident.get("count", 0) + 1)
         incidents[slug] = incident
         _save(ledger, state)
+        if previous is None or previous.get("status") != "open":
+            _touch_new_marker(slug, stamp)
         if not incident.get("backlog_written") or (previous and previous.get("status") == "resolved"):
             _append(_BACKLOG, line)
             incident["backlog_written"] = True

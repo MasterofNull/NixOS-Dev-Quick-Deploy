@@ -610,6 +610,7 @@ jobs:
           ./scripts/governance/run-ci-checks.sh --all \
             --only pm-tracker-untrusted-hold \
             --only pm-tracker-activation-cap \
+            --only ai-stack-health-monitor-tests \
             --only aq-baseline-test \
             --only sweep-tracker-claims \
             --only sweep-tracker-claims-test \
@@ -640,7 +641,12 @@ jobs:
             --only delegate-sleep-inhibit \
             --only mobility-sleep-resilience \
             --only ci-test-coverage-gate \
+            --only bash-tool-policy-test \
             --only tier0-host-only-tests-gate \
+            --only tier0-stale-known-failing-gate \
+            --only claude-dispatch-payload-safety-test \
+            --only delegate-to-claude-lifecycle-test \
+            --only qa-provider-probe-lifecycle-test \
             --only service-manager-sudo-commands-test \
             --only tier0-qa-admission-test \
             --only tier0-focused-ci-output-test \

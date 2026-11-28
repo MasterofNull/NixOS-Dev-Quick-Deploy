@@ -63,6 +63,24 @@
 
 set -euo pipefail
 
+# Work ledger (agent-work-durability S1): lifecycle record only; a ledger error never breaks a delegation.
+ledger() {
+    python3 "$(dirname "${BASH_SOURCE[0]}")/aq-ledger" --delegation-dir "${AQ_DELEGATION_DIR:-}" "$@" >/dev/null 2>&1 || true
+}
+
+# Internal re-entry (not public CLI): a background launch runs its command through this so the ledger gets
+# a terminal status. Stays above all setup so the command inherits an untouched environment and cwd.
+if [[ "${1:-}" == "--internal-ledger-run" ]]; then
+    _ledger_id="$2"; shift 2
+    trap 'ledger status --id="$_ledger_id" --status=failed --reason=signal --pid="$$"; exit 143' TERM INT HUP
+    _ledger_rc=0
+    "$@" || _ledger_rc=$?
+    _ledger_status=failed
+    [[ "$_ledger_rc" -ne 0 ]] || _ledger_status="done"
+    ledger status --id="$_ledger_id" --status="$_ledger_status" --reason="exit=$_ledger_rc" --pid="$$"
+    exit "$_ledger_rc"
+fi
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SCRIPT_PATH="$SCRIPT_DIR/$(basename "${BASH_SOURCE[0]}")"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
@@ -127,6 +145,7 @@ PY
 
 record_worktree_handback_failure() {
     local task_id="$1" mode="$2"
+    ledger status --id="$task_id" --status=failed --reason=worktree_handback_failed --pid="$$"
     PYTHONPATH="$LIB_DIR" python3 - "$DELEGATION_DIR" "$task_id" <<'PY'
 from pathlib import Path
 import sys
@@ -528,6 +547,13 @@ print(classify_mode(sys.argv[1]))
             )
         fi
 
+        _LEDGER_TASK="${PROMPT:0:120}"
+        _LEDGER_ARGS=(init --id="$ID" --lane=local --role="$ROLE" --task="${_LEDGER_TASK//$'\n'/ }"
+            --pid="$$" --resume-policy=confirm)
+        [[ -z "$PROMPT_FILE" ]] || _LEDGER_ARGS+=(--brief-path="$PROMPT_FILE")
+        [[ -z "$WT_PATH" ]] || _LEDGER_ARGS+=(--worktree="$WT_PATH" --branch="$WT_BRANCH")
+        ledger "${_LEDGER_ARGS[@]}"
+
         if [[ "$WAIT" == "true" ]]; then
             info "Running in blocking mode (timeout: ${TIMEOUT}s)..."
             DISPATCH_OK=true
@@ -562,6 +588,7 @@ print(classify_mode(sys.argv[1]))
                 # response-contract slice): a "successful" direct-mode run that
                 # produced no final answer is itself a contract failure.
                 if [[ "$MODE" == "direct" ]] && local_direct_answer_missing "$OUTPUT_FILE"; then
+                    ledger status --id="$ID" --status=failed --reason=missing_final_answer --pid="$$"
                     audit_event_end "local" "$ID" "error" "1" \
                         "response_contract missing_final_answer mode=direct" "$MODE"
                     audit_save_session "local-${MODE}" "$ID" "$PROMPT" "$OUTPUT_FILE"
@@ -569,6 +596,7 @@ print(classify_mode(sys.argv[1]))
                     info "Task $ID failed response-contract validation."
                     exit 1
                 fi
+                ledger status --id="$ID" --status=done --pid="$$"
                 audit_event_end "local" "$ID" "success" "0" \
                     "completed mode=${MODE}: ${PROMPT:0:100}" "$MODE"
                 audit_save_session "local-${MODE}" "$ID" "$PROMPT" "$OUTPUT_FILE"
@@ -576,6 +604,7 @@ print(classify_mode(sys.argv[1]))
                 info "Task $ID completed."
                 cat "$OUTPUT_FILE"
             else
+                ledger status --id="$ID" --status=failed --reason=dispatch_failed --pid="$$"
                 audit_event_end "local" "$ID" "error" "0" \
                     "failed mode=${MODE}: ${PROMPT:0:100}" "$MODE"
                 audit_save_session "local-${MODE}" "$ID" "$PROMPT" "$OUTPUT_FILE"
@@ -608,6 +637,7 @@ print(classify_mode(sys.argv[1]))
             # performs the patch/branch handback + teardown for the
             # background-mode case).
             if source "$SCRIPT_DIR/lib/sleep-inhibit.sh" 2>/dev/null; then aq_sleep_inhibit_prefix "$ID"; else AQ_INHIBIT_PREFIX=(); echo "WARN: sleep-inhibit.sh not sourceable; task runs without an idle inhibitor" >&2; fi
+            _DISPATCH_ARGS=(bash "$SCRIPT_PATH" --internal-ledger-run "$ID" "${_DISPATCH_ARGS[@]}")
             if [[ -n "$WT_PATH" ]]; then
                 setsid "${AQ_INHIBIT_PREFIX[@]}" bash -c "child_rc=0; cd $(printf '%q' "$WT_PATH") && REPO_ROOT=$(printf '%q' "$WT_PATH") $(printf '%q ' "${_DISPATCH_ARGS[@]}") || child_rc=\$?; handback_rc=0; $(printf '%q' "$SCRIPT_PATH") --internal-worktree-handback $(printf '%q' "$ID") $(printf '%q' "$WT_PATH") $(printf '%q' "$WT_BRANCH") >/dev/null 2>&1 || handback_rc=\$?; [[ \$handback_rc -eq 0 ]] || exit \$handback_rc; exit \$child_rc" > /dev/null 2>&1 &
             else
@@ -618,8 +648,10 @@ print(classify_mode(sys.argv[1]))
 
             # Verify that the process is alive and the registry entry exists
             if ! verify_launch_success "$BG_PID" "$ID"; then
+                ledger status --id="$ID" --status=failed --reason=launch_failed --pid="$$"
                 exit 1
             fi
+            ledger heartbeat --id="$ID" --pid="$BG_PID"  # rebind the entry to the worker process
 
             info "Task $ID started in background (pid $BG_PID)"
             [[ -n "$WT_PATH" ]] && info "Isolated worktree: $WT_PATH (branch $WT_BRANCH)"
