@@ -9,21 +9,28 @@ info() {
 pattern='Failed to start File System Check on|Dependency failed for /sysroot|You are in emergency mode|systemd-fsck.*failed|status=1/FAILURE|status=4|has unrepaired errors, please fix them manually|mounting fs with errors, running e2fsck is recommended|error count since last fsck'
 pattern="${FS_INTEGRITY_PATTERN:-$pattern}"
 
-combined_logs=""
-if [[ -n "${FS_INTEGRITY_LOG_TEXT:-}" ]]; then
-  combined_logs="${FS_INTEGRITY_LOG_TEXT}"
-elif [[ -n "${FS_INTEGRITY_LOG_FILE:-}" && -f "${FS_INTEGRITY_LOG_FILE}" ]]; then
-  combined_logs="$(cat "${FS_INTEGRITY_LOG_FILE}")"
-else
-  current_boot="$(journalctl -b --no-pager 2>/dev/null || true)"
-  current_kernel="$(journalctl -k -b --no-pager 2>/dev/null || true)"
-  previous_boot="$(journalctl -b -1 --no-pager 2>/dev/null || true)"
-  previous_kernel="$(journalctl -k -b -1 --no-pager 2>/dev/null || true)"
+# Stream every log source through grep; never hold journal text in a shell
+# variable. Four whole-boot journals expanded into one bash string made bash
+# SEGV (remove_quoted_nulls) at ~6 GB RSS on a ~2 GB journal.
+# grep -c (not -q) drains its input so journalctl never gets SIGPIPE under pipefail.
+count_matches() {
+  grep -Eic -- "$pattern" || true
+}
 
-  combined_logs="$current_boot"$'\n'"$current_kernel"$'\n'"$previous_boot"$'\n'"$previous_kernel"
+matches=0
+if [[ -n "${FS_INTEGRITY_LOG_TEXT:-}" ]]; then
+  matches="$(count_matches <<<"${FS_INTEGRITY_LOG_TEXT}")"
+elif [[ -n "${FS_INTEGRITY_LOG_FILE:-}" && -f "${FS_INTEGRITY_LOG_FILE}" ]]; then
+  matches="$(count_matches <"${FS_INTEGRITY_LOG_FILE}")"
+else
+  for jargs in "-b" "-k -b" "-b -1" "-k -b -1"; do
+    # shellcheck disable=SC2086 # intentional word splitting of fixed flag sets
+    n="$({ journalctl $jargs --no-pager 2>/dev/null || true; } | count_matches)"
+    matches=$((matches + n))
+  done
 fi
 
-if echo "$combined_logs" | grep -Eiq "$pattern"; then
+if ((matches > 0)); then
   root_src="${ROOT_SOURCE_OVERRIDE:-$(findmnt -no SOURCE / 2>/dev/null || true)}"
   root_real="${ROOT_REAL_OVERRIDE:-$(readlink -f "$root_src" 2>/dev/null || true)}"
   root_uuid="${ROOT_UUID_OVERRIDE:-}"
