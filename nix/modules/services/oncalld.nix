@@ -50,6 +50,9 @@ in {
   config = mkIf cfg.enable {
     # The engine derives the worktree root from AQ_DELEGATION_DIR + "/worktrees"; keep them in step.
     assertions = [{
+      assertion = cfg.cloneDir != cfg.repoDir;
+      message = "services.aiOncalld.cloneDir must differ from repoDir (the owner checkout is never written).";
+    } {
       assertion = baseNameOf cfg.worktreesDir == "worktrees";
       message = "services.aiOncalld.worktreesDir must end in /worktrees (engine appends it to AQ_DELEGATION_DIR).";
     }];
@@ -86,7 +89,7 @@ in {
           /tmp/** rwk,
           ${cfg.cloneDir}/** rwk,
 
-          /home/hyperd/Documents/NixOS-Dev-Quick-Deploy/** r,
+          ${cfg.repoDir}/** r,
         }
       '';
     };

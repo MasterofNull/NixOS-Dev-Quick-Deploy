@@ -20,6 +20,7 @@ import os
 import re
 import shutil
 import sqlite3
+import sys
 import subprocess
 import tempfile
 import time
@@ -29,6 +30,14 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 logger = logging.getLogger("aq-oncalld")
+_SAFE_BRANCH_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._/-]*")
+
+
+def configure_logging() -> None:
+    """Daemon entrypoint logging: INFO (override AQ_ONCALL_LOG_LEVEL) to stderr, i.e. the journal."""
+    level = getattr(logging, os.getenv("AQ_ONCALL_LOG_LEVEL", "INFO").upper(), logging.INFO)
+    logging.basicConfig(level=level, stream=sys.stderr,
+                        format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 
 _DEFAULT_REPO_ROOT = Path(__file__).resolve().parents[3]
 _DEFAULT_STATE_DIR = Path(
@@ -730,16 +739,24 @@ class OnCallDaemonEngine:
         if self.clone_dir is None:
             return self.repo_root
         branch = os.getenv("AQ_ONCALL_SOURCE_BRANCH", "main")
+        if not _SAFE_BRANCH_RE.fullmatch(branch):
+            raise WorktreeIsolationError(f"Refusing unsafe source branch name {branch!r}")
+        src, clone = self.source_repo, self.clone_dir
+        if clone == src or src in clone.parents or clone in src.parents:
+            raise WorktreeIsolationError(
+                f"clone_dir {clone} must be separate from source_repo {src} (owner repo is never written)")
+        # hooksPath off: no template/global hook may run in the daemon; fetch straight from the
+        # source path rather than trusting an `origin` URL stored in the clone's config.
+        git = ["git", "-c", "core.hooksPath=/dev/null"]
         try:
-            if not (self.clone_dir / ".git").exists():
-                self.clone_dir.parent.mkdir(parents=True, exist_ok=True)
-                subprocess.run(["git", "clone", "--no-hardlinks", "-q", str(self.source_repo),
-                                str(self.clone_dir)],
+            if not (clone / ".git").exists():
+                clone.parent.mkdir(parents=True, exist_ok=True)
+                subprocess.run([*git, "clone", "--no-hardlinks", "-q", "--", str(src), str(clone)],
                                check=True, capture_output=True, text=True, timeout=300)
-            subprocess.run(["git", "fetch", "-q", "origin", branch], cwd=str(self.clone_dir),
+            subprocess.run([*git, "fetch", "-q", "--", str(src), branch], cwd=str(clone),
                            check=True, capture_output=True, text=True, timeout=120)
-            subprocess.run(["git", "checkout", "-q", "--detach", "FETCH_HEAD"],
-                           cwd=str(self.clone_dir), check=True, capture_output=True, text=True,
+            subprocess.run([*git, "checkout", "-q", "--detach", "FETCH_HEAD"],
+                           cwd=str(clone), check=True, capture_output=True, text=True,
                            timeout=60)
         except (subprocess.CalledProcessError, OSError, subprocess.TimeoutExpired) as err:
             detail = getattr(err, "stderr", None) or str(err)

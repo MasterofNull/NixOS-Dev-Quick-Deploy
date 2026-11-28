@@ -51,6 +51,12 @@ class TestOncalldNixModule(unittest.TestCase):
                 self.fail(f"AppArmor write rule on owner repo: {line.strip()}")
         self.assertNotRegex(content, r"repoDir\}/\.git")
 
+    def test_clone_must_differ_and_apparmor_reads_configured_repo(self):
+        content = ONCALLD_NIX.read_text()
+        self.assertIn("cfg.cloneDir != cfg.repoDir", content)
+        self.assertIn("${cfg.repoDir}/** r,", content)
+        self.assertNotIn("/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/**", content)
+
     def test_repairs_default_off_and_wired(self):
         content = ONCALLD_NIX.read_text()
         self.assertRegex(content, r"repairs\.enable\s*=\s*mkOption\s*\{[^}]*default = false")
