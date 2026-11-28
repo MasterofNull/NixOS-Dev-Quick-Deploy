@@ -3309,6 +3309,88 @@ async def get_pending_approvals() -> Dict[str, Any]:
     }
 
 
+# Live steering: the only consumer of the per-task control queue is agent_executor
+# (registry agent "local-agent"); every other lane/role has no reader, so refuse instead
+# of reporting delivery.
+_STEERABLE_AGENT = "local-agent"
+_STEERABLE_STATUSES = frozenset({"running", "waiting"})
+_CONTROL_CHANNEL_MOD: Any = None
+
+
+def _control_channel_module():
+    """Load the same control_channel module agent_executor polls (one queue root)."""
+    global _CONTROL_CHANNEL_MOD
+    if _CONTROL_CHANNEL_MOD is None:
+        spec = importlib.util.spec_from_file_location(
+            "control_channel",
+            _repo_root() / "ai-stack" / "local-agents" / "control_channel.py",
+        )
+        if spec is None or spec.loader is None:
+            raise OSError("control_channel.py is not loadable")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        _CONTROL_CHANNEL_MOD = module
+    return _CONTROL_CHANNEL_MOD
+
+
+def _delegation_registry_path() -> Path:
+    return _repo_root() / ".agents" / "delegation" / "registry.jsonl"
+
+
+def _resolve_steerable_task(target: str) -> tuple[Optional[str], Optional[str]]:
+    """Map a steer target to an ACTIVE local-agent task id.
+
+    Returns (task_id, None) when the task can be steered, else (None, refusal_reason).
+    """
+    target = (target or "").strip()
+    if not target or target == "orchestrator" or target.startswith("lane-"):
+        return None, (
+            f"'{target or 'orchestrator'}' is a role or lane, not a task id; live steering "
+            "reaches only an individual running local-agent task"
+        )
+    try:
+        _control_channel_module().control_path(target)
+    except ValueError:
+        return None, f"'{target}' is not a valid task id"
+    row: Optional[dict] = None
+    try:
+        for line in _delegation_registry_path().read_text(encoding="utf-8").splitlines():
+            try:
+                rec = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if isinstance(rec, dict) and target in (rec.get("id"), rec.get("task_id")):
+                row = rec
+    except OSError:
+        pass
+    if row is None:
+        return None, f"unknown task id '{target}'"
+    if str(row.get("status", "")).lower() not in _STEERABLE_STATUSES:
+        return None, f"task '{target}' is not active (status: {row.get('status')})"
+    if row.get("agent") != _STEERABLE_AGENT:
+        return None, (
+            f"task '{target}' runs on lane '{row.get('agent')}', which does not read the "
+            "steering queue; only local-agent tasks support live steering"
+        )
+    return target, None
+
+
+def _enqueue_steering(task_id: str, text: str, kind: str = "inject") -> dict:
+    """Append to the consumer's queue; raises HTTPException(503) when the write fails."""
+    try:
+        return _control_channel_module().send(task_id, text, kind=kind, from_="dashboard-operator")
+    except (OSError, ValueError) as exc:
+        logger.warning("steering enqueue failed for %s: %s", task_id, exc)
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "status": "error",
+                "delivery_status": "not_delivered",
+                "reason": f"could not write the steering queue: {exc}",
+            },
+        ) from exc
+
+
 class LoopControlRequest(BaseModel):
     action: str = Field(..., description="start | stop | restart | pause | resume | steer")
     agent: Optional[str] = Field(None, description="Optional target agent/lane identifier for steering")
@@ -3326,6 +3408,19 @@ async def post_loop_control(body: LoopControlRequest) -> Dict[str, Any]:
         guidance_msg = (body.message or "").strip()
         if not guidance_msg:
             raise HTTPException(status_code=400, detail="Guidance message cannot be empty for steer action")
+
+        task_id, reason = _resolve_steerable_task(agent_id)
+        if task_id is None:
+            raise HTTPException(
+                status_code=422,
+                detail={
+                    "status": "unsupported",
+                    "delivery_status": "unsupported",
+                    "agent": agent_id,
+                    "reason": reason,
+                },
+            )
+        _enqueue_steering(task_id, guidance_msg)
 
         # Record guidance in collaboration PULSE log
         pulse_path = _repo_root() / ".agent" / "collaboration" / "PULSE.log"
@@ -3347,16 +3442,18 @@ async def post_loop_control(body: LoopControlRequest) -> Dict[str, Any]:
         except (OSError, json.JSONDecodeError):
             pass
 
-        status = await get_loop_status()
         return {
             "ok": True,
             "action": "steer",
             "agent": agent_id,
+            "task_id": task_id,
             "message": guidance_msg,
+            "status": "queued",
+            "delivery_status": "queued",
+            "delivery": "between agent turns",
             "returncode": 0,
-            "stdout": f"Guidance registered for {agent_id}",
+            "stdout": f"Guidance queued for {task_id}; delivered between agent turns",
             "stderr": "",
-            "status": status,
         }
 
     sudo_bin = os.environ.get("SUDO_BIN", "/run/wrappers/bin/sudo")
@@ -6023,6 +6120,7 @@ class AgentGuidanceRequest(BaseModel):
     action: Optional[str] = Field("guidance", description="guidance | redirect | step_approve | pause | resume")
 
 
+_QUEUEABLE_GUIDANCE_ACTIONS = frozenset({"guidance", "redirect"})
 _VALID_CONTROL_ACTIONS = frozenset(
     {"pause", "resume", "redirect", "approve", "reject", "request_review", "promote_artifact", "terminate", "guidance", "step_approve"}
 )
@@ -6841,7 +6939,11 @@ async def post_agent_run_guidance(
     run_id: str,
     body: AgentGuidanceRequest,
 ) -> Dict[str, Any]:
-    """Record guidance for later delivery by an agent-side consumer."""
+    """Queue guidance for an active local-agent task; otherwise report it unsupported.
+
+    The human_control audit event is written either way (post_agent_run_control); the
+    unread .agents/guidance spool is no longer written.
+    """
     # Build and persist human control action
     action_body = AgentControlAction(
         action=body.action or "guidance",
@@ -6851,43 +6953,26 @@ async def post_agent_run_guidance(
     )
     result = await post_agent_run_control(run_id, action_body)
 
-    # Also write to guidance spool file for asynchronous agent loop consumption
-    spool_dir = _get_guidance_spool_dir()
-    guidance_file = spool_dir / f"{run_id}.json"
-    guidance_payload = {
-        "run_id": run_id,
-        "prompt": body.prompt,
-        "action": body.action or "guidance",
-        "operator_id": body.operator_id or "hyperd",
-        "timestamp": datetime.now(timezone.utc).isoformat() + "Z",
-        "event_id": result.get("event_id"),
-        "consumed": False,
-    }
-    try:
-        guidance_file.write_text(json.dumps(guidance_payload, indent=2), encoding="utf-8")
-    except OSError as exc:
-        logger.warning("guidance spool file write error: %s", exc)
-        raise HTTPException(
-            status_code=503,
-            detail={
-                "run_id": run_id,
-                "status": "persistence_failed",
-                "delivery_status": "not_delivered",
-                "message": "Guidance could not be recorded for delivery",
-            },
-        ) from exc
-
-    return {
+    base = {
         "run_id": run_id,
         "guidance": body.prompt,
         "action": body.action or "guidance",
         "operator_id": body.operator_id or "hyperd",
         "event_id": result.get("event_id"),
-        "persisted": True,
-        "status": "recorded",
-        "delivery_status": "pending",
+        "persisted": bool(result.get("persisted")),
         "delivered": False,
     }
+    task_id, reason = _resolve_steerable_task(run_id)
+    if task_id is not None and (body.action or "guidance") not in _QUEUEABLE_GUIDANCE_ACTIONS:
+        task_id, reason = None, (
+            f"action '{body.action}' has no consumer; the steering queue supports "
+            "only guidance/redirect (inject) text"
+        )
+    if task_id is None:
+        return {**base, "status": "unsupported", "delivery_status": "unsupported", "reason": reason}
+
+    _enqueue_steering(task_id, body.prompt)
+    return {**base, "status": "queued", "delivery_status": "queued", "task_id": task_id}
 
 
 # DP-4 — Query active guidance for a run
@@ -9218,7 +9303,7 @@ def _integration_guard_status(repo: Path) -> Dict[str, Any]:
 
 
 @router.get("/candidate-pipeline")
-async def get_candidate_pipeline() -> Dict[str, Any]:
+async def get_candidate_pipeline_counts() -> Dict[str, Any]:
     """Return Phase 150 candidate lifecycle pipeline counts grouped by state."""
     from collections import Counter as _Counter
     try:

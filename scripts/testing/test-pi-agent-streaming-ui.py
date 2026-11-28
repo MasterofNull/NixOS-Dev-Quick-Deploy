@@ -132,7 +132,7 @@ def main() -> int:
                 print(f"  FAIL  DP-4: agent-runs stream: {e}")
                 failed += 1
 
-            # ── 4. operator guidance injection ───────────────────────────────
+            # ── 4. operator guidance: honest delivery status ─────────────────
             try:
                 payload = {
                     "prompt": "Prioritize verifying sub-agent worktrees before staging PR",
@@ -142,44 +142,29 @@ def main() -> int:
                 r = client.post("/api/aistack/agent-runs/run-root/guidance", json=payload)
                 assert_true(r.status_code == 200, f"expected 200, got {r.status_code}")
                 res = r.json()
-                assert_true(res["status"] == "recorded", f"expected status recorded, got {res.get('status')}")
                 assert_true(res["guidance"] == payload["prompt"], "guidance prompt mismatch")
-                assert_true(res["persisted"] is True, "guidance event should be persisted")
-                assert_true(res["delivery_status"] == "pending", "guidance delivery should remain pending")
-                assert_true(res["delivered"] is False, "guidance should not claim delivery without a consumer")
-
-                # Verify GET guidance endpoint reads it back
-                g_resp = client.get("/api/aistack/agent-runs/run-root/guidance")
-                assert_true(g_resp.status_code == 200, f"expected 200, got {g_resp.status_code}")
-                g_data = g_resp.json()
-                assert_true(g_data.get("has_guidance") is True, "has_guidance should be true")
-                assert_true(g_data["guidance"]["prompt"] == payload["prompt"], "retrieved guidance prompt mismatch")
-
-                print("  PASS  DP-4: operator guidance is recorded with delivery pending")
+                assert_true(res["persisted"] is True, "guidance audit event should be persisted")
+                # run-root maps to no active local-agent task, so nothing can consume it.
+                assert_true(res["status"] == "unsupported", f"expected unsupported, got {res.get('status')}")
+                assert_true(res["delivery_status"] == "unsupported", "unmapped run must report unsupported")
+                assert_true(res["delivered"] is False, "guidance must not claim delivery without a consumer")
+                assert_true(bool(res.get("reason")), "unsupported guidance must carry a reason")
+                print("  PASS  DP-4: guidance for an unmapped run is reported unsupported with a reason")
                 passed += 1
             except Exception as e:
                 print(f"  FAIL  DP-4: operator guidance delivery status: {e}")
                 failed += 1
 
-            # ── 5. spool persistence failures must not claim delivery ────────
+            # ── 5. unsupported guidance writes no unread spool ───────────────
             try:
-                original_spool_dir = aistack_module._get_guidance_spool_dir
-                aistack_module._get_guidance_spool_dir = lambda: tmp_path / "missing" / "guidance"
-                try:
-                    failed_guidance = client.post(
-                        "/api/aistack/agent-runs/run-root/guidance",
-                        json={"prompt": "This write must fail", "action": "guidance"},
-                    )
-                finally:
-                    aistack_module._get_guidance_spool_dir = original_spool_dir
-                assert_true(failed_guidance.status_code == 503, "spool failure should return 503")
-                failure = failed_guidance.json()["detail"]
-                assert_true(failure["status"] == "persistence_failed", "failure status mismatch")
-                assert_true(failure["delivery_status"] == "not_delivered", "failure must not imply delivery")
-                print("  PASS  DP-4: spool failure is explicit and not delivered")
+                assert_true(not any(guidance_dir.iterdir()), "unsupported guidance must not write the unread spool")
+                g_resp = client.get("/api/aistack/agent-runs/run-root/guidance")
+                assert_true(g_resp.status_code == 200, f"expected 200, got {g_resp.status_code}")
+                assert_true(g_resp.json().get("has_guidance") is False, "no spooled guidance expected")
+                print("  PASS  DP-4: unsupported guidance leaves no spool file")
                 passed += 1
             except Exception as e:
-                print(f"  FAIL  DP-4: spool persistence failure: {e}")
+                print(f"  FAIL  DP-4: guidance spool: {e}")
                 failed += 1
 
             # ── 6. human controls: step-approve, pause, resume ──────────────

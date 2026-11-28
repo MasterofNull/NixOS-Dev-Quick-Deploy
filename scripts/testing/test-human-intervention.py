@@ -1,20 +1,26 @@
 #!/usr/bin/env python3
 """
-Unit and regression tests for aq-human-intervention.
-Tests pause, resume, skip, edit, and cancel commands.
+Unit and regression tests for the operator intervention writer (aq-agent-send over
+control_channel) and its cockpit rendering.
+
+aq-human-intervention was archived (.agent/archive/20261127-aq-human-intervention): of its
+five kinds only inject and cancel were ever read by agent_executor; pause, resume, skip
+and edit_intent were queued but treated as plain text. aq-agent-send writes exactly the
+two kinds the consumer understands.
 """
 
 import json
-import os
 import subprocess
-import tempfile
+import sys
 import unittest
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-INTERVENTION_CLI = REPO_ROOT / "scripts/ai/aq-human-intervention"
+SEND_CLI = REPO_ROOT / "scripts/ai/aq-agent-send"
+MONITOR_CLI = REPO_ROOT / "scripts/ai/aq-cockpit-monitor"
 
-class TestHumanIntervention(unittest.TestCase):
+
+class TestAgentSend(unittest.TestCase):
 
     def setUp(self):
         self.control_dir = REPO_ROOT / ".agents" / "delegation" / "control"
@@ -23,68 +29,56 @@ class TestHumanIntervention(unittest.TestCase):
         self.queue_file = self.control_dir / f"{self.test_task_id}.jsonl"
 
     def tearDown(self):
-        if self.queue_file.exists():
-            try:
-                self.queue_file.unlink()
-            except Exception:
-                pass
+        self.queue_file.unlink(missing_ok=True)
 
-    def run_cli(self, args):
-        cmd = [str(INTERVENTION_CLI), "--task-id", self.test_task_id] + args
+    def run_cli(self, *args, task_id=None):
+        cmd = [sys.executable, str(SEND_CLI), task_id or self.test_task_id, *args]
         return subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
 
-    def test_pause_and_resume(self):
-        res1 = self.run_cli(["pause", "--reason", "Inspect intermediate state"])
-        self.assertEqual(res1.returncode, 0)
-        self.assertIn("PAUSED", res1.stdout)
+    def records(self):
+        return [json.loads(ln) for ln in self.queue_file.read_text().splitlines() if ln.strip()]
 
-        res2 = self.run_cli(["resume", "--instruction", "State verified; proceed"])
-        self.assertEqual(res2.returncode, 0)
-        self.assertIn("RESUMED", res2.stdout)
-
-        lines = [json.loads(l) for l in self.queue_file.read_text().splitlines() if l.strip()]
-        self.assertEqual(len(lines), 2)
-        self.assertEqual(lines[0]["kind"], "pause")
-        self.assertEqual(lines[1]["kind"], "resume")
-
-    def test_skip(self):
-        res = self.run_cli(["skip", "--step-name", "flaky-external-fetch"])
-        self.assertEqual(res.returncode, 0)
-        self.assertIn("SKIPPED", res.stdout)
-
-        lines = [json.loads(l) for l in self.queue_file.read_text().splitlines() if l.strip()]
-        self.assertEqual(lines[-1]["kind"], "skip")
-        self.assertIn("flaky-external-fetch", lines[-1]["text"])
-
-    def test_edit_intent(self):
-        res = self.run_cli(["edit", "Focus on memory safety instead of speed optimization"])
-        self.assertEqual(res.returncode, 0)
-        self.assertIn("INTENT UPDATED", res.stdout)
-
-        lines = [json.loads(l) for l in self.queue_file.read_text().splitlines() if l.strip()]
-        self.assertEqual(lines[-1]["kind"], "edit_intent")
-        self.assertIn("Focus on memory safety", lines[-1]["text"])
+    def test_inject_message(self):
+        res = self.run_cli("Focus on memory safety instead of speed optimization")
+        self.assertEqual(res.returncode, 0, res.stderr)
+        self.assertIn("queued inject", res.stdout)
+        recs = self.records()
+        self.assertEqual(len(recs), 1)
+        self.assertEqual(recs[0]["kind"], "inject")
+        self.assertIn("Focus on memory safety", recs[0]["text"])
 
     def test_cancel(self):
-        res = self.run_cli(["cancel", "--reason", "Operator emergency stop"])
-        self.assertEqual(res.returncode, 0)
-        self.assertIn("CANCELLED", res.stdout)
+        res = self.run_cli("Operator emergency stop", "--cancel")
+        self.assertEqual(res.returncode, 0, res.stderr)
+        self.assertIn("queued cancel", res.stdout)
+        self.assertEqual(self.records()[-1]["kind"], "cancel")
 
-        lines = [json.loads(l) for l in self.queue_file.read_text().splitlines() if l.strip()]
-        self.assertEqual(lines[-1]["kind"], "cancel")
+    def test_messages_append_in_order(self):
+        self.assertEqual(self.run_cli("first").returncode, 0)
+        self.assertEqual(self.run_cli("second", "--cancel").returncode, 0)
+        self.assertEqual([r["kind"] for r in self.records()], ["inject", "cancel"])
+
+    def test_unsafe_task_id_rejected_without_writing(self):
+        res = self.run_cli("hi", task_id="../x")
+        self.assertEqual(res.returncode, 1)
+        self.assertFalse((self.control_dir.parent / "x.jsonl").exists())
+
+    def test_usage_error_without_message(self):
+        res = subprocess.run([sys.executable, str(SEND_CLI), self.test_task_id],
+                             stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        self.assertEqual(res.returncode, 2)
 
     def test_cockpit_monitor_integration(self):
         """Verify aq-cockpit-monitor displays intervention dock status correctly."""
-        res_pause = self.run_cli(["pause", "--reason", "Cockpit integration test"])
-        self.assertEqual(res_pause.returncode, 0)
+        self.assertEqual(self.run_cli("Cockpit integration test", "--cancel").returncode, 0)
 
-        # Run cockpit monitor in single-frame mode
-        monitor_cli = REPO_ROOT / "scripts/ai/aq-cockpit-monitor"
-        res_monitor = subprocess.run([str(monitor_cli), "--once"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        res_monitor = subprocess.run([str(MONITOR_CLI), "--once"], stdout=subprocess.PIPE,
+                                     stderr=subprocess.PIPE, text=True)
         self.assertEqual(res_monitor.returncode, 0)
         self.assertIn("Intervention Dock", res_monitor.stdout)
         self.assertIn("PENDING", res_monitor.stdout)
-        self.assertIn("PAUSE", res_monitor.stdout)
+        self.assertIn("CANCEL", res_monitor.stdout)
+
 
 if __name__ == "__main__":
     unittest.main()

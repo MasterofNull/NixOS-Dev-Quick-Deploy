@@ -608,7 +608,7 @@ function closeSteeringModalUI() {
   if (modal) modal.style.display = "none";
 }
 
-function submitSteeringInstructionUI() {
+async function submitSteeringInstructionUI() {
   const input = document.getElementById("steeringInstructionInput");
   if (!input) return;
   const msg = input.value.trim();
@@ -616,20 +616,35 @@ function submitSteeringInstructionUI() {
   if (!msg) return;
 
   closeSteeringModalUI();
-  appendThoughtStream(`⚡ [STEER -> ${agentId}] Guidance injected: "${msg}"`, "action");
+  appendThoughtStream(`⚡ [STEER -> ${agentId}] Sending guidance...`, "action");
 
   const thought = document.getElementById("cockpitThoughtLine");
-  if (thought) {
-    thought.textContent = `⚡ [Operator Guidance -> ${agentId}] "${msg}"`;
-    thought.style.borderColor = "var(--cyan)";
-    thought.style.color = "var(--cyan)";
-  }
+  const showStatus = (text, ok) => {
+    appendThoughtStream(`${ok ? "⚡" : "✗"} [STEER -> ${agentId}] ${text}`, ok ? "action" : "warn");
+    if (thought) {
+      thought.textContent = `${ok ? "⚡" : "✗"} [Operator Guidance -> ${agentId}] ${text}`;
+      thought.style.borderColor = ok ? "var(--cyan)" : "var(--yel)";
+      thought.style.color = ok ? "var(--cyan)" : "var(--yel)";
+    }
+  };
 
-  apiFetch("/loop/control", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ action: "steer", agent: agentId, message: msg })
-  }).catch(() => {});
+  // Raw fetch: apiFetch drops the body of non-2xx responses, which carries the refusal reason.
+  try {
+    const resp = await fetch(`${BASE}/api/loop/control`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "steer", agent: agentId, message: msg }),
+    });
+    const data = await resp.json().catch(() => ({}));
+    if (resp.ok && data.status === "queued") {
+      showStatus("queued, delivered between agent turns", true);
+    } else {
+      const detail = data.detail && typeof data.detail === "object" ? data.detail : data;
+      showStatus(`not delivered: ${detail.reason || detail.message || `HTTP ${resp.status}`}`, false);
+    }
+  } catch (err) {
+    showStatus(`not delivered: ${err.message}`, false);
+  }
 }
 
 function pauseAgentUI(agentId) {
@@ -9951,11 +9966,13 @@ async function sendPiGuidanceAction(action) {
       const isGuidance = action === "guidance";
       if (resultEl) {
         resultEl.innerHTML = isGuidance
-          ? `<span style="color:var(--grn)">✓ Guidance recorded; agent delivery pending (${data.event_id ? data.event_id.slice(0, 16) : 'persisted'})</span>`
+          ? (data.delivery_status === "queued"
+              ? `<span style="color:var(--grn)">✓ Guidance queued, delivered between agent turns (${data.event_id ? data.event_id.slice(0, 16) : 'persisted'})</span>`
+              : `<span style="color:var(--yel)">Guidance not delivered: ${_escapeHtml(data.reason || "unsupported for this run")}</span>`)
           : `<span style="color:var(--grn)">✓ Injected ${action} (${data.event_id ? data.event_id.slice(0, 16) : 'persisted'})</span>`;
       }
       const consoleLabel = isGuidance
-        ? "👤 GUIDANCE RECORDED [DELIVERY PENDING]"
+        ? (data.delivery_status === "queued" ? "👤 GUIDANCE QUEUED" : "👤 GUIDANCE NOT DELIVERED")
         : `👤 INJECTED [${_escapeHtml(action)}]`;
       appendPiConsoleMessage(`<div style="color:var(--magenta);background:rgba(187,134,252,.1);padding:.25rem .4rem;border-left:2px solid var(--magenta);border-radius:2px"><span style="font-weight:700">${consoleLabel}:</span> ${_escapeHtml(prompt || action)}</div>`);
       if (action === "guidance" && inputEl) inputEl.value = "";
