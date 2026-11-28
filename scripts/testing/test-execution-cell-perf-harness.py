@@ -439,6 +439,12 @@ def test_revocation_under_load_small_real_run():
 
 def test_small_real_end_to_end_run():
     harness = mod.PerfHarness(n=2)
+    if harness.cgroup_parent is None:
+        # The runner now fails closed (quarantine) when the pid cannot enter a
+        # real cgroup, so GREEN rows need a migratable delegated subtree.
+        skip("small_real_end_to_end_run", "no migratable delegated cgroup v2 subtree on this host")
+        mod.cleanup_temp_roots()
+        return
     try:
         results = harness.run_all(command_classes=(mod.COMMAND_NOOP,), cache_cohorts=mod.CACHE_COHORTS)
         check("e2e_two_cohorts_ran", len(results) == 2, results)

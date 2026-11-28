@@ -778,12 +778,13 @@ def _confine_run_validate(
         if not add_pid_to_cgroup(cgroup_path, popen.pid):
             # Fail closed: a pid that never entered its cgroup would let the
             # empty-cgroup kill proof pass vacuously. Kill the session
-            # directly (start_new_session => pgid == pid); no proof is claimed.
+            # directly (start_new_session => pgid == pid); tree_proven_absent=False
+            # (schema: quarantined pairs with false), never a proof.
             _kill_unattached_child(popen)
             return Decision(
                 DECISION_QUARANTINED, REASON_CGROUP_ATTACH_FAILED, STAGE_CONFINE_RUN, receipt_id,
-                grant_digest=grant_digest, command_kind=command.kind, duration_ms=_elapsed_ms(),
-                base_oid=cell.base_oid,
+                grant_digest=grant_digest, command_kind=command.kind, tree_proven_absent=False,
+                duration_ms=_elapsed_ms(), base_oid=cell.base_oid,
             )
 
         outcome, trigger, cgroup_kill_used, proven = _supervise(popen, cgroup_path, verified, config)

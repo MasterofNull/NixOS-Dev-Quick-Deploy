@@ -789,6 +789,14 @@ def test_add_pid_failure_fails_closed():
             runner.CommandDescriptor(kind="read-validate"),
             SimpleNamespace(), "digest", "receipt-attach-fail", "/fake/bwrap", config, time.monotonic(),
         )
+        # Sampled BEFORE the cleanup below, which would otherwise kill the child itself.
+        child_dead = False
+        if spawned:
+            try:
+                spawned[0].wait(timeout=1.0)
+            except subprocess.TimeoutExpired:
+                pass
+            child_dead = spawned[0].poll() is not None
     finally:
         (runner.build_bwrap_argv, runner.create_cgroup, runner.add_pid_to_cgroup,
          runner._supervise, runner.subprocess.Popen) = saved
@@ -800,8 +808,19 @@ def test_add_pid_failure_fails_closed():
     check("add_pid_fail_spawned_child", len(spawned) == 1)
     check("add_pid_fail_quarantined", decision.decision == runner.DECISION_QUARANTINED, decision.decision)
     check("add_pid_fail_reason", decision.reason == runner.REASON_CGROUP_ATTACH_FAILED, decision.reason)
-    check("add_pid_fail_no_kill_proof", decision.tree_proven_absent is not True, repr(decision.tree_proven_absent))
-    check("add_pid_fail_child_dead", bool(spawned) and spawned[0].poll() is not None, "child still alive")
+    check("add_pid_fail_no_kill_proof", decision.tree_proven_absent is False, repr(decision.tree_proven_absent))
+    check("add_pid_fail_child_dead", child_dead, "child still alive after fail-closed return")
+    try:
+        import jsonschema
+    except ImportError:
+        skip("add_pid_fail_receipt_schema_valid", "jsonschema not installed")
+        return
+    schema = json.loads((_REPO_ROOT / "config" / "schemas" / "execution-cell-runner-decision.schema.json").read_text())
+    try:
+        jsonschema.validate(runner.receipt_of(decision), schema)
+        check("add_pid_fail_receipt_schema_valid", True)
+    except jsonschema.ValidationError as exc:
+        check("add_pid_fail_receipt_schema_valid", False, exc.message)
 
 
 def test_peer_authentication_real_uds():
