@@ -39,10 +39,13 @@ COVERED_ELSEWHERE = {
     "check-frontier-fold.py": "scripts/testing/test-check-frontier-fold.py",
     "check-gitleaks-ci-parity.sh": "scripts/testing/test-gitleaks-ci-parity.py",
     "check-grype-ignore-expiry.sh": "scripts/testing/test-ffmpeg-cve-mitigations.py",
+    "check-host-only-tests.py": "scripts/testing/test-tier0-host-only-tests.py",
     "check-lane-hook-parity.sh": "scripts/testing/test-lane-hook-parity.py",
     "check-payload-audit.sh": "scripts/testing/test-payload-audit-routine.py",
     "check-plan-paths.py": "scripts/testing/test-check-plan-paths.py",
     "check-review-receipt-integrity.sh": "scripts/testing/test-aq-review-receipt.py",
+    "check-stale-known-failing.py": "scripts/testing/test-tier0-stale-known-failing.py",
+    "check-work-ledger.sh": "scripts/testing/test-work-ledger.py",
 }
 
 

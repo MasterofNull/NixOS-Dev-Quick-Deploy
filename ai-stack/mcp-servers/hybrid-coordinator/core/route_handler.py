@@ -115,6 +115,7 @@ from metrics import (
     ROUTE_ERRORS,
     LLM_BACKEND_SELECTIONS,
     LLM_BACKEND_LATENCY,
+    SOURCE_TRUST_RESULTS,
 )
 from search_router import (
     looks_like_sql as _looks_like_sql,
@@ -123,11 +124,13 @@ from search_router import (
 )
 from query_expansion import QueryExpander
 from prompt_injection import PromptInjectionScanner, sanitize_query
+from knowledge.source_trust import RESULT_KEYS, SourceTrust
 import task_classifier
 from work_classifier import TaskComplexity as formal_complexity
 
 logger = logging.getLogger("hybrid-coordinator")
 _injection_scanner = PromptInjectionScanner()
+_source_trust = SourceTrust()
 _LOW_SIGNAL_GAP_QUERIES = {
     "nix",
     "nixos",
@@ -1513,22 +1516,37 @@ async def route_search(
                 results = {"combined_results": []}
                 response_text = ""
 
-        # Task 15.1.2 — Prompt injection filtering on retrieved chunks
-        _all_combined = (
-            results.get("combined_results") or
-            results.get("semantic_results") or
-            results.get("keyword_results") or []
-        )
-        _all_combined, n_removed = _injection_scanner.filter_results(_all_combined, content_key="content")
-        if n_removed:
-            logger.warning("rag_injection_filtered", n_removed=n_removed)
-        # Reflect filtered list back into results so downstream consumers see clean data
-        if "combined_results" in results:
-            results["combined_results"] = _all_combined
-        elif "semantic_results" in results:
-            results["semantic_results"] = _all_combined
-        elif "keyword_results" in results:
-            results["keyword_results"] = _all_combined
+        # Scan every list before any trust scoring or synthesis can consume it.
+        removed_chunks = []
+        for result_key in RESULT_KEYS:
+            if result_key not in results:
+                continue
+            before = results[result_key]
+            filtered, _ = _injection_scanner.filter_results(before, content_key="content")
+            kept_ids = {id(item) for item in filtered}
+            removed_chunks.extend(item for item in before if id(item) not in kept_ids)
+            results[result_key] = filtered
+        if removed_chunks:
+            logger.warning("rag_injection_filtered", extra={"n_removed": len(removed_chunks)})
+        try:
+            results = _source_trust.apply(
+                results, removed_chunks,
+                session_id=(context or {}).get("retrieval_session_id"),
+                count=lambda category, flagged, mode: SOURCE_TRUST_RESULTS.labels(
+                    **{"class": category, "flagged": str(flagged).lower(), "mode": mode}
+                ).inc(),
+            )
+        except Exception:
+            logger.exception("source_trust_scoring_failed")
+            SOURCE_TRUST_RESULTS.labels(
+                **{"class": "error", "flagged": "false", "mode": _source_trust.config.mode}
+            ).inc()
+        _all_combined = next((results[key] for key in RESULT_KEYS if results.get(key)), [])
+        if route != "sql" and response_text and _summarize is not None:
+            summary_key = {"keyword": "keyword_results", "semantic": "semantic_results"}.get(
+                route, "combined_results"
+            )
+            response_text = _summarize(results.get(summary_key, []))
 
         # Phase 3.2.1 — Gap tracking
         _GAP_THRESHOLD = float(os.getenv("AI_GAP_SCORE_THRESHOLD", "0.4"))
