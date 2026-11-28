@@ -2135,6 +2135,7 @@
         "scripts/testing/test-security-audit-ladder.py",
         "scripts/testing/test-security-center-phase0.py",
         "scripts/testing/test-security-center-ui.py",
+        "scripts/testing/test-security-nix-closure-scan.py",
         "scripts/testing/test-security-settings-publisher.py",
         "scripts/testing/test-security-settings-route.py",
         "scripts/testing/test-semantic-compression.py",
@@ -2246,6 +2247,7 @@
         "scripts/testing/test-security-audit-ladder.py",
         "scripts/testing/test-security-center-phase0.py",
         "scripts/testing/test-security-center-ui.py",
+        "scripts/testing/test-security-nix-closure-scan.py",
         "scripts/testing/test-security-settings-publisher.py",
         "scripts/testing/test-security-settings-route.py",
         "scripts/testing/test-security-workflow-integration.py",
@@ -3191,11 +3193,6 @@
     },
     {
       "script": "scripts/testing/test-security-cve-rsi-gate.py",
-      "class": "known-failing",
-      "reason": "fails on main (rc=1): FAILED (failures=1), tracked in backlog"
-    },
-    {
-      "script": "scripts/testing/test-security-nix-closure-scan.py",
       "class": "known-failing",
       "reason": "fails on main (rc=1): FAILED (failures=1), tracked in backlog"
     },
