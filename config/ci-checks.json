@@ -814,6 +814,7 @@
       "id": "tests-aq",
       "cmd": "scripts/testing/run-test-group.py tests-aq",
       "paths": [
+        "scripts/maintenance/aq-main-sync",
         "scripts/testing/test-no-tmpfs-guard.py",
         "scripts/testing/run-test-group.py",
         "scripts/ai/lib/delegation-dir.sh",
@@ -873,6 +874,7 @@
         "scripts/testing/test-aq-land-pre-review-gate.py",
         "scripts/testing/test-aq-local-dogfood-run-guard.py",
         "scripts/testing/test-aq-local-review.py",
+        "scripts/testing/test-aq-main-sync.py",
         "scripts/testing/test-aq-mcp-conformance.py",
         "scripts/testing/test-aq-model-switch-nixos.py",
         "scripts/testing/test-aq-oncalld.py",
@@ -976,6 +978,7 @@
         "scripts/testing/test-aq-land-pre-review-gate.py",
         "scripts/testing/test-aq-local-dogfood-run-guard.py",
         "scripts/testing/test-aq-local-review.py",
+        "scripts/testing/test-aq-main-sync.py",
         "scripts/testing/test-aq-mcp-conformance.py",
         "scripts/testing/test-aq-model-switch-nixos.py",
         "scripts/testing/test-aq-oncalld.py",
@@ -2134,6 +2137,7 @@
         "scripts/testing/test-security-audit-ladder.py",
         "scripts/testing/test-security-center-phase0.py",
         "scripts/testing/test-security-center-ui.py",
+        "scripts/testing/test-security-nix-closure-scan.py",
         "scripts/testing/test-security-settings-publisher.py",
         "scripts/testing/test-security-settings-route.py",
         "scripts/testing/test-semantic-compression.py",
@@ -2245,6 +2249,7 @@
         "scripts/testing/test-security-audit-ladder.py",
         "scripts/testing/test-security-center-phase0.py",
         "scripts/testing/test-security-center-ui.py",
+        "scripts/testing/test-security-nix-closure-scan.py",
         "scripts/testing/test-security-settings-publisher.py",
         "scripts/testing/test-security-settings-route.py",
         "scripts/testing/test-security-workflow-integration.py",
@@ -3190,11 +3195,6 @@
     },
     {
       "script": "scripts/testing/test-security-cve-rsi-gate.py",
-      "class": "known-failing",
-      "reason": "fails on main (rc=1): FAILED (failures=1), tracked in backlog"
-    },
-    {
-      "script": "scripts/testing/test-security-nix-closure-scan.py",
       "class": "known-failing",
       "reason": "fails on main (rc=1): FAILED (failures=1), tracked in backlog"
     },
