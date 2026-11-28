@@ -342,14 +342,15 @@ class TestOnCallDaemon(unittest.TestCase):
 
     # ── DP-3 review-revision regressions (F1-F6) ─────────────────────────────
 
-    def _admit_claim(self, iid: str, key: str):
-        inc = self.engine.admit_incident({
+    def _admit_claim(self, iid: str, key: str, engine=None):
+        engine = engine or self.engine
+        inc = engine.admit_incident({
             "incident_id": iid, "source": "svc", "severity": "high", "incident_class": "crash",
             "actionable": True, "confidence": 0.9, "correlation_key": key, "summary": "s",
             "reproduction_cmd": "exit 1",
         })
         self.assertIsNotNone(inc)
-        return self.engine.claim_incident(inc.incident_id, claimant_lane="codex")
+        return engine.claim_incident(inc.incident_id, claimant_lane="codex")
 
     def test_08_f1_no_fabricated_pass_or_pr(self) -> None:
         claim = self._admit_claim("f1", "k-f1")
@@ -369,6 +370,93 @@ class TestOnCallDaemon(unittest.TestCase):
             self.engine.create_isolated_worktree(claim)
         self.assertFalse(Path(claim.worktree_path).exists())
         self.assertEqual(self.engine.storage.get_claim(claim.claim_id).state, "FAILED")
+
+    def test_09b_worktree_missing_git_is_typed_logged_error(self) -> None:
+        """A PATH without git (the systemd unit default) must fail closed, typed and logged."""
+        from unittest import mock
+        os.environ.pop("AQ_ONCALL_SIMULATE_WORKTREE", None)
+        claim = self._admit_claim("f2b", "k-f2b")
+        with mock.patch.dict(os.environ, {"PATH": str(self.temp_dir)}), \
+             self.assertRaises(WorktreeIsolationError) as ctx:
+            self.engine.create_isolated_worktree(claim)
+        self.assertIn("git", str(ctx.exception))
+        self.assertEqual(self.engine.storage.get_claim(claim.claim_id).state, "FAILED")
+
+    def test_09c_worktree_created_when_git_on_path(self) -> None:
+        if not shutil.which("git"):
+            self.skipTest("git not on PATH")
+        os.environ.pop("AQ_ONCALL_SIMULATE_WORKTREE", None)
+        repo = Path(self.temp_dir) / "repo"
+        repo.mkdir()
+        env = {**os.environ, "GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@t",
+               "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@t"}
+        for argv in (["git", "init", "-q"], ["git", "commit", "-q", "--allow-empty", "-m", "i"]):
+            subprocess.run(argv, cwd=repo, check=True, env=env, capture_output=True)
+        engine = OnCallDaemonEngine(repo_root=repo, state_dir=self.state_dir,
+                                    confidence_threshold=0.70)
+        claim = self._admit_claim("f2c", "k-f2c", engine=engine)
+        wt = engine.create_isolated_worktree(claim)
+        self.assertTrue((wt / ".git").exists())
+
+    def _make_source_repo(self) -> Path:
+        src = Path(self.temp_dir) / "owner-repo"
+        src.mkdir()
+        env = {**os.environ, "GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@t",
+               "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@t"}
+        for argv in (["git", "init", "-q", "-b", "main"],
+                     ["git", "commit", "-q", "--allow-empty", "-m", "i"]):
+            subprocess.run(argv, cwd=src, check=True, env=env, capture_output=True)
+        return src
+
+    def _tree_snapshot(self, root: Path) -> dict:
+        return {str(p.relative_to(root)): p.stat().st_mtime_ns
+                for p in root.rglob("*") if p.is_file()}
+
+    def test_09d_worktree_from_separate_clone_leaves_owner_repo_untouched(self) -> None:
+        if not shutil.which("git"):
+            self.skipTest("git not on PATH")
+        os.environ.pop("AQ_ONCALL_SIMULATE_WORKTREE", None)
+        src = self._make_source_repo()
+        before = self._tree_snapshot(src)
+        clone = Path(self.temp_dir) / "daemon-clone"
+        engine = OnCallDaemonEngine(repo_root=src, state_dir=self.state_dir, repairs_enabled=True,
+                                    clone_dir=clone, source_repo=src)
+        claim = self._admit_claim("f2d", "k-f2d", engine=engine)
+        wt = engine.create_isolated_worktree(claim)
+        self.assertTrue((wt / ".git").exists())
+        self.assertTrue((clone / ".git").exists())
+        self.assertEqual(self._tree_snapshot(src), before)  # no write into the owner repo
+        # refresh path: a second incident re-fetches into the same clone
+        claim2 = self._admit_claim("f2e", "k-f2e", engine=engine)
+        self.assertTrue((engine.create_isolated_worktree(claim2) / ".git").exists())
+        self.assertEqual(self._tree_snapshot(src), before)
+
+    def test_09e_clone_failure_is_typed(self) -> None:
+        os.environ.pop("AQ_ONCALL_SIMULATE_WORKTREE", None)
+        engine = OnCallDaemonEngine(repo_root=_REPO_ROOT, state_dir=self.state_dir,
+                                    repairs_enabled=True,
+                                    clone_dir=Path(self.temp_dir) / "c2",
+                                    source_repo=Path(self.temp_dir) / "does-not-exist")
+        claim = self._admit_claim("f2f", "k-f2f", engine=engine)
+        with self.assertRaises(WorktreeIsolationError):
+            engine.create_isolated_worktree(claim)
+        self.assertEqual(engine.storage.get_claim(claim.claim_id).state, "FAILED")
+
+    def test_09f_repairs_off_records_incident_without_worktree(self) -> None:
+        from types import SimpleNamespace
+        from unittest import mock
+        engine = OnCallDaemonEngine(repo_root=_REPO_ROOT, state_dir=self.state_dir,
+                                    repairs_enabled=False)
+        rec = SimpleNamespace(incident_id="f2g", source="svc", severity="HIGH",
+                              incident_class="CRASH", confidence=0.9, correlation_key="k-f2g",
+                              actionable=True, summary="s", suggested_lane="codex")
+        triage = SimpleNamespace(ingest_live_journal=lambda limit: [rec])
+        with mock.patch("oncalld_engine.subprocess.run") as run:
+            claims = engine.run_once(triage_engine=triage)
+        run.assert_not_called()
+        self.assertEqual(claims, [])
+        self.assertIsNotNone(engine.storage.get_incident("f2g"))
+        self.assertEqual(engine.storage.count_summary()["active_claims"], 0)
 
     def test_10_f3_reproduction_is_confined_or_deferred(self) -> None:
         import shutil as _sh

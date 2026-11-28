@@ -536,9 +536,21 @@ class OnCallDaemonEngine:
         self,
         repo_root: Optional[Path] = None,
         state_dir: Optional[Path] = None,
-        confidence_threshold: float = 0.70
+        confidence_threshold: float = 0.70,
+        repairs_enabled: Optional[bool] = None,
+        clone_dir: Optional[Path] = None,
+        source_repo: Optional[Path] = None,
     ) -> None:
         self.repo_root = (repo_root or _DEFAULT_REPO_ROOT).resolve()
+        # Repairs are opt-in: without it the daemon only records incidents (monitoring).
+        self.repairs_enabled = (os.getenv("AQ_ONCALL_REPAIRS") == "1"
+                                if repairs_enabled is None else repairs_enabled)
+        # Worktrees come from a daemon-owned clone so the owner checkout is never written.
+        clone_env = os.getenv("AQ_ONCALL_CLONE_DIR")
+        clone_choice = clone_dir or clone_env
+        self.clone_dir = Path(clone_choice).resolve() if clone_choice else None
+        source_env = os.getenv("AQ_ONCALL_SOURCE_REPO")
+        self.source_repo = Path(source_repo or source_env or self.repo_root).resolve()
         self.state_dir = (state_dir or _DEFAULT_STATE_DIR).resolve()
         self.confidence_threshold = confidence_threshold
         self.storage = OnCallStorage(self.state_dir / "oncall.db")
@@ -710,6 +722,30 @@ class OnCallDaemonEngine:
         self._release_incident(incident_id, status="ADMITTED", actor=actor,
                                action="requeue", note=note)
 
+    def ensure_clone(self) -> Path:
+        """Create or refresh the daemon-owned clone from the (read-only) source repo.
+
+        Local file fetch only: no network, no token. Fails closed with WorktreeIsolationError.
+        """
+        if self.clone_dir is None:
+            return self.repo_root
+        branch = os.getenv("AQ_ONCALL_SOURCE_BRANCH", "main")
+        try:
+            if not (self.clone_dir / ".git").exists():
+                self.clone_dir.parent.mkdir(parents=True, exist_ok=True)
+                subprocess.run(["git", "clone", "--no-hardlinks", "-q", str(self.source_repo),
+                                str(self.clone_dir)],
+                               check=True, capture_output=True, text=True, timeout=300)
+            subprocess.run(["git", "fetch", "-q", "origin", branch], cwd=str(self.clone_dir),
+                           check=True, capture_output=True, text=True, timeout=120)
+            subprocess.run(["git", "checkout", "-q", "--detach", "FETCH_HEAD"],
+                           cwd=str(self.clone_dir), check=True, capture_output=True, text=True,
+                           timeout=60)
+        except (subprocess.CalledProcessError, OSError, subprocess.TimeoutExpired) as err:
+            detail = getattr(err, "stderr", None) or str(err)
+            raise WorktreeIsolationError(f"Clone refresh failed for {self.clone_dir}: {detail}") from err
+        return self.clone_dir
+
     def create_isolated_worktree(self, claim: RemediationClaim) -> Path:
         """Create the git worktree for a claim. Fails closed: no plain-directory fallback."""
         wt_dir = Path(claim.worktree_path)
@@ -729,7 +765,7 @@ class OnCallDaemonEngine:
                 subprocess.run(
                     ["git", "-c", "core.hooksPath=/dev/null", "worktree", "add", "-q",
                      "-b", claim.worktree_branch, str(wt_dir), "HEAD"],
-                    cwd=str(self.repo_root),
+                    cwd=str(self.ensure_clone()),
                     check=True,
                     capture_output=True,
                     text=True,
@@ -965,6 +1001,10 @@ class OnCallDaemonEngine:
                     continue
                 incident = self.admit_incident(rec)
                 if incident:
+                    if not self.repairs_enabled:
+                        logger.info("Incident %s recorded; repairs disabled (monitoring only)",
+                                    incident.incident_id)
+                        continue
                     lane = getattr(rec, "suggested_lane", "codex") or "codex"
                     try:
                         claim = self.claim_incident(incident.incident_id, claimant_lane=lane)
