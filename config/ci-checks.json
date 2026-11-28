@@ -2335,9 +2335,13 @@
         "scripts/testing/test-source-trust.py",
         "config/ci-checks.json"
       ],
-      "needs": ["python3"],
+      "needs": [
+        "python3"
+      ],
       "ci_workflow": ".github/workflows/test.yml#manifest-tests",
-      "tests": ["scripts/testing/test-source-trust.py"]
+      "tests": [
+        "scripts/testing/test-source-trust.py"
+      ]
     },
     {
       "id": "sweep-tracker-claims",
@@ -2520,6 +2524,59 @@
       "needs": [
         "python3",
         "bash"
+      ],
+      "ci_workflow": ".github/workflows/test.yml#manifest-tests"
+    },
+    {
+      "id": "tier0-stale-known-failing-gate",
+      "cmd": "scripts/testing/test-tier0-stale-known-failing.py",
+      "paths": [
+        "scripts/governance/tier0.d/check-stale-known-failing.py",
+        "scripts/governance/tier0.d/check-host-only-tests.py",
+        "scripts/testing/test-tier0-stale-known-failing.py",
+        "scripts/governance/lib/clean_git_env.py",
+        "config/ci-checks.json"
+      ],
+      "needs": [
+        "python3"
+      ],
+      "ci_workflow": ".github/workflows/test.yml#manifest-tests"
+    },
+    {
+      "id": "claude-dispatch-payload-safety-test",
+      "cmd": "scripts/testing/test-claude-dispatch-payload-safety.py",
+      "paths": [
+        "scripts/testing/test-claude-dispatch-payload-safety.py",
+        "config/ci-checks.json"
+      ],
+      "needs": [
+        "python3"
+      ],
+      "ci_workflow": ".github/workflows/test.yml#manifest-tests"
+    },
+    {
+      "id": "delegate-to-claude-lifecycle-test",
+      "cmd": "scripts/testing/test-delegate-to-claude-lifecycle.py",
+      "paths": [
+        "scripts/testing/test-delegate-to-claude-lifecycle.py",
+        "scripts/ai/delegate-to-claude",
+        "config/ci-checks.json"
+      ],
+      "needs": [
+        "python3",
+        "bash"
+      ],
+      "ci_workflow": ".github/workflows/test.yml#manifest-tests"
+    },
+    {
+      "id": "qa-provider-probe-lifecycle-test",
+      "cmd": "scripts/testing/test-qa-provider-probe-lifecycle.py",
+      "paths": [
+        "scripts/testing/test-qa-provider-probe-lifecycle.py",
+        "config/ci-checks.json"
+      ],
+      "needs": [
+        "python3"
       ],
       "ci_workflow": ".github/workflows/test.yml#manifest-tests"
     }
@@ -2806,11 +2863,6 @@
       "reason": "host-only: needs a live local service (switchboard/dashboard/coordinator/AIDB); last output: One or more MCP health checks failed."
     },
     {
-      "script": "scripts/testing/test-claude-dispatch-payload-safety.py",
-      "class": "known-failing",
-      "reason": "fails on main (rc=1): FAILED (failures=2), tracked in backlog"
-    },
-    {
       "script": "scripts/testing/test-codex-config-reconcile.py",
       "class": "sandbox-env",
       "reason": "host-only: needs the installed Codex CLI (`codex mcp list --json`) to validate the rendered config; the runner has no Codex and an unpinned npm install would test a different version"
@@ -2941,11 +2993,6 @@
       "reason": "fails on main (rc=1): AssertionError: expected delegate handler to read timeout slack from env, tracked in backlog"
     },
     {
-      "script": "scripts/testing/test-delegate-to-claude-lifecycle.py",
-      "class": "known-failing",
-      "reason": "fails on main (rc=1): FAILED (failures=6, errors=1), tracked in backlog"
-    },
-    {
       "script": "scripts/testing/test-delegate.py",
       "class": "live-service",
       "reason": "host-only: needs a live local service (switchboard/dashboard/coordinator/AIDB); POSTs to the coordinator at 127.0.0.1:8003 with the host secret /run/secrets/hybrid_coordinator_api_key"
@@ -3013,7 +3060,7 @@
     {
       "script": "scripts/testing/test-llm-router-integration.py",
       "class": "known-failing",
-      "reason": "known-failing (2026-11-07): imports and config now load (path + AI_STRICT_ENV fixed), but the script only prints PASS/FAIL and exits 0, so it cannot gate; its Test 2 expects a 'free' tier for 'implement a new REST API endpoint' while the router now returns local (visible '✗ FAIL'). Needs a routing-policy decision, then conversion to real asserts"
+      "reason": "known-failing (2026-11-07): imports and config now load (path + AI_STRICT_ENV fixed), but the script only prints PASS/FAIL and exits 0, so it cannot gate; the script now exits 1 on a routing mismatch and writes its metrics DB to a temp dir; its Test 2 expects a 'free' tier for 'implement a new REST API endpoint' while the router now returns local (visible '✗ FAIL'). Needs a routing-policy decision, then conversion to real asserts"
     },
     {
       "script": "scripts/testing/test-local-agent-offline-resilience.py",
@@ -3081,11 +3128,6 @@
       "reason": "host-only: needs a live local service (switchboard/dashboard/coordinator/AIDB); last output: Hybrid injection probe failed (HTTP 000)"
     },
     {
-      "script": "scripts/testing/test-qa-provider-probe-lifecycle.py",
-      "class": "known-failing",
-      "reason": "fails on main (rc=1): FAILED (failures=1, errors=1), tracked in backlog"
-    },
-    {
       "script": "scripts/testing/test-quality-system-health.py",
       "class": "live-service",
       "reason": "host-only: needs a live local service (switchboard/dashboard/coordinator/AIDB); last output: ============================================================"
@@ -3102,8 +3144,12 @@
     },
     {
       "script": "scripts/testing/test-scope-gate.py",
-      "class": "known-failing",
-      "reason": "fails on main (rc=1): FAILED (failures=1), tracked in backlog"
+      "class": "sandbox-env",
+      "reason": "host-only: builds/uses the harness-contracts binary via `nix build` and runs `cargo test`; the CI runner has neither the nix store output nor a pinned cargo toolchain for this",
+      "needs": [
+        "nix",
+        "cargo"
+      ]
     },
     {
       "script": "scripts/testing/test-security-contract-gates.py",
