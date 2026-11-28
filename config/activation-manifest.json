@@ -95,26 +95,20 @@
     {
       "feature": "durable work ledger CLI (aq-ledger, S1 core)",
       "entrypoint": "scripts/ai/aq-ledger",
-      "live_caller": "scripts/ai/aq-ledger",
+      "live_caller": "scripts/ai/delegate-to-codex",
       "enable": null,
       "health_signal": "scripts/ai/aq-ledger:_run",
-      "deferral": {
-        "date": "2026-11-26",
-        "reason": "The S1 core library and CLI land first; nothing in a production path calls them yet. Delegation wrapper writes and the tier0 ledger check land in S1b immediately after S5 merges.",
-        "tracking": ".agents/plans/agent-work-durability-20261119/DESIGN.md S1; docs/harness-first/evidence/2026-11-26-s1-work-ledger.md"
-      }
+      "state": "live: delegate-to-{codex,gemini,local,claude} record dispatch lifecycle entries under .agents/delegation/ledger/<id>.jsonl",
+      "observed_by": "scripts/governance/tier0.d/check-work-ledger.sh; scripts/ai/aq-ledger list --json; scripts/testing/test-work-ledger.py"
     },
     {
       "feature": "aq-greenlight isolated merged-tree gates",
       "entrypoint": "scripts/ai/aq-greenlight",
-      "live_caller": "scripts/ai/aq-greenlight",
+      "live_caller": ".githooks/pre-commit",
       "enable": null,
       "health_signal": "scripts/ai/aq-greenlight:main",
-      "deferral": {
-        "date": "2026-11-26",
-        "reason": "The G1 CLI ships first; production integration follows in the G2 pre-commit hook and G3 land-runner wiring.",
-        "tracking": ".agents/plans/greenlight-gating-20261119/DESIGN.md G1-G3; docs/harness-first/evidence/2026-11-26-g1-greenlight.md"
-      }
+      "state": "live: .githooks/pre-commit verifies exact-tree greenlight records before focused-CI checks while always running security/structure guards",
+      "observed_by": "$XDG_STATE_HOME/aq/greenlight/audit.jsonl; scripts/ai/aq-greenlight --verify; scripts/testing/test-aq-greenlight.py"
     }
   ]
 }

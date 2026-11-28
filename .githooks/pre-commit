@@ -298,6 +298,16 @@ EOF
   return 0
 }
 
+accept_greenlight() {
+  # Succeeds only when aq-greenlight attests this exact staged tree, parent and a fresh base.
+  # Any other outcome (disabled, no record, edited, stale, error) means: run focused CI.
+  [[ "${AQ_GREENLIGHT_DISABLE:-0}" != "1" ]] || return 1
+  local cli="${repo_root}/scripts/ai/aq-greenlight"
+  [[ -x "${cli}" ]] || return 1
+  git rev-parse --verify --quiet "${AQ_GREENLIGHT_BASE_REF:-origin/main}^{commit}" >/dev/null || return 1
+  python3 "${cli}" --verify --audit "${repo_root}"
+}
+
 run_whitespace_and_conflict_check() {
   # Blocks trailing whitespace, conflict markers, and blank lines at EOF in staged content.
 
@@ -394,6 +404,9 @@ run_syntax_check
 run_whitespace_and_conflict_check
 run_repo_structure_validation
 run_migration_governance_checks
-run_focused_ci_checks
+# A greenlight replaces only the slow focused-CI step; every guard above always runs.
+if ! accept_greenlight; then
+  run_focused_ci_checks
+fi
 
 exit 0

@@ -204,15 +204,11 @@ def _ensure_dir(directory: Path) -> None:
         _fsync_dir(directory.parent)
 
 
-def _quarantine_torn_tail(fd: int, path: Path) -> None:
+def _quarantine_torn_tail(fd: int, path: Path, data: bytes, offset: int) -> None:
     """Move a torn tail to <file>.torn so the next append cannot turn it into mid-file corruption.
 
     Caller holds LOCK_EX. The fragment is made durable in the sidecar before the ledger is truncated.
     """
-    data = _read_all(fd)
-    offset = _torn_offset(data)
-    if offset is None:
-        return
     side = os.open(f"{path}.torn", os.O_WRONLY | os.O_APPEND | os.O_CREAT | os.O_NOFOLLOW, 0o600)
     try:
         os.fchmod(side, 0o600)
@@ -269,13 +265,17 @@ def append_event(dispatch_id: str, event: str, *, delegation_dir: str | os.PathL
         try:
             # Stamped under the lock so file order and time order agree.
             record["at"] = datetime.now(timezone.utc).strftime(TIME_FORMAT)
-            os.fchmod(fd, 0o600)
-            _quarantine_torn_tail(fd, path)
-            empty = os.fstat(fd).st_size == 0
+            data = _read_all(fd)
+            torn = _torn_offset(data)
+            # Refusals are decided on the post-quarantine size so a refused append changes nothing.
+            empty = (len(data) if torn is None else torn) == 0
             if event == "init" and not empty:
                 raise LedgerError(f"ledger entry already exists: {dispatch_id!r}")
             if event != "init" and empty:
                 raise LedgerError(f"ledger entry {dispatch_id!r} has no init record")
+            os.fchmod(fd, 0o600)
+            if torn is not None:
+                _quarantine_torn_tail(fd, path, data, torn)
             line = json.dumps(record, ensure_ascii=False, separators=(",", ":")) + "\n"
             _write_all(fd, line.encode("utf-8", errors="replace"))
             os.fsync(fd)
@@ -401,13 +401,14 @@ def reduce_ledger_file(path: str | os.PathLike[str], *, current_boot_id: str | N
 def list_entries(delegation_dir: str | os.PathLike[str] | None = None, *, current_boot_id: str | None = None,
                  now: datetime | None = None, window_s: int | None = None) -> list[dict[str, Any]]:
     """Reduce every entry. A missing ledger directory is empty; an unreadable one raises."""
+    # Before the directory check: bad configuration must fail the same way with or without entries.
+    window_s = heartbeat_window_s() if window_s is None else window_s
     try:
         # iterdir, not glob: glob hides permission errors, which would make `check` pass blind.
         paths = sorted(p for p in ledger_dir(delegation_dir).iterdir() if p.name.endswith(".jsonl"))
     except FileNotFoundError:
         return []
     current_boot_id = read_boot_id() if current_boot_id is None else current_boot_id
-    window_s = heartbeat_window_s() if window_s is None else window_s
     entries: list[dict[str, Any]] = []
     for path in paths:
         try:
