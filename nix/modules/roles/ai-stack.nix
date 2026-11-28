@@ -2159,7 +2159,7 @@ in {
         wants = ["ai-hybrid-coordinator.service"];
         # bwrap: execution-cell checks (0.10.44) need it; it was only in the user
         # profile, so the unit reported skipped-no-bwrap and failed.
-        path = [pkgs.bubblewrap];
+        path = [pkgs.bubblewrap pkgs.git];
         serviceConfig = {
           Type = "oneshot";
           User = cfg.primaryUser;
