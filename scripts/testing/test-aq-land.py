@@ -8,6 +8,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+import unittest.mock
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 TOOL = ROOT / "scripts/ai/aq-land"
@@ -1109,6 +1110,32 @@ class DepFastLane(Base):
         self.assertNotIn("fast-lane", r.stdout)
         self.assertEqual(self.cp().get("fast_lane", ""), "")
         self.assertNotIn("Upstream changes reviewed", (self.S / "prompt-gemini.txt").read_text())
+
+    def test_default_criteria_reach_every_reviewer_prompt(self):
+        self.dep_branch()
+        self.cfg({"gemini": {"mode": "ok"}, "codex": {"mode": "ok"}})
+        self.land("--author-lane", "claude", expect=0)
+        text = (self.S / "prompt-gemini.txt").read_text()
+        self.assertIn("Fails-without-the-fix", text)
+        self.assertIn("Claims cite measurements", text)
+        self.assertNotIn("Upstream changes reviewed", text)
+
+    def test_missing_default_criteria_file_warns_and_falls_back(self):
+        # a copy of the tool in a tree without config/review-criteria/default.md (ROOT is derived from the tool's location)
+        tree = self.S / "tool-tree"
+        (tree / "scripts" / "ai").mkdir(parents=True)
+        (tree / "scripts" / "ai" / "lib").symlink_to(ROOT / "scripts/ai/lib")
+        (tree / "scripts" / "governance").symlink_to(ROOT / "scripts/governance")
+        copy = tree / "scripts" / "ai" / "aq-land"
+        copy.write_text(TOOL.read_text())
+        self.dep_branch()
+        self.cfg({"gemini": {"mode": "ok"}, "codex": {"mode": "ok"}})
+        with unittest.mock.patch.object(sys.modules[__name__], "TOOL", copy):
+            r = self.land("--author-lane", "claude", expect=0)
+        self.assertIn("WARN default review criteria unreadable", r.stdout)
+        text = (self.S / "prompt-gemini.txt").read_text()
+        self.assertIn("Check correctness, tests, and security of the change.", text)
+        self.assertNotIn("Fails-without-the-fix", text)
 
     def test_non_dependabot_author_is_not_fast_laned(self):
         self.dep_branch()

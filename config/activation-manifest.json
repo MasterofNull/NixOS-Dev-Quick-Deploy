@@ -125,6 +125,13 @@
       "health_signal": "scripts/ai/aq-greenlight:main",
       "state": "live: .githooks/pre-commit verifies exact-tree greenlight records before focused-CI checks while always running security/structure guards",
       "observed_by": "$XDG_STATE_HOME/aq/greenlight/audit.jsonl; scripts/ai/aq-greenlight --verify; scripts/testing/test-aq-greenlight.py"
+    },
+    {
+      "feature": "aq-main-sync live main checkout fast-forward timer",
+      "entrypoint": "scripts/maintenance/aq-main-sync",
+      "live_caller": "nix/modules/roles/ai-stack.nix",
+      "enable": "mySystem.deployment.mainSync.enable",
+      "health_signal": "scripts/maintenance/aq-main-sync:synced"
     }
   ]
 }
