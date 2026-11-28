@@ -65,6 +65,7 @@ Wider run: 50/53 passed initially. Two failures were the standalone Claude tests
 Follow-up fix (PR #892 CI ShellCheck + Gemini review follow-up, `claude-20261127-174552-po4eqs`):
 - Quoted `_ledger_status="done"` in all four `scripts/ai/delegate-to-{codex,gemini,local,claude}` wrappers to satisfy ShellCheck SC1010 (`shellcheck -S warning` exit 0 across all 4 wrappers).
 - Added `registry.exists()` guard in `scripts/testing/test-work-ledger.py` background polling loop (`Ran 41 tests in 27.648s  OK`, `ruff`/`basedpyright` 0).
+- Root-cause fix for CI failure in `scripts/testing/test-persona-fact-files.py::SessionStart::test_delegate_scripts_export_aq_instance_lane`: the test truncated each wrapper with a hardcoded `splitlines()[:78]`, which cut off `export AQ_INSTANCE_LANE` in `delegate-to-codex` and `delegate-to-local` as their preambles grew. It now takes the head up to the line index of `export AQ_INSTANCE_LANE="{lane}"`. `python3 scripts/testing/test-persona-fact-files.py`: `Ran 50 tests ... OK`.
 
 ## Rollback Plan
 
