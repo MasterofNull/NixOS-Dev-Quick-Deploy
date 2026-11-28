@@ -11,6 +11,11 @@ from pathlib import Path
 # Test env: no live service env vars required (config.Config strict-env check is a deploy-time guard).
 import os
 os.environ.setdefault("AI_STRICT_ENV", "false")
+# get_router() writes routing_metrics.db; keep it out of the repo-root cwd.
+import tempfile
+_data_dir = tempfile.mkdtemp(prefix="llm-router-test-")
+os.environ.setdefault("AQ_ROUTING_METRICS_DB_PATH", str(Path(_data_dir) / "routing_metrics.db"))
+FAILED = []
 
 # Add hybrid-coordinator to path
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "ai-stack/mcp-servers/hybrid-coordinator"))
@@ -30,6 +35,7 @@ try:
     print(f"  Model: {model}")
     print(f"  Expected: local tier, llama-cpp-local")
     print(f"  ✓ PASS\n" if tier == AgentTier.LOCAL else f"  ✗ FAIL\n")
+    FAILED.extend([] if tier == AgentTier.LOCAL else ["test1"])
 
     # Test 2: LLM Router - Medium complexity (should route to free)
     print("Test 2: Medium complexity task routing")
@@ -39,6 +45,7 @@ try:
     print(f"  Model: {model}")
     print(f"  Expected: free tier, qwen-coder or gemini-free")
     print(f"  ✓ PASS\n" if tier == AgentTier.FREE else f"  ✗ FAIL\n")
+    FAILED.extend([] if tier == AgentTier.FREE else ["test2"])
 
     # Test 3: LLM Router - High complexity (should route to paid)
     print("Test 3: High complexity task routing")
@@ -48,6 +55,7 @@ try:
     print(f"  Model: {model}")
     print(f"  Expected: paid tier, claude-sonnet")
     print(f"  ✓ PASS\n" if tier == AgentTier.PAID else f"  ✗ FAIL\n")
+    FAILED.extend([] if tier == AgentTier.PAID else ["test3"])
 
     # Test 4: Model Coordinator - With tier routing enabled
     print("Test 4: Model coordinator with tier routing")
@@ -107,6 +115,9 @@ try:
     print("  ✓ Tier-based routing functional")
     print("  ✓ Model coordinator integration working")
     print("  ✓ Cost optimization enabled")
+    if FAILED:
+        print(f"ERROR: routing assertion(s) failed: {', '.join(FAILED)}")
+        sys.exit(1)
 
 except ImportError as e:
     print(f"ERROR: Failed to import required modules: {e}")

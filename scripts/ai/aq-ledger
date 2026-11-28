@@ -1,0 +1,168 @@
+#!/usr/bin/env python3
+"""aq-ledger: write and read the durable per-dispatch work ledger (internal helper).
+
+Exit codes: 0 ok; 1 `check` found entries needing attention; 2 refused or failed operation.
+"""
+from __future__ import annotations
+
+try:  # aq-usage-hook
+    import importlib.util as _aqu, os as _aqo
+    _aqs = _aqu.spec_from_file_location("aq_usage", _aqo.path.join(_aqo.path.dirname(_aqo.path.realpath(__file__)), "lib", "aq_usage.py"))
+    _aqm = _aqu.module_from_spec(_aqs); _aqs.loader.exec_module(_aqm); _aqm.record(__file__, __name__)  # pyright: ignore[reportArgumentType, reportOptionalMemberAccess]
+except Exception:
+    pass
+import argparse
+import json
+import sys
+from pathlib import Path
+from typing import Any
+
+sys.path.insert(0, str(Path(__file__).resolve().parent / "lib"))
+
+import work_ledger as wl  # noqa: E402
+
+
+def _clean(value: object) -> str:
+    """Printable one-line form: ledger text must not drive the terminal."""
+    if value is None:
+        return "-"
+    return "".join(c if c.isprintable() else "?" for c in str(value))
+
+
+def _flags(entry: dict[str, Any]) -> str:
+    return ",".join(k for k in ("torn_tail", "stale_heartbeat") if entry[k])
+
+
+def _summary(entry: dict[str, Any]) -> str:
+    parts = [entry["id"], entry["status"], entry["lane"], entry["role"], _flags(entry) or None, entry["task"]]
+    return "  ".join(_clean(p) for p in parts)
+
+
+def _positive_int(text: str) -> int:
+    try:
+        value = int(text)
+    except ValueError:
+        value = 0
+    if value <= 0:
+        raise argparse.ArgumentTypeError(f"must be a positive integer, got {text!r}")
+    return value
+
+
+def _parser() -> argparse.ArgumentParser:
+    # SUPPRESS keeps a subcommand's unset default from overwriting the global value.
+    common = argparse.ArgumentParser(add_help=False)
+    common.add_argument("--delegation-dir", default=argparse.SUPPRESS, metavar="PATH",
+                        help="delegation directory (default: AQ_DELEGATION_DIR or the main checkout's)")
+    parser = argparse.ArgumentParser(prog="aq-ledger", description="Durable per-dispatch work ledger.",
+                                     parents=[common])
+    sub = parser.add_subparsers(dest="command", required=True)
+
+    def command(name: str, help_text: str) -> argparse.ArgumentParser:
+        p = sub.add_parser(name, help=help_text, parents=[common])
+        if name in wl.EVENT_FIELDS:
+            p.add_argument("--pid", type=_positive_int,
+                           help="worker process the event describes (default: this CLI process)")
+        return p
+
+    p = command("init", "create an entry")
+    for flag in ("--id", "--lane", "--role", "--task"):
+        p.add_argument(flag, required=True)
+    for flag in ("--model", "--parent", "--brief-path", "--worktree", "--branch", "--findings-path"):
+        p.add_argument(flag)
+    p.add_argument("--pr", type=int)
+    p.add_argument("--resume-policy", choices=wl.RESUME_POLICIES, default="confirm")
+    p.add_argument("--status", choices=wl.INIT_STATUSES, default="running")
+
+    p = command("step", "record a step")
+    p.add_argument("--id", required=True)
+    p.add_argument("--name", required=True)
+    p.add_argument("--status", required=True, choices=wl.STEP_STATUSES)
+    p.add_argument("--artifact")
+
+    p = command("heartbeat", "record proof of life")
+    p.add_argument("--id", required=True)
+    p.add_argument("--detail")
+
+    p = command("status", "change entry status")
+    p.add_argument("--id", required=True)
+    p.add_argument("--status", required=True, choices=wl.STATUSES)
+    p.add_argument("--reason")
+
+    p = command("show", "show one entry")
+    p.add_argument("id")
+    p.add_argument("--json", action="store_true")
+
+    p = command("list", "list entries")
+    p.add_argument("--unfinished", action="store_true", help="exclude done, failed and abandoned")
+    p.add_argument("--json", action="store_true")
+
+    p = command("check", "fail on corrupt or stale entries")
+    p.add_argument("--json", action="store_true")
+    p.add_argument("--warn-only", action="store_true", help="report problems but exit 0")
+    return parser
+
+
+def _run(args: argparse.Namespace) -> int:
+    delegation_dir = getattr(args, "delegation_dir", None)
+    if args.command in wl.EVENT_FIELDS:
+        fields = {k: v for k, v in vars(args).items() if k in wl.EVENT_FIELDS[args.command]}
+        fields.pop("id", None)
+        wl.append_event(args.id, args.command, delegation_dir=delegation_dir, pid=args.pid, **fields)
+        return 0
+
+    if args.command == "show":
+        path = wl.ledger_path(args.id, delegation_dir)
+        try:
+            entry = wl.reduce_ledger_file(path)
+        except FileNotFoundError:
+            raise wl.LedgerError(f"no ledger entry for {args.id!r}") from None
+        if args.json:
+            print(json.dumps(entry, indent=2))
+            return 0
+        for key, value in entry.items():
+            if key not in ("steps", "warnings"):
+                print(f"{key}: {_clean(value)}")
+        for step in entry["steps"]:
+            print("step: " + "  ".join(_clean(step[k]) for k in ("name", "status", "at", "artifact")))
+        for warning in entry["warnings"]:
+            print(f"warning: {_clean(warning)}")
+        return 0
+
+    entries = wl.list_entries(delegation_dir)
+    if args.command == "list":
+        if args.unfinished:
+            entries = [e for e in entries if e["status"] not in wl.TERMINAL_STATUSES]
+        if args.json:
+            print(json.dumps(entries, indent=2))
+        else:
+            for entry in entries:
+                print(_summary(entry))
+        return 0
+
+    problems = [e for e in entries if e["status"] == "needs-attention" or e["stale_heartbeat"]]
+    ok = not problems
+    if args.json:
+        keys = ("id", "status", "stale_heartbeat", "torn_tail", "warnings", "path")
+        print(json.dumps({"ok": ok, "checked": len(entries), "warn_only": args.warn_only,
+                          "problems": [{k: e[k] for k in keys} for e in problems]}, indent=2))
+    else:
+        for entry in problems:
+            print(_summary(entry))
+            for warning in entry["warnings"]:
+                print(f"  warning: {_clean(warning)}")
+        verdict = "PASS" if ok else ("WARN" if args.warn_only else "FAIL")
+        print(f"aq-ledger check: {verdict} ({len(entries)} entries, {len(problems)} need attention)")
+    return 0 if ok or args.warn_only else 1
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = _parser().parse_args(argv)
+    try:
+        return _run(args)
+    except (wl.LedgerError, OSError) as exc:
+        print(f"aq-ledger: ERROR: {exc}", file=sys.stderr)
+        return 2
+
+
+if __name__ == "__main__":
+    sys.exit(main())
