@@ -831,6 +831,7 @@
         "scripts/ai/aq-knowledge-import.sh",
         "scripts/ai/aq-ledger",
         "scripts/ai/lib/work_ledger.py",
+        "scripts/governance/tier0.d/check-work-ledger.sh",
         "scripts/testing/test-work-ledger.py",
         "scripts/testing/test-aq-a2a-audit.py",
         "scripts/testing/test-aq-context-packet.py",
@@ -1922,6 +1923,7 @@
         "scripts/testing/test-prsi-queue-path-ssot.py",
         "scripts/testing/test-prsi-queue-single-writer.py",
         "scripts/testing/test-prsi-rsi-intake.py",
+        "scripts/testing/test-prsi-sync-idempotent.py",
         "scripts/testing/test-python-tooling-policy.py",
         "scripts/testing/test-qa-evidence-store.py",
         "scripts/testing/test-qa-host-mode.py",
@@ -2049,6 +2051,7 @@
         "scripts/testing/test-prsi-queue-path-ssot.py",
         "scripts/testing/test-prsi-queue-single-writer.py",
         "scripts/testing/test-prsi-rsi-intake.py",
+        "scripts/testing/test-prsi-sync-idempotent.py",
         "scripts/testing/test-python-tooling-policy.py",
         "scripts/testing/test-qa-evidence-store.py",
         "scripts/testing/test-qa-host-mode.py",
@@ -2580,6 +2583,33 @@
       ],
       "needs": [
         "python3"
+      ],
+      "ci_workflow": ".github/workflows/test.yml#manifest-tests"
+    },
+    {
+      "id": "bash-tool-policy-test",
+      "cmd": "scripts/testing/test-bash-tool-policy.py",
+      "paths": [
+        "scripts/ai/lib/bash_tool_policy.py",
+        "scripts/ai/aq-bash-tool-policy-hook",
+        "scripts/testing/test-bash-tool-policy.py",
+        "config/ci-checks.json"
+      ],
+      "needs": [
+        "python3"
+      ],
+      "ci_workflow": ".github/workflows/test.yml#manifest-tests"
+    },
+    {
+      "id": "health-monitor-stale-checkout",
+      "cmd": "scripts/testing/test-health-monitor-stale-checkout.py",
+      "paths": [
+        "scripts/health/ai-stack-health-monitor.py",
+        "scripts/testing/test-health-monitor-stale-checkout.py"
+      ],
+      "needs": [
+        "python3",
+        "git"
       ],
       "ci_workflow": ".github/workflows/test.yml#manifest-tests"
     }

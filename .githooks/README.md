@@ -77,7 +77,7 @@ SKIP_PRE_PUSH_LINT=true git push
 Recommended sync workflow when collaborating from multiple sessions/machines:
 
 ```bash
-git pull --rebase --autostash
+git pull --rebase   # commit or WIP-commit first; no --autostash (shared stash stack)
 ```
 
 ## Automatic Fixes

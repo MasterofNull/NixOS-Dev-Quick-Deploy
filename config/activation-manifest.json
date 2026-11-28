@@ -84,28 +84,31 @@
       "health_signal": "scripts/testing/harness_qa/phases/phase0.py:_check_baseline_snapshot"
     },
     {
+      "feature": "bash tool policy PreToolUse hook (deny shell-native cat/find/grep/ls in Bash tool calls, 2026-11-25)",
+      "entrypoint": "scripts/ai/aq-bash-tool-policy-hook",
+      "live_caller": ".claude/settings.json",
+      "enable": null,
+      "health_signal": "scripts/ai/lib/bash_tool_policy.py:evaluate",
+      "state": "ON: enabled via the Claude Code PreToolUse Bash hook in .claude/settings.json (python3 $CLAUDE_PROJECT_DIR/scripts/ai/aq-bash-tool-policy-hook). Activation note: live after merge + main checkout sync. Intervention/kill switch: AQ_BASH_POLICY=0 set in the environment that launches the agent (owner act, environment-level only; a per-call `AQ_BASH_POLICY=0 cmd` prefix does not bypass); hook errors fail open. Dated 2026-11-25.",
+      "observed_by": "validation test scripts/testing/test-bash-tool-policy.py; telemetry .agents/telemetry/bash-tool-policy.jsonl (override path AQ_BASH_POLICY_LOG)"
+    },
+    {
       "feature": "durable work ledger CLI (aq-ledger, S1 core)",
       "entrypoint": "scripts/ai/aq-ledger",
-      "live_caller": "scripts/ai/aq-ledger",
+      "live_caller": "scripts/ai/delegate-to-codex",
       "enable": null,
       "health_signal": "scripts/ai/aq-ledger:_run",
-      "deferral": {
-        "date": "2026-11-26",
-        "reason": "The S1 core library and CLI land first; nothing in a production path calls them yet. Delegation wrapper writes and the tier0 ledger check land in S1b immediately after S5 merges.",
-        "tracking": ".agents/plans/agent-work-durability-20261119/DESIGN.md S1; docs/harness-first/evidence/2026-11-26-s1-work-ledger.md"
-      }
+      "state": "live: delegate-to-{codex,gemini,local,claude} record dispatch lifecycle entries under .agents/delegation/ledger/<id>.jsonl",
+      "observed_by": "scripts/governance/tier0.d/check-work-ledger.sh; scripts/ai/aq-ledger list --json; scripts/testing/test-work-ledger.py"
     },
     {
       "feature": "aq-greenlight isolated merged-tree gates",
       "entrypoint": "scripts/ai/aq-greenlight",
-      "live_caller": "scripts/ai/aq-greenlight",
+      "live_caller": ".githooks/pre-commit",
       "enable": null,
       "health_signal": "scripts/ai/aq-greenlight:main",
-      "deferral": {
-        "date": "2026-11-26",
-        "reason": "The G1 CLI ships first; production integration follows in the G2 pre-commit hook and G3 land-runner wiring.",
-        "tracking": ".agents/plans/greenlight-gating-20261119/DESIGN.md G1-G3; docs/harness-first/evidence/2026-11-26-g1-greenlight.md"
-      }
+      "state": "live: .githooks/pre-commit verifies exact-tree greenlight records before focused-CI checks while always running security/structure guards",
+      "observed_by": "$XDG_STATE_HOME/aq/greenlight/audit.jsonl; scripts/ai/aq-greenlight --verify; scripts/testing/test-aq-greenlight.py"
     },
     {
       "feature": "aq-main-sync live main checkout fast-forward timer",

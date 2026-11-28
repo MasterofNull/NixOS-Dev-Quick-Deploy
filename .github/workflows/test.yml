@@ -616,6 +616,7 @@ jobs:
             --only sweep-tracker-claims-test \
             --only source-trust-tests \
             --only pm-tracker-owner-acceptance \
+            --only health-monitor-stale-checkout \
             --only check-workflow-masks-test \
             --only tier0-gate-placement-tests \
             --only gate-lane-findings-tests \
@@ -640,6 +641,7 @@ jobs:
             --only delegate-sleep-inhibit \
             --only mobility-sleep-resilience \
             --only ci-test-coverage-gate \
+            --only bash-tool-policy-test \
             --only tier0-host-only-tests-gate \
             --only tier0-stale-known-failing-gate \
             --only claude-dispatch-payload-safety-test \

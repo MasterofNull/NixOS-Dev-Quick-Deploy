@@ -2159,7 +2159,7 @@ in {
         wants = ["ai-hybrid-coordinator.service"];
         # bwrap: execution-cell checks (0.10.44) need it; it was only in the user
         # profile, so the unit reported skipped-no-bwrap and failed.
-        path = [pkgs.bubblewrap];
+        path = [pkgs.bubblewrap pkgs.git];
         serviceConfig = {
           Type = "oneshot";
           User = cfg.primaryUser;
@@ -2671,7 +2671,10 @@ in {
         description = "Dispatch PRSI when a new incident is recorded";
         wantedBy = ["multi-user.target"];
         pathConfig = {
-          PathChanged = "${mutableRsiDir}/rsi-incidents.json";
+          # Marker rewritten only when an incident is newly opened (rsi_lifecycle.failure). The ledger
+          # itself is rewritten every ~25s by health-spider count/last_seen bumps, which wedged this path
+          # in unit-start-limit-hit (2026-11-25). The 5-minute timer remains the lost-event backstop.
+          PathChanged = "${mutableRsiDir}/rsi-incidents.new";
           Unit = "ai-prsi-rsi-dispatch.service";
         };
       };
