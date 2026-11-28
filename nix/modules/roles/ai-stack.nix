@@ -2628,7 +2628,10 @@ in {
         description = "Dispatch PRSI when a new incident is recorded";
         wantedBy = ["multi-user.target"];
         pathConfig = {
-          PathChanged = "${mutableRsiDir}/rsi-incidents.json";
+          # Marker rewritten only when an incident is newly opened (rsi_lifecycle.failure). The ledger
+          # itself is rewritten every ~25s by health-spider count/last_seen bumps, which wedged this path
+          # in unit-start-limit-hit (2026-11-25). The 5-minute timer remains the lost-event backstop.
+          PathChanged = "${mutableRsiDir}/rsi-incidents.new";
           Unit = "ai-prsi-rsi-dispatch.service";
         };
       };
