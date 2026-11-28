@@ -102,7 +102,9 @@ class Fixture:
         return {"AQ_BASELINE_ROOT": str(self.root), "AQ_DELEGATION_DIR": str(self.deleg),
                 "AQ_REPORT_LATEST_JSON": str(self.report), "AQ_BASELINE_LEANCTX_JSON": str(self.leanctx),
                 "AQ_BASELINE_NOW": now, "TELEMETRY_DIR": str(self.root / "telemetry"),
-                "RSI_STATE_DIR": str(self.root / "rsi-state"), **self.extra}
+                "RSI_STATE_DIR": str(self.root / "rsi-state"),
+                "AQ_LAND_QUEUE_DIR": str(self.deleg / "outputs" / "aq-land-queue"),  # pinned: a caller's env must not reach live paths
+                "AQ_BASH_POLICY_LOG": str(self.root / ".agents" / "telemetry" / "bash-tool-policy.jsonl"), **self.extra}
 
 
 @contextlib.contextmanager
@@ -753,8 +755,41 @@ def test_duplicate_reviews_per_head_counts_excess_runs_per_lane() -> None:
             _rev("r5", "codex", h2), _rev("r6", "codex", "c" * 40, role="implement"),
             {"id": "r7", "agent": "codex", "role": "review", "created": "2026-10-10T00:00:00Z", "description": "no head"}])
         m = rows_of(fx, snap(fx, PRE_NOW))["duplicate_reviews_per_head"]
-        assert m["value"] == 2 and m["unknown_n"] == 1 and m["n"] == 6, m
+        assert m["value"] == 2 and m["unknown_n"] == 1 and m["n"] == 5, m  # n = runs with a readable head
         assert m["by_kind"] == {f"{h1[:12]}|codex": 3}
+
+
+def test_duplicate_reviews_clean_window_is_descriptive_and_unreadable_is_unknown() -> None:
+    with tempfile.TemporaryDirectory() as t:
+        fx = Fixture(Path(t))
+        _jsonl(fx.deleg / "registry.jsonl", [_rev(f"r{i}", "codex", f"{i:040x}") for i in range(25)])
+        m = rows_of(fx, snap(fx, PRE_NOW))["duplicate_reviews_per_head"]
+        assert m["value"] == 0 and m["n"] == 25 and m["observation_membership"]["count"] == 25, m
+        assert m["display"] == "descriptive", m  # 25 inspected runs, none duplicated: not "insufficient"
+        _jsonl(fx.deleg / "registry.jsonl", [
+            {"id": f"u{i}", "agent": "codex", "role": "review", "created": "2026-10-10T00:00:00Z", "description": "reworded brief"}
+            for i in range(3)])
+        m = rows_of(fx, snap(fx, PRE_NOW))["duplicate_reviews_per_head"]
+        assert m["value"] is None and m["unknown_n"] == 3 and m["n"] == 0, m  # all unreadable: unknown, never 0
+
+
+def test_duplicate_reviews_honours_lane_cohort() -> None:
+    with tempfile.TemporaryDirectory() as t:
+        fx = Fixture(Path(t))
+        h = "a" * 40
+        _jsonl(fx.deleg / "registry.jsonl", [_rev("g1", "gemini", h), _rev("g2", "gemini", h), _rev("c1", "codex", h)])
+        assert rows_of(fx, snap(fx, PRE_NOW))["duplicate_reviews_per_head"]["value"] == 1
+        assert rows_of(fx, snap(fx, PRE_NOW, cohort="lane=codex"))["duplicate_reviews_per_head"]["value"] == 0
+
+
+def test_fixture_env_ignores_callers_queue_and_policy_paths() -> None:
+    with tempfile.TemporaryDirectory() as t, tempfile.TemporaryDirectory() as decoy:
+        fx = Fixture(Path(t))
+        (Path(decoy) / "state.json").write_text(json.dumps({"x": {"state": "queued", "updated": "2026-10-01T00:00:00Z"}}))
+        _jsonl(Path(decoy) / "policy.jsonl", [{"ts": 1791590400.0, "decision": "deny"}])
+        with env({"AQ_LAND_QUEUE_DIR": decoy, "AQ_BASH_POLICY_LOG": str(Path(decoy) / "policy.jsonl")}):
+            r = rows_of(fx, snap(fx, PRE_NOW))
+        assert r["land_queue_oldest_age_s"]["gap"] == "no_producer" and r["guard_deny_rate"]["gap"] == "no_producer"
 
 
 def test_aq_land_reruns_counts_both_kinds_in_window() -> None:

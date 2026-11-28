@@ -30,7 +30,7 @@ Implementer rule: `canon/blocks/headless-delegate-mode.md` gained two sub-agent 
 Baseline rows (`scripts/ai/lib/aq_baseline.py`), all `improves_when=down`, `unit_label=aggregate`, each reports `no_producer` when its input is absent and never a zero:
 - `duplicate_reviews_per_head` (windowed): registry runs with role review/reviewer; head parsed from the aq-land brief text (`head <40-hex>`); value = runs beyond the first per (head, lane); runs with no parseable head count as `unknown_n`. A registry with no review runs is a measured 0.
 - `aq_land_reruns` (windowed): failure-events kinds `checks_infra_runner_lost` / `checks_runner_rerun_failed`; `no_producer` until one is emitted (same AT-3 rule as `receipt_mint_failures`).
-- `land_queue_oldest_age_s` (current-only): oldest entry age from `outputs/aq-land-queue/state.json`; empty queue is 0; a file with no list is `no_data`.
+- `land_queue_oldest_age_s` (current-only): oldest entry age from `outputs/aq-land-queue/state.json`; empty queue is 0; a file that is a JSON list rather than an object of item states is `no_data`.
 - `guard_deny_rate` (windowed): deny count over decided rows in `.agents/telemetry/bash-tool-policy.jsonl`; undecidable rows are `unknown_n`. There are no labels, so this is an upper bound on the false-deny rate, stated in the row's `eligibility_filter`.
 
 Rule 1 applied to our own tests. Run against the pre-change `aq_baseline.py` (`git show HEAD:...`), all five new tests fail:
@@ -43,9 +43,16 @@ FAIL test_land_queue_age_oldest_entry_and_empty_queue KeyError 'land_queue_oldes
 FAIL test_guard_deny_rate_is_deny_share_with_unknown_reported KeyError 'guard_deny_rate'
 ```
 
-Against the patched file: `test-aq-baseline.py` prints `PASS: test-aq-baseline` (all tests ok). For the aq-land criteria test, `git show HEAD:scripts/ai/aq-land | rg -c default.md` exits 1 (no match), so pre-change prompts cannot contain the new criteria; the assertion would fail there. This replay was done by grep, not by running the new aq-land test against old code.
+Against the patched file: `test-aq-baseline.py` prints `PASS: test-aq-baseline` (all tests ok). Replay of the two new aq-land tests against the pre-change tool (`git show 622941289^:scripts/ai/aq-land` copied over `scripts/ai/aq-land`, then `unittest` on `DepFastLane.test_default_criteria_reach_every_reviewer_prompt` and `DepFastLane.test_missing_default_criteria_file_warns_and_falls_back`): both FAIL (`'Fails-without-the-fix' not found in 'Independent review ...'`; `'WARN default review criteria unreadable' not found`). The patched tool was restored afterwards (`cmp` identical).
 
 Producer schemas, read from the writers in their worktrees (not yet on main): (a) bash policy log: `scripts/ai/aq-bash-tool-policy-hook` `_log` (lines 22-32) writes `{"ts": <epoch float>, "decision": "allow"|"deny", "rule", "token"}` to `AQ_BASH_POLICY_LOG` or `<project>/.agents/telemetry/bash-tool-policy.jsonl`; the parser reads exactly `ts` (numeric epoch) and `decision`, and a decision other than allow/deny is `unknown_n`. (b) queue state: `scripts/ai/aq-land-queue` `read_state`/`write_state`/`set_state` (lines 86-105) store `{item_name: {state, reason, updated: ISO-Z, ...}}` in `state.json` under `AQ_LAND_QUEUE_DIR` or `<delegation>/outputs/aq-land-queue` (line 52); states queued/committing/landing/landed/failed/retry_wait (line 16). The producer records no enqueue time (`cmd_add`, lines 268-284, writes none), so the row measures seconds since the last state change of the oldest unfinished item (queued/committing/landing/retry_wait), and an item added but not yet transitioned has no state entry, so it is not seen. (c) rerun kinds: `scripts/ai/aq-land` `record_failure` call sites at lines 1017-1047 use exactly `checks_infra_runner_lost` and `checks_runner_rerun_failed`; rows go to `outputs/aq-land/failure-events.jsonl` (line 1193) with `at` and `kind`, matching the existing parser. Fixtures use these exact shapes.
+
+## Review r2 Fixes (Gemini REQUEST_CHANGES)
+
+- `duplicate_reviews_per_head` membership/n covered only duplicate runs, so a clean 20+ window rendered `insufficient`, and an all-unreadable window reported 0: membership and n are now the runs with a readable head; value is None when every run is unreadable. Test `test_duplicate_reviews_clean_window_is_descriptive_and_unreadable_is_unknown` fails on the old code.
+- The row ignored `cohort=lane=<agent>`: now filtered by lane like the other registry rows. Test `test_duplicate_reviews_honours_lane_cohort` fails on the old code.
+- `Fixture.env()` now pins `AQ_LAND_QUEUE_DIR` and `AQ_BASH_POLICY_LOG`; test `test_fixture_env_ignores_callers_queue_and_policy_paths` fails without the pins.
+- The fails-without-the-fix replay for the aq-land tests was run against the pre-change tool (above); the queue-file wording was inverted and is corrected.
 
 ## Rollback Plan
 

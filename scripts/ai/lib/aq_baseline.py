@@ -506,7 +506,7 @@ _HEAD_RE = re.compile(r"\bhead ([0-9a-f]{40})\b")
 UNFINISHED_QUEUE_STATES = ("queued", "committing", "landing", "retry_wait")
 
 
-def _duplicate_reviews_row(data: bytes | None, window: tuple[datetime, datetime]) -> Row:
+def _duplicate_reviews_row(data: bytes | None, window: tuple[datetime, datetime], lane_filter: str | None = None) -> Row:
     mid, producer = "duplicate_reviews_per_head", "registry.jsonl"
     if data is None:
         return _no_data(mid, "no_producer", improves_when="down", unit_label="aggregate", producer=producer,
@@ -514,6 +514,8 @@ def _duplicate_reviews_row(data: bytes | None, window: tuple[datetime, datetime]
     latest: dict[str, dict[str, Any]] = {}
     for r in _jsonl(data):
         rid = str(r.get("id") or "")
+        if lane_filter and str(r.get("agent")) != lane_filter:
+            continue
         if rid and str(r.get("role")) in REVIEW_ROLES and _in_window(_registry_ts(r), window):
             latest[rid] = r
     per: dict[tuple[str, str], set[str]] = {}
@@ -525,13 +527,17 @@ def _duplicate_reviews_row(data: bytes | None, window: tuple[datetime, datetime]
             continue
         per.setdefault((m.group(1), str(r.get("agent"))), set()).add(rid)
     dup = {k: v for k, v in per.items() if len(v) > 1}
-    ids = [f"{h}|{lane}|{rid}" for (h, lane), v in dup.items() for rid in sorted(v)]
+    # Membership and n are the runs whose head could be read, not just the duplicated ones: the
+    # denominator for "0 duplicates" must be the inspected runs or a clean window reads as insufficient.
+    ids = [f"{h}|{lane}|{rid}" for (h, lane), v in per.items() for rid in sorted(v)]
+    readable = len(ids)
     excess = sum(len(v) - 1 for v in dup.values())
     return new_row(mid, improves_when="down", unit_label="aggregate", time_coverage="windowed", producer=producer,
                    eligibility_filter="review-role registry runs in window; excess runs beyond the first per (head, lane)",
-                   value=excess, n=len(latest), unknown_n=unknown, observation_membership=_membership(ids),
+                   value=None if (unknown and not readable) else excess, n=readable, unknown_n=unknown,
+                   observation_membership=_membership(ids),
                    by_kind={f"{h[:12]}|{lane}": len(v) for (h, lane), v in sorted(dup.items())},
-                   display="insufficient" if len(latest) < DEFINITION_FLOOR_N else "descriptive")
+                   display="insufficient" if readable < DEFINITION_FLOOR_N else "descriptive")
 
 
 def _land_rerun_row(data: bytes | None, window: tuple[datetime, datetime]) -> Row:
@@ -743,7 +749,7 @@ def compute_rows(inputs: dict[str, bytes], window: tuple[datetime, datetime], co
     rows.append(_model_known_row(inputs.get("registry"), window, lane))
     rows += _land_failure_rows(inputs.get("aq_land_failures"), window)
     rows.append(_rework_row(inputs.get("outcome_receipts"), window))
-    rows.append(_duplicate_reviews_row(inputs.get("registry"), window))
+    rows.append(_duplicate_reviews_row(inputs.get("registry"), window, lane))
     rows.append(_land_rerun_row(inputs.get("aq_land_failures"), window))
     rows.append(_queue_age_row(inputs.get("land_queue"), window[1]))
     rows.append(_guard_deny_row(inputs.get("bash_policy"), window))
