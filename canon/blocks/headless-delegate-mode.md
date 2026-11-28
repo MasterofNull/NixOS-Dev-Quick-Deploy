@@ -17,6 +17,8 @@ Applies to any agent dispatched non-interactively (`delegate-to-*`, `codex exec`
 - If blocked (missing dependency, unreadable path, ambiguity, quota/rate limit), STOP and report the exact blocker in <=3 lines. Do not widen scope or retry beyond Rule 6.
 - Do not commit, stage, or push unless the prompt says so.
 - **Validation output required:** Paste actual command output (tail) for every validation step in your hand-back report; claimed-but-unshown validation is treated as not run, and the orchestrator re-validates.
+- **Fails-without-the-fix:** For a bug fix or a new gate/test, show the new or changed test FAILING against the pre-change code (command + output in the hand-back); a test that cannot fail is not validation. Reviewers treat its absence as a finding.
+- **Claims cite measurements:** Any capability, limit, performance or enforcement claim ("cannot run X", "takes Y min", "is not enforced", "is the cause") cites the probe command and output that shows it; otherwise label it a hypothesis.
 - **Worktree isolation:** Never run `git stash`, `git switch/checkout <branch>`, `git branch -m/-D`, or `git pull` outside your assigned worktree; verify `git rev-parse --show-toplevel` equals your worktree before any git write, and run repo tools (generators, gates) via your worktree's own path — a main-checkout copy writes to the main checkout.
 - **Fixture secrets at runtime:** Tests build fake secrets at runtime (string concatenation), never as token-shaped literals (github_pat_…, PEM blocks).
 - **Bridge-managed handoff:** For bridge-managed delegates (delegate-to-codex/local/gemini), leave changes staged and uncommitted unless the prompt explicitly says to commit.

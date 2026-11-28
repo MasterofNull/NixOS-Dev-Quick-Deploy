@@ -132,6 +132,8 @@ def producer_paths(root: Path) -> dict[str, Path]:
         "aq_land_failures": deleg / "outputs" / "aq-land" / "failure-events.jsonl",
         "training_loop": _training_loop_path(deleg),
         "rsi_incidents": _rsi_incidents_path(root),
+        "land_queue": Path(os.environ.get("AQ_LAND_QUEUE_DIR") or deleg / "outputs" / "aq-land-queue") / "state.json",
+        "bash_policy": Path(os.environ.get("AQ_BASH_POLICY_LOG") or telemetry_dir(root) / "bash-tool-policy.jsonl"),
         "aq_report": Path(os.environ.get("AQ_REPORT_LATEST_JSON", "/var/lib/ai-stack/hybrid/telemetry/latest-aq-report.json")),
     }
 
@@ -489,6 +491,120 @@ def _land_failure_rows(data: bytes | None, window: tuple[datetime, datetime]) ->
     return rows
 
 
+# --------------------------------------------------------------------------- wasted-work rows
+# Producer schemas, read from the writers (not yet on main when written):
+#   aq-land failure-events.jsonl: scripts/ai/aq-land record_failure (kinds at the checks_infra_runner_lost /
+#     checks_runner_rerun_failed call sites; row keys at, kind, head_sha, ...).
+#   aq-land-queue state.json: scripts/ai/aq-land-queue read_state/set_state: {item_name: {state, reason, updated: ISO Z, ...}},
+#     states queued|committing|landing|landed|failed|retry_wait; default dir <delegation>/outputs/aq-land-queue (AQ_LAND_QUEUE_DIR).
+#   bash-tool-policy.jsonl: scripts/ai/aq-bash-tool-policy-hook _log: {"ts": epoch float, "decision": "allow"|"deny", "rule", "token"};
+#     path AQ_BASH_POLICY_LOG or <project>/.agents/telemetry/bash-tool-policy.jsonl.
+
+RERUN_KINDS = ("checks_infra_runner_lost", "checks_runner_rerun_failed")
+REVIEW_ROLES = ("review", "reviewer")
+_HEAD_RE = re.compile(r"\bhead ([0-9a-f]{40})\b")
+UNFINISHED_QUEUE_STATES = ("queued", "committing", "landing", "retry_wait")
+
+
+def _duplicate_reviews_row(data: bytes | None, window: tuple[datetime, datetime]) -> Row:
+    mid, producer = "duplicate_reviews_per_head", "registry.jsonl"
+    if data is None:
+        return _no_data(mid, "no_producer", improves_when="down", unit_label="aggregate", producer=producer,
+                        detail="registry.jsonl not found", time_coverage="windowed")
+    latest: dict[str, dict[str, Any]] = {}
+    for r in _jsonl(data):
+        rid = str(r.get("id") or "")
+        if rid and str(r.get("role")) in REVIEW_ROLES and _in_window(_registry_ts(r), window):
+            latest[rid] = r
+    per: dict[tuple[str, str], set[str]] = {}
+    unknown = 0
+    for rid, r in latest.items():
+        m = _HEAD_RE.search(str(r.get("description") or ""))
+        if not m:
+            unknown += 1  # review run whose head cannot be read from the brief
+            continue
+        per.setdefault((m.group(1), str(r.get("agent"))), set()).add(rid)
+    dup = {k: v for k, v in per.items() if len(v) > 1}
+    ids = [f"{h}|{lane}|{rid}" for (h, lane), v in dup.items() for rid in sorted(v)]
+    excess = sum(len(v) - 1 for v in dup.values())
+    return new_row(mid, improves_when="down", unit_label="aggregate", time_coverage="windowed", producer=producer,
+                   eligibility_filter="review-role registry runs in window; excess runs beyond the first per (head, lane)",
+                   value=excess, n=len(latest), unknown_n=unknown, observation_membership=_membership(ids),
+                   by_kind={f"{h[:12]}|{lane}": len(v) for (h, lane), v in sorted(dup.items())},
+                   display="insufficient" if len(latest) < DEFINITION_FLOOR_N else "descriptive")
+
+
+def _land_rerun_row(data: bytes | None, window: tuple[datetime, datetime]) -> Row:
+    mid, producer = "aq_land_reruns", "outputs/aq-land/failure-events.jsonl"
+    if data is None:
+        return _no_data(mid, "no_producer", improves_when="down", unit_label="aggregate", producer=producer,
+                        detail="failure-events.jsonl not found", time_coverage="windowed")
+    events = _jsonl(data)
+    if not any(str(e.get("kind")) in RERUN_KINDS for e in events):
+        return _no_data(mid, "no_producer", improves_when="down", unit_label="aggregate", producer=producer,
+                        detail="no durable producer has emitted " + "/".join(RERUN_KINDS), time_coverage="windowed")
+    hits = [e for e in events if str(e.get("kind")) in RERUN_KINDS and _in_window(e.get("at"), window)]
+    ids = [f"{e.get('at')}|{e.get('head_sha')}|{e.get('kind')}" for e in hits]
+    return new_row(mid, improves_when="down", unit_label="aggregate", time_coverage="windowed", producer=producer,
+                   eligibility_filter="failure-events kind in " + ",".join(RERUN_KINDS), value=len(hits), n=len(hits),
+                   observation_membership=_membership(ids),
+                   display="insufficient" if len(hits) < DEFINITION_FLOOR_N else "descriptive")
+
+
+def _queue_age_row(data: bytes | None, now: datetime) -> Row:
+    mid, producer = "land_queue_oldest_age_s", "outputs/aq-land-queue/state.json"
+    if data is None:
+        return _no_data(mid, "no_producer", improves_when="down", unit_label="aggregate", producer=producer,
+                        detail="aq-land-queue/state.json not found")
+    doc = _json(data)
+    if not isinstance(doc, dict):
+        return _no_data(mid, "no_data", improves_when="down", unit_label="aggregate", producer=producer,
+                        detail="state.json is not an object of item states")
+    ages: list[float] = []
+    unknown = 0
+    for st in (doc[k] for k in sorted(doc)):
+        if not isinstance(st, dict) or st.get("state") not in UNFINISHED_QUEUE_STATES:
+            continue
+        try:
+            ages.append(max(0.0, (now - parse_ts(str(st.get("updated")))).total_seconds()))
+        except ValueError:
+            unknown += 1
+    return new_row(mid, improves_when="down", unit_label="aggregate", time_coverage="current-only", producer=producer,
+                   eligibility_filter="seconds since last state change of the oldest unfinished item "
+                   "(queued/committing/landing/retry_wait); the producer records no enqueue time; none unfinished is 0",
+                   value=max(ages) if ages else (0.0 if not unknown else None), n=len(ages), unknown_n=unknown,
+                   observation_membership=_membership([str(round(a)) for a in ages]),
+                   display="insufficient")
+
+
+def _guard_deny_row(data: bytes | None, window: tuple[datetime, datetime]) -> Row:
+    mid, producer = "guard_deny_rate", ".agents/telemetry/bash-tool-policy.jsonl"
+    if data is None:
+        return _no_data(mid, "no_producer", improves_when="down", unit_label="aggregate", producer=producer,
+                        detail="bash-tool-policy.jsonl not found", time_coverage="windowed")
+    deny = total = unknown = 0
+    ids: list[str] = []
+    for i, e in enumerate(_jsonl(data)):
+        ts = e.get("ts")
+        if isinstance(ts, bool) or not isinstance(ts, (int, float)) or not (
+                window[0].timestamp() <= ts <= window[1].timestamp()):
+            continue
+        word = e.get("decision")
+        if word == "deny":
+            deny += 1
+        elif word != "allow":
+            unknown += 1  # no recognizable decision: neither a deny nor an allow
+            continue
+        total += 1
+        ids.append(str(i))
+    # No label marks a deny as wrong, so this is an upper bound on the false-deny rate, not the rate itself.
+    return new_row(mid, improves_when="down", unit_label="aggregate", time_coverage="windowed", producer=producer,
+                   eligibility_filter="policy decisions in window; deny share of decided rows; unlabelled, so an upper bound on false denies",
+                   numerator=deny, denominator=total, value=(deny / total) if total else None, n=total,
+                   unknown_n=unknown, observation_membership=_membership(ids),
+                   display="insufficient" if total < DEFINITION_FLOOR_N else "descriptive")
+
+
 def _rework_row(data: bytes | None, window: tuple[datetime, datetime]) -> Row:
     producer = "outcome-receipts.jsonl"
     if data is None:
@@ -627,6 +743,10 @@ def compute_rows(inputs: dict[str, bytes], window: tuple[datetime, datetime], co
     rows.append(_model_known_row(inputs.get("registry"), window, lane))
     rows += _land_failure_rows(inputs.get("aq_land_failures"), window)
     rows.append(_rework_row(inputs.get("outcome_receipts"), window))
+    rows.append(_duplicate_reviews_row(inputs.get("registry"), window))
+    rows.append(_land_rerun_row(inputs.get("aq_land_failures"), window))
+    rows.append(_queue_age_row(inputs.get("land_queue"), window[1]))
+    rows.append(_guard_deny_row(inputs.get("bash_policy"), window))
     rows.append(_leanctx_row(inputs.get("leanctx_gain")))
     rows.append(_training_row(inputs.get("training_loop"), window))
     rows.append(_rsi_row(inputs.get("rsi_incidents"), window))
