@@ -174,7 +174,7 @@ Enforcement, injection variants and the `FABLE_PARITY=0` kill switch: `.agent/FA
 ## Headless Delegate Mode (Canonical — all agents)
 
 - Primary agents: enforce all agentic features (8-step canon, Rules 1-22, memory checkpoints, tier0, activation DoD).
-- Sub-agents: slim payload (bounded task, paths, criteria; no transcripts); lean tools; skip hydration/tier0; on-demand full tool access via `aq-tool <pkg>` & AIDB; paste test output; worktree isolation; leave staged.
+- Sub-agents: slim payload (bounded task, paths, criteria; no transcripts); lean tools; skip hydration/tier0; on-demand full tool access via `aq-tool <pkg>` & AIDB; paste test output; worktree isolation; leave staged; hygiene: rg --hidden, no bare git stash, no self-matching pkill (details: tool contract).
 - Orchestrator: commit slice deps, deliverable path shared-visible, quota headroom verified (Rule 18).
 - Full text: `canon/blocks/headless-delegate-mode.md`
 <!-- canon:end headless-delegate-mode -->

@@ -102,7 +102,9 @@ class Fixture:
         return {"AQ_BASELINE_ROOT": str(self.root), "AQ_DELEGATION_DIR": str(self.deleg),
                 "AQ_REPORT_LATEST_JSON": str(self.report), "AQ_BASELINE_LEANCTX_JSON": str(self.leanctx),
                 "AQ_BASELINE_NOW": now, "TELEMETRY_DIR": str(self.root / "telemetry"),
-                "RSI_STATE_DIR": str(self.root / "rsi-state"), **self.extra}
+                "RSI_STATE_DIR": str(self.root / "rsi-state"),
+                "AQ_LAND_QUEUE_DIR": str(self.deleg / "outputs" / "aq-land-queue"),  # pinned: a caller's env must not reach live paths
+                "AQ_BASH_POLICY_LOG": str(self.root / ".agents" / "telemetry" / "bash-tool-policy.jsonl"), **self.extra}
 
 
 @contextlib.contextmanager
@@ -721,6 +723,115 @@ def _format_json_stub(report: Any) -> tuple[Any, ...]:
     params = [p for p in inspect.signature(report.format_json).parameters.values() if p.default is inspect.Parameter.empty]
     return tuple("" if p.name == "since_label" else ([] if p.name in ("leaderboard", "top_prompts", "gaps", "recs") else {})
                  for p in params)
+
+
+def _rev(rid: str, agent: str, head: str, role: str = "reviewer", created: str = "2026-10-10T00:00:00Z") -> dict[str, Any]:
+    return {"id": rid, "agent": agent, "role": role, "created": created,
+            "description": f"Independent review. Subject: branch b, head {head}, base origin/main."}
+
+
+def test_wasted_work_rows_no_producer_never_zero() -> None:
+    with tempfile.TemporaryDirectory() as t:
+        fx = Fixture(Path(t))
+        fx.failures(None)
+        r = rows_of(fx, snap(fx, PRE_NOW))
+        for mid in ("aq_land_reruns", "land_queue_oldest_age_s", "guard_deny_rate"):
+            assert r[mid]["value"] is None and r[mid]["gap"] == "no_producer", mid
+        # registry exists with no review-role runs: zero excess is a measured zero, not a gap
+        assert r["duplicate_reviews_per_head"]["value"] == 0 and r["duplicate_reviews_per_head"]["gap"] is None
+        fx.failures([{"at": "2026-10-10T00:00:00Z", "kind": "review_exhausted", "stage": "review", "head_sha": "h"}])
+        r = rows_of(fx, snap(fx, "2026-10-27T00:00:01Z"))
+        assert r["aq_land_reruns"]["gap"] == "no_producer"  # producer alive but never emitted a rerun kind
+
+
+def test_duplicate_reviews_per_head_counts_excess_runs_per_lane() -> None:
+    with tempfile.TemporaryDirectory() as t:
+        fx = Fixture(Path(t))
+        h1, h2 = "a" * 40, "b" * 40
+        _jsonl(fx.deleg / "registry.jsonl", [
+            _rev("r1", "codex", h1), _rev("r1", "codex", h1),  # duplicate event for one run counts once
+            _rev("r2", "codex", h1), _rev("r3", "codex", h1),  # two reruns on the same head+lane
+            _rev("r4", "gemini", h1),  # other lane, same head: not a duplicate
+            _rev("r5", "codex", h2), _rev("r6", "codex", "c" * 40, role="implement"),
+            {"id": "r7", "agent": "codex", "role": "review", "created": "2026-10-10T00:00:00Z", "description": "no head"}])
+        m = rows_of(fx, snap(fx, PRE_NOW))["duplicate_reviews_per_head"]
+        assert m["value"] == 2 and m["unknown_n"] == 1 and m["n"] == 5, m  # n = runs with a readable head
+        assert m["by_kind"] == {f"{h1[:12]}|codex": 3}
+
+
+def test_duplicate_reviews_clean_window_is_descriptive_and_unreadable_is_unknown() -> None:
+    with tempfile.TemporaryDirectory() as t:
+        fx = Fixture(Path(t))
+        _jsonl(fx.deleg / "registry.jsonl", [_rev(f"r{i}", "codex", f"{i:040x}") for i in range(25)])
+        m = rows_of(fx, snap(fx, PRE_NOW))["duplicate_reviews_per_head"]
+        assert m["value"] == 0 and m["n"] == 25 and m["observation_membership"]["count"] == 25, m
+        assert m["display"] == "descriptive", m  # 25 inspected runs, none duplicated: not "insufficient"
+        _jsonl(fx.deleg / "registry.jsonl", [
+            {"id": f"u{i}", "agent": "codex", "role": "review", "created": "2026-10-10T00:00:00Z", "description": "reworded brief"}
+            for i in range(3)])
+        m = rows_of(fx, snap(fx, PRE_NOW))["duplicate_reviews_per_head"]
+        assert m["value"] is None and m["unknown_n"] == 3 and m["n"] == 0, m  # all unreadable: unknown, never 0
+
+
+def test_duplicate_reviews_honours_lane_cohort() -> None:
+    with tempfile.TemporaryDirectory() as t:
+        fx = Fixture(Path(t))
+        h = "a" * 40
+        _jsonl(fx.deleg / "registry.jsonl", [_rev("g1", "gemini", h), _rev("g2", "gemini", h), _rev("c1", "codex", h)])
+        assert rows_of(fx, snap(fx, PRE_NOW))["duplicate_reviews_per_head"]["value"] == 1
+        assert rows_of(fx, snap(fx, PRE_NOW, cohort="lane=codex"))["duplicate_reviews_per_head"]["value"] == 0
+
+
+def test_fixture_env_ignores_callers_queue_and_policy_paths() -> None:
+    with tempfile.TemporaryDirectory() as t, tempfile.TemporaryDirectory() as decoy:
+        fx = Fixture(Path(t))
+        (Path(decoy) / "state.json").write_text(json.dumps({"x": {"state": "queued", "updated": "2026-10-01T00:00:00Z"}}))
+        _jsonl(Path(decoy) / "policy.jsonl", [{"ts": 1791590400.0, "decision": "deny"}])
+        with env({"AQ_LAND_QUEUE_DIR": decoy, "AQ_BASH_POLICY_LOG": str(Path(decoy) / "policy.jsonl")}):
+            r = rows_of(fx, snap(fx, PRE_NOW))
+        assert r["land_queue_oldest_age_s"]["gap"] == "no_producer" and r["guard_deny_rate"]["gap"] == "no_producer"
+
+
+def test_aq_land_reruns_counts_both_kinds_in_window() -> None:
+    with tempfile.TemporaryDirectory() as t:
+        fx = Fixture(Path(t))
+        fx.failures([{"at": "2026-10-10T00:00:00Z", "kind": "checks_infra_runner_lost", "head_sha": "h"},
+                     {"at": "2026-10-11T00:00:00Z", "kind": "checks_runner_rerun_failed", "head_sha": "h"},
+                     {"at": "2026-10-12T00:00:00Z", "kind": "ci_checks_failed", "head_sha": "h"},
+                     {"at": "2020-01-01T00:00:00Z", "kind": "checks_infra_runner_lost", "head_sha": "old"}])
+        m = rows_of(fx, snap(fx, PRE_NOW))["aq_land_reruns"]
+        assert m["value"] == 2 and m["gap"] is None, m
+
+
+def test_land_queue_age_oldest_entry_and_empty_queue() -> None:
+    with tempfile.TemporaryDirectory() as t:
+        fx = Fixture(Path(t))
+        q = fx.deleg / "outputs" / "aq-land-queue" / "state.json"
+        q.parent.mkdir(parents=True)
+        q.write_text(json.dumps({
+            "a": {"state": "retry_wait", "reason": "r", "updated": "2026-10-26T22:00:00Z", "next_at": 1.0, "attempts": 1},
+            "b": {"state": "landing", "reason": "r", "updated": "2026-10-26T23:00:00Z"},
+            "c": {"state": "landed", "reason": "r", "updated": "2020-01-01T00:00:00Z"},
+            "d": {"state": "failed", "reason": "r", "updated": "2020-01-01T00:00:00Z"},
+            "e": {"state": "queued", "reason": "r"}}))
+        m = rows_of(fx, snap(fx, PRE_NOW))["land_queue_oldest_age_s"]
+        assert m["value"] == 7200.0 and m["unknown_n"] == 1 and m["n"] == 2, m
+        q.write_text(json.dumps({"c": {"state": "landed", "reason": "r", "updated": "2020-01-01T00:00:00Z"}}))
+        assert rows_of(fx, snap(fx, "2026-10-27T00:00:01Z"))["land_queue_oldest_age_s"]["value"] == 0.0
+        q.write_text(json.dumps([1]))
+        assert rows_of(fx, snap(fx, "2026-10-27T00:00:02Z"))["land_queue_oldest_age_s"]["gap"] == "no_data"
+
+
+def test_guard_deny_rate_is_deny_share_with_unknown_reported() -> None:
+    with tempfile.TemporaryDirectory() as t:
+        fx = Fixture(Path(t))
+        log = fx.root / ".agents" / "telemetry" / "bash-tool-policy.jsonl"
+        _jsonl(log, [{"ts": 1791590400.0, "decision": "deny", "rule": "bare-grep", "token": "grep"}, {"ts": 1791590401.0, "decision": "allow"},
+                     {"ts": 1791590402.0, "decision": "allow"}, {"ts": 1791590403.0, "decision": "allow"},
+                     {"ts": 1791590404.0, "decision": "ask", "rule": "x", "token": "y"}, {"ts": 1577836800.0, "decision": "deny", "rule": "bare-grep", "token": "grep"}])
+        m = rows_of(fx, snap(fx, PRE_NOW))["guard_deny_rate"]
+        assert (m["numerator"], m["denominator"], m["unknown_n"]) == (1, 4, 1) and m["value"] == 0.25, m
+        assert "upper bound" in m["eligibility_filter"]
 
 
 if __name__ == "__main__":
