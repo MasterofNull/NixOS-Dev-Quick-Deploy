@@ -1,0 +1,20 @@
+{
+  "schema": 2,
+  "pr": 900,
+  "reviewed_head_sha": "b8622ea35e0c1ea6869838c84adee591056af55d",
+  "run_id": "codex-20261128-011313-jin3rw",
+  "reviewer_lane": "codex",
+  "author_lane": "sonnet",
+  "verdict": "PASS",
+  "reviewer_instance": "Simurg@codex/unknown#codex-20",
+  "author_instance": "Simurg@sonnet/unknown",
+  "output_file": ".agents/delegation/outputs/codex-20261128-011313-jin3rw.log",
+  "output_sha256": "7cfc771b0153ac44413d050eb4f055bc72877610fd42b6141d19658b3398e374",
+  "output_bytes": 88903,
+  "registry_output_sha256": "7cfc771b0153ac44413d050eb4f055bc72877610fd42b6141d19658b3398e374",
+  "created_at": "2026-11-28T09:15:21Z",
+  "repo": "MasterofNull/NixOS-Dev-Quick-Deploy",
+  "policy_version": "review-receipts/1",
+  "tree": "6de07735189d92921f82fe214df52c1997c6eecb",
+  "base_commit": "c4c8538e99e5a47ffc87939d1bbd00909a1fcfba"
+}
