@@ -575,16 +575,26 @@ def detect_delegated_cgroup_parent() -> "Optional[str]":
         # Creating a child dir is not enough: moving a pid in needs write access
         # to the common ancestor (EACCES from a login session scope). Without a
         # real migration every kill proof is vacuous, so treat it as unavailable.
-        child = subprocess.Popen(["sleep", "5"], start_new_session=True)
+        migrated = False
+        child = None
         try:
+            child = subprocess.Popen(["sleep", "5"], start_new_session=True)
             migrated = runner.add_pid_to_cgroup(probe, child.pid)
-        finally:
-            child.kill()
-            child.wait()
-        try:
-            os.rmdir(probe)
         except OSError:
-            pass
+            migrated = False
+        finally:
+            if child is not None:
+                child.kill()
+                child.wait()
+            # cgroup v2 teardown of a just-emptied cgroup is async: EBUSY is transient.
+            for _ in range(20):
+                try:
+                    os.rmdir(probe)
+                    break
+                except FileNotFoundError:
+                    break
+                except OSError:
+                    time.sleep(0.05)
         if migrated:
             _CGROUP_PARENT_CACHE = base
             return base

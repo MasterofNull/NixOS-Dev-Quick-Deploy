@@ -489,6 +489,48 @@ def note_r6_canary_deferred_surfaces():
     )
 
 
+def test_detect_cgroup_parent_spawn_oserror_cleans_probe():
+    """A probe-spawn OSError must not leak the probe cgroup dir nor abort
+    detection: every candidate is tried and the result is None."""
+    import os
+    import subprocess
+    import tempfile
+
+    created: "list[str]" = []
+    removed: "list[str]" = []
+    real_isdir, real_mkdir, real_rmdir, real_popen = os.path.isdir, os.mkdir, os.rmdir, subprocess.Popen
+    saved = (mod.__dict__["_CGROUP_PARENT_CACHE"], mod.__dict__["_CGROUP_PARENT_PROBED"])
+    with tempfile.TemporaryDirectory() as tmp:
+        def fake_mkdir(path, *a, **k):
+            if "aq-r4-probe-" in str(path):
+                created.append(str(path))
+                return real_mkdir(os.path.join(tmp, f"p{len(created)}"))
+            return real_mkdir(path, *a, **k)
+
+        def fake_rmdir(path, *a, **k):
+            if "aq-r4-probe-" in str(path):
+                removed.append(str(path))
+                return real_rmdir(os.path.join(tmp, f"p{created.index(str(path)) + 1}"))
+            return real_rmdir(path, *a, **k)
+
+        def boom(*a, **k):
+            raise OSError("simulated spawn failure")
+
+        try:
+            mod.__dict__["_CGROUP_PARENT_PROBED"] = False
+            os.path.isdir = lambda p: True if "/sys/fs/cgroup" in str(p) else real_isdir(p)
+            os.mkdir, os.rmdir, subprocess.Popen = fake_mkdir, fake_rmdir, boom
+            result = mod.detect_delegated_cgroup_parent()
+        finally:
+            os.path.isdir, os.mkdir, os.rmdir, subprocess.Popen = real_isdir, real_mkdir, real_rmdir, real_popen
+            mod.__dict__["_CGROUP_PARENT_CACHE"] = saved[0]
+            mod.__dict__["_CGROUP_PARENT_PROBED"] = saved[1]
+        leftover = sorted(os.listdir(tmp))
+    check("detect_spawn_oserror_falls_through_to_none", result is None, repr(result))
+    check("detect_spawn_oserror_tried_every_candidate", len(created) == 3, repr(created))
+    check("detect_spawn_oserror_no_probe_dir_leaked", leftover == [] and len(removed) == len(created), repr(leftover))
+
+
 def main() -> None:
     tests = [
         test_p95_nearest_rank_known_arrays,
@@ -499,6 +541,7 @@ def main() -> None:
         test_real_cache_eviction_and_priming,
         test_revocation_under_load_small_real_run,
         test_small_real_end_to_end_run,
+        test_detect_cgroup_parent_spawn_oserror_cleans_probe,
     ]
     for test in tests:
         try:

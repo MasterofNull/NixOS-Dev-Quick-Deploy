@@ -333,6 +333,9 @@ def _base_config(mirror: str, trusted_repo_id: str, public_key_bytes: bytes, **o
 
 
 def test_valid_write_grant_green():
+    if not _CGROUP_MIGRATION_OK:
+        skip("write_grant_green", _MIGRATION_SKIP_NOTE)
+        return
     private_key, public_key_bytes = eg.generate_keypair()
     source_repo, head_oid = _build_source_repo()
     mirror = _build_bare_mirror(source_repo)
@@ -370,6 +373,9 @@ def test_valid_write_grant_green():
 
 
 def test_valid_read_validate_grant_green():
+    if not _CGROUP_MIGRATION_OK:
+        skip("read_validate_grant_green", _MIGRATION_SKIP_NOTE)
+        return
     import hashlib
 
     private_key, public_key_bytes = eg.generate_keypair()
@@ -662,6 +668,9 @@ class _CountingEpoch:
 
 
 def test_final_epoch_fence_flips_green_to_red():
+    if not _CGROUP_MIGRATION_OK:
+        skip("final_epoch_fence_flips_green_to_red", _MIGRATION_SKIP_NOTE)
+        return
     private_key, public_key_bytes = eg.generate_keypair()
     source_repo, head_oid = _build_source_repo()
     mirror = _build_bare_mirror(source_repo)

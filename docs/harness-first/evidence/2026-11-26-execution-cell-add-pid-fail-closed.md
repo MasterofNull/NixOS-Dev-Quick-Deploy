@@ -11,14 +11,14 @@ Direct implementation: bounded single-concern fix delegated by the orchestrator.
 
 ## Commands Executed
 - `rg add_pid_to_cgroup`: call sites are runner.py:761 (production, return ignored), perf harness :1242 (return ignored), two test fixtures (already asserted by #879).
-- Fix: runner now checks the return; on False calls new `_kill_unattached_child` (`os.killpg(pid, SIGKILL)`, fallback `popen.kill()`, reap) and returns `Decision(QUARANTINED, "cgroup-attach-failed", STAGE_CONFINE_RUN)` with `tree_proven_absent` left None (no proof claimed). New `REASON_CGROUP_ATTACH_FAILED`.
+- Fix: runner now checks the return; on False calls new `_kill_unattached_child` (`os.killpg(pid, SIGKILL)`, fallback `popen.kill()`, reap) and returns `Decision(QUARANTINED, "cgroup-attach-failed", STAGE_CONFINE_RUN)` with `tree_proven_absent=False` (no proof claimed). New `REASON_CGROUP_ATTACH_FAILED`.
 - Perf harness `revocation-under-load` fixture now records a failure, kills its stray `sleep` procs and returns if the add fails.
 - New test `test_add_pid_failure_fails_closed` in `scripts/testing/test-execution-cell-runner.py` (pure stubs for `build_bwrap_argv`, `create_cgroup`, `add_pid_to_cgroup`, `Popen`; `_supervise` stubbed to raise if reached).
 - `python3 scripts/testing/test-execution-cell-runner.py`; `ruff check`; `basedpyright`; `python3 scripts/governance/check-cross-surface-contract.py`.
 
 ## Validation Evidence
 - Before: `add_pid_to_cgroup(cgroup_path, popen.pid)` at runner.py:761 discarded its result and fell straight into `_supervise` (line 763) and the proof path.
-- After: runner test 63/63 passed (2 R6-canary skips), including the 5 new `add_pid_fail_*` checks (child spawned, QUARANTINED, reason cgroup-attach-failed, tree_proven_absent not True, child dead).
+- After: runner test 63/63 passed (2 R6-canary skips), including the 6 new `add_pid_fail_*` checks (child spawned, QUARANTINED, reason cgroup-attach-failed, tree_proven_absent is False, child dead, receipt schema valid; the last needs jsonschema, else skipped).
 - Negative control: with the new guard disabled the new test fails (`_supervise reached after add_pid_to_cgroup failure`, 58/59); restored, 63/63.
 - The success path is unchanged (existing GREEN/kill-proof tests still pass).
 - ruff/basedpyright: no diagnostics on the touched lines; all remaining findings in the three files are pre-existing (ruff 11, basedpyright 5). check-cross-surface-contract: PASS.
