@@ -81,3 +81,7 @@ Not run: full tier0, live dashboard restart, and a live end-to-end steer against
 ## Hint Feedback
 
 No aq-hints query was available in this headless slice; discovery used the verified facts in the dispatch and direct reads. Useful finding to seed: `apiFetch` in `assets/dashboard.js` returns null for any non-2xx response, so refusal reasons are lost unless a call uses raw `fetch`. Backlog entry added: STEER-DELIVERY-CLAIMED-FALSE in `.agent/memory/issues-backlog.md`.
+
+### Review follow-up (Codex P2, head 17029b17e)
+
+The guidance route reported `persisted: true` unconditionally. It now returns `bool(result["persisted"])` from `post_agent_run_control`, so an audit-write failure reads `persisted: false`, and an unsupported target reports only whether the audit event was written (never a queue entry). New tests `test_audit_write_failure_reports_persisted_false_when_mapped` and `..._when_unsupported` failed on the prior code (`FAILED (failures=2)`, 15 tests) and pass after (15 OK).

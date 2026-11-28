@@ -188,6 +188,34 @@ class TestGuidanceRoute(SteeringTestBase):
         self.assertEqual(body["delivery_status"], "unsupported")
         self.assertEqual(self.queue_files(), [])
 
+    def with_audit_write_failing(self, run_id):
+        blocker = self.tmp / "audit-blocker"
+        blocker.write_text("file, so the events path parent cannot be a directory", encoding="utf-8")
+        saved = self.mod._AGENT_RUN_EVENTS_PATH
+        self.mod._AGENT_RUN_EVENTS_PATH = blocker / "events.jsonl"
+        try:
+            return self.guide(run_id)
+        finally:
+            self.mod._AGENT_RUN_EVENTS_PATH = saved
+            blocker.unlink()
+
+    def test_audit_write_failure_reports_persisted_false_when_mapped(self):
+        body = self.with_audit_write_failing("t-local-1").json()
+        self.assertIs(body["persisted"], False)
+
+    def test_audit_write_failure_reports_persisted_false_when_unsupported(self):
+        body = self.with_audit_write_failing("run-root").json()
+        self.assertEqual(body["delivery_status"], "unsupported")
+        self.assertIs(body["persisted"], False)
+        self.assertEqual(self.queue_files(), [])
+
+    def test_unsupported_persisted_matches_audit_write_and_never_a_queue_entry(self):
+        body = self.guide("run-root").json()
+        self.assertEqual(body["delivery_status"], "unsupported")
+        self.assertIs(body["persisted"], True)
+        self.assertEqual(len(self.audit_events()), 1)
+        self.assertEqual(self.queue_files(), [])
+
     def test_write_failure_is_error(self):
         self.control_dir.parent.mkdir(parents=True, exist_ok=True)
         self.control_dir.write_text("not a directory", encoding="utf-8")

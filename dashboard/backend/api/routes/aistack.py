@@ -6959,7 +6959,7 @@ async def post_agent_run_guidance(
         "action": body.action or "guidance",
         "operator_id": body.operator_id or "hyperd",
         "event_id": result.get("event_id"),
-        "persisted": True,
+        "persisted": bool(result.get("persisted")),
         "delivered": False,
     }
     task_id, reason = _resolve_steerable_task(run_id)
