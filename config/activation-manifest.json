@@ -84,6 +84,15 @@
       "health_signal": "scripts/testing/harness_qa/phases/phase0.py:_check_baseline_snapshot"
     },
     {
+      "feature": "bash tool policy PreToolUse hook (deny shell-native cat/find/grep/ls in Bash tool calls, 2026-11-25)",
+      "entrypoint": "scripts/ai/aq-bash-tool-policy-hook",
+      "live_caller": ".claude/settings.json",
+      "enable": null,
+      "health_signal": "scripts/ai/lib/bash_tool_policy.py:evaluate",
+      "state": "ON: enabled via the Claude Code PreToolUse Bash hook in .claude/settings.json (python3 $CLAUDE_PROJECT_DIR/scripts/ai/aq-bash-tool-policy-hook). Activation note: live after merge + main checkout sync. Intervention/kill switch: AQ_BASH_POLICY=0 set in the environment that launches the agent (owner act, environment-level only; a per-call `AQ_BASH_POLICY=0 cmd` prefix does not bypass); hook errors fail open. Dated 2026-11-25.",
+      "observed_by": "validation test scripts/testing/test-bash-tool-policy.py; telemetry .agents/telemetry/bash-tool-policy.jsonl (override path AQ_BASH_POLICY_LOG)"
+    },
+    {
       "feature": "durable work ledger CLI (aq-ledger, S1 core)",
       "entrypoint": "scripts/ai/aq-ledger",
       "live_caller": "scripts/ai/aq-ledger",
