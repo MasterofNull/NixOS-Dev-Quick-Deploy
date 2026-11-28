@@ -553,3 +553,12 @@ Codex lane absent).
 - producer to fix: Grype/NVD CPE data.
 - fix-path: re-check at expiry; drop once NVD CPE bounds reflect the upstream fixed versions.
 - class: T5 · severity: low · owner hyperd.
+
+## WR-20261126-PR-CONTRACT-RECOVERY — OPEN
+- Symptom: hosted contract failures escaped local preflight; review evidence publication can lag worker completion.
+- Band-aid: rerun existing contract tests explicitly and require genuine persisted independent output. No gate bypass.
+- Root cause: missing local registry entries; separate completion/publication ordering defect.
+- Producer: config/validation-check-registry.json and scripts/ai/lib/claude-background-worker.sh.
+- Fix path: /tmp/aq-local-ci-contract-preflight and /tmp/aq-claude-review-stamp.
+- Class: T2 validation-gap / T3 diagnosability; severity P1; opened 2026-11-26; review next session or within 7 days.
+- Limits: factory installer does not support existing hook composition; LeanCTX rejects linked /tmp project context. Keep existing hooks, use scoped native reads, never represent either limitation as fixed.

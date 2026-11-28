@@ -1,0 +1,79 @@
+#!/usr/bin/env python3
+"""Validate the exact staged slice merged with main, without changing its branch."""
+from __future__ import annotations
+
+try:  # aq-usage-hook
+    import importlib.util as _aqu
+    import os as _aqo
+    _aqs = _aqu.spec_from_file_location("aq_usage", _aqo.path.join(
+        _aqo.path.dirname(_aqo.path.realpath(__file__)), "lib", "aq_usage.py"))
+    if _aqs is not None and _aqs.loader is not None:
+        _aqm = _aqu.module_from_spec(_aqs)
+        _aqs.loader.exec_module(_aqm)
+        _aqm.record(__file__, __name__)
+except Exception:
+    pass
+
+import argparse
+import json
+import os
+from pathlib import Path
+import subprocess
+import sys
+
+sys.path.insert(0, str(Path(__file__).resolve().parent / "lib"))
+import greenlight  # noqa: E402
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("worktree", nargs="?", default=".")
+    parser.add_argument("--base-ref",
+                        default=os.environ.get("AQ_GREENLIGHT_BASE_REF") or "origin/main")
+    parser.add_argument("--state-dir")
+    parser.add_argument("--body-file", type=Path)
+    parser.add_argument("--gate-cmd", action="append", default=[], metavar="NAME=COMMAND")
+    parser.add_argument("--json", action="store_true")
+    modes = parser.add_mutually_exclusive_group()
+    modes.add_argument("--show", action="store_true")
+    modes.add_argument("--verify", action="store_true")
+    parser.add_argument("--max-behind", type=int, metavar="N",
+                        help="--verify: accept a base at most N commits ahead of the record "
+                             "(default: AQ_GREENLIGHT_MAX_BEHIND or 20)")
+    parser.add_argument("--audit", action="store_true",
+                        help="--verify: append the acceptance to <state-dir>/audit.jsonl")
+    args = parser.parse_args()
+    if args.audit and not args.verify:
+        parser.error("--audit requires --verify")
+    try:
+        overrides = {}
+        for override in args.gate_cmd:
+            name, separator, command = override.partition("=")
+            if not separator or not command.strip():
+                raise ValueError("--gate-cmd requires NAME=COMMAND")
+            overrides[name] = command
+        record = greenlight.run(Path(args.worktree), base_ref=args.base_ref,
+                                state_dir=args.state_dir, overrides=overrides,
+                                body=args.body_file.read_text() if args.body_file else None,
+                                mode="show" if args.show else "verify" if args.verify else "run",
+                                max_behind=args.max_behind, audit=args.audit)
+        if args.json:
+            print(json.dumps(record))
+        elif args.verify:
+            name = greenlight.record_name(record["branch"], record["staged_tree_sha"])
+            print(f"greenlight {name} accepted")
+        else:
+            print("PASS" if record["passed"] else "FAIL")
+            for name, outcome in record["results"].items():
+                print(f"{name}: {outcome['status']} {outcome['detail']}")
+        return 0 if record["passed"] else 1
+    except (OSError, ValueError, subprocess.CalledProcessError) as exc:
+        if args.json:
+            print(json.dumps({"passed": False, "error": str(exc)}))
+        else:
+            print(f"aq-greenlight: {exc}", file=sys.stderr)
+        return 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -5,6 +5,7 @@ Fail-open scanning would silently drop security coverage, so assert the job
 builds the closure, scans it without error suppression, uploads SARIF under
 category nix-closure, and that no container-image scan jobs creep back in.
 """
+import re
 import unittest
 from pathlib import Path
 
@@ -50,6 +51,31 @@ class NixClosureScanJob(unittest.TestCase):
 
     def test_summary_depends_on_job(self):
         self.assertIn("nix-closure-vuln-scan", WORKFLOW["jobs"]["security-summary"]["needs"])
+
+    def test_closure_changes_gate(self):
+        self.assertIn("closure-changes", JOB["needs"])
+        self.assertEqual(JOB["if"], "needs.closure-changes.outputs.scan == 'true'")
+        run = _step_run(WORKFLOW["jobs"]["closure-changes"]["steps"], "Decide")
+        self.assertIn("--no-renames", run)
+        # push, schedule and workflow_dispatch must scan unconditionally
+        self.assertIn('[ "$EVENT" != "pull_request" ]', run)
+        self.assertIn('echo "scan=true" >> "$GITHUB_OUTPUT"', run.split("exit 0")[0])
+
+    def test_closure_changes_path_filter(self):
+        run = _step_run(WORKFLOW["jobs"]["closure-changes"]["steps"], "Decide")
+        match = re.search(r"pattern='([^']+)'", run)
+        self.assertIsNotNone(match, "Decide step must define pattern='...'")
+        assert match is not None
+        pattern = re.compile(match.group(1))
+        for path in ("nix/x.nix", "flake.lock", "Cargo.lock", "config/x",
+                     ".grype.yaml", "scripts/security/aq-closure-scan"):
+            self.assertRegex(path, pattern)
+        for path in ("docs/x.md", "tests/x.py"):
+            self.assertNotRegex(path, pattern)
+
+
+def _step_run(steps, prefix):
+    return next(s["run"] for s in steps if s["name"].startswith(prefix))
 
 
 if __name__ == "__main__":

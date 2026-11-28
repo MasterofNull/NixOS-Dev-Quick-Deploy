@@ -562,7 +562,10 @@ class SessionStart(unittest.TestCase):
                 self.assertIn(f'export AQ_INSTANCE_LANE="{lane}"', src)
                 self.assertNotIn(f"AQ_INSTANCE_LANE:-{lane}", src)
                 wrapper = t / f"test-{lane}.sh"
-                head = "\n".join(src.splitlines()[:78])
+                lines = src.splitlines()
+                export_line = f'export AQ_INSTANCE_LANE="{lane}"'
+                export_idx = next(i for i, line in enumerate(lines) if line.strip() == export_line)
+                head = "\n".join(lines[:export_idx + 1])
                 wrapper.write_text(
                     head + f'\nexec "{probe}"\n',
                     encoding="utf-8",

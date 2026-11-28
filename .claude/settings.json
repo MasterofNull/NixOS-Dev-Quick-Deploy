@@ -109,6 +109,11 @@
             "type": "command",
             "command": "python3 \"$CLAUDE_PROJECT_DIR/scripts/ai/aq-approval-ask-hook\"",
             "timeout": 5
+          },
+          {
+            "type": "command",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/scripts/ai/aq-bash-tool-policy-hook\"",
+            "timeout": 5
           }
         ]
       }
