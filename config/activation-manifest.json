@@ -104,14 +104,11 @@
     {
       "feature": "aq-greenlight isolated merged-tree gates",
       "entrypoint": "scripts/ai/aq-greenlight",
-      "live_caller": "scripts/ai/aq-greenlight",
+      "live_caller": ".githooks/pre-commit",
       "enable": null,
       "health_signal": "scripts/ai/aq-greenlight:main",
-      "deferral": {
-        "date": "2026-11-26",
-        "reason": "The G1 CLI ships first; production integration follows in the G2 pre-commit hook and G3 land-runner wiring.",
-        "tracking": ".agents/plans/greenlight-gating-20261119/DESIGN.md G1-G3; docs/harness-first/evidence/2026-11-26-g1-greenlight.md"
-      }
+      "state": "live: .githooks/pre-commit verifies exact-tree greenlight records before focused-CI checks while always running security/structure guards",
+      "observed_by": "$XDG_STATE_HOME/aq/greenlight/audit.jsonl; scripts/ai/aq-greenlight --verify; scripts/testing/test-aq-greenlight.py"
     }
   ]
 }
